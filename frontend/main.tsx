@@ -15,8 +15,8 @@ if (!googleClientId) {
 
 createRoot(document.getElementById("root")!).render(
 	<GoogleOAuthProvider clientId={googleClientId}>
-		<ThemeProvider>
-			<App />
-		</ThemeProvider>
+	       <ThemeProvider>
+		       <App />
+	       </ThemeProvider>
 	</GoogleOAuthProvider>,
 );
