@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import App from "./App.tsx";
 import { frontendEnv } from "./lib/env";
+import { ThemeProvider } from "./context/ThemeContext";
 import "./index.css";
 
 const fallbackGoogleClientId = "519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com";
@@ -14,6 +15,8 @@ if (!googleClientId) {
 
 createRoot(document.getElementById("root")!).render(
 	<GoogleOAuthProvider clientId={googleClientId}>
-		<App />
+		<ThemeProvider>
+			<App />
+		</ThemeProvider>
 	</GoogleOAuthProvider>,
 );
