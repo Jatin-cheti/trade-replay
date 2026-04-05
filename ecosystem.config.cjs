@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "tradereplay-backend",
-      script: "node_modules/.bin/tsx",
+      script: "tsx",
       args: "src/server.ts",
       cwd: "/opt/tradereplay/backend",
       instances: 1,

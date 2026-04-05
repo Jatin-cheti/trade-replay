@@ -22,7 +22,7 @@ echo "Java: $(java -version 2>&1 | head -1)"
 # ---- Download Kafka ----
 if [ ! -d "${KAFKA_DIR}" ]; then
   cd /tmp
-  curl -fsSL "https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_2.13-${KAFKA_VERSION}.tgz" -o kafka.tgz
+  curl -fsSL "https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_2.13-${KAFKA_VERSION}.tgz" -o kafka.tgz
   mkdir -p "${KAFKA_DIR}"
   tar -xzf kafka.tgz -C "${KAFKA_DIR}" --strip-components=1
   rm kafka.tgz
@@ -65,6 +65,10 @@ fetch.max.bytes=1048576
 
 auto.create.topics.enable=false
 delete.topic.enable=true
+
+# Disable log cleaner to save memory (not needed with delete policy)
+log.cleaner.enable=false
+log.cleanup.policy=delete
 KRAFTEOF
 
 # ---- IMPORTANT: Replace localhost with droplet private IP for remote access ----
@@ -82,8 +86,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-# Memory-tuned for 1GB droplet: 128MB heap (default is 1GB which OOMs)
-Environment="KAFKA_HEAP_OPTS=-Xmx128m -Xms128m"
+# Memory-tuned for 1GB droplet: 256MB max heap, 128MB initial
+Environment="KAFKA_HEAP_OPTS=-Xmx256m -Xms128m"
 ExecStart=${KAFKA_DIR}/bin/kafka-server-start.sh ${KAFKA_DIR}/config/kraft/server.properties
 ExecStop=${KAFKA_DIR}/bin/kafka-server-stop.sh
 Restart=on-failure
