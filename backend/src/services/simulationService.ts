@@ -9,7 +9,6 @@ import { TradeModel } from "../models/Trade";
 import { CandleData, Currency, Holding } from "../types/shared";
 import { InitPayload, TradeInput } from "../types/service";
 import { cacheSession, getCachedSession } from "./sessionCacheService";
-import { produceTradeExecute, produceTradeResult, producePortfolioUpdate, produceSimulationEvent } from "../kafka/eventProducers";
 
 function mapTrades(rows: Awaited<ReturnType<typeof listTrades>>) {
   return rows.map((trade: Awaited<ReturnType<typeof listTrades>>[number]) => ({
@@ -91,15 +90,6 @@ export class SimulationService {
 
     const portfolio = await ensurePortfolio(userId);
     const trades = mapTrades(await listTrades(userId));
-
-    produceSimulationEvent({
-      userId,
-      action: "init",
-      scenarioId: payload.scenarioId,
-      symbol: payload.symbol,
-      currentIndex: session.currentIndex,
-      totalCandles: session.candles.length,
-    });
 
     return {
       source: market.source,
@@ -274,33 +264,6 @@ export class SimulationService {
 
     this.engine.emitTrade(userId, tradePayload);
     this.engine.emitPortfolio(userId, portfolio);
-
-    // Kafka events (non-blocking)
-    produceTradeExecute({
-      userId,
-      symbol: session.symbol,
-      type: input.type,
-      quantity,
-      price,
-      total,
-    });
-    produceTradeResult({
-      userId,
-      tradeId: String(trade._id),
-      symbol: trade.symbol,
-      type: trade.type as "BUY" | "SELL",
-      quantity: trade.quantity,
-      price: trade.price,
-      total: trade.total,
-      realizedPnl: trade.realizedPnl,
-      success: true,
-    });
-    producePortfolioUpdate({
-      userId,
-      balance: portfolioDoc.balance,
-      holdingsCount: (portfolioDoc.holdings as Holding[]).length,
-      action: "trade",
-    });
 
     return { trade: tradePayload, portfolio };
   }

@@ -3,7 +3,6 @@ import multer from "multer";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
 import { requireUserId } from "../utils/request";
-import { producePortfolioUpdate } from "../kafka/eventProducers";
 import { mapServiceError } from "../utils/serviceError";
 import { AppError } from "../utils/appError";
 import { ensurePortfolio } from "../services/portfolioService";
@@ -58,14 +57,7 @@ export function createPortfolioController() {
       }
 
       try {
-        const created = await createSavedPortfolio({ userId, ...parsed.data });
-        producePortfolioUpdate({
-          userId,
-          balance: 0,
-          holdingsCount: parsed.data.holdings.length,
-          action: "create",
-        });
-        res.status(201).json(created);
+        res.status(201).json(await createSavedPortfolio({ userId, ...parsed.data }));
       } catch (error) {
         next(mapServiceError(error, "PORTFOLIO_CREATE_FAILED", "Failed to create portfolio"));
       }
@@ -111,12 +103,6 @@ export function createPortfolioController() {
           name,
           baseCurrency,
           csvRaw: req.file.buffer.toString("utf8"),
-        });
-        producePortfolioUpdate({
-          userId,
-          balance: 0,
-          holdingsCount: 0,
-          action: "import",
         });
         res.status(201).json(created);
       } catch (error) {

@@ -8,7 +8,6 @@ const serviceCodeMap: Record<string, { statusCode: number; message: string }> = 
   INSUFFICIENT_BALANCE: { statusCode: 400, message: "Insufficient balance" },
   INSUFFICIENT_HOLDINGS: { statusCode: 400, message: "Insufficient holdings" },
   EMAIL_EXISTS: { statusCode: 409, message: "Email already exists" },
-  PORTFOLIO_NAME_EXISTS: { statusCode: 409, message: "Portfolio name already exists for this user" },
   INVALID_CREDENTIALS: { statusCode: 401, message: "Invalid credentials" },
   MISSING_GOOGLE_EMAIL: { statusCode: 400, message: "Google email is required" },
 };

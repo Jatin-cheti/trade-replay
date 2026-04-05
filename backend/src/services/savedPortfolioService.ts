@@ -2,22 +2,6 @@ import { parse } from "csv-parse/sync";
 import { SavedPortfolioModel } from "../models/SavedPortfolio";
 import { Holding } from "../types/shared";
 
-function normalizePortfolioName(name: string): string {
-  return String(name).trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-function sanitizePortfolioName(name: string): string {
-  return String(name).trim().replace(/\s+/g, " ");
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function isDuplicateKeyError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000;
-}
-
 function normalizeHoldings(input: Holding[]): Holding[] {
   return input
     .map((holding) => ({
@@ -91,36 +75,13 @@ export async function createSavedPortfolio(input: {
 }) {
   const holdings = normalizeHoldings(input.holdings);
   if (!holdings.length) throw new Error("EMPTY_PORTFOLIO");
-  const sanitizedName = sanitizePortfolioName(input.name);
-  const normalizedName = normalizePortfolioName(sanitizedName);
-  const exactNameRegex = new RegExp(`^${escapeRegex(sanitizedName)}$`, "i");
 
-  const existing = await SavedPortfolioModel.findOne({
+  const created = await SavedPortfolioModel.create({
     userId: input.userId,
-    $or: [
-      { nameNormalized: normalizedName },
-      { name: { $regex: exactNameRegex } },
-    ],
-  }).lean();
-  if (existing) {
-    throw new Error("PORTFOLIO_NAME_EXISTS");
-  }
-
-  let created;
-  try {
-    created = await SavedPortfolioModel.create({
-      userId: input.userId,
-      name: sanitizedName,
-      nameNormalized: normalizedName,
-      baseCurrency: input.baseCurrency ?? "USD",
-      holdings,
-    });
-  } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      throw new Error("PORTFOLIO_NAME_EXISTS");
-    }
-    throw error;
-  }
+    name: input.name,
+    baseCurrency: input.baseCurrency ?? "USD",
+    holdings,
+  });
 
   return mapSavedPortfolio({
     _id: created._id,
@@ -172,43 +133,18 @@ export async function updateSavedPortfolio(input: {
 }) {
   const holdings = normalizeHoldings(input.holdings);
   if (!holdings.length) throw new Error("EMPTY_PORTFOLIO");
-  const sanitizedName = sanitizePortfolioName(input.name);
-  const normalizedName = normalizePortfolioName(sanitizedName);
-  const exactNameRegex = new RegExp(`^${escapeRegex(sanitizedName)}$`, "i");
 
-  const existing = await SavedPortfolioModel.findOne({
-    userId: input.userId,
-    $or: [
-      { nameNormalized: normalizedName },
-      { name: { $regex: exactNameRegex } },
-    ],
-    _id: { $ne: input.portfolioId },
-  }).lean();
-
-  if (existing) {
-    throw new Error("PORTFOLIO_NAME_EXISTS");
-  }
-
-  let updated;
-  try {
-    updated = await SavedPortfolioModel.findOneAndUpdate(
-      { _id: input.portfolioId, userId: input.userId },
-      {
-        $set: {
-          name: sanitizedName,
-          nameNormalized: normalizedName,
-          baseCurrency: input.baseCurrency ?? "USD",
-          holdings,
-        },
+  const updated = await SavedPortfolioModel.findOneAndUpdate(
+    { _id: input.portfolioId, userId: input.userId },
+    {
+      $set: {
+        name: input.name,
+        baseCurrency: input.baseCurrency ?? "USD",
+        holdings,
       },
-      { new: true },
-    );
-  } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      throw new Error("PORTFOLIO_NAME_EXISTS");
-    }
-    throw error;
-  }
+    },
+    { new: true },
+  );
 
   if (!updated) {
     throw new Error("PORTFOLIO_NOT_FOUND");

@@ -26,10 +26,10 @@ export interface Scenario {
 }
 
 export const assetClassIcons: Record<StockInfo['assetClass'], string> = {
-  stock: 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/chart-line.svg',
-  crypto: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-  forex: 'https://flagcdn.com/us.svg',
-  commodity: 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/oil-can.svg',
+  stock: '📈',
+  crypto: '🪙',
+  forex: '💱',
+  commodity: '🛢️',
 };
 
 function generateCandles(
@@ -94,11 +94,11 @@ export const scenarios: Scenario[] = [
     startDate: '2007-10-01',
     endDate: '2009-03-31',
     stocks: [
-      { symbol: 'SPY', name: 'S&P 500 ETF', sector: 'Index', market: 'NYSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/ssga.com' },
-      { symbol: 'BAC', name: 'Bank of America', sector: 'Finance', market: 'NYSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/bankofamerica.com' },
-      { symbol: 'GS', name: 'Goldman Sachs', sector: 'Finance', market: 'NYSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/goldmansachs.com' },
-      { symbol: 'AAPL', name: 'Apple Inc', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/apple.com' },
-      { symbol: 'XOM', name: 'Exxon Mobil', sector: 'Energy', market: 'NYSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/exxonmobil.com' },
+      { symbol: 'SPY', name: 'S&P 500 ETF', sector: 'Index', market: 'NYSE', assetClass: 'stock', icon: '📊' },
+      { symbol: 'BAC', name: 'Bank of America', sector: 'Finance', market: 'NYSE', assetClass: 'stock', icon: '🏦' },
+      { symbol: 'GS', name: 'Goldman Sachs', sector: 'Finance', market: 'NYSE', assetClass: 'stock', icon: '💼' },
+      { symbol: 'AAPL', name: 'Apple Inc', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '🍎' },
+      { symbol: 'XOM', name: 'Exxon Mobil', sector: 'Energy', market: 'NYSE', assetClass: 'stock', icon: '🛢️' },
     ],
   },
   {
@@ -108,11 +108,11 @@ export const scenarios: Scenario[] = [
     startDate: '2020-01-02',
     endDate: '2020-12-31',
     stocks: [
-      { symbol: 'SPY', name: 'S&P 500 ETF', sector: 'Index', market: 'NYSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/ssga.com' },
-      { symbol: 'AAPL', name: 'Apple Inc', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/apple.com' },
-      { symbol: 'AMZN', name: 'Amazon', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/amazon.com' },
-      { symbol: 'ZM', name: 'Zoom Video', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/zoom.us' },
-      { symbol: 'AAL', name: 'American Airlines', sector: 'Airlines', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/aa.com' },
+      { symbol: 'SPY', name: 'S&P 500 ETF', sector: 'Index', market: 'NYSE', assetClass: 'stock', icon: '📊' },
+      { symbol: 'AAPL', name: 'Apple Inc', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '🍎' },
+      { symbol: 'AMZN', name: 'Amazon', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '📦' },
+      { symbol: 'ZM', name: 'Zoom Video', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '🎥' },
+      { symbol: 'AAL', name: 'American Airlines', sector: 'Airlines', market: 'NASDAQ', assetClass: 'stock', icon: '✈️' },
     ],
   },
   {
@@ -122,11 +122,11 @@ export const scenarios: Scenario[] = [
     startDate: '1999-06-01',
     endDate: '2001-06-30',
     stocks: [
-      { symbol: 'QQQ', name: 'Nasdaq 100 ETF', sector: 'Index', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/invesco.com' },
-      { symbol: 'MSFT', name: 'Microsoft', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/microsoft.com' },
-      { symbol: 'CSCO', name: 'Cisco Systems', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/cisco.com' },
-      { symbol: 'INTC', name: 'Intel Corp', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/intel.com' },
-      { symbol: 'ORCL', name: 'Oracle Corp', sector: 'Technology', market: 'NYSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/oracle.com' },
+      { symbol: 'QQQ', name: 'Nasdaq 100 ETF', sector: 'Index', market: 'NASDAQ', assetClass: 'stock', icon: '📈' },
+      { symbol: 'MSFT', name: 'Microsoft', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '🪟' },
+      { symbol: 'CSCO', name: 'Cisco Systems', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '🌐' },
+      { symbol: 'INTC', name: 'Intel Corp', sector: 'Technology', market: 'NASDAQ', assetClass: 'stock', icon: '💻' },
+      { symbol: 'ORCL', name: 'Oracle Corp', sector: 'Technology', market: 'NYSE', assetClass: 'stock', icon: '🗄️' },
     ],
   },
   {
@@ -136,11 +136,11 @@ export const scenarios: Scenario[] = [
     startDate: '2023-01-02',
     endDate: '2023-12-29',
     stocks: [
-      { symbol: 'NVDA', name: 'NVIDIA', sector: 'US Stocks', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/nvidia.com' },
-      { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Indian Stocks', market: 'NSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/ril.com' },
-      { symbol: 'BTCUSD', name: 'Bitcoin', sector: 'Crypto', market: 'CRYPTO', assetClass: 'crypto', icon: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
-      { symbol: 'EURUSD', name: 'Euro / US Dollar', sector: 'Forex', market: 'FOREX', assetClass: 'forex', icon: 'https://flagcdn.com/eu.svg' },
-      { symbol: 'XAUUSD', name: 'Gold Spot', sector: 'Commodities', market: 'COMMODITIES', assetClass: 'commodity', icon: 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/coins.svg' },
+      { symbol: 'NVDA', name: 'NVIDIA', sector: 'US Stocks', market: 'NASDAQ', assetClass: 'stock', icon: '🧠' },
+      { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Indian Stocks', market: 'NSE', assetClass: 'stock', icon: '🇮🇳' },
+      { symbol: 'BTCUSD', name: 'Bitcoin', sector: 'Crypto', market: 'CRYPTO', assetClass: 'crypto', icon: '₿' },
+      { symbol: 'EURUSD', name: 'Euro / US Dollar', sector: 'Forex', market: 'FOREX', assetClass: 'forex', icon: '💶' },
+      { symbol: 'XAUUSD', name: 'Gold Spot', sector: 'Commodities', market: 'COMMODITIES', assetClass: 'commodity', icon: '🥇' },
     ],
   },
   {
@@ -150,11 +150,11 @@ export const scenarios: Scenario[] = [
     startDate: '2022-01-03',
     endDate: '2022-12-30',
     stocks: [
-      { symbol: 'QQQ', name: 'Nasdaq 100 ETF', sector: 'US Stocks', market: 'NASDAQ', assetClass: 'stock', icon: 'https://logo.clearbit.com/invesco.com' },
-      { symbol: 'TCS.NS', name: 'Tata Consultancy Services', sector: 'Indian Stocks', market: 'NSE', assetClass: 'stock', icon: 'https://logo.clearbit.com/tcs.com' },
-      { symbol: 'ETHUSD', name: 'Ethereum', sector: 'Crypto', market: 'CRYPTO', assetClass: 'crypto', icon: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
-      { symbol: 'USDJPY', name: 'US Dollar / Japanese Yen', sector: 'Forex', market: 'FOREX', assetClass: 'forex', icon: 'https://flagcdn.com/jp.svg' },
-      { symbol: 'CL=F', name: 'Crude Oil Futures', sector: 'Commodities', market: 'COMMODITIES', assetClass: 'commodity', icon: 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/oil-can.svg' },
+      { symbol: 'QQQ', name: 'Nasdaq 100 ETF', sector: 'US Stocks', market: 'NASDAQ', assetClass: 'stock', icon: '📈' },
+      { symbol: 'TCS.NS', name: 'Tata Consultancy Services', sector: 'Indian Stocks', market: 'NSE', assetClass: 'stock', icon: '🏢' },
+      { symbol: 'ETHUSD', name: 'Ethereum', sector: 'Crypto', market: 'CRYPTO', assetClass: 'crypto', icon: 'Ξ' },
+      { symbol: 'USDJPY', name: 'US Dollar / Japanese Yen', sector: 'Forex', market: 'FOREX', assetClass: 'forex', icon: '💴' },
+      { symbol: 'CL=F', name: 'Crude Oil Futures', sector: 'Commodities', market: 'COMMODITIES', assetClass: 'commodity', icon: '🛢️' },
     ],
   },
 ];

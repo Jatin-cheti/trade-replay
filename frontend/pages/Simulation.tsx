@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
 import { scenarios } from '@/data/stockData';
-import TradingChart from '@/components/chart/TradingChart';
+import SimChart from '@/components/simulation/SimChart';
 import TradingPanel from '@/components/simulation/TradingPanel';
 import PortfolioPanel from '@/components/simulation/PortfolioPanel';
 import TradeHistory from '@/components/simulation/TradeHistory';
@@ -11,7 +11,6 @@ import TopBar from '@/components/simulation/TopBar';
 import BrandLottie from '@/components/BrandLottie';
 import ScrollReveal from '@/components/ScrollReveal';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
-import { BarChart3, History, Wallet, LineChart } from 'lucide-react';
 
 export default function Simulation() {
   const {
@@ -69,14 +68,14 @@ export default function Simulation() {
   const currentDate = currentCandle?.time ?? '';
 
   const tabs = [
-    { id: 'chart' as const, icon: BarChart3, label: 'Chart' },
-    { id: 'trade' as const, icon: LineChart, label: 'Trade' },
-    { id: 'portfolio' as const, icon: Wallet, label: 'Portfolio' },
-    { id: 'history' as const, icon: History, label: 'History' },
+    { id: 'chart' as const, icon: '📊', label: 'Chart' },
+    { id: 'trade' as const, icon: '💰', label: 'Trade' },
+    { id: 'portfolio' as const, icon: '📈', label: 'Portfolio' },
+    { id: 'history' as const, icon: '📜', label: 'History' },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col pt-24 page-gradient-shell overflow-x-hidden">
+    <div className="min-h-screen flex flex-col page-gradient-shell overflow-x-hidden">
       <div className="page-bg-orb page-bg-orb--one" aria-hidden="true" />
       <div className="page-bg-orb page-bg-orb--two" aria-hidden="true" />
       <div className="page-bg-orb page-bg-orb--three" aria-hidden="true" />
@@ -110,7 +109,7 @@ export default function Simulation() {
           className="flex-[7]"
         >
           <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
-            <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+            <SimChart data={candles} visibleCount={currentCandleIndex + 1} />
           </InteractiveSurface>
         </motion.div>
 
@@ -143,7 +142,7 @@ export default function Simulation() {
         {mobileTab === 'chart' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
-              <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+              <SimChart data={candles} visibleCount={currentCandleIndex + 1} />
             </InteractiveSurface>
           </motion.div>
         )}
@@ -176,7 +175,7 @@ export default function Simulation() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <span className="flex justify-center leading-none"><tab.icon size={16} /></span>
+            <span className="block text-base leading-none">{tab.icon}</span>
             <span className="block mt-1 text-[11px] uppercase tracking-wide">{tab.label}</span>
           </button>
         ))}

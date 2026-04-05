@@ -2,7 +2,6 @@ import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
 import { env } from "./config/env";
 import { createApp } from "./app";
-import { bootstrapKafka, shutdownKafka } from "./kafka/index";
 import net from "node:net";
 import { logger } from "./utils/logger";
 
@@ -37,8 +36,6 @@ async function bootstrap() {
   await connectDB();
   logger.info("bootstrap_connect_redis");
   await connectRedis();
-  logger.info("bootstrap_connect_kafka");
-  await bootstrapKafka();
   logger.info("bootstrap_create_app");
   const { httpServer } = createApp();
   const listenPort = await resolvePort(env.PORT);
@@ -56,16 +53,6 @@ async function bootstrap() {
   httpServer.listen(listenPort, () => {
     logger.info("backend_listening", { port: listenPort });
   });
-
-  // Graceful shutdown
-  const shutdown = async () => {
-    logger.info("shutdown_start");
-    await shutdownKafka();
-    httpServer.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }
 
 bootstrap().catch((error) => {

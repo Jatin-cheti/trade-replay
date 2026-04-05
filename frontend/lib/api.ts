@@ -14,11 +14,6 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-const bootstrapToken = typeof window !== "undefined" ? window.localStorage.getItem("sim_token") : null;
-if (bootstrapToken) {
-  api.defaults.headers.common.Authorization = `Bearer ${bootstrapToken}`;
-}
-
 api.interceptors.request.use(
   (config) => {
     activeRequestCount += 1;
@@ -63,31 +58,9 @@ export function setApiToken(token: string | null): void {
   api.defaults.headers.common.Authorization = `Bearer ${token}`;
 }
 
-export function getApiErrorMessage(error: unknown, fallbackMessage: string): string {
-  if (typeof error !== "object" || error === null) {
-    return fallbackMessage;
+if (typeof window !== "undefined") {
+  const bootToken = window.localStorage.getItem("sim_token");
+  if (bootToken) {
+    setApiToken(bootToken);
   }
-
-  if ("response" in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response;
-    const message = response?.data?.message;
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-  }
-
-  if ("message" in error && typeof (error as { message?: string }).message === "string") {
-    const message = (error as { message?: string }).message;
-    if (message && message.trim()) {
-      return message;
-    }
-  }
-
-  return fallbackMessage;
-}
-
-export function getApiErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null) return undefined;
-  const response = (error as { response?: { data?: { code?: string; errorCode?: string } } }).response;
-  return response?.data?.code ?? response?.data?.errorCode;
 }

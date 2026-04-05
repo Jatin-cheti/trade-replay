@@ -1,14 +1,8 @@
 import { motion } from 'framer-motion';
-import { useMemo, useState } from 'react';
-import { Pause, Play, Search, SkipBack, SkipForward } from 'lucide-react';
-import BrandLottie from '@/components/BrandLottie';
-import AssetAvatar from '@/components/ui/AssetAvatar';
-import PremiumSelect from '@/components/simulation/PremiumSelect';
-import PremiumDatePicker from '@/components/simulation/PremiumDatePicker';
-import SymbolSearchModal from '@/components/simulation/SymbolSearchModal';
 import { useApp, Currency } from '@/context/AppContext';
 import { scenarios } from '@/data/stockData';
-import type { AssetSearchItem } from '@/lib/assetSearch';
+import { useState } from 'react';
+import BrandLottie from '@/components/BrandLottie';
 
 interface TopBarProps {
   totalCandles: number;
@@ -17,187 +11,218 @@ interface TopBarProps {
 
 export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
   const {
-    scenarioId,
-    setScenarioId,
-    selectedStock,
-    setSelectedStock,
-    currentCandleIndex,
-    setCurrentCandleIndex,
-    initializeSimulation,
-    stepBackward,
-    stepForward,
-    isPlaying,
-    setIsPlaying,
-    playSpeed,
-    setPlaySpeed,
-    currency,
-    setCurrency,
-    startDate,
-    endDate,
-    setDateRange,
-    dataSource,
+    scenarioId, setScenarioId, selectedStock, setSelectedStock,
+    currentCandleIndex, setCurrentCandleIndex, initializeSimulation,
+    stepBackward, stepForward,
+    isPlaying, setIsPlaying, playSpeed, setPlaySpeed,
+    currency, setCurrency, startDate, endDate, setDateRange, dataSource,
   } = useApp();
 
+  const scenario = scenarios.find(s => s.id === scenarioId)!;
+  const [showStockSearch, setShowStockSearch] = useState(false);
+  const [search, setSearch] = useState('');
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'NYSE' | 'NASDAQ' | 'NSE' | 'BSE' | 'CRYPTO' | 'FOREX' | 'COMMODITIES'>('ALL');
-  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
-  const [selectedAssetMeta, setSelectedAssetMeta] = useState<AssetSearchItem | null>(null);
 
-  const scenario = scenarios.find((item) => item.id === scenarioId)!;
+  const availableMarkets = Array.from(new Set(scenario.stocks.map(s => s.market)));
 
-  const scenarioOptions = useMemo(
-    () => scenarios.map((item) => ({ value: item.id, label: item.name, subtitle: item.description })),
-    []
+  const filteredStocks = scenario.stocks.filter(s =>
+    (marketFilter === 'ALL' || s.market === marketFilter) && (
+      s.symbol.toLowerCase().includes(search.toLowerCase()) ||
+      s.name.toLowerCase().includes(search.toLowerCase())
+    )
   );
-
-  const marketOptions = useMemo(() => {
-    const set = new Set(scenario.stocks.map((item) => item.market));
-    return [{ value: 'ALL', label: 'All Markets' }, ...Array.from(set).map((m) => ({ value: m, label: m }))] as Array<{ value: typeof marketFilter; label: string }>;
-  }, [scenario.stocks]);
-
-  const selectedScenarioStock = useMemo(
-    () => scenario.stocks.find((item) => item.symbol === selectedStock),
-    [scenario.stocks, selectedStock]
-  );
-
-  const selectedAssetName = selectedAssetMeta?.name || selectedScenarioStock?.name || selectedStock;
-  const selectedAssetIcon = selectedAssetMeta?.iconUrl || selectedAssetMeta?.logoUrl || selectedScenarioStock?.icon;
-  const selectedExchangeIcon = selectedAssetMeta?.exchangeLogoUrl || selectedAssetMeta?.exchangeIcon;
 
   return (
     <motion.div
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="glass sticky top-0 z-50 border-b border-primary/25 px-3 py-3.5 shadow-[0_8px_28px_hsl(var(--background)/0.45)] backdrop-blur-xl md:px-4"
+      className="glass sticky top-0 z-50 px-3 md:px-4 py-3.5 backdrop-blur-xl border-b border-primary/25 shadow-[0_8px_28px_hsl(var(--background)/0.45)]"
     >
       <div className="flex flex-wrap items-center gap-2.5 md:gap-3">
-        <motion.div className="mr-1 flex items-center gap-2.5" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.35, ease: 'easeOut' }}>
+        <motion.div
+          className="flex items-center gap-2.5 mr-2"
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+        >
           <motion.div whileHover={{ scale: 1.03 }} transition={{ duration: 0.2 }}>
             <BrandLottie size={44} className="shrink-0 drop-shadow-[0_0_12px_hsl(var(--neon-blue)/0.24)]" />
           </motion.div>
-          <span className="whitespace-nowrap font-display text-[1.36rem] font-semibold leading-none tracking-wide text-foreground">Trade Replay</span>
+          <span className="font-display text-[1.12rem] sm:text-[1.26rem] leading-tight font-semibold text-foreground tracking-wide">Trade Replay</span>
         </motion.div>
 
-        <PremiumSelect
+        {/* Scenario Selector */}
+        <select
           value={scenarioId}
-          options={scenarioOptions}
-          searchable
-          onChange={(next) => {
-            setScenarioId(next);
-            setTimeout(() => {
-              void initializeSimulation();
-            }, 0);
+          onChange={e => {
+            setScenarioId(e.target.value);
+            setTimeout(() => { void initializeSimulation(); }, 0);
           }}
-          className="min-w-[230px]"
-        />
+          className="premium-select px-3 py-1.5 rounded-lg text-foreground text-sm focus:outline-none cursor-pointer"
+        >
+          {scenarios.map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
 
-        <PremiumSelect
+        <select
           value={marketFilter}
-          options={marketOptions}
-          onChange={(next) => setMarketFilter(next as typeof marketFilter)}
-          className="min-w-[160px]"
-        />
+          onChange={e => setMarketFilter(e.target.value as typeof marketFilter)}
+          className="premium-select px-3 py-1.5 rounded-lg text-foreground text-sm focus:outline-none cursor-pointer"
+        >
+          <option value="ALL">All Markets</option>
+          {availableMarkets.map(market => (
+            <option key={market} value={market}>{market}</option>
+          ))}
+        </select>
 
-        <div className="inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-background/55 px-3 py-1.5 text-sm">
-          <AssetAvatar
-            src={selectedAssetIcon}
-            label={selectedAssetName}
-            className="h-4 w-4 rounded-full object-cover ring-1 ring-border/70"
-          />
+        {/* Stock Selector */}
+        <div className="relative">
           <button
-            type="button"
-            onClick={() => setSymbolSearchOpen(true)}
-            className="inline-flex min-w-[240px] items-center justify-between gap-3 rounded-md border border-border/70 bg-secondary/35 px-2.5 py-1.5 text-left hover:bg-secondary/55"
+            onClick={() => setShowStockSearch(!showStockSearch)}
+            className="premium-select px-3 py-1.5 rounded-lg text-foreground text-sm font-mono hover:bg-secondary/70 transition-colors"
           >
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium">{selectedStock}</span>
-              <span className="block truncate text-[11px] text-muted-foreground">{selectedAssetName}</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              {selectedExchangeIcon ? <AssetAvatar src={selectedExchangeIcon} label={selectedAssetMeta?.exchange || 'exchange'} className="h-3.5 w-3.5 rounded-sm object-cover" /> : null}
-              <Search size={13} />
-            </span>
+            {scenario.stocks.find(s => s.symbol === selectedStock)?.icon ?? '📈'} {selectedStock}
           </button>
+          {showStockSearch && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="absolute top-full mt-1 left-0 glass-strong rounded-lg p-2 min-w-[220px] max-w-[min(92vw,300px)] z-50 shadow-[0_18px_36px_hsl(var(--background)/0.5)]"
+            >
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="premium-input w-full px-2 py-1.5 rounded text-foreground text-xs mb-2 focus:outline-none"
+                autoFocus
+              />
+              {filteredStocks.map(s => (
+                <button
+                  key={s.symbol}
+                  onClick={() => {
+                    setSelectedStock(s.symbol);
+                    setShowStockSearch(false);
+                    setSearch('');
+                    setTimeout(() => { void initializeSimulation(); }, 0);
+                  }}
+                  className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-secondary/50 transition-colors ${
+                    s.symbol === selectedStock ? 'bg-primary/20 text-primary' : 'text-foreground'
+                  }`}
+                >
+                  <span className="font-mono font-semibold">{s.icon} {s.symbol}</span>
+                  <span className="text-muted-foreground ml-2">{s.name} • {s.market}</span>
+                </button>
+              ))}
+            </motion.div>
+          )}
         </div>
 
-        <PremiumDatePicker label="Start" value={startDate} onChange={(next) => setDateRange(next, endDate)} />
-        <PremiumDatePicker label="End" value={endDate} onChange={(next) => setDateRange(startDate, next)} />
-
-        <button onClick={() => void initializeSimulation()} className="rounded-lg border border-primary/20 bg-primary/12 px-2.5 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/20">
+        <input
+          type="date"
+          value={startDate}
+          onChange={e => setDateRange(e.target.value, endDate)}
+          className="premium-input px-2 py-1 rounded text-foreground text-xs"
+        />
+        <input
+          type="date"
+          value={endDate}
+          onChange={e => setDateRange(startDate, e.target.value)}
+          className="premium-input px-2 py-1 rounded text-foreground text-xs"
+        />
+        <button
+          onClick={() => void initializeSimulation()}
+          className="premium-select px-2 py-1 rounded text-xs"
+        >
           Apply
         </button>
 
-        <motion.span key={currentDate} initial={{ opacity: 0, y: -3 }} animate={{ opacity: 1, y: 0 }} className="hidden text-xs font-mono text-muted-foreground lg:inline">
+        {/* Date */}
+        <motion.span
+          key={currentDate}
+          initial={{ opacity: 0, y: -3 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-xs font-mono text-muted-foreground hidden lg:inline"
+        >
           {currentDate}
         </motion.span>
 
+        {/* Spacer */}
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-background/50 px-1 py-1">
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => void stepBackward()} className="rounded p-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground" title="Step back">
-            <SkipBack size={16} />
+        {/* Simulation Controls */}
+        <div className="flex items-center gap-1">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => void stepBackward()}
+            className="p-1.5 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors text-sm"
+            title="Step back"
+          >
+            ⏮
           </motion.button>
 
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setIsPlaying(!isPlaying)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
-              isPlaying ? 'bg-primary/20 text-primary glow-blue' : 'bg-secondary/50 text-foreground hover:bg-secondary/70'
+            className={`p-1.5 px-3 rounded-lg font-semibold text-sm transition-all interactive-cta ${
+              isPlaying
+                ? 'bg-primary/20 text-primary glow-blue'
+                : 'bg-secondary/50 text-foreground hover:bg-secondary/70'
             }`}
           >
-            {isPlaying ? <Pause size={16} className="mx-auto" /> : <Play size={16} className="mx-auto" />}
+            {isPlaying ? '⏸' : '▶'}
           </motion.button>
 
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => void stepForward()} className="rounded p-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground" title="Step forward">
-            <SkipForward size={16} />
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => void stepForward()}
+            className="p-1.5 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors text-sm"
+            title="Step forward"
+          >
+            ⏭
           </motion.button>
 
-          <PremiumSelect
-            value={String(playSpeed)}
-            options={[{ value: '0.5', label: '0.5×' }, { value: '1', label: '1×' }, { value: '2', label: '2×' }, { value: '5', label: '5×' }, { value: '10', label: '10×' }]}
-            onChange={(next) => void setPlaySpeed(Number(next))}
-            className="min-w-[88px]"
-          />
+          {/* Speed */}
+          <select
+            value={playSpeed}
+            onChange={e => void setPlaySpeed(+e.target.value)}
+            className="premium-select px-2 py-1 rounded text-foreground text-xs focus:outline-none cursor-pointer"
+          >
+            <option value={0.5}>0.5×</option>
+            <option value={1}>1×</option>
+            <option value={2}>2×</option>
+            <option value={5}>5×</option>
+            <option value={10}>10×</option>
+          </select>
         </div>
 
+        {/* Timeline Slider */}
         <input
           type="range"
           min={0}
-          max={Math.max(0, totalCandles - 1)}
+          max={totalCandles - 1}
           value={currentCandleIndex}
-          onChange={(event) => void setCurrentCandleIndex(+event.target.value)}
-          className="h-1 w-20 accent-primary md:w-36"
+          onChange={e => void setCurrentCandleIndex(+e.target.value)}
+          className="w-20 md:w-36 accent-primary h-1"
         />
 
         <span className="text-xs text-muted-foreground">
           {dataSource ? (dataSource === 'fallback' ? 'Fallback' : 'AlphaVantage') : 'No source'}
         </span>
 
-        <PremiumSelect
+        <select
           value={currency}
-          options={[
-            { value: 'USD', label: '$ USD' },
-            { value: 'INR', label: '₹ INR' },
-            { value: 'EUR', label: '€ EUR' },
-            { value: 'GBP', label: '£ GBP' },
-            { value: 'JPY', label: '¥ JPY' },
-          ] as Array<{ value: Currency; label: string }>}
-          onChange={(next) => setCurrency(next as Currency)}
-          className="min-w-[104px]"
-        />
+          onChange={e => setCurrency(e.target.value as Currency)}
+          className="premium-select px-2 py-1 rounded-lg text-xs font-mono text-foreground hover:bg-secondary/70 transition-colors"
+        >
+          <option value="USD">$ USD</option>
+          <option value="INR">₹ INR</option>
+          <option value="EUR">€ EUR</option>
+          <option value="GBP">£ GBP</option>
+          <option value="JPY">¥ JPY</option>
+        </select>
       </div>
-
-      <SymbolSearchModal
-        open={symbolSearchOpen}
-        selectedSymbol={selectedStock}
-        onOpenChange={setSymbolSearchOpen}
-        onSelect={(asset) => {
-          setSelectedAssetMeta(asset);
-          setSelectedStock(asset.ticker);
-          setTimeout(() => {
-            void initializeSimulation({ symbol: asset.ticker });
-          }, 0);
-        }}
-      />
     </motion.div>
   );
 }

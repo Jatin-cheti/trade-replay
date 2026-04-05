@@ -3,13 +3,12 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import AssetAvatar from "@/components/ui/AssetAvatar";
 
 export interface SearchableDropdownItem {
   value: string;
   label: string;
   subtitle?: string;
-  iconUrl?: string;
+  icon?: string;
 }
 
 interface SearchableDropdownProps {
@@ -48,9 +47,8 @@ export default function SearchableDropdown({
             className,
           )}
         >
-          <span className="flex min-w-0 items-center gap-2 truncate">
-            {selected?.iconUrl ? <AssetAvatar src={selected.iconUrl} label={selected.label} className="h-4 w-4 rounded-full object-cover ring-1 ring-border/70" /> : null}
-            <span className="truncate">{selected ? selected.label : placeholder}</span>
+          <span className="truncate">
+            {selected ? `${selected.icon ?? ""} ${selected.label}`.trim() : placeholder}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-70" />
         </Button>
@@ -69,16 +67,14 @@ export default function SearchableDropdown({
                   className="rounded-md px-2.5 py-2 data-[selected=true]:bg-primary/20 data-[selected=true]:text-foreground"
                 >
                   <div className="flex w-full items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-start gap-2">
-                      {item.iconUrl ? <AssetAvatar src={item.iconUrl} label={item.label} className="mt-0.5 h-4 w-4 rounded-full object-cover ring-1 ring-border/70" /> : null}
-                      <div className="min-w-0">
+                    <div className="min-w-0">
                       <p className="truncate text-sm font-medium">
+                        {item.icon ? `${item.icon} ` : ""}
                         {item.label}
                       </p>
                       {item.subtitle ? (
                         <p className="truncate text-xs text-muted-foreground">{item.subtitle}</p>
                       ) : null}
-                      </div>
                     </div>
                     <Check className={cn("h-4 w-4", value === item.value ? "opacity-100" : "opacity-0")} />
                   </div>

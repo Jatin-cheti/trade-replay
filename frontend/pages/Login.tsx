@@ -53,31 +53,31 @@ export default function Login({ mode = 'login' }: LoginProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const result = await login(email, password, isSignup);
+    const success = await login(email, password, isSignup);
     setIsSubmitting(false);
-    if (result.ok) {
+    if (success) {
       toast.success(isSignup ? 'Account created successfully' : 'Login successful');
-      navigate('/homepage');
+      navigate('/dashboard');
       return;
     }
-    toast.error(result.message ?? 'Authentication failed');
+    toast.error('Authentication failed. Please verify credentials.');
   };
 
   const handleGoogleLogin = async (credential?: string) => {
     if (!credential) return;
     setIsGoogleLoading(true);
-    const result = await googleLogin(credential);
+    const success = await googleLogin(credential);
     setIsGoogleLoading(false);
-    if (result.ok) {
+    if (success) {
       toast.success('Google login successful');
-      navigate('/homepage');
+      navigate('/dashboard');
       return;
     }
-    toast.error(result.message ?? 'Google login failed');
+    toast.error('Google login failed. Try again.');
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center animated-gradient-bg relative overflow-hidden">
+    <div className="relative min-h-screen w-full overflow-x-hidden overflow-y-auto animated-gradient-bg px-4 py-6 sm:px-6 sm:py-10">
       {showFullscreenLoader && (
         <div className="absolute inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center">
           <div className="glass-strong rounded-xl px-6 py-4 flex items-center gap-3 max-w-[92vw]">
@@ -103,7 +103,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="glass-strong rounded-2xl p-8 w-full max-w-lg relative z-10 border border-primary/30"
+        className="relative z-10 my-auto w-full max-w-xl rounded-2xl border border-primary/30 p-5 sm:p-7 md:p-8 glass-strong"
       >
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -113,7 +113,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
         >
           <div className="flex items-center justify-center gap-3 md:gap-4 mb-4">
             <BrandLottie size={84} className="shrink-0 drop-shadow-[0_0_16px_hsl(var(--neon-blue)/0.28)]" />
-            <h1 className="font-display text-4xl md:text-[2.8rem] leading-none font-extrabold tracking-tight text-foreground whitespace-nowrap">Trade Replay</h1>
+            <h1 className="font-display text-[2rem] sm:text-[2.4rem] md:text-[2.8rem] leading-tight font-extrabold tracking-tight text-foreground text-center">Trade Replay</h1>
           </div>
           <p className="text-muted-foreground text-sm md:text-[0.95rem]">
             {isSignup ? 'Create your account to start trading' : 'Enter the simulation'}
@@ -172,20 +172,19 @@ export default function Login({ mode = 'login' }: LoginProps) {
             <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="px-2 text-muted-foreground bg-background">or</span>
+            <span className="px-2 text-muted-foreground" style={{ background: 'hsl(222 47% 10%)' }}>or</span>
           </div>
         </div>
 
         <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
           {isGoogleLoading && <p className="text-xs text-muted-foreground text-center mb-2">Verifying Google credential...</p>}
-          <div className="w-full flex justify-center [&>div]:w-full [&_iframe]:!w-full [&_div[role=button]]:!w-full">
+          <div className="mx-auto flex w-full max-w-[360px] justify-center [&>div]:!max-w-full [&>div]:!w-full [&_iframe]:!max-w-full [&_iframe]:!w-full [&_div[role=button]]:!w-full">
             <GoogleLogin
               onSuccess={(credentialResponse) => { void handleGoogleLogin(credentialResponse.credential); }}
               onError={() => undefined}
               theme="filled_black"
               text="continue_with"
               shape="pill"
-              width="360"
             />
           </div>
         </motion.div>
@@ -200,7 +199,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
           <button
             onClick={() => {
               setIsSignup(!isSignup);
-              navigate(isSignup ? '/login' : '/signup');
+              navigate(isSignup ? '/' : '/signup');
             }}
             className="text-primary hover:underline"
           >

@@ -4,10 +4,12 @@ import App from "./App.tsx";
 import { frontendEnv } from "./lib/env";
 import "./index.css";
 
-const googleClientId = frontendEnv.GOOGLE_CLIENT_ID;
+const fallbackGoogleClientId = "519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com";
+const googleClientId = frontendEnv.GOOGLE_CLIENT_ID || fallbackGoogleClientId;
 
 if (!googleClientId) {
-  console.warn("Google OAuth client_id is missing. Set VITE_GOOGLE_CLIENT_ID in your .env file.");
+  // This warning helps catch OAuth setup issues in local runs quickly.
+  console.warn("Google OAuth client_id is missing. Check VITE_* env variables.");
 }
 
 createRoot(document.getElementById("root")!).render(

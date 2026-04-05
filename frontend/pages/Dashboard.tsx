@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/lib/api";
-import { getApiErrorMessage } from "@/lib/api";
 import { scenarios } from "@/data/stockData";
 import { toast } from "sonner";
 import BrandLottie from "@/components/BrandLottie";
@@ -11,8 +10,6 @@ import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Carousel, CarouselApi, CarouselContent, CarouselItem } from "@/components/ui/carousel";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface SavedPortfolio {
   id: string;
@@ -25,7 +22,7 @@ interface SavedPortfolio {
 }
 
 export default function Dashboard() {
-  const { isAuthenticated } = useApp();
+  const { username, logout } = useApp();
   const navigate = useNavigate();
   const [items, setItems] = useState<SavedPortfolio[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,7 +32,6 @@ export default function Dashboard() {
   const [scenarioCarouselApi, setScenarioCarouselApi] = useState<CarouselApi>();
   const [canScrollPrev, setCanScrollPrev] = useState(false);
   const [canScrollNext, setCanScrollNext] = useState(false);
-  const [selectedPortfolioIdsForBulkApply, setSelectedPortfolioIdsForBulkApply] = useState<string[]>([]);
   const featuredScenario = scenarios.find((scenario) => scenario.id === featuredScenarioId) ?? scenarios[0];
   const featuredScenarioIndex = Math.max(0, scenarios.findIndex((scenario) => scenario.id === featuredScenarioId));
 
@@ -46,7 +42,6 @@ export default function Dashboard() {
     try {
       const response = await api.get<SavedPortfolio[]>("/portfolio");
       setItems(response.data);
-      setSelectedPortfolioIdsForBulkApply(response.data.map((portfolio) => portfolio.id));
       setSelectedScenarioByPortfolio((prev) => {
         const next = { ...prev };
         response.data.forEach((portfolio) => {
@@ -56,17 +51,16 @@ export default function Dashboard() {
         });
         return next;
       });
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not load portfolios"));
+    } catch (_error) {
+      toast.error("Failed to load saved portfolios");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!isAuthenticated) return;
     void loadPortfolios();
-  }, [isAuthenticated]);
+  }, []);
 
   useEffect(() => {
     if (!scenarioCarouselApi) return;
@@ -103,36 +97,6 @@ export default function Dashboard() {
     navigate(`/simulation?portfolioId=${portfolioId}&scenarioId=${scenarioId}`);
   };
 
-  const toggleSelectedPortfolioId = (portfolioId: string, checked: boolean) => {
-    setSelectedPortfolioIdsForBulkApply((prev) => {
-      if (checked) {
-        if (prev.includes(portfolioId)) return prev;
-        return [...prev, portfolioId];
-      }
-      return prev.filter((id) => id !== portfolioId);
-    });
-  };
-
-  const applyFeaturedScenarioToSelectedPortfolios = () => {
-    if (selectedPortfolioIdsForBulkApply.length === 0) {
-      toast.error("Select at least one portfolio");
-      return;
-    }
-
-    const selected = new Set(selectedPortfolioIdsForBulkApply);
-    setSelectedScenarioByPortfolio((prev) => {
-      const next = { ...prev };
-      items.forEach((portfolio) => {
-        if (selected.has(portfolio.id)) {
-          next[portfolio.id] = featuredScenarioId;
-        }
-      });
-      return next;
-    });
-
-    toast.success(`Scenario applied to ${selectedPortfolioIdsForBulkApply.length} selected portfolio(s)`);
-  };
-
   const importFromDashboard = async () => {
     if (!csvFile) {
       toast.error("Please choose a CSV file first");
@@ -155,11 +119,26 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen pb-8 pt-24 page-gradient-shell overflow-x-hidden">
+    <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
       <div className="page-bg-orb page-bg-orb--one" aria-hidden="true" />
       <div className="page-bg-orb page-bg-orb--two" aria-hidden="true" />
       <div className="page-bg-orb page-bg-orb--three" aria-hidden="true" />
       <div className="page-bg-grid" aria-hidden="true" />
+      <motion.header initial={{ y: -12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="glass sticky top-0 z-50 px-4 md:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-primary/20 backdrop-blur-xl">
+        <div className="flex items-center gap-3 md:gap-4 min-w-0">
+          <BrandLottie size={58} className="shrink-0 drop-shadow-[0_0_14px_hsl(var(--neon-blue)/0.26)]" />
+          <div className="min-w-0">
+            <p className="font-display font-bold text-[1.3rem] sm:text-[1.55rem] md:text-[1.75rem] leading-tight text-foreground tracking-tight">Trade Replay</p>
+            <p className="text-sm sm:text-base text-muted-foreground tracking-wide">Portfolio Command Center</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 ml-auto max-w-full">
+          <span className="text-sm text-muted-foreground truncate">Welcome, <span className="text-foreground">{username || "Trader"}</span></span>
+          <button onClick={() => { logout(); navigate("/"); }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Logout
+          </button>
+        </div>
+      </motion.header>
 
       <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 space-y-8">
         <section aria-label="Hero summary" className="section-enter">
@@ -276,52 +255,21 @@ export default function Dashboard() {
                 <p className="eyebrow-label">Featured Scenario</p>
                 <p className="font-display text-base md:text-lg text-foreground">{featuredScenario?.name}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button className="px-3 py-2 rounded-lg border border-border bg-secondary/40 text-sm hover:border-primary/45 hover:bg-secondary/65 transition-all">
-                      Select Portfolios ({selectedPortfolioIdsForBulkApply.length})
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-72 glass-strong border-border/70 p-3">
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground mb-2">Apply To</p>
-                    <div className="space-y-2 max-h-56 overflow-auto pr-1">
-                      {items.map((portfolio) => (
-                        <label key={portfolio.id} className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-secondary/20 px-2.5 py-2 text-sm">
-                          <span className="truncate">{portfolio.name}</span>
-                          <Checkbox
-                            checked={selectedPortfolioIdsForBulkApply.includes(portfolio.id)}
-                            onCheckedChange={(checked) => toggleSelectedPortfolioId(portfolio.id, checked === true)}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPortfolioIdsForBulkApply(items.map((portfolio) => portfolio.id))}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Select all
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPortfolioIdsForBulkApply([])}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <button
-                  onClick={applyFeaturedScenarioToSelectedPortfolios}
-                  className="px-4 py-2 rounded-lg bg-primary/90 text-primary-foreground text-sm interactive-cta"
-                >
-                  Apply To Selected
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setSelectedScenarioByPortfolio((prev) => {
+                    const next = { ...prev };
+                    items.forEach((portfolio) => {
+                      next[portfolio.id] = featuredScenarioId;
+                    });
+                    return next;
+                  });
+                  toast.success("Scenario applied to all portfolios");
+                }}
+                className="px-4 py-2 rounded-lg bg-primary/90 text-primary-foreground text-sm interactive-cta"
+              >
+                Apply To All Portfolios
+              </button>
             </div>
           </ScrollReveal>
         </section>
@@ -330,7 +278,7 @@ export default function Dashboard() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="kicker-text">Portfolio Section</p>
-              <h2 className="font-display text-[2.45rem] font-bold text-foreground">Your Portfolios</h2>
+              <h2 className="font-display text-[1.95rem] sm:text-[2.2rem] md:text-[2.45rem] font-bold text-foreground">Your Portfolios</h2>
             </div>
           </div>
 

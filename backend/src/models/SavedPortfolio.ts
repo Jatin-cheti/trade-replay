@@ -13,19 +13,6 @@ const savedPortfolioSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     name: { type: String, required: true, trim: true, minlength: 2, maxlength: 80 },
-    nameNormalized: {
-      type: String,
-      required: true,
-      trim: true,
-      minlength: 2,
-      maxlength: 80,
-      default: function deriveNameNormalized(this: { name?: string }) {
-        return String(this.name ?? "")
-          .trim()
-          .replace(/\s+/g, " ")
-          .toLowerCase();
-      },
-    },
     baseCurrency: { type: String, required: true, default: "USD" },
     holdings: { type: [savedHoldingSchema], default: [] },
   },
@@ -33,7 +20,6 @@ const savedPortfolioSchema = new Schema(
 );
 
 savedPortfolioSchema.index({ userId: 1, createdAt: -1 });
-savedPortfolioSchema.index({ userId: 1, nameNormalized: 1 }, { unique: true });
 
 export type SavedPortfolioDocument = InferSchemaType<typeof savedPortfolioSchema> & {
   _id: mongoose.Types.ObjectId;

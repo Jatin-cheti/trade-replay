@@ -4,7 +4,6 @@ import { useApp } from '@/context/AppContext';
 import { CandleData, getStockInfo } from '@/data/stockData';
 import { toast } from 'sonner';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
-import AssetAvatar from '@/components/ui/AssetAvatar';
 
 interface TradingPanelProps {
   currentCandle: CandleData | null;
@@ -22,15 +21,15 @@ export default function TradingPanel({ currentCandle }: TradingPanelProps) {
   const handleTrade = async (type: 'BUY' | 'SELL') => {
     if (!currentCandle) return;
     setActiveTrade(type);
-    const result = await executeTrade(type, selectedStock, price, quantity, currentCandle.time);
+    const success = await executeTrade(type, selectedStock, price, quantity, currentCandle.time);
     setActiveTrade(null);
-    if (result.ok) {
+    if (success) {
       setFlash(type === 'BUY' ? 'buy' : 'sell');
       setTimeout(() => setFlash(null), 600);
       toast.success(`${type} order executed for ${selectedStock}`);
       return;
     }
-    toast.error(result.message ?? `${type} order could not be executed`);
+    toast.error(`${type} order failed`);
   };
 
   return (
@@ -52,10 +51,7 @@ export default function TradingPanel({ currentCandle }: TradingPanelProps) {
       <div className="space-y-3 relative z-10">
         <div className="flex justify-between items-center">
           <span className="text-xs text-muted-foreground">Stock</span>
-          <span className="inline-flex items-center gap-2 font-mono font-semibold text-foreground">
-            <AssetAvatar src={stockInfo?.icon} label={stockInfo?.name ?? selectedStock} className="h-4 w-4 rounded-full object-cover ring-1 ring-border/70" />
-            {selectedStock}
-          </span>
+          <span className="font-mono font-semibold text-foreground">{stockInfo?.icon ?? '📈'} {selectedStock}</span>
         </div>
 
         <div className="text-xs text-muted-foreground -mt-1">{stockInfo?.name ?? 'Unknown Asset'} • {stockInfo?.market ?? 'N/A'}</div>

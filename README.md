@@ -17,11 +17,10 @@ tradereplay/
 
 ## Tech Stack
 
-- Frontend: React + Vite + Tailwind → Vercel
-- Backend: Node.js + TypeScript + Express (MVC) → DO $6 Droplet
-- Database: MongoDB Atlas (FREE M0 cluster)
-- Cache: Redis (local on droplet, 100MB)
-- Event Streaming: Apache Kafka KRaft (local on droplet, 128MB heap)
+- Frontend: React + Vite + Tailwind
+- Backend: Node.js + TypeScript + Express (MVC)
+- Database: MongoDB
+- Cache: Redis
 - Auth: JWT (Bearer token)
 - Realtime: Socket.io
 
@@ -64,19 +63,11 @@ Examples:
 - `QA_GOOGLE_CLIENT_ID`
 - `PROD_VITE_API_URL`
 
-### Kafka Environment Variables
-
-| Variable | Description | Default |
-|---|---|---|
-| `KAFKA_ENABLED` | Enable Kafka producer/consumers | `false` |
-| `KAFKA_BROKERS` | Comma-separated broker list | `localhost:9092` |
-| `KAFKA_SASL_USERNAME` | SASL username (Confluent Cloud) | _(empty)_ |
-| `KAFKA_SASL_PASSWORD` | SASL password (Confluent Cloud) | _(empty)_ |
-| `KAFKA_SASL_MECHANISM` | SASL mechanism | `plain` |
-
 The app resolves profile values from `NODE_ENV` and falls back to `LOCAL_` values.
 
-Google OAuth client ID must be set via environment variable `VITE_GOOGLE_CLIENT_ID` in `.env`.
+Google OAuth client ID is configured for local/dev/qa in `.env`:
+
+- `519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com`
 
 ## Product Flow
 
@@ -89,31 +80,6 @@ Required user journey is now:
 5. Launch simulation and trade
 
 ## Production Hardening
-
-### Kafka Event Architecture
-
-Topics:
-
-- `trades.execute` — Trade execution requests
-- `trades.result` — Trade results with P&L
-- `portfolio.update` — Portfolio change events
-- `simulation.events` — Simulation lifecycle (init/play/pause)
-- `user.activity` — Login/register/session events
-
-Consumers:
-
-- **Trade Processor** — Caches latest trade in Redis, logs analytics
-- **Portfolio Updater** — Invalidates portfolio cache on changes
-- **Analytics Processor** — DAU tracking (HyperLogLog), action counters, top symbols (sorted set)
-
-Features:
-
-- Non-blocking fire-and-forget producers (microtask queue)
-- Batch consumption with heartbeats
-- Idempotency via eventId deduplication
-- Snappy compression
-- Graceful degradation (app works without Kafka)
-- Graceful shutdown with SIGINT/SIGTERM
 
 - Dynamic backend port fallback if `PORT` is busy (tries a range from requested port upward).
 - Structured JSON logging for requests, errors, DB/cache startup, and simulation engine events.
@@ -173,7 +139,6 @@ Compose services:
 - backend
 - mongodb
 - redis
-- kafka (KRaft, no Zookeeper)
 
 To stop:
 

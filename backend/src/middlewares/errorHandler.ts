@@ -23,6 +23,6 @@ export function errorHandler(error: unknown, req: Request, res: Response, _next:
   res.status(appError.statusCode).json({
     success: false,
     message: appError.message,
-    code: appError.errorCode,
+    errorCode: appError.errorCode,
   });
 }

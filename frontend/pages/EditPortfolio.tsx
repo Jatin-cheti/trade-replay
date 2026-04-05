@@ -2,16 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
-import { getApiErrorMessage } from "@/lib/api";
 import { toast } from "sonner";
 import BrandLottie from "@/components/BrandLottie";
 import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
 import SearchableDropdown from "@/components/portfolio/SearchableDropdown";
-import AssetSearchDropdown from "@/components/portfolio/AssetSearchDropdown";
-import AssetAvatar from "@/components/ui/AssetAvatar";
-import { currencyCatalog, marketMeta, type MarketType } from "@/data/assetCatalog";
-import { AssetSearchItem } from "@/lib/assetSearch";
+import { assetCatalog, currencyCatalog, findAssetBySymbol, marketMeta, type MarketType } from "@/data/assetCatalog";
 
 interface HoldingRow {
   symbol: string;
@@ -33,10 +29,11 @@ export default function EditPortfolio() {
   const [baseCurrency, setBaseCurrency] = useState("USD");
   const [rows, setRows] = useState<HoldingRow[]>([]);
   const [marketFilter, setMarketFilter] = useState<MarketType>("stocks");
-  const [selectedAssetMetaBySymbol, setSelectedAssetMetaBySymbol] = useState<Record<string, AssetSearchItem>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const filteredAssets = useMemo(() => assetCatalog.filter((asset) => asset.market === marketFilter), [marketFilter]);
 
   const estimatedCost = useMemo(
     () => rows.reduce((acc, row) => acc + (Number(row.quantity) || 0) * (Number(row.avgPrice) || 0), 0),
@@ -48,49 +45,19 @@ export default function EditPortfolio() {
   const marketMix = useMemo(() => {
     const map: Record<MarketType, number> = {
       stocks: 0,
-      funds: 0,
-      futures: 0,
-      forex: 0,
       crypto: 0,
-      indices: 0,
+      forex: 0,
+      commodities: 0,
       bonds: 0,
-      economy: 0,
-      options: 0,
-    };
-
-    const marketToFilter: Record<string, MarketType> = {
-      Stocks: "stocks",
-      Funds: "funds",
-      Futures: "futures",
-      ETF: "funds",
-      Crypto: "crypto",
-      Forex: "forex",
-      Indices: "indices",
-      Bonds: "bonds",
-      Economy: "economy",
-      Options: "options",
     };
 
     rows.forEach((row) => {
-      const meta = selectedAssetMetaBySymbol[row.symbol];
-      const bucket = meta ? marketToFilter[meta.market] : undefined;
-      if (bucket) map[bucket] += 1;
+      const asset = findAssetBySymbol(row.symbol);
+      if (asset) map[asset.market] += 1;
     });
 
     return map;
-  }, [rows, selectedAssetMetaBySymbol]);
-
-  const marketFilterApiParam: Record<MarketType, string> = {
-    stocks: "stocks",
-    funds: "funds",
-    futures: "futures",
-    forex: "forex",
-    crypto: "crypto",
-    indices: "indices",
-    bonds: "bonds",
-    economy: "economy",
-    options: "options",
-  };
+  }, [rows]);
 
   useEffect(() => {
     const load = async () => {
@@ -105,8 +72,8 @@ export default function EditPortfolio() {
         setName(response.data.name);
         setBaseCurrency(response.data.baseCurrency);
         setRows(response.data.holdings.length ? response.data.holdings : [{ symbol: "", quantity: 1, avgPrice: 1 }]);
-      } catch (error) {
-        toast.error(getApiErrorMessage(error, "Could not load portfolio"));
+      } catch (_error) {
+        toast.error("Failed to load portfolio");
         navigate("/dashboard");
       } finally {
         setIsLoading(false);
@@ -127,13 +94,6 @@ export default function EditPortfolio() {
 
   const removeRow = (index: number) => {
     setRows((prev) => prev.filter((_row, idx) => idx !== index));
-  };
-
-  const handleMarketFilterChange = (nextMarket: MarketType) => {
-    setMarketFilter(nextMarket);
-    setRows((prev) => prev.map((row) => ({ ...row, symbol: "" })));
-    setSelectedAssetMetaBySymbol({});
-    setFormError(null);
   };
 
   const saveChanges = async () => {
@@ -168,10 +128,9 @@ export default function EditPortfolio() {
 
       toast.success("Portfolio updated");
       navigate("/dashboard");
-    } catch (error) {
-      const message = getApiErrorMessage(error, "Could not update portfolio");
-      setFormError(message);
-      toast.error(message);
+    } catch (_error) {
+      setFormError("Failed to update portfolio. Please verify values and try again.");
+      toast.error("Failed to update portfolio");
     } finally {
       setIsSaving(false);
     }
@@ -179,7 +138,7 @@ export default function EditPortfolio() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen page-gradient-shell flex items-center justify-center pt-24">
+      <div className="min-h-screen page-gradient-shell flex items-center justify-center">
         <div className="glass-strong rounded-xl px-6 py-4 text-sm text-muted-foreground gradient-border">
           <div className="flex items-center gap-3">
             <BrandLottie size={50} className="shrink-0" />
@@ -191,7 +150,7 @@ export default function EditPortfolio() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-6 pt-24 md:px-8 page-gradient-shell">
+    <div className="min-h-screen px-4 py-6 md:px-8 page-gradient-shell">
       <div className="page-bg-orb page-bg-orb--one" aria-hidden="true" />
       <div className="page-bg-orb page-bg-orb--two" aria-hidden="true" />
       <div className="page-bg-orb page-bg-orb--three" aria-hidden="true" />
@@ -204,7 +163,7 @@ export default function EditPortfolio() {
               <div className="flex items-center gap-3">
                 <BrandLottie size={56} className="shrink-0 drop-shadow-[0_0_16px_hsl(var(--neon-blue)/0.3)]" />
                 <div>
-                  <h1 className="text-[2.65rem] font-bold font-display leading-[1]">Portfolio Editor</h1>
+                  <h1 className="text-[2rem] sm:text-[2.3rem] md:text-[2.65rem] font-bold font-display leading-[1.04]">Portfolio Editor</h1>
                   <p className="text-sm text-muted-foreground mt-1">Refine allocation, markets, and pricing assumptions</p>
                 </div>
               </div>
@@ -221,7 +180,7 @@ export default function EditPortfolio() {
             <ScrollReveal delay={0.04}>
               <InteractiveSurface className="glass-strong rounded-2xl p-6 md:p-7 gradient-border section-hover-reveal">
                 <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-                  <h2 className="font-display text-[2rem] font-semibold">Asset Builder</h2>
+                  <h2 className="font-display text-[1.65rem] sm:text-[1.85rem] md:text-[2rem] font-semibold">Asset Builder</h2>
                   <button onClick={addRow} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm interactive-cta">
                     + Add Asset
                   </button>
@@ -234,17 +193,14 @@ export default function EditPortfolio() {
                       <button
                         key={market.key}
                         type="button"
-                        onClick={() => handleMarketFilterChange(market.key)}
+                        onClick={() => setMarketFilter(market.key)}
                         className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
                           active
                             ? "bg-primary/20 border-primary/50 text-foreground glow-blue"
                             : "bg-secondary/35 border-border text-muted-foreground hover:text-foreground hover:border-primary/35"
                         }`}
                       >
-                        <span className="inline-flex items-center gap-1.5">
-                          <AssetAvatar src={market.iconUrl} label={market.label} className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border/70" />
-                          {market.label}
-                        </span>
+                        {market.icon} {market.label}
                       </button>
                     );
                   })}
@@ -258,7 +214,7 @@ export default function EditPortfolio() {
                     </div>
                   ) : (
                     rows.map((row, index) => {
-                      const selectedAsset = selectedAssetMetaBySymbol[row.symbol];
+                      const selectedAsset = findAssetBySymbol(row.symbol);
                       return (
                         <motion.div
                           key={`row-${index}`}
@@ -267,21 +223,25 @@ export default function EditPortfolio() {
                           animate={{ opacity: 1, y: 0 }}
                         >
                           <div className="col-span-12 md:col-span-5">
-                            <AssetSearchDropdown
+                            <SearchableDropdown
+                              items={filteredAssets.map((asset) => ({
+                                value: asset.symbol,
+                                label: asset.symbol,
+                                subtitle: `${asset.name} • ${asset.market}`,
+                                icon: asset.icon,
+                              }))}
                               value={row.symbol}
-                              selectedAsset={selectedAsset}
-                              marketFilter={marketFilterApiParam[marketFilter]}
-                              onValueChange={(value, asset) => {
-                                setSelectedAssetMetaBySymbol((prev) => ({ ...prev, [value]: asset }));
+                              onValueChange={(value) => {
                                 updateRow(index, { symbol: value });
                                 setFormError(null);
                               }}
-                              placeholder="Search assets globally"
+                              placeholder="Select asset"
+                              searchPlaceholder="Search symbol, name, market"
+                              emptyText="No assets found in this market"
                             />
                             {selectedAsset ? (
-                              <p className="mt-1 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-                                <AssetAvatar src={selectedAsset.logoUrl} label={selectedAsset.name} className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border/70" />
-                                <span>{selectedAsset.name} • {selectedAsset.market}</span>
+                              <p className="text-[11px] text-muted-foreground mt-1 px-1">
+                                {selectedAsset.icon} {selectedAsset.name} • {selectedAsset.market}
                               </p>
                             ) : null}
                           </div>
@@ -353,7 +313,7 @@ export default function EditPortfolio() {
                         value: currency.code,
                         label: currency.code,
                         subtitle: currency.name,
-                        iconUrl: currency.iconUrl,
+                        icon: currency.icon,
                       }))}
                       value={baseCurrency}
                       onValueChange={(value) => {
@@ -382,10 +342,7 @@ export default function EditPortfolio() {
                     <div className="space-y-1.5">
                       {marketMeta.map((market) => (
                         <div key={market.key} className="flex justify-between text-xs">
-                          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                            <AssetAvatar src={market.iconUrl} label={market.label} className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border/70" />
-                            {market.label}
-                          </span>
+                          <span className="text-muted-foreground">{market.icon} {market.label}</span>
                           <span>{marketMix[market.key]}</span>
                         </div>
                       ))}

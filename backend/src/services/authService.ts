@@ -4,7 +4,6 @@ import { PortfolioModel } from "../models/Portfolio";
 import { UserModel } from "../models/User";
 import { env } from "../config/env";
 import { signJwt } from "../utils/jwt";
-import { produceUserActivity } from "../kafka/eventProducers";
 
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID || undefined);
 
@@ -27,8 +26,6 @@ export async function registerUser(input: { email: string; password: string; nam
     { upsert: true },
   );
 
-  produceUserActivity({ userId: String(user._id), action: "register" });
-
   return {
     token: signJwt({ userId: String(user._id), email: user.email }),
     user: { id: String(user._id), email: user.email, name: user.name },
@@ -45,8 +42,6 @@ export async function loginUser(input: { email: string; password: string }) {
   if (!valid) {
     throw new Error("INVALID_CREDENTIALS");
   }
-
-  produceUserActivity({ userId: String(user._id), action: "login" });
 
   return {
     token: signJwt({ userId: String(user._id), email: user.email }),
@@ -88,8 +83,6 @@ export async function googleLogin(input: { idToken?: string; email?: string; nam
     { $setOnInsert: { userId: user._id, balance: 100000, holdings: [], currency: "USD" } },
     { upsert: true },
   );
-
-  produceUserActivity({ userId: String(user._id), action: "google_login" });
 
   return {
     token: signJwt({ userId: String(user._id), email: user.email }),
