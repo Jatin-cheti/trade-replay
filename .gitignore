@@ -39,3 +39,4 @@ debug-screenshots/
 # Misc
 tmp-*
 *.tgz
+.vercel

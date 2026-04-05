@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import GlobalLoader from "@/components/GlobalLoader";
 import GlobalNavbar from "@/components/GlobalNavbar";
 import { AppProvider } from "@/context/AppContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Simulation from "./pages/Simulation";
@@ -34,10 +35,10 @@ function AnimatedRoutes() {
       <AnimatePresence mode="wait">
         <motion.div
           key={location.pathname}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.28, ease: "easeOut" }}
+          initial={{ opacity: 0, y: 16, scale: 0.99 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -12, scale: 0.995 }}
+          transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
         >
           <Routes location={location}>
             <Route path="/" element={<Homepage />} />
@@ -58,6 +59,7 @@ function AnimatedRoutes() {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ThemeProvider>
     <AppProvider>
       <TooltipProvider>
         <Toaster />
@@ -70,7 +72,13 @@ const App = () => (
           }}
         />
         <BrowserRouter>
-          <div className="futuristic-shell">
+          <div
+            className="futuristic-shell"
+            onMouseMove={(e) => {
+              document.documentElement.style.setProperty("--pointer-x", `${e.clientX}px`);
+              document.documentElement.style.setProperty("--pointer-y", `${e.clientY}px`);
+            }}
+          >
             <GlobalNavbar />
             <div className="ambient-layer ambient-layer--one" aria-hidden="true" />
             <div className="ambient-layer ambient-layer--two" aria-hidden="true" />
@@ -81,6 +89,7 @@ const App = () => (
         </BrowserRouter>
       </TooltipProvider>
     </AppProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

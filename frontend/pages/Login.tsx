@@ -172,7 +172,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
             <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="px-2 text-muted-foreground" style={{ background: 'hsl(222 47% 10%)' }}>or</span>
+            <span className="px-2 text-muted-foreground bg-background">or</span>
           </div>
         </div>
 

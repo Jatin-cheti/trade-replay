@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
+import { useTheme } from "@/context/ThemeContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings, User, Sun, Moon } from "lucide-react";
 import BrandLottie from "@/components/BrandLottie";
 
 interface NavItem {
@@ -16,6 +17,7 @@ export default function GlobalNavbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, username, logout } = useApp();
+  const { theme, toggleTheme } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -103,55 +105,70 @@ export default function GlobalNavbar() {
           })}
         </div>
 
-        {isAuthenticated ? (
-          <Popover open={profileOpen} onOpenChange={setProfileOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-bold text-primary ring-2 ring-primary/30 transition-all hover:ring-primary/60"
-                aria-label="Profile menu"
-              >
-                {(username || "T").charAt(0).toUpperCase()}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" sideOffset={8} className="w-52 border-border/80 bg-background/95 p-1.5 backdrop-blur-xl">
-              <p className="px-3 py-2 text-xs text-muted-foreground truncate">{username || "Trader"}</p>
-              <button
-                type="button"
-                onClick={() => { setProfileOpen(false); navigate("/dashboard"); }}
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary/45"
-              >
-                <User size={14} />
-                My Profile
-              </button>
-              <button
-                type="button"
-                onClick={() => { setProfileOpen(false); }}
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary/45"
-              >
-                <Settings size={14} />
-                Settings
-              </button>
-              <div className="my-1 h-px bg-border/60" />
-              <button
-                type="button"
-                onClick={() => { setProfileOpen(false); logout(); navigate("/"); }}
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/10"
-              >
-                <LogOut size={14} />
-                Logout
-              </button>
-            </PopoverContent>
-          </Popover>
-        ) : (
-          <button
+        <div className="flex items-center gap-3">
+          {/* Theme toggle */}
+          <motion.button
             type="button"
-            onClick={() => navigate("/login")}
-            className="rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-primary/20"
+            onClick={toggleTheme}
+            className="relative flex h-9 w-9 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-foreground transition-all hover:bg-primary/20 hover:border-primary/50 hover:shadow-[0_0_16px_hsl(var(--neon-blue)/0.3)]"
+            aria-label="Toggle theme"
+            whileTap={{ scale: 0.9 }}
           >
-            Get Started
-          </button>
-        )}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={theme}
+                initial={{ rotate: -90, opacity: 0, scale: 0.6 }}
+                animate={{ rotate: 0, opacity: 1, scale: 1 }}
+                exit={{ rotate: 90, opacity: 0, scale: 0.6 }}
+                transition={{ duration: 0.2 }}
+              >
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </motion.span>
+            </AnimatePresence>
+          </motion.button>
+
+          {isAuthenticated && (
+            <Popover open={profileOpen} onOpenChange={setProfileOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-bold text-primary ring-2 ring-primary/30 transition-all hover:ring-primary/60"
+                  aria-label="Profile menu"
+                >
+                  {(username || "T").charAt(0).toUpperCase()}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" sideOffset={8} className="w-52 border-border/80 bg-background/95 p-1.5 backdrop-blur-xl">
+                <p className="px-3 py-2 text-xs text-muted-foreground truncate">{username || "Trader"}</p>
+                <button
+                  type="button"
+                  onClick={() => { setProfileOpen(false); navigate("/dashboard"); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary/45"
+                >
+                  <User size={14} />
+                  My Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setProfileOpen(false); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary/45"
+                >
+                  <Settings size={14} />
+                  Settings
+                </button>
+                <div className="my-1 h-px bg-border/60" />
+                <button
+                  type="button"
+                  onClick={() => { setProfileOpen(false); logout(); navigate("/"); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/10"
+                >
+                  <LogOut size={14} />
+                  Logout
+                </button>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
       </div>
     </motion.nav>
   );
