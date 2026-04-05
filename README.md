@@ -17,11 +17,11 @@ tradereplay/
 
 ## Tech Stack
 
-- Frontend: React + Vite + Tailwind
-- Backend: Node.js + TypeScript + Express (MVC)
-- Database: MongoDB
-- Cache: Redis
-- Event Streaming: Apache Kafka (KafkaJS)
+- Frontend: React + Vite + Tailwind → Vercel
+- Backend: Node.js + TypeScript + Express (MVC) → DO $6 Droplet
+- Database: MongoDB Atlas (FREE M0 cluster)
+- Cache: Redis (local on droplet, 100MB)
+- Event Streaming: Apache Kafka KRaft (local on droplet, 128MB heap)
 - Auth: JWT (Bearer token)
 - Realtime: Socket.io
 
@@ -173,8 +173,7 @@ Compose services:
 - backend
 - mongodb
 - redis
-- zookeeper
-- kafka
+- kafka (KRaft, no Zookeeper)
 
 To stop:
 

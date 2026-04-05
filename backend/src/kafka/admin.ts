@@ -15,7 +15,7 @@ export async function ensureTopics(): Promise<void> {
       await admin.createTopics({
         topics: missing.map((topic) => ({
           topic,
-          numPartitions: 3,
+          numPartitions: 1,
           replicationFactor: 1,
         })),
       });

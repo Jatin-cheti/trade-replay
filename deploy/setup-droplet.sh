@@ -39,7 +39,7 @@ if ! command -v redis-server &> /dev/null; then
 fi
 # Harden: bind to localhost, set memory limit for 1GB droplet
 sed -i 's/^bind .*/bind 127.0.0.1 ::1/' /etc/redis/redis.conf
-sed -i 's/^# maxmemory .*/maxmemory 128mb/' /etc/redis/redis.conf
+sed -i 's/^# maxmemory .*/maxmemory 100mb/' /etc/redis/redis.conf
 sed -i 's/^# maxmemory-policy .*/maxmemory-policy allkeys-lru/' /etc/redis/redis.conf
 # Require password
 REDIS_PASS=$(openssl rand -hex 16)
@@ -90,10 +90,14 @@ echo "(Save this! You need it for PROD_REDIS_URL)"
 echo ""
 echo "Next steps:"
 echo "  1. Run: bash /opt/tradereplay/deploy/setup-kafka-kraft.sh"
-echo "  2. Create .env at /opt/tradereplay/.env with:"
+echo "  2. Create MongoDB Atlas FREE cluster (M0) at https://cloud.mongodb.com"
+echo "     - Whitelist this droplet IP: $(curl -s ifconfig.me)"
+echo "     - Create DB user and get connection string"
+echo "  3. Create .env at /opt/tradereplay/.env with:"
+echo "       PROD_MONGO_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/tradereplay?retryWrites=true&w=majority"
 echo "       PROD_REDIS_URL=redis://default:${REDIS_PASS}@127.0.0.1:6379"
 echo "       (plus other PROD_ values from .env.production.template)"
-echo "  3. Run: cd /opt/tradereplay && pm2 start ecosystem.config.cjs"
-echo "  4. Run: pm2 save"
-echo "  5. Point DNS: api.tradereplay.me → $(curl -s ifconfig.me)"
-echo "  6. Run: bash /opt/tradereplay/deploy/setup-ssl.sh"
+echo "  4. Run: cd /opt/tradereplay && pm2 start ecosystem.config.cjs"
+echo "  5. Run: pm2 save"
+echo "  6. Point DNS: api.tradereplay.me → $(curl -s ifconfig.me)"
+echo "  7. Run: bash /opt/tradereplay/deploy/setup-ssl.sh"

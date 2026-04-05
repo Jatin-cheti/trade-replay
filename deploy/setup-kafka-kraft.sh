@@ -48,15 +48,20 @@ inter.broker.listener.name=PLAINTEXT
 listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
 
 log.dirs=/var/lib/kafka
-num.partitions=3
+num.partitions=1
 default.replication.factor=1
 offsets.topic.replication.factor=1
 transaction.state.log.replication.factor=1
 transaction.state.log.min.isr=1
 
-log.retention.hours=168
-log.segment.bytes=1073741824
+# 24h retention — minimal disk usage on $6 droplet
+log.retention.hours=24
+log.segment.bytes=268435456
 log.retention.check.interval.ms=300000
+
+# Memory-saving: smaller fetch/replica buffers
+replica.fetch.max.bytes=1048576
+fetch.max.bytes=1048576
 
 auto.create.topics.enable=false
 delete.topic.enable=true
@@ -77,8 +82,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-# Memory-tuned for 1GB droplet: 256MB heap (default is 1GB which OOMs)
-Environment="KAFKA_HEAP_OPTS=-Xmx256m -Xms256m"
+# Memory-tuned for 1GB droplet: 128MB heap (default is 1GB which OOMs)
+Environment="KAFKA_HEAP_OPTS=-Xmx128m -Xms128m"
 ExecStart=${KAFKA_DIR}/bin/kafka-server-start.sh ${KAFKA_DIR}/config/kraft/server.properties
 ExecStop=${KAFKA_DIR}/bin/kafka-server-stop.sh
 Restart=on-failure
