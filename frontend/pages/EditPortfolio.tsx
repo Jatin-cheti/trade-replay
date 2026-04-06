@@ -163,7 +163,7 @@ export default function EditPortfolio() {
               <div className="flex items-center gap-3">
                 <BrandLottie size={56} className="shrink-0 drop-shadow-[0_0_16px_hsl(var(--neon-blue)/0.3)]" />
                 <div>
-                  <h1 className="text-[2rem] sm:text-[2.3rem] md:text-[2.65rem] font-bold font-display leading-[1.04]">Portfolio Editor</h1>
+                  <h1 className="text-[2.65rem] font-bold font-display leading-[1]">Portfolio Editor</h1>
                   <p className="text-sm text-muted-foreground mt-1">Refine allocation, markets, and pricing assumptions</p>
                 </div>
               </div>
@@ -180,7 +180,7 @@ export default function EditPortfolio() {
             <ScrollReveal delay={0.04}>
               <InteractiveSurface className="glass-strong rounded-2xl p-6 md:p-7 gradient-border section-hover-reveal">
                 <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-                  <h2 className="font-display text-[1.65rem] sm:text-[1.85rem] md:text-[2rem] font-semibold">Asset Builder</h2>
+                  <h2 className="font-display text-[2rem] font-semibold">Asset Builder</h2>
                   <button onClick={addRow} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm interactive-cta">
                     + Add Asset
                   </button>

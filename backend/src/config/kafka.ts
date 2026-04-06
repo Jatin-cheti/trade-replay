@@ -3,7 +3,7 @@ import { env } from "./env";
 import { logger } from "../utils/logger";
 
 function buildKafka(): Kafka {
-  const brokers = env.KAFKA_BROKERS.split(",").map((b: string) => b.trim()).filter(Boolean);
+  const brokers = env.KAFKA_BROKERS.split(",").map((b) => b.trim()).filter(Boolean);
 
   const useSasl = Boolean(env.KAFKA_SASL_USERNAME && env.KAFKA_SASL_PASSWORD);
 

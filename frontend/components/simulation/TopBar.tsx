@@ -48,7 +48,7 @@ export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
           <motion.div whileHover={{ scale: 1.03 }} transition={{ duration: 0.2 }}>
             <BrandLottie size={44} className="shrink-0 drop-shadow-[0_0_12px_hsl(var(--neon-blue)/0.24)]" />
           </motion.div>
-          <span className="font-display text-[1.12rem] sm:text-[1.26rem] leading-tight font-semibold text-foreground tracking-wide">Trade Replay</span>
+          <span className="font-display text-[1.36rem] leading-none font-semibold text-foreground tracking-wide whitespace-nowrap">Trade Replay</span>
         </motion.div>
 
         {/* Scenario Selector */}

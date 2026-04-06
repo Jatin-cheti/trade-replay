@@ -39,9 +39,4 @@ export const env = {
   ALPHA_VANTAGE_KEY: readProfileVar("ALPHA_VANTAGE_KEY", ""),
   GOOGLE_CLIENT_ID: readProfileVar("GOOGLE_CLIENT_ID", ""),
   USD_TO_INR: Number(readProfileVar("USD_TO_INR", "83.5")),
-  KAFKA_ENABLED: readProfileVar("KAFKA_ENABLED", "false").toLowerCase() === "true",
-  KAFKA_BROKERS: readProfileVar("KAFKA_BROKERS", "127.0.0.1:9092"),
-  KAFKA_SASL_MECHANISM: readProfileVar("KAFKA_SASL_MECHANISM", "plain"),
-  KAFKA_SASL_USERNAME: readProfileVar("KAFKA_SASL_USERNAME", ""),
-  KAFKA_SASL_PASSWORD: readProfileVar("KAFKA_SASL_PASSWORD", ""),
 };

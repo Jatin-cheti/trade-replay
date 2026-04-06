@@ -57,10 +57,3 @@ export function setApiToken(token: string | null): void {
 
   api.defaults.headers.common.Authorization = `Bearer ${token}`;
 }
-
-if (typeof window !== "undefined") {
-  const bootToken = window.localStorage.getItem("sim_token");
-  if (bootToken) {
-    setApiToken(bootToken);
-  }
-}

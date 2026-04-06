@@ -128,8 +128,8 @@ export default function Dashboard() {
         <div className="flex items-center gap-3 md:gap-4 min-w-0">
           <BrandLottie size={58} className="shrink-0 drop-shadow-[0_0_14px_hsl(var(--neon-blue)/0.26)]" />
           <div className="min-w-0">
-            <p className="font-display font-bold text-[1.3rem] sm:text-[1.55rem] md:text-[1.75rem] leading-tight text-foreground tracking-tight">Trade Replay</p>
-            <p className="text-sm sm:text-base text-muted-foreground tracking-wide">Portfolio Command Center</p>
+            <p className="font-display font-bold text-[1.75rem] leading-none text-foreground tracking-tight">Trade Replay</p>
+            <p className="text-base text-muted-foreground tracking-wide">Portfolio Command Center</p>
           </div>
         </div>
         <div className="flex items-center gap-3 ml-auto max-w-full">
@@ -278,7 +278,7 @@ export default function Dashboard() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="kicker-text">Portfolio Section</p>
-              <h2 className="font-display text-[1.95rem] sm:text-[2.2rem] md:text-[2.45rem] font-bold text-foreground">Your Portfolios</h2>
+              <h2 className="font-display text-[2.45rem] font-bold text-foreground">Your Portfolios</h2>
             </div>
           </div>
 

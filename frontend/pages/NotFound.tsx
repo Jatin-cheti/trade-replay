@@ -11,7 +11,7 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center animated-gradient-bg relative overflow-x-hidden overflow-y-auto px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center animated-gradient-bg relative overflow-hidden px-4">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,hsl(var(--neon-blue)/0.2),transparent_44%),radial-gradient(circle_at_78%_24%,hsl(var(--neon-purple)/0.18),transparent_45%)]" />
       <motion.div
         initial={{ opacity: 0, y: 14 }}

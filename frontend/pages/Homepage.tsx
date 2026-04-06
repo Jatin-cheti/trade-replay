@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { ArrowRight, TrendingUp, BarChart3, Shield } from "lucide-react";
-import GlobalNavbar from "@/components/GlobalNavbar";
 
 type VantaBirdsOptions = {
   el: HTMLElement;
@@ -151,9 +150,11 @@ export default function Homepage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const isDark = theme === "dark";
     initVanta(isDark).catch(() => undefined);
     return () => {
+      cancelled = true;
       birdsEffectRef.current?.destroy();
       birdsEffectRef.current = null;
       cloudsEffectRef.current?.destroy();
@@ -162,7 +163,7 @@ export default function Homepage() {
   }, [theme, initVanta]);
 
   return (
-    <div className="relative min-h-screen overflow-y-auto overflow-x-hidden">
+    <div className="relative min-h-screen overflow-y-auto">
       {/* Vanta loading overlay */}
       <AnimatePresence>
         {!vantaReady && (
@@ -204,114 +205,90 @@ export default function Homepage() {
       <div className="absolute inset-0 z-[2] pointer-events-none bg-gradient-to-b from-transparent via-transparent to-background/80" />
 
       {/* Content */}
-      <div className="relative z-[3]">
-        <GlobalNavbar />
+      <div className="relative z-[3] flex h-full flex-col items-center justify-center px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="text-center max-w-4xl"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.1, duration: 0.6 }}
+            className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-primary backdrop-blur-sm"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            Live Market Simulation
+          </motion.div>
 
-        <main>
-          <section id="top" className="mx-auto w-full max-w-6xl px-4 pb-12 pt-12 sm:px-6 sm:pt-16 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              className="text-center"
+          <h1 className="font-display text-foreground mb-5 leading-[1.02]"
+              style={{ fontSize: "clamp(2.8rem, 5vw + 1rem, 5.2rem)", fontWeight: 800, letterSpacing: "-0.03em" }}>
+            Master the Market.{" "}
+            <span className="bg-gradient-to-r from-primary via-neon-cyan to-accent bg-clip-text text-transparent">
+              Risk Nothing.
+            </span>
+          </h1>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.6 }}
+            className="mx-auto mb-10 max-w-2xl text-lg text-muted-foreground leading-relaxed"
+          >
+            Replay real historical market crashes and rallies. Build portfolios, execute trades,
+            and learn from the past — all without risking a single dollar.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.5 }}
+            className="flex flex-wrap items-center justify-center gap-4"
+          >
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="group relative inline-flex items-center gap-2.5 rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_30px_hsl(var(--neon-blue)/0.3)] transition-all hover:shadow-[0_0_50px_hsl(var(--neon-blue)/0.5)] hover:scale-[1.02] active:scale-[0.98]"
             >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1, duration: 0.6 }}
-                className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-primary backdrop-blur-sm"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                Live Market Simulation
-              </motion.div>
+              Start Trading
+              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/30 px-7 py-3.5 text-sm font-medium text-foreground backdrop-blur-sm transition-all hover:bg-secondary/50 hover:border-primary/30"
+            >
+              View Dashboard
+            </button>
+          </motion.div>
+        </motion.div>
 
-              <h1
-                className="font-display text-foreground mb-5 leading-[1.02]"
-                style={{ fontSize: "clamp(2.1rem, 4.8vw + 0.9rem, 5.2rem)", fontWeight: 800, letterSpacing: "-0.03em" }}
-              >
-                Master the Market.{" "}
-                <span className="bg-gradient-to-r from-primary via-neon-cyan to-accent bg-clip-text text-transparent">
-                  Risk Nothing.
-                </span>
-              </h1>
-
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4, duration: 0.6 }}
-                className="mx-auto mb-10 max-w-2xl text-base sm:text-lg text-muted-foreground leading-relaxed"
-              >
-                Replay real historical market crashes and rallies. Build portfolios, execute trades,
-                and learn from the past - all without risking a single dollar.
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6, duration: 0.5 }}
-                className="flex flex-wrap items-center justify-center gap-3 sm:gap-4"
-              >
-                <button
-                  type="button"
-                  onClick={() => navigate("/login")}
-                  className="group relative inline-flex items-center gap-2.5 rounded-xl bg-primary px-6 sm:px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_30px_hsl(var(--neon-blue)/0.3)] transition-all hover:shadow-[0_0_50px_hsl(var(--neon-blue)/0.5)] hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  Start Trading
-                  <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/dashboard")}
-                  className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/30 px-6 sm:px-7 py-3.5 text-sm font-medium text-foreground backdrop-blur-sm transition-all hover:bg-secondary/50 hover:border-primary/30"
-                >
-                  View Dashboard
-                </button>
-              </motion.div>
-            </motion.div>
-          </section>
-
-          <section id="features" className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-            <div className="mb-4 sm:mb-6">
-              <p className="kicker-text">Features</p>
-              <h2 className="text-foreground">Train Like A Pro Trader</h2>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {features.map((f, i) => (
-                <motion.div
-                  key={f.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 + i * 0.1, duration: 0.4 }}
-                  className="glass-strong flex items-start gap-3 rounded-xl px-5 py-4"
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
-                    <f.icon size={18} className="text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{f.title}</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground leading-snug">{f.desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </section>
-
-          <section id="markets" className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-8">
-            <div className="glass-strong rounded-2xl p-5 sm:p-7 md:p-8">
-              <p className="kicker-text">Markets</p>
-              <h2 className="mb-3 text-foreground">Historical Cycles Included</h2>
-              <p className="max-w-3xl text-sm sm:text-base text-muted-foreground leading-relaxed">
-                Explore multiple market phases from crash to recovery with scenario-based data and instrument sets.
-                Switch contexts quickly, compare outcomes, and stress-test your strategy execution.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2.5">
-                <span className="rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs sm:text-sm">2008 Financial Crisis</span>
-                <span className="rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs sm:text-sm">Dotcom Bubble</span>
-                <span className="rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs sm:text-sm">COVID Volatility</span>
+        {/* Feature cards at bottom */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.9, duration: 0.6 }}
+          className="absolute bottom-8 left-0 right-0 flex justify-center gap-4 px-6"
+        >
+          {features.map((f, i) => (
+            <motion.div
+              key={f.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1 + i * 0.1, duration: 0.4 }}
+              className="glass-strong hidden md:flex items-center gap-3 rounded-xl px-5 py-3 max-w-[260px]"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+                <f.icon size={18} className="text-primary" />
               </div>
-            </div>
-          </section>
-        </main>
+              <div>
+                <p className="text-sm font-semibold text-foreground">{f.title}</p>
+                <p className="text-xs text-muted-foreground leading-tight">{f.desc}</p>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
       </div>
     </div>
   );
