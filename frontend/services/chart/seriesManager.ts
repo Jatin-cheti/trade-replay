@@ -113,6 +113,49 @@ export function applySeriesData(map: ChartSeriesMap, data: TransformedData): voi
   map.volume.setData(data.volumeRows);
 }
 
+export function updateSeriesData(map: ChartSeriesMap, data: TransformedData): void {
+  const lastOhlc = data.ohlcRows[data.ohlcRows.length - 1];
+  const lastClose = data.closeRows[data.closeRows.length - 1];
+  const lastRange = data.rangeRows[data.rangeRows.length - 1];
+  const lastHistogram = data.histogramRows[data.histogramRows.length - 1];
+  const lastVolume = data.volumeRows[data.volumeRows.length - 1];
+  const lastHeikin = data.heikinRows[data.heikinRows.length - 1];
+
+  if (lastOhlc) {
+    map.candlestick.update(lastOhlc);
+    map.hollowCandles.update(lastOhlc);
+    map.bar.update(lastOhlc);
+    map.ohlc.update(lastOhlc);
+  }
+
+  if (lastClose) {
+    map.line.update(lastClose);
+    map.area.update(lastClose);
+    map.mountainArea.update(lastClose);
+    map.baseline.update(lastClose);
+  }
+
+  if (lastRange) {
+    map.rangeArea.update(lastRange);
+  }
+
+  if (lastHistogram) {
+    map.histogram.update(lastHistogram);
+  }
+
+  if (lastVolume) {
+    map.volume.update(lastVolume);
+  }
+
+  if (lastHeikin) {
+    map.heikinAshi.update(lastHeikin);
+  }
+
+  // Step-line data inserts synthetic mid-points and can reorder tail updates.
+  // Use full sync for this series to avoid "Cannot update oldest data" runtime errors.
+  map.stepLine.setData(data.stepRows);
+}
+
 export function applySeriesVisibility(map: ChartSeriesMap, chartType: ChartType): void {
   const active = new Set(chartVisibilityMap[chartType]);
   (Object.keys(map) as ChartSeriesKey[]).forEach((key) => {

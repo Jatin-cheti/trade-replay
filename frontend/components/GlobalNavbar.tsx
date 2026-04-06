@@ -83,11 +83,11 @@ export default function GlobalNavbar() {
       { label: "Scenarios", action: () => navigate("/simulation"), activeMatch: (pathname) => pathname.startsWith("/simulation") },
       {
         label: "Live Market",
-        action: () => goToHash("#markets"),
-        activeMatch: (pathname, hash) => (pathname === "/" || pathname === "/homepage") && hash === "#markets",
+        action: () => navigate("/live-market"),
+        activeMatch: (pathname) => pathname.startsWith("/live-market"),
       },
     ];
-  }, [goToHash, navigate]);
+  }, [navigate]);
 
   const featureMenuItems: FeatureMenuItem[] = useMemo(() => (
     [
@@ -95,9 +95,8 @@ export default function GlobalNavbar() {
       { label: "Portfolio", action: () => navigate("/portfolio/create") },
       { label: "Assets", action: () => navigate("/portfolio/create") },
       { label: "Scenarios", action: () => navigate("/simulation") },
-      { label: "Live Market", action: () => goToHash("#markets") },
     ]
-  ), [goToHash, navigate]);
+  ), [navigate]);
 
   const mobilePrimaryNavItems: NavItem[] = useMemo(() => {
     if (!isAuthenticated) {

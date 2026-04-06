@@ -5,7 +5,6 @@ import { useApp } from '@/context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import BrandLottie from '@/components/BrandLottie';
-import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
 
 interface LoginProps {
   mode?: 'login' | 'signup';
@@ -79,8 +78,6 @@ export default function Login({ mode = 'login' }: LoginProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center animated-gradient-bg relative overflow-hidden">
-      <PageBirdsCloudsBackground />
-
       {showFullscreenLoader && (
         <div className="absolute inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center">
           <div className="glass-strong rounded-xl px-6 py-4 flex items-center gap-3 max-w-[92vw]">

@@ -16,6 +16,7 @@ interface TradingChartProps {
   data: CandleData[];
   visibleCount: number;
   symbol: string;
+  mode?: 'simulation' | 'live';
 }
 
 function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y: number, text: string) {
@@ -41,11 +42,18 @@ function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y:
   ctx.fillText(text, x, y);
 }
 
-export default function TradingChart({ data, visibleCount, symbol }: TradingChartProps) {
+export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
   const [chartType, setChartType] = useState<ChartType>('candlestick');
   const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('trend');
   const [magnetMode, setMagnetMode] = useState(false);
   const [toolboxMinimized, setToolboxMinimized] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('chart-toolbar-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [treeOpen, setTreeOpen] = useState(true);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
@@ -214,6 +222,14 @@ export default function TradingChart({ data, visibleCount, symbol }: TradingChar
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawingsRef, removeDrawing, selectedDrawingId]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('chart-toolbar-collapsed', toolbarCollapsed ? '1' : '0');
+    } catch {
+      // Ignore storage errors in restricted environments.
+    }
+  }, [toolbarCollapsed]);
+
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const point = pointerToDataPoint(event.clientX, event.clientY, magnetMode) || fallbackPoint();
     if (!point) return;
@@ -283,14 +299,14 @@ export default function TradingChart({ data, visibleCount, symbol }: TradingChar
     <div className="relative h-full w-full min-h-[340px]">
       <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
 
-      <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} />
+      <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} />
 
       <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
 
       <ObjectTreePanel open={treeOpen} drawings={toolState.drawings} selectedDrawingId={selectedDrawingId} onSelect={setSelectedDrawingId} onToggleVisible={(id) => updateDrawing(id, (d) => ({ ...d, visible: !d.visible, options: { ...d.options, visible: !d.options.visible } }))} onToggleLocked={(id) => updateDrawing(id, (d) => ({ ...d, locked: !d.locked, options: { ...d.options, locked: !d.options.locked } }))} onDelete={removeDrawing} />
 
       <div data-testid="drawing-badge" className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xl">
-        {symbol} · {chartType} · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
+        {symbol} · {mode} · {chartType} · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
       </div>
 
       {selectedDrawing && <div className="absolute bottom-3 right-3 z-30 rounded-lg border border-primary/25 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">selected: {selectedDrawing.variant}</div>}

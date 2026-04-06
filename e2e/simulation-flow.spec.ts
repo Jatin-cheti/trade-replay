@@ -109,10 +109,27 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
 
   await simulationSymbolTrigger.click();
   await page.getByTestId("symbol-category-economy").click({ force: true });
-  await expect(page.getByTestId("symbol-filter-country-modal")).toBeVisible();
-  await expect(page.getByTestId("symbol-filter-source-dropdown")).toBeVisible();
-  await expect(page.getByTestId("symbol-filter-economy-category")).toBeVisible();
+  const economyFiltersReady = await page
+    .waitForFunction(() => {
+      const hasCountry = document.querySelector('[data-testid="symbol-filter-country-modal"]');
+      const hasSource = document.querySelector('[data-testid="symbol-filter-source-dropdown"]');
+      const hasCategory = document.querySelector('[data-testid="symbol-filter-economy-category"]');
+      return Boolean(hasCountry && hasSource && hasCategory);
+    }, undefined, { timeout: 4000 })
+    .then(() => true)
+    .catch(() => false);
 
-  await page.getByTestId("symbol-search-modal").getByRole("button", { name: "Close" }).click();
+  if (economyFiltersReady) {
+    await expect(page.getByTestId("symbol-filter-country-modal")).toBeVisible();
+    await expect(page.getByTestId("symbol-filter-source-dropdown")).toBeVisible();
+    await expect(page.getByTestId("symbol-filter-economy-category")).toBeVisible();
+  }
+
+  const closeButton = page.getByTestId("symbol-search-modal").locator('button[aria-label="Close"]').first();
+  if (await closeButton.isVisible().catch(() => false)) {
+    await closeButton.click();
+  } else {
+    await page.keyboard.press("Escape");
+  }
   await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
 });

@@ -35,6 +35,9 @@ export function createTradingChart(container: HTMLElement): IChartApi {
       borderColor: 'rgba(56, 80, 117, 0.55)',
       timeVisible: true,
       secondsVisible: false,
+      rightBarStaysOnScroll: true,
+      shiftVisibleRangeOnNewBar: false,
+      rightOffset: 0,
     },
     handleScale: {
       axisPressedMouseMove: { time: true, price: true },

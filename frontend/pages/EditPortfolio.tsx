@@ -5,7 +5,6 @@ import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api";
 import { toast } from "sonner";
 import BrandLottie from "@/components/BrandLottie";
-import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
 import SearchableDropdown from "@/components/portfolio/SearchableDropdown";
@@ -181,7 +180,6 @@ export default function EditPortfolio() {
   if (isLoading) {
     return (
       <div className="min-h-screen page-gradient-shell flex items-center justify-center pt-24">
-        <PageBirdsCloudsBackground showShellLayers />
         <div className="glass-strong rounded-xl px-6 py-4 text-sm text-muted-foreground gradient-border">
           <div className="flex items-center gap-3">
             <BrandLottie size={50} className="shrink-0" />
@@ -194,8 +192,6 @@ export default function EditPortfolio() {
 
   return (
     <div className="min-h-screen px-4 py-6 pt-24 md:px-8 page-gradient-shell">
-      <PageBirdsCloudsBackground showShellLayers />
-
       <div className="max-w-7xl mx-auto space-y-6 relative z-10">
         <ScrollReveal>
           <InteractiveSurface className="glass-strong rounded-3xl p-7 md:p-8 gradient-border section-hover-reveal">

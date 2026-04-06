@@ -1,0 +1,58 @@
+import { expect, test } from "./playwright-fixture";
+
+test("live market loads and supports live symbol selection", async ({ page }) => {
+  const uid = Date.now();
+  const email = `live_market_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `live_market_${uid}` },
+  });
+
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.goto("/live-market");
+  await expect(page.getByRole("heading", { name: "Live Market" })).toBeVisible();
+  await expect(page.getByTestId("live-market-active-symbol")).toBeVisible();
+  await expect(page.getByTestId("live-market-price")).toBeVisible();
+
+  const initialPrice = await page.getByTestId("live-market-price").textContent();
+
+  await page.getByTestId("live-market-symbol-trigger").click();
+  await expect(page.getByTestId("symbol-search-modal")).toBeVisible();
+  await page.getByTestId("symbol-category-stocks").click();
+
+  const aaplRow = page.locator('[data-testid="symbol-result-row"][data-symbol="AAPL"]').first();
+  await expect(aaplRow).toBeVisible();
+  await aaplRow.click();
+
+  await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
+  await expect(page.getByTestId("live-market-active-symbol")).toContainText("AAPL");
+
+  await expect(page.locator('[data-testid="drawing-badge"]').first()).toContainText("live");
+
+  await expect
+    .poll(async () => {
+      return (await page.getByTestId("live-market-price").textContent()) ?? "";
+    }, { timeout: 10000 })
+    .not.toBe(initialPrice ?? "");
+});

@@ -1,5 +1,7 @@
 import {
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   GitMerge,
   Layers,
@@ -75,6 +77,8 @@ type ChartToolbarProps = {
   setTreeOpen: (value: boolean) => void;
   toolboxMinimized: boolean;
   setToolboxMinimized: (value: boolean) => void;
+  toolbarCollapsed: boolean;
+  setToolbarCollapsed: (value: boolean) => void;
 };
 
 export default function ChartToolbar({
@@ -95,6 +99,8 @@ export default function ChartToolbar({
   setTreeOpen,
   toolboxMinimized,
   setToolboxMinimized,
+  toolbarCollapsed,
+  setToolbarCollapsed,
 }: ChartToolbarProps) {
   const quickTypes: ChartType[] = ['candlestick', 'line', 'area'];
   const allTypes = chartTypeGroups.flatMap((group) => group.types);
@@ -102,8 +108,20 @@ export default function ChartToolbar({
 
   return (
     <>
-      <div className="absolute right-3 top-3 z-30 flex max-w-[76%] flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl">
-        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Chart Type</span>
+      {toolbarCollapsed ? (
+        <button
+          type="button"
+          data-testid="chart-toolbar-toggle"
+          onClick={() => setToolbarCollapsed(false)}
+          className="absolute right-3 top-3 z-30 inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-background/85 px-2.5 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-xl hover:text-foreground"
+          title="Expand chart toolbar"
+        >
+          <ChevronLeft size={15} />
+          Tools
+        </button>
+      ) : (
+        <div className="absolute right-3 top-3 z-30 flex max-w-[76%] flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl">
+          <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Chart Type</span>
 
         {quickTypes.map((type) => (
           <button
@@ -138,8 +156,18 @@ export default function ChartToolbar({
         </button>
         <button type="button" data-testid="chart-clear" onClick={onClear} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-destructive/20 hover:text-destructive">Clear</button>
         <button type="button" onClick={() => setOptionsOpen(!optionsOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${optionsOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Options</button>
-        <button type="button" onClick={() => setTreeOpen(!treeOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${treeOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Objects</button>
-      </div>
+          <button type="button" onClick={() => setTreeOpen(!treeOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${treeOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Objects</button>
+          <button
+            type="button"
+            data-testid="chart-toolbar-toggle"
+            onClick={() => setToolbarCollapsed(true)}
+            className="rounded-lg px-2 py-2 text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
+            title="Collapse chart toolbar"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
 
       <div className={`absolute left-3 top-3 z-30 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all ${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px] overflow-y-auto'}`}>
         <div className="mb-2 flex items-center justify-between">

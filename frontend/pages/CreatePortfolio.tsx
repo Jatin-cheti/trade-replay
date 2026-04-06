@@ -5,7 +5,6 @@ import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api";
 import { toast } from "sonner";
 import BrandLottie from "@/components/BrandLottie";
-import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
 import SearchableDropdown from "@/components/portfolio/SearchableDropdown";
@@ -177,8 +176,6 @@ export default function CreatePortfolio() {
 
   return (
     <div className="min-h-screen px-4 py-6 pt-24 md:px-8 page-gradient-shell">
-      <PageBirdsCloudsBackground showShellLayers />
-
       <div className="max-w-7xl mx-auto space-y-6 relative z-10">
         <ScrollReveal>
           <InteractiveSurface className="glass-strong rounded-3xl p-7 md:p-8 gradient-border section-hover-reveal">

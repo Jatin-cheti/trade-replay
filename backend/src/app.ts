@@ -7,6 +7,7 @@ import { verifyJwt } from "./utils/jwt";
 import { logger } from "./utils/logger";
 import authRoutes from "./routes/authRoutes";
 import { createSimulationRoutes } from "./routes/simulationRoutes";
+import { createLiveMarketRoutes } from "./routes/liveMarketRoutes";
 import { createPortfolioRoutes } from "./routes/portfolioRoutes";
 import { createTradeRoutes } from "./routes/tradeRoutes";
 import { SimulationEngine } from "./services/simulationEngine";
@@ -58,6 +59,7 @@ export function createApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/sim", createSimulationRoutes(engine));
   app.use("/api/simulation", createSimulationRoutes(engine));
+  app.use("/api/live", createLiveMarketRoutes());
   app.use("/api/portfolio", createPortfolioRoutes());
   app.use("/api/trade", createTradeRoutes(engine));
   app.use(notFoundHandler);
