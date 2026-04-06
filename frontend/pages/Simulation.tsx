@@ -77,7 +77,7 @@ export default function Simulation() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col pt-24 page-gradient-shell overflow-x-hidden">
+    <div className="min-h-screen flex flex-col pt-2 page-gradient-shell overflow-x-hidden">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
