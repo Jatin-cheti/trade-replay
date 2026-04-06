@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { useApp } from "@/context/AppContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ArrowRight, TrendingUp, BarChart3, Shield } from "lucide-react";
 
@@ -83,6 +84,7 @@ export default function Homepage() {
   const birdsEffectRef = useRef<VantaEffect | null>(null);
   const cloudsEffectRef = useRef<VantaEffect | null>(null);
   const navigate = useNavigate();
+  const { isAuthenticated } = useApp();
   const { theme } = useTheme();
   const [vantaReady, setVantaReady] = useState(false);
 
@@ -145,16 +147,9 @@ export default function Homepage() {
   }, []);
 
   useEffect(() => {
-    document.body.classList.add("homepage-cinematic");
-    return () => document.body.classList.remove("homepage-cinematic");
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
     const isDark = theme === "dark";
     initVanta(isDark).catch(() => undefined);
     return () => {
-      cancelled = true;
       birdsEffectRef.current?.destroy();
       birdsEffectRef.current = null;
       cloudsEffectRef.current?.destroy();
@@ -162,8 +157,37 @@ export default function Homepage() {
     };
   }, [theme, initVanta]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const navContainer = document.querySelector("nav > div") as HTMLElement | null;
+    const navLinksCluster = navContainer?.children.item(1) as HTMLElement | null;
+    if (!navLinksCluster) return;
+
+    const mediaQuery = window.matchMedia("(max-width: 640px)");
+    const applyMobileNavBehavior = () => {
+      navLinksCluster.style.display = mediaQuery.matches ? "none" : "";
+    };
+
+    applyMobileNavBehavior();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", applyMobileNavBehavior);
+      return () => {
+        mediaQuery.removeEventListener("change", applyMobileNavBehavior);
+        navLinksCluster.style.display = "";
+      };
+    }
+
+    mediaQuery.addListener(applyMobileNavBehavior);
+    return () => {
+      mediaQuery.removeListener(applyMobileNavBehavior);
+      navLinksCluster.style.display = "";
+    };
+  }, []);
+
   return (
-    <div className="relative h-[calc(100vh-60px)] overflow-hidden">
+    <div className="relative min-h-[calc(100svh-60px)] overflow-x-hidden">
       {/* Vanta loading overlay */}
       <AnimatePresence>
         {!vantaReady && (
@@ -205,7 +229,7 @@ export default function Homepage() {
       <div className="absolute inset-0 z-[2] pointer-events-none bg-gradient-to-b from-transparent via-transparent to-background/80" />
 
       {/* Content */}
-      <div className="relative z-[3] flex h-full flex-col items-center justify-center px-6">
+      <div className="relative z-[3] flex min-h-[calc(100svh-60px)] flex-col items-center justify-center px-6 py-8 md:py-10">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -248,7 +272,7 @@ export default function Homepage() {
           >
             <button
               type="button"
-              onClick={() => navigate("/login")}
+              onClick={() => navigate(isAuthenticated ? "/dashboard" : "/login")}
               className="group relative inline-flex items-center gap-2.5 rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_30px_hsl(var(--neon-blue)/0.3)] transition-all hover:shadow-[0_0_50px_hsl(var(--neon-blue)/0.5)] hover:scale-[1.02] active:scale-[0.98]"
             >
               Start Trading
@@ -269,7 +293,7 @@ export default function Homepage() {
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.9, duration: 0.6 }}
-          className="absolute bottom-8 left-0 right-0 flex justify-center gap-4 px-6"
+          className="mt-10 flex w-full flex-col items-center gap-3 px-1 pb-2 sm:px-4 md:mt-12 md:flex-row md:justify-center md:gap-4"
         >
           {features.map((f, i) => (
             <motion.div
@@ -277,7 +301,7 @@ export default function Homepage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1 + i * 0.1, duration: 0.4 }}
-              className="glass-strong hidden md:flex items-center gap-3 rounded-xl px-5 py-3 max-w-[260px]"
+              className="glass-strong flex w-full max-w-[320px] items-center gap-3 rounded-xl px-5 py-3 md:max-w-[260px]"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
                 <f.icon size={18} className="text-primary" />
