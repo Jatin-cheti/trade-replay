@@ -180,15 +180,15 @@ export default function Login({ mode = 'login' }: LoginProps) {
             <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="px-2 text-muted-foreground bg-background">or</span>
+            <span className="rounded-md border border-primary/25 bg-background/85 px-2.5 py-0.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">or</span>
           </div>
         </div>
 
         <motion.div whileHover={{ scale: 1.005 }} whileTap={{ scale: 0.995 }} className="w-full">
           {isGoogleLoading && <p className="text-xs text-muted-foreground text-center mb-2">Verifying Google credential...</p>}
-          <div data-testid="google-auth-shell" className="group w-full rounded-lg border border-primary/35 bg-secondary/20 p-[1px] transition-all duration-200 hover:border-primary/55 hover:shadow-[0_0_14px_hsl(var(--neon-blue)/0.2)] active:scale-[0.995]">
-            <div className="w-full overflow-hidden rounded-lg bg-background/40 p-0">
-              <div data-testid="google-auth-frame-wrap" className="w-full max-w-full overflow-hidden rounded-lg [&>div]:!w-full [&_iframe]:!block [&_iframe]:!h-[52px] [&_iframe]:!max-w-full [&_iframe]:!w-full [&_div[role=button]]:!flex [&_div[role=button]]:!h-[52px] [&_div[role=button]]:!w-full [&_div[role=button]]:!max-w-full [&_div[role=button]]:!items-center [&_div[role=button]]:!justify-center [&_div[role=button]]:!gap-3 [&_div[role=button]]:!overflow-hidden [&_div[role=button]]:!px-4 [&_div[role=button]]:!py-3 [&_div[role=button]]:!rounded-lg [&_div[role=button]]:!text-[0.95rem] [&_div[role=button]]:!font-medium [&_div[role=button]]:!tracking-wide">
+          <div data-testid="google-auth-shell" className="group w-full rounded-xl border border-primary/35 bg-[linear-gradient(180deg,hsl(var(--secondary)/0.38),hsl(var(--background)/0.55))] p-1.5 transition-all duration-200 hover:border-primary/60 hover:shadow-[0_0_18px_hsl(var(--neon-blue)/0.22)] active:scale-[0.995]">
+            <div className="w-full overflow-hidden rounded-lg bg-background/35 p-0.5">
+              <div data-testid="google-auth-frame-wrap" className="w-full max-w-full overflow-hidden rounded-lg [&>div]:!w-full [&_iframe]:!block [&_iframe]:!h-[52px] [&_iframe]:!max-w-full [&_iframe]:!w-full [&_iframe]:!rounded-lg [&_div[role=button]]:!flex [&_div[role=button]]:!h-[52px] [&_div[role=button]]:!w-full [&_div[role=button]]:!max-w-full [&_div[role=button]]:!items-center [&_div[role=button]]:!justify-center [&_div[role=button]]:!gap-3 [&_div[role=button]]:!overflow-hidden [&_div[role=button]]:!px-4 [&_div[role=button]]:!py-3 [&_div[role=button]]:!rounded-lg [&_div[role=button]]:!text-[0.95rem] [&_div[role=button]]:!font-medium [&_div[role=button]]:!tracking-wide">
                 <GoogleLogin
                   onSuccess={(credentialResponse) => { void handleGoogleLogin(credentialResponse.credential); }}
                   onError={() => undefined}
@@ -197,6 +197,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
                   shape="rectangular"
                   size="large"
                   logo_alignment="left"
+                  width="100%"
                 />
               </div>
             </div>
