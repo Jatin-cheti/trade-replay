@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
 import { useApp } from '@/context/AppContext';
+import { useTheme } from '@/context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import BrandLottie from '@/components/BrandLottie';
@@ -9,6 +10,83 @@ import BrandLottie from '@/components/BrandLottie';
 interface LoginProps {
   mode?: 'login' | 'signup';
 }
+
+type VantaBirdsOptions = {
+  el: HTMLElement;
+  mouseControls: boolean;
+  touchControls: boolean;
+  gyroControls: boolean;
+  backgroundColor: number;
+  color1: number;
+  color2: number;
+  colorMode: string;
+  quantity: number;
+  birdSize: number;
+  wingSpan: number;
+  speedLimit: number;
+  separation: number;
+  alignment: number;
+  cohesion: number;
+  scale: number;
+  scaleMobile: number;
+};
+
+type VantaCloudsOptions = {
+  el: HTMLElement;
+  mouseControls: boolean;
+  touchControls: boolean;
+  gyroControls: boolean;
+  backgroundColor: number;
+  skyColor: number;
+  cloudColor: number;
+  cloudShadowColor: number;
+  sunColor: number;
+  sunGlareColor: number;
+  sunlightColor: number;
+  speed: number;
+};
+
+type VantaEffect = {
+  destroy: () => void;
+};
+
+declare global {
+  interface Window {
+    VANTA?: {
+      BIRDS?: (config: VantaBirdsOptions) => VantaEffect;
+      CLOUDS?: (config: VantaCloudsOptions) => VantaEffect;
+    };
+  }
+}
+
+const loadScript = (src: string) =>
+  new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector(`script[data-vanta-src="${src}"]`) as HTMLScriptElement | null;
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error(`Failed loading ${src}`)), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.vantaSrc = src;
+    script.addEventListener(
+      'load',
+      () => {
+        script.dataset.loaded = 'true';
+        resolve();
+      },
+      { once: true }
+    );
+    script.addEventListener('error', () => reject(new Error(`Failed loading ${src}`)), { once: true });
+    document.head.appendChild(script);
+  });
 
 function Particles() {
   return (
@@ -41,7 +119,12 @@ function Particles() {
 }
 
 export default function Login({ mode = 'login' }: LoginProps) {
+  const { theme } = useTheme();
   const { login, googleLogin } = useApp();
+  const birdsRef = useRef<HTMLDivElement | null>(null);
+  const cloudsRef = useRef<HTMLDivElement | null>(null);
+  const birdsEffectRef = useRef<VantaEffect | null>(null);
+  const cloudsEffectRef = useRef<VantaEffect | null>(null);
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,6 +132,70 @@ export default function Login({ mode = 'login' }: LoginProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const showFullscreenLoader = isSubmitting || isGoogleLoading;
+
+  const initVantaBackground = useCallback(async (isDark: boolean) => {
+    birdsEffectRef.current?.destroy();
+    birdsEffectRef.current = null;
+    cloudsEffectRef.current?.destroy();
+    cloudsEffectRef.current = null;
+
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js');
+    await Promise.all([
+      loadScript('https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.birds.min.js'),
+      loadScript('https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.clouds.min.js'),
+    ]);
+
+    if (cloudsRef.current && window.VANTA?.CLOUDS) {
+      cloudsEffectRef.current = window.VANTA.CLOUDS({
+        el: cloudsRef.current,
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        backgroundColor: isDark ? 0x050d1a : 0x8baac6,
+        skyColor: isDark ? 0x0a1628 : 0x6b94b8,
+        cloudColor: isDark ? 0x0e2244 : 0xb0cfea,
+        cloudShadowColor: isDark ? 0x06101e : 0x5a7d9e,
+        sunColor: isDark ? 0x1a3a66 : 0xffd080,
+        sunGlareColor: isDark ? 0x0d2040 : 0xf5c860,
+        sunlightColor: isDark ? 0x142d52 : 0xfff0c0,
+        speed: 0.8,
+      });
+    }
+
+    if (birdsRef.current && window.VANTA?.BIRDS) {
+      birdsEffectRef.current = window.VANTA.BIRDS({
+        el: birdsRef.current,
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        backgroundColor: isDark ? 0x000000 : 0xffffff,
+        color1: isDark ? 0x3b82f6 : 0x1d4ed8,
+        color2: isDark ? 0x00d1ff : 0x0284c7,
+        colorMode: 'varianceGradient',
+        quantity: 4,
+        birdSize: 1.1,
+        wingSpan: 30,
+        speedLimit: 4,
+        separation: 25,
+        alignment: 25,
+        cohesion: 20,
+        scale: 1.0,
+        scaleMobile: 1.0,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const isDark = theme === 'dark';
+    initVantaBackground(isDark).catch(() => undefined);
+
+    return () => {
+      birdsEffectRef.current?.destroy();
+      birdsEffectRef.current = null;
+      cloudsEffectRef.current?.destroy();
+      cloudsEffectRef.current = null;
+    };
+  }, [theme, initVantaBackground]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +225,14 @@ export default function Login({ mode = 'login' }: LoginProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center animated-gradient-bg relative overflow-hidden">
+      <div ref={cloudsRef} className="fixed inset-0 z-0 pointer-events-none" aria-hidden="true" />
+      <div
+        ref={birdsRef}
+        className={`fixed inset-0 z-0 pointer-events-none ${theme === 'dark' ? 'mix-blend-screen' : 'mix-blend-multiply'}`}
+        style={{ background: 'transparent' }}
+        aria-hidden="true"
+      />
+
       {showFullscreenLoader && (
         <div className="absolute inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center">
           <div className="glass-strong rounded-xl px-6 py-4 flex items-center gap-3 max-w-[92vw]">
