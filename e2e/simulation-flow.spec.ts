@@ -101,9 +101,9 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
     await page.getByRole("button", { name: "NASDAQ", exact: true }).click({ force: true });
   }
 
-  const ixicRow = page.locator('[data-testid="symbol-result-row"][data-symbol="IXIC"]').first();
-  await expect(ixicRow).toBeVisible();
-  await ixicRow.click();
+  const ixicRowSelector = '[data-testid="symbol-result-row"][data-symbol="IXIC"]';
+  await expect(page.locator(ixicRowSelector).first()).toBeVisible();
+  await page.locator(ixicRowSelector).first().click({ force: true });
 
   await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
 

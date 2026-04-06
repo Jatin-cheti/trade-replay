@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TrendingUp } from "lucide-react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -46,6 +46,7 @@ function getRouteBackgroundConfig(pathname: string): RouteBackgroundConfig | nul
     || pathname === "/dashboard"
     || pathname === "/portfolio/create"
     || pathname.startsWith("/portfolio/edit/")
+    || pathname === "/simulation"
     || pathname === "/live-market"
   ) {
     return { showShellLayers: true };
@@ -56,23 +57,19 @@ function getRouteBackgroundConfig(pathname: string): RouteBackgroundConfig | nul
 
 function AnimatedRoutes() {
   const location = useLocation();
-  const [isRouteLoading, setIsRouteLoading] = useState(false);
   const [vantaReady, setVantaReady] = useState(false);
-  const backgroundConfig = getRouteBackgroundConfig(location.pathname);
-
-  useEffect(() => {
-    setIsRouteLoading(true);
-    const timeout = setTimeout(() => setIsRouteLoading(false), 420);
-    return () => clearTimeout(timeout);
-  }, [location.pathname]);
+  const backgroundConfig = useMemo(
+    () => getRouteBackgroundConfig(location.pathname),
+    [location.pathname],
+  );
 
   useEffect(() => {
     setVantaReady(backgroundConfig == null);
-  }, [backgroundConfig, location.pathname]);
+  }, [location.pathname, backgroundConfig]);
 
   return (
     <>
-      <GlobalLoader isRouteLoading={isRouteLoading} />
+      <GlobalLoader isRouteLoading={false} />
       {backgroundConfig ? (
         <PageBirdsCloudsBackground
           showShellLayers={backgroundConfig.showShellLayers}
@@ -149,7 +146,12 @@ const App = () => (
             className: "!min-w-[340px] !text-base !py-4 !px-4 !border !border-primary/40 !shadow-[0_0_20px_hsl(var(--neon-blue)/0.25)]",
           }}
         />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <div
             className="futuristic-shell"
             onMouseMove={(e) => {
