@@ -47,7 +47,7 @@ export function createTradingChart(container: HTMLElement): IChartApi {
     handleScroll: {
       mouseWheel: true,
       pressedMouseMove: true,
-      vertTouchDrag: true,
+      vertTouchDrag: false,
       horzTouchDrag: true,
     },
   });

@@ -7,6 +7,7 @@ import { rgbFromHex } from '@/services/tools/toolOptions';
 import { selectNearestDrawingId } from '@/services/tools/toolEngine';
 import { useChart } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
+import { useIsMobile } from '@/hooks/use-mobile';
 import ChartCanvas from '@/components/chart/ChartCanvas';
 import ChartToolbar from '@/components/chart/ChartToolbar';
 import ToolOptionsPanel from '@/components/chart/ToolOptionsPanel';
@@ -43,11 +44,18 @@ function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y:
 }
 
 export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
+  const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>('candlestick');
   const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('trend');
   const [magnetMode, setMagnetMode] = useState(false);
-  const [toolboxMinimized, setToolboxMinimized] = useState(false);
+  const [toolboxMinimized, setToolboxMinimized] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 767px)').matches;
+  });
   const [toolbarCollapsed, setToolbarCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      return true;
+    }
     try {
       return window.localStorage.getItem('chart-toolbar-collapsed') === '1';
     } catch {
@@ -55,9 +63,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     }
   });
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [treeOpen, setTreeOpen] = useState(true);
+  const [treeOpen, setTreeOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return !window.matchMedia('(max-width: 767px)').matches;
+  });
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
+  const [touchMode, setTouchMode] = useState<'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch'>('idle');
+  const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
+  const touchRafRef = useRef<number | null>(null);
 
   const {
     toolState,
@@ -78,6 +92,52 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   } = useTools();
 
   const { chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange } = useChart(data, visibleCount, chartType);
+
+  const applyTouchMode = useCallback((mode: 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch') => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    if (touchRafRef.current != null) {
+      window.cancelAnimationFrame(touchRafRef.current);
+      touchRafRef.current = null;
+    }
+
+    touchRafRef.current = window.requestAnimationFrame(() => {
+      touchRafRef.current = null;
+      if (!chartRef.current) return;
+      switch (mode) {
+        case 'pan':
+          chartRef.current.applyOptions({
+            handleScroll: { horzTouchDrag: true, vertTouchDrag: false },
+            handleScale: { pinch: true, axisPressedMouseMove: { time: false, price: false } },
+          });
+          break;
+        case 'axis-zoom':
+          chartRef.current.applyOptions({
+            handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
+            handleScale: { pinch: true, axisPressedMouseMove: { time: false, price: true } },
+          });
+          break;
+        case 'scroll':
+          chartRef.current.applyOptions({
+            handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
+            handleScale: { pinch: true, axisPressedMouseMove: { time: false, price: false } },
+          });
+          break;
+        case 'pinch':
+          chartRef.current.applyOptions({
+            handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
+            handleScale: { pinch: true, axisPressedMouseMove: { time: false, price: false } },
+          });
+          break;
+        default:
+          chartRef.current.applyOptions({
+            handleScroll: { horzTouchDrag: true, vertTouchDrag: false },
+            handleScale: { pinch: true, axisPressedMouseMove: { time: true, price: true } },
+          });
+      }
+    });
+  }, [chartRef]);
 
   const activeDefinition = useMemo(() => getToolDefinition(toolState.variant), [toolState.variant]);
   const selectedDrawing = useMemo(
@@ -230,6 +290,109 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     }
   }, [toolbarCollapsed]);
 
+  useEffect(() => {
+    if (!isMobile) {
+      setToolboxMinimized(false);
+      setTreeOpen(true);
+      applyTouchMode('idle');
+      setTouchMode('idle');
+      return;
+    }
+
+    setToolboxMinimized(true);
+    setTreeOpen(false);
+    setToolbarCollapsed(true);
+    applyTouchMode('scroll');
+    setTouchMode('scroll');
+  }, [applyTouchMode, isMobile]);
+
+  useEffect(() => {
+    return () => {
+      if (touchRafRef.current != null) {
+        window.cancelAnimationFrame(touchRafRef.current);
+      }
+    };
+  }, []);
+
+  const detectTouchZone = useCallback((clientX: number, width: number): 'left' | 'center' | 'right' => {
+    if (clientX > width * 0.85) return 'right';
+    if (clientX < width * 0.65) return 'left';
+    return 'center';
+  }, []);
+
+  const onChartTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    if (event.touches.length >= 2) {
+      setTouchMode('pinch');
+      applyTouchMode('pinch');
+      touchStartRef.current = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const localX = touch.clientX - bounds.left;
+    const zone = detectTouchZone(localX, bounds.width);
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, zone };
+    setTouchMode(zone === 'center' ? 'scroll' : 'idle');
+    applyTouchMode(zone === 'center' ? 'scroll' : 'idle');
+  };
+
+  const onChartTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    if (event.touches.length >= 2) {
+      if (touchMode !== 'pinch') {
+        setTouchMode('pinch');
+        applyTouchMode('pinch');
+      }
+      return;
+    }
+
+    const start = touchStartRef.current;
+    if (!start) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+
+    if (start.zone === 'center') {
+      if (touchMode !== 'scroll') {
+        setTouchMode('scroll');
+        applyTouchMode('scroll');
+      }
+      return;
+    }
+
+    if (start.zone === 'right') {
+      const shouldZoom = Math.abs(dy) >= Math.abs(dx);
+      const next = shouldZoom ? 'axis-zoom' : 'scroll';
+      if (touchMode !== next) {
+        setTouchMode(next);
+        applyTouchMode(next);
+      }
+      if (shouldZoom) {
+        event.preventDefault();
+      }
+      return;
+    }
+
+    const shouldPan = Math.abs(dx) > Math.abs(dy);
+    const next = shouldPan ? 'pan' : 'scroll';
+    if (touchMode !== next) {
+      setTouchMode(next);
+      applyTouchMode(next);
+    }
+    if (shouldPan) {
+      event.preventDefault();
+    }
+  };
+
+  const onChartTouchEnd = () => {
+    if (!isMobile) return;
+    touchStartRef.current = null;
+    setTouchMode('scroll');
+    applyTouchMode('scroll');
+  };
+
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const point = pointerToDataPoint(event.clientX, event.clientY, magnetMode) || fallbackPoint();
     if (!point) return;
@@ -296,20 +459,30 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   };
 
   return (
-    <div className="relative h-full w-full min-h-[340px]">
-      <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
+    <div className="flex h-full w-full min-h-[340px] flex-col">
+      <div
+        className="relative min-h-0 flex-1 overflow-hidden rounded-xl"
+        onTouchStart={onChartTouchStart}
+        onTouchMove={onChartTouchMove}
+        onTouchEnd={onChartTouchEnd}
+        onTouchCancel={onChartTouchEnd}
+      >
+        <div className="chart-wrapper h-full w-full touch-pan-y">
+          <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
+        </div>
 
-      <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} />
+        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
 
-      <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
+        <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
 
-      <ObjectTreePanel open={treeOpen} drawings={toolState.drawings} selectedDrawingId={selectedDrawingId} onSelect={setSelectedDrawingId} onToggleVisible={(id) => updateDrawing(id, (d) => ({ ...d, visible: !d.visible, options: { ...d.options, visible: !d.options.visible } }))} onToggleLocked={(id) => updateDrawing(id, (d) => ({ ...d, locked: !d.locked, options: { ...d.options, locked: !d.options.locked } }))} onDelete={removeDrawing} />
+        <ObjectTreePanel open={treeOpen} isMobile={isMobile} drawings={toolState.drawings} selectedDrawingId={selectedDrawingId} onSelect={setSelectedDrawingId} onToggleVisible={(id) => updateDrawing(id, (d) => ({ ...d, visible: !d.visible, options: { ...d.options, visible: !d.options.visible } }))} onToggleLocked={(id) => updateDrawing(id, (d) => ({ ...d, locked: !d.locked, options: { ...d.options, locked: !d.options.locked } }))} onDelete={removeDrawing} onTogglePanel={() => setTreeOpen((prev) => !prev)} />
 
-      <div data-testid="drawing-badge" className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xl">
-        {symbol} · {mode} · {chartType} · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
+        {selectedDrawing && <div className="absolute right-3 top-3 z-40 rounded-lg border border-primary/25 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">selected: {selectedDrawing.variant}</div>}
       </div>
 
-      {selectedDrawing && <div className="absolute bottom-3 right-3 z-30 rounded-lg border border-primary/25 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">selected: {selectedDrawing.variant}</div>}
+      <div data-testid="drawing-badge" className="mt-2 rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xl">
+        {symbol} · {mode} · {chartType} · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
+      </div>
     </div>
   );
 }

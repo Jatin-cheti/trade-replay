@@ -79,6 +79,7 @@ type ChartToolbarProps = {
   setToolboxMinimized: (value: boolean) => void;
   toolbarCollapsed: boolean;
   setToolbarCollapsed: (value: boolean) => void;
+  isMobile: boolean;
 };
 
 export default function ChartToolbar({
@@ -101,6 +102,7 @@ export default function ChartToolbar({
   setToolboxMinimized,
   toolbarCollapsed,
   setToolbarCollapsed,
+  isMobile,
 }: ChartToolbarProps) {
   const quickTypes: ChartType[] = ['candlestick', 'line', 'area'];
   const allTypes = chartTypeGroups.flatMap((group) => group.types);
@@ -108,19 +110,21 @@ export default function ChartToolbar({
 
   return (
     <>
-      {toolbarCollapsed ? (
+      {toolbarCollapsed && (
         <button
           type="button"
           data-testid="chart-toolbar-toggle"
           onClick={() => setToolbarCollapsed(false)}
-          className="absolute right-3 top-3 z-30 inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-background/85 px-2.5 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-xl hover:text-foreground"
+          className={`absolute z-40 inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-background/85 px-2.5 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-xl hover:text-foreground ${isMobile ? 'right-3 top-3' : 'right-3 top-3'}`}
           title="Expand chart toolbar"
         >
           <ChevronLeft size={15} />
           Tools
         </button>
-      ) : (
-        <div className="absolute right-3 top-3 z-30 flex max-w-[76%] flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl">
+      )}
+
+      <div className={`absolute z-30 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all duration-200 ${isMobile ? `left-3 right-3 top-14 ${toolbarCollapsed ? '-translate-y-5 opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}` : `${toolboxMinimized ? 'left-[184px]' : 'left-[288px]'} right-3 top-3 ${toolbarCollapsed ? 'translate-y-[-10px] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}`}>
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Chart Type</span>
 
         {quickTypes.map((type) => (
@@ -167,9 +171,22 @@ export default function ChartToolbar({
             <ChevronRight size={16} />
           </button>
         </div>
+      </div>
+
+      {isMobile && toolboxMinimized && (
+        <button
+          type="button"
+          data-testid="chart-toolbox-toggle"
+          onClick={() => setToolboxMinimized(false)}
+          className="absolute left-3 top-3 z-40 inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-background/85 px-2.5 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-xl hover:text-foreground"
+          title="Open toolbox"
+        >
+          <ChevronRight size={15} />
+          Toolbox
+        </button>
       )}
 
-      <div className={`absolute left-3 top-3 z-30 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all ${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px] overflow-y-auto'}`}>
+      <div className={`absolute left-3 top-3 z-40 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${toolboxMinimized ? '-translate-x-[110%] pointer-events-none opacity-0' : 'translate-x-0 opacity-100'} bottom-3 w-[268px] max-w-[80vw] overflow-y-auto` : `${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px] overflow-y-auto'}`}`}>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Toolbox</span>
           <div className="flex items-center gap-1">
