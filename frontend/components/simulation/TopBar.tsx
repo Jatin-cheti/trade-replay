@@ -67,7 +67,7 @@ export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
     <motion.div
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="glass sticky top-[64px] z-40 border-b border-primary/25 px-3 py-3.5 shadow-[0_8px_28px_hsl(var(--background)/0.45)] backdrop-blur-xl md:px-4"
+      className="glass sticky top-[62px] z-40 mt-1 border-b border-primary/25 px-3 py-3.5 shadow-[0_8px_28px_hsl(var(--background)/0.45)] backdrop-blur-xl md:top-[66px] md:px-4"
     >
       <div className="flex flex-wrap items-center gap-2.5 md:gap-3">
         <motion.div className="mr-1 flex items-center gap-2.5" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.35, ease: 'easeOut' }}>

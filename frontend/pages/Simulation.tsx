@@ -77,7 +77,7 @@ export default function Simulation() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col pt-2 page-gradient-shell overflow-x-hidden">
+    <div className="min-h-screen flex flex-col page-gradient-shell overflow-x-hidden">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
@@ -94,7 +94,7 @@ export default function Simulation() {
 
       {/* Desktop Layout */}
       <motion.div
-        className="flex-1 hidden md:flex gap-3 p-3 relative z-10"
+        className="flex-1 hidden md:flex gap-3 p-3 pt-4 relative z-10"
         initial="hidden"
         animate="show"
         variants={{
@@ -137,7 +137,7 @@ export default function Simulation() {
       </div>
 
       {/* Mobile Layout */}
-      <div className="flex-1 md:hidden p-3 relative z-10">
+      <div className="flex-1 md:hidden p-3 pt-4 relative z-10">
         {mobileTab === 'chart' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
