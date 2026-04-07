@@ -3,6 +3,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env";
 
 const PORTFOLIO_PREFIX = "trade-replay/portfolios";
+const MAX_CSV_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_CSV_CONTENT_TYPES = new Set(["text/csv", "application/vnd.ms-excel"]);
 
 const hasAwsConfig = Boolean(
   env.AWS_REGION && env.AWS_S3_BUCKET && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY,
@@ -42,22 +44,56 @@ export function buildPortfolioUploadKey(userId: string, fileName: string): strin
   return `${PORTFOLIO_PREFIX}/${userId}/${Date.now()}-${safeName}`;
 }
 
-export async function generatePortfolioUploadUrl(userId: string, fileName: string): Promise<{ url: string; key: string }> {
+function ensureCsvUploadRequest(fileName: string, contentType?: string, fileSizeBytes?: number): void {
+  if (!fileName.toLowerCase().endsWith(".csv")) {
+    throw new Error("INVALID_FILE_TYPE");
+  }
+
+  if (contentType) {
+    const normalizedType = contentType.trim().toLowerCase();
+    if (!ALLOWED_CSV_CONTENT_TYPES.has(normalizedType)) {
+      throw new Error("INVALID_CONTENT_TYPE");
+    }
+  }
+
+  if (typeof fileSizeBytes === "number") {
+    if (!Number.isFinite(fileSizeBytes) || fileSizeBytes <= 0) {
+      throw new Error("INVALID_FILE_SIZE");
+    }
+    if (fileSizeBytes > MAX_CSV_UPLOAD_BYTES) {
+      throw new Error("FILE_TOO_LARGE");
+    }
+  }
+}
+
+export async function generatePortfolioUploadUrl(
+  userId: string,
+  fileName: string,
+  contentType?: string,
+  fileSizeBytes?: number,
+): Promise<{ uploadUrl: string; s3Key: string }> {
+  ensureCsvUploadRequest(fileName, contentType, fileSizeBytes);
   const key = buildPortfolioUploadKey(userId, fileName);
+  const resolvedContentType = (contentType?.trim().toLowerCase() || "text/csv");
 
   const command = new PutObjectCommand({
     Bucket: env.AWS_S3_BUCKET,
     Key: key,
-    ContentType: "text/csv",
+    ContentType: resolvedContentType,
+    ContentLength: fileSizeBytes,
   });
 
-  const url = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
-  return { url, key };
+  const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
+  return { uploadUrl, s3Key: key };
 }
 
 function assertKeyOwnership(userId: string, key: string): void {
+  const normalizedKey = key.trim();
   const expectedPrefix = `${PORTFOLIO_PREFIX}/${userId}/`;
-  if (!key.startsWith(expectedPrefix)) {
+  if (!normalizedKey.startsWith(expectedPrefix)) {
+    throw new Error("INVALID_S3_KEY_SCOPE");
+  }
+  if (!normalizedKey.toLowerCase().endsWith(".csv")) {
     throw new Error("INVALID_S3_KEY_SCOPE");
   }
 }

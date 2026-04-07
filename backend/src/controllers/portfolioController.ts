@@ -26,6 +26,8 @@ const createSchema = z.object({
 
 const uploadUrlSchema = z.object({
   fileName: z.string().min(1).max(180),
+  contentType: z.string().min(1).max(120).optional(),
+  fileSizeBytes: z.number().int().positive().max(5 * 1024 * 1024).optional(),
   userId: z.string().optional(),
 });
 
@@ -110,7 +112,12 @@ export function createPortfolioController() {
       }
 
       try {
-        const result = await generatePortfolioUploadUrl(userId, parsed.data.fileName);
+        const result = await generatePortfolioUploadUrl(
+          userId,
+          parsed.data.fileName,
+          parsed.data.contentType,
+          parsed.data.fileSizeBytes,
+        );
         res.json(result);
       } catch (error) {
         next(mapServiceError(error, "S3_UPLOAD_URL_FAILED", "Could not create upload URL"));

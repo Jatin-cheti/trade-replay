@@ -162,13 +162,15 @@ export default function CreatePortfolio() {
 
     setIsSaving(true);
     try {
-      const uploadUrlResponse = await api.post<{ url: string; key: string }>("/upload-url", {
+      const uploadUrlResponse = await api.post<{ uploadUrl: string; s3Key: string }>("/upload-url", {
         fileName: csvFile.name,
+        contentType: csvFile.type || "text/csv",
+        fileSizeBytes: csvFile.size,
       });
 
-      const { url, key } = uploadUrlResponse.data;
+      const { uploadUrl, s3Key } = uploadUrlResponse.data;
 
-      const uploadResponse = await fetch(url, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": "text/csv" },
         body: csvFile,
@@ -179,7 +181,7 @@ export default function CreatePortfolio() {
       }
 
       await api.post("/portfolio/import", {
-        s3Key: key,
+        s3Key,
         name: name.trim() || "Imported Portfolio",
         baseCurrency,
       });
