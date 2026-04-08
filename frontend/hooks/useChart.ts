@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Time, UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { createTradingChart, resizeChartSurface } from '@/services/chart/chartEngine';
 import {
@@ -183,7 +183,7 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
   }, [getActiveSeries, transformedData.ohlcRows, transformedData.times]);
 
   const zoomToRange = useCallback((from: UTCTimestamp, to: UTCTimestamp) => {
-    chartRef.current?.timeScale().setVisibleRange({ from: Math.min(from, to) as Time, to: Math.max(from, to) as Time });
+    chartRef.current?.timeScale().setVisibleRange({ from: Math.min(from, to), to: Math.max(from, to) });
   }, []);
 
   return {

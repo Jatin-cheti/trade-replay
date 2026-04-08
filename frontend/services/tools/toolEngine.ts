@@ -1,4 +1,4 @@
-import type { Time, UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp } from '@tradereplay/charts';
 import { buildToolOptions, getToolDefinition, type DrawPoint, type Drawing, type ToolVariant } from './toolRegistry';
 import type { ToolOptions } from './toolOptions';
 
@@ -6,7 +6,9 @@ export function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function toTimestampFromTime(value: Time | null): UTCTimestamp | null {
+type TimeLike = UTCTimestamp | string | { year: number; month: number; day: number };
+
+export function toTimestampFromTime(value: TimeLike | null): UTCTimestamp | null {
   if (value == null) return null;
   if (typeof value === 'number') return value as UTCTimestamp;
   if (typeof value === 'string') {

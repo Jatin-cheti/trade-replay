@@ -1,4 +1,4 @@
-import type { CandlestickData, HistogramData, LineData, UTCTimestamp } from 'lightweight-charts';
+import type { CandlestickData, HistogramData, LineData, UTCTimestamp } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 
 export type ChartType =
@@ -51,12 +51,12 @@ export type OhlcRow = {
 
 export type TransformedData = {
   ohlcRows: OhlcRow[];
-  closeRows: LineData<UTCTimestamp>[];
-  rangeRows: LineData<UTCTimestamp>[];
-  stepRows: LineData<UTCTimestamp>[];
-  histogramRows: HistogramData<UTCTimestamp>[];
-  volumeRows: HistogramData<UTCTimestamp>[];
-  heikinRows: CandlestickData<UTCTimestamp>[];
+  closeRows: LineData[];
+  rangeRows: LineData[];
+  stepRows: LineData[];
+  histogramRows: HistogramData[];
+  volumeRows: HistogramData[];
+  heikinRows: CandlestickData[];
   times: UTCTimestamp[];
 };
 
@@ -64,9 +64,9 @@ export function toTimestamp(input: string): UTCTimestamp {
   return Math.floor(new Date(input).getTime() / 1000) as UTCTimestamp;
 }
 
-export function heikinAshiTransform(rows: OhlcRow[]): CandlestickData<UTCTimestamp>[] {
+export function heikinAshiTransform(rows: OhlcRow[]): CandlestickData[] {
   if (!rows.length) return [];
-  const output: CandlestickData<UTCTimestamp>[] = [];
+  const output: CandlestickData[] = [];
   let prevOpen = (rows[0].open + rows[0].close) / 2;
   let prevClose = (rows[0].open + rows[0].high + rows[0].low + rows[0].close) / 4;
 
@@ -88,9 +88,9 @@ export function heikinAshiTransform(rows: OhlcRow[]): CandlestickData<UTCTimesta
   return output;
 }
 
-export function stepLineTransform(rows: LineData<UTCTimestamp>[]): LineData<UTCTimestamp>[] {
+export function stepLineTransform(rows: LineData[]): LineData[] {
   if (rows.length < 2) return rows;
-  const output: LineData<UTCTimestamp>[] = [rows[0]];
+  const output: LineData[] = [rows[0]];
   for (let i = 1; i < rows.length; i += 1) {
     const prev = rows[i - 1];
     const cur = rows[i];

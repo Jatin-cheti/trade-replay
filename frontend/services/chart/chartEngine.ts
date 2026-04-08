@@ -1,10 +1,10 @@
-import { ColorType, createChart, CrosshairMode, LineStyle, type IChartApi } from 'lightweight-charts';
+import { createChart, type IChartApi } from '@tradereplay/charts';
 
 export function createTradingChart(container: HTMLElement): IChartApi {
   return createChart(container, {
     autoSize: false,
     layout: {
-      background: { type: ColorType.Solid, color: 'rgba(9, 17, 32, 0.85)' },
+      background: { type: 'solid', color: 'rgba(9, 17, 32, 0.85)' },
       textColor: 'rgba(173, 192, 225, 0.88)',
       fontFamily: 'JetBrains Mono, monospace',
       fontSize: 11,
@@ -14,17 +14,17 @@ export function createTradingChart(container: HTMLElement): IChartApi {
       horzLines: { color: 'rgba(38, 56, 84, 0.48)' },
     },
     crosshair: {
-      mode: CrosshairMode.Normal,
+      mode: 0,
       vertLine: {
         color: 'rgba(0, 209, 255, 0.72)',
         width: 1,
-        style: LineStyle.Dashed,
+        style: 2,
         labelBackgroundColor: '#00d1ff',
       },
       horzLine: {
         color: 'rgba(255, 0, 0, 0.65)',
         width: 1,
-        style: LineStyle.Dashed,
+        style: 2,
         labelBackgroundColor: '#ff0000',
       },
     },

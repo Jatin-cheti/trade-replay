@@ -1,13 +1,7 @@
 import {
-  AreaSeries,
-  BarSeries,
-  BaselineSeries,
-  CandlestickSeries,
-  HistogramSeries,
-  LineSeries,
   type IChartApi,
   type ISeriesApi,
-} from 'lightweight-charts';
+} from '@tradereplay/charts';
 import type { ChartType, TransformedData } from './dataTransforms';
 
 export type ChartSeriesKey =
@@ -60,37 +54,37 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
 
 export function createChartSeries(chart: IChartApi): ChartSeriesMap {
   const map: ChartSeriesMap = {
-    candlestick: chart.addSeries(CandlestickSeries, {
+    candlestick: chart.addSeries('Candlestick', {
       upColor: '#17c964', downColor: '#ff4d4f', borderUpColor: '#17c964', borderDownColor: '#ff4d4f',
       wickUpColor: '#3ee187', wickDownColor: '#ff7275', visible: true,
     }),
-    hollowCandles: chart.addSeries(CandlestickSeries, {
+    hollowCandles: chart.addSeries('Candlestick', {
       upColor: 'rgba(23, 201, 100, 0.08)', downColor: '#ff4d4f', borderUpColor: '#43e391', borderDownColor: '#ff7275',
       wickUpColor: '#43e391', wickDownColor: '#ff7275', visible: false,
     }),
-    line: chart.addSeries(LineSeries, { color: '#00d1ff', lineWidth: 2, visible: false }),
-    stepLine: chart.addSeries(LineSeries, { color: '#89e7ff', lineWidth: 2, visible: false }),
-    area: chart.addSeries(AreaSeries, {
+    line: chart.addSeries('Line', { color: '#00d1ff', lineWidth: 2, visible: false }),
+    stepLine: chart.addSeries('Line', { color: '#89e7ff', lineWidth: 2, visible: false }),
+    area: chart.addSeries('Area', {
       lineColor: '#00d1ff', lineWidth: 2, topColor: 'rgba(0, 209, 255, 0.42)', bottomColor: 'rgba(0, 209, 255, 0.02)', visible: false,
     }),
-    mountainArea: chart.addSeries(AreaSeries, {
+    mountainArea: chart.addSeries('Area', {
       lineColor: '#40e0d0', lineWidth: 2, topColor: 'rgba(64, 224, 208, 0.46)', bottomColor: 'rgba(64, 224, 208, 0.04)', visible: false,
     }),
-    rangeArea: chart.addSeries(AreaSeries, {
+    rangeArea: chart.addSeries('Area', {
       lineColor: '#ffd166', lineWidth: 2, topColor: 'rgba(255, 209, 102, 0.42)', bottomColor: 'rgba(255, 209, 102, 0.03)', visible: false,
     }),
-    baseline: chart.addSeries(BaselineSeries, {
+    baseline: chart.addSeries('Baseline', {
       baseValue: { type: 'price', price: 0 }, topLineColor: '#17c964', topFillColor1: 'rgba(23, 201, 100, 0.35)', topFillColor2: 'rgba(23, 201, 100, 0.04)',
       bottomLineColor: '#ff4d4f', bottomFillColor1: 'rgba(255, 77, 79, 0.25)', bottomFillColor2: 'rgba(255, 77, 79, 0.03)', lineWidth: 2, visible: false,
     }),
-    histogram: chart.addSeries(HistogramSeries, { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
-    bar: chart.addSeries(BarSeries, { upColor: '#17c964', downColor: '#ff4d4f', thinBars: false, visible: false }),
-    heikinAshi: chart.addSeries(CandlestickSeries, {
+    histogram: chart.addSeries('Histogram', { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
+    bar: chart.addSeries('Bar', { upColor: '#17c964', downColor: '#ff4d4f', thinBars: false, visible: false }),
+    heikinAshi: chart.addSeries('Candlestick', {
       upColor: '#61dca0', downColor: '#ff6b6e', borderUpColor: '#61dca0', borderDownColor: '#ff6b6e',
       wickUpColor: '#83e8bb', wickDownColor: '#ff8d8f', visible: false,
     }),
-    ohlc: chart.addSeries(BarSeries, { upColor: '#a1f2c8', downColor: '#ff9799', thinBars: true, visible: false }),
-    volume: chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
+    ohlc: chart.addSeries('Bar', { upColor: '#a1f2c8', downColor: '#ff9799', thinBars: true, visible: false }),
+    volume: chart.addSeries('Histogram', { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
   };
 
   map.volume.priceScale().applyOptions({ scaleMargins: { top: 0.72, bottom: 0 } });

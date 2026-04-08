@@ -1,4 +1,4 @@
-import type { UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp } from '@tradereplay/charts';
 import { baseOptionSchema, defaultToolOptions, mergeToolOptions, type OptionField, type ToolOptions } from './toolOptions';
 
 export type ToolCategory = 'trend' | 'shape' | 'text' | 'annotation' | 'measure' | 'fib' | 'pattern' | 'position' | 'system';
