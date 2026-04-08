@@ -56,7 +56,7 @@ export function produce<T>(topic: KafkaTopic, payload: T, key?: string): void {
         },
       ],
     })
-    .catch((error) => {
+    .catch((error: unknown) => {
       logger.error("kafka_produce_failed", {
         topic,
         eventId: event.eventId,
