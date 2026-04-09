@@ -248,7 +248,13 @@ export async function searchSymbols(params: {
     const nextCursor = hasMore && last
       ? encodeCursor({ createdAt: last.createdAt, _id: last._id })
       : null;
-    const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => rest);
+    const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => {
+      const staticIcon = resolveStaticIcon(rest.symbol);
+      return {
+        ...rest,
+        iconUrl: rest.iconUrl || rest.s3Icon || staticIcon || "",
+      };
+    });
 
     return {
       items: paged,
