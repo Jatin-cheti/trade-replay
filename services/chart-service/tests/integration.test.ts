@@ -36,6 +36,26 @@ async function run(): Promise<void> {
   assert.equal(Array.isArray(computeJson.indicators), true);
   assert.equal(computeJson.indicators?.[0]?.id, "sma");
 
+  const bundleRes = await fetch(`${baseUrl}/bundle`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      candles: [
+        { time: 1710000000, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+        { time: 1710000060, open: 100.5, high: 102, low: 100, close: 101.2, volume: 1100 },
+      ],
+      transformType: "renko",
+      params: { boxSize: 0.25 },
+      indicators: [{ id: "sma", params: { period: 2 } }],
+    }),
+  });
+  assert.equal(bundleRes.status, 200);
+
+  const metricsRes = await fetch(`${baseUrl}/metrics`);
+  assert.equal(metricsRes.status, 200);
+  const metricsJson = await metricsRes.json() as { counters?: Record<string, number> };
+  assert.equal(typeof metricsJson.counters, "object");
+
   await new Promise<void>((resolve) => server.close(() => resolve()));
   console.log("integration.test.ts passed");
 }

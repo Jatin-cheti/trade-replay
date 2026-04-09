@@ -165,6 +165,12 @@ services:
       MAIN_BACKEND_URL: http://backend:4000
       REDIS_URL: redis://redis:6379
       CHART_CACHE_TTL_SECONDS: 120
+      CHART_CACHE_LIVE_TTL_SECONDS: 15
+      CHART_CACHE_HISTORICAL_TTL_SECONDS: 900
+      CHART_CACHE_SWR_SECONDS: 30
+      KAFKA_ENABLED: "true"
+      KAFKA_BROKERS: kafka:9092
+      CHART_CANDLE_UPDATE_TOPIC: chart.candle.updated
     ports:
       - "4010:4010"
     depends_on:

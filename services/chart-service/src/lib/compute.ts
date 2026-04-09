@@ -33,18 +33,32 @@ type IndicatorDef = {
   }) => { outputs: Array<Array<number | null>> };
 };
 
-const INDICATOR_DEFS = new Map<string, IndicatorDef>(
-  Object.values(Charts)
-    .filter((value): value is IndicatorDef => {
-      if (!value || typeof value !== "object") return false;
-      const candidate = value as Partial<IndicatorDef>;
-      return typeof candidate.id === "string"
-        && typeof candidate.compute === "function"
-        && Array.isArray(candidate.inputs)
-        && Array.isArray(candidate.outputs);
-    })
-    .map((def) => [def.id, def]),
-);
+function isIndicatorDef(value: unknown): value is IndicatorDef {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as {
+    id?: unknown;
+    compute?: unknown;
+    inputs?: unknown;
+    outputs?: unknown;
+  };
+
+  return typeof candidate.id === "string"
+    && typeof candidate.compute === "function"
+    && Array.isArray(candidate.inputs)
+    && Array.isArray(candidate.outputs);
+}
+
+const INDICATOR_DEFS = new Map<string, IndicatorDef>();
+for (const value of Object.values(Charts) as unknown[]) {
+  if (!isIndicatorDef(value)) {
+    continue;
+  }
+
+  INDICATOR_DEFS.set(value.id, value);
+}
 
 function normalizeCandles(candles: ChartCandle[]): TransformOhlc[] {
   return candles

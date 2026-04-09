@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "../utils/appError";
-import { computeIndicators, transformCandles } from "../services/chartCompute.service";
+import { computeBundle, computeIndicators, transformCandles } from "../services/chartCompute.service";
 
 const candleSchema = z.object({
   time: z.coerce.number(),
@@ -55,6 +55,22 @@ const transformSchema = z.object({
   }
 });
 
+const bundleSchema = z.object({
+  candles: z.array(candleSchema).optional(),
+  source: sourceSchema.optional(),
+  transformType: z.enum(["renko", "rangeBars", "lineBreak", "kagi", "pointFigure", "brick"]).optional(),
+  params: z.record(z.number()).optional(),
+  indicators: z.array(indicatorSchema).optional(),
+}).superRefine((value, ctx) => {
+  if ((!value.candles || value.candles.length === 0) && !value.source) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["candles"],
+      message: "Provide candles or source.",
+    });
+  }
+});
+
 export function createChartController() {
   return {
     computeIndicators: async (req: Request, res: Response, next: NextFunction) => {
@@ -81,6 +97,21 @@ export function createChartController() {
 
       try {
         const payload = await transformCandles(parsed.data);
+        res.json(payload);
+      } catch (error) {
+        next(error);
+      }
+    },
+
+    bundle: async (req: Request, res: Response, next: NextFunction) => {
+      const parsed = bundleSchema.safeParse(req.body);
+      if (!parsed.success) {
+        next(new AppError(400, "INVALID_CHART_BUNDLE_PAYLOAD", "Invalid chart bundle payload"));
+        return;
+      }
+
+      try {
+        const payload = await computeBundle(parsed.data);
         res.json(payload);
       } catch (error) {
         next(error);

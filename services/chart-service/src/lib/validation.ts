@@ -51,3 +51,19 @@ export const transformSchema = z.object({
     });
   }
 });
+
+export const bundleSchema = z.object({
+  candles: z.array(candleSchema).optional(),
+  source: sourceSchema.optional(),
+  transformType: z.enum(["renko", "rangeBars", "lineBreak", "kagi", "pointFigure", "brick"]).optional(),
+  params: z.record(z.number()).optional(),
+  indicators: z.array(indicatorSchema).optional(),
+}).superRefine((value, ctx) => {
+  if ((!value.candles || value.candles.length === 0) && !value.source) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["candles"],
+      message: "Provide candles or source.",
+    });
+  }
+});

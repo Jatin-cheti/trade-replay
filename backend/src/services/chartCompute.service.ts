@@ -30,6 +30,14 @@ type TransformInput = {
   params?: Record<string, number>;
 };
 
+type BundleInput = {
+  candles?: ChartCandle[];
+  source?: SourceRequest;
+  transformType?: TransformType;
+  params?: Record<string, number>;
+  indicators?: IndicatorRequest[];
+};
+
 async function resolveCandles(candles?: ChartCandle[], source?: SourceRequest): Promise<ChartCandle[]> {
   if (Array.isArray(candles) && candles.length > 0) {
     return candles;
@@ -102,4 +110,39 @@ export async function transformCandles(input: TransformInput) {
 
   const candles = await resolveCandles(input.candles, input.source);
   return transformCandlesLocal({ candles, transformType: input.transformType, params: input.params });
+}
+
+export async function computeBundle(input: BundleInput) {
+  if (env.CHART_SERVICE_ENABLED) {
+    try {
+      return await postChartService("/bundle", input);
+    } catch (error) {
+      logger.warn("chart_service_bundle_delegate_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const candles = await resolveCandles(input.candles, input.source);
+  const transformed = input.transformType
+    ? transformCandlesLocal({ candles, transformType: input.transformType, params: input.params })
+    : null;
+  const indicators = (input.indicators && input.indicators.length > 0)
+    ? computeIndicatorsLocal({ candles: transformed?.candles ?? candles, indicators: input.indicators })
+    : null;
+
+  return {
+    candlesCount: candles.length,
+    candles,
+    transformed,
+    indicators,
+    meta: {
+      symbol: input.source?.symbol ?? null,
+      timeframe: input.source?.timeframe ?? null,
+      from: input.source?.from ?? null,
+      to: input.source?.to ?? null,
+    },
+    cached: false,
+    stale: false,
+  };
 }

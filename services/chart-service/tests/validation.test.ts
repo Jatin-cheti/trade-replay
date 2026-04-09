@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { computeIndicatorsSchema, transformSchema } from "../src/lib/validation";
+import { bundleSchema, computeIndicatorsSchema, transformSchema } from "../src/lib/validation";
 
 const validCandles = [
   { time: 1710000000, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
@@ -29,5 +29,13 @@ const transformBad = transformSchema.safeParse({
   transformType: "unknown",
 });
 assert.equal(transformBad.success, false);
+
+const bundleOk = bundleSchema.safeParse({
+  candles: validCandles,
+  transformType: "renko",
+  params: { boxSize: 0.5 },
+  indicators: [{ id: "sma", params: { period: 2 } }],
+});
+assert.equal(bundleOk.success, true);
 
 console.log("validation.test.ts passed");

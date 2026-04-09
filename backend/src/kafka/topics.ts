@@ -5,6 +5,7 @@ export const KAFKA_TOPICS = {
   SIMULATION_EVENTS: "simulation.events",
   USER_ACTIVITY: "user.activity",
   SYMBOL_LOGO_ENRICHED: "symbol.logo.enriched",
+  CHART_CANDLE_UPDATED: "chart.candle.updated",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
@@ -72,4 +73,15 @@ export interface SymbolLogoEnrichedPayload {
   domain?: string;
   logoUrl: string;
   source: "cdn" | "remote";
+}
+
+export interface ChartCandleUpdatedPayload {
+  symbol: string;
+  timeframe: string;
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }

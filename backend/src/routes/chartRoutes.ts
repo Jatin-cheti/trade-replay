@@ -9,6 +9,7 @@ export function createChartRoutes() {
   router.use(verifyToken);
   router.post("/compute/indicators", controller.computeIndicators);
   router.post("/transform", controller.transform);
+  router.post("/bundle", controller.bundle);
 
   return router;
 }

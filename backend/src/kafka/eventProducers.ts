@@ -7,6 +7,7 @@ import {
   SimulationEventPayload,
   UserActivityPayload,
   SymbolLogoEnrichedPayload,
+  ChartCandleUpdatedPayload,
 } from "../kafka/topics";
 
 // --- Trade Events ---
@@ -41,4 +42,8 @@ export function produceUserActivity(payload: UserActivityPayload): void {
 
 export function produceSymbolLogoEnriched(payload: SymbolLogoEnrichedPayload): void {
   produce(KAFKA_TOPICS.SYMBOL_LOGO_ENRICHED, payload, payload.fullSymbol);
+}
+
+export function produceChartCandleUpdated(payload: ChartCandleUpdatedPayload): void {
+  produce(KAFKA_TOPICS.CHART_CANDLE_UPDATED, payload, `${payload.symbol}:${payload.timeframe}:${payload.time}`);
 }

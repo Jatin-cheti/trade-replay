@@ -1,5 +1,7 @@
 import { CandleData } from "../types/shared";
 import { getFallbackCandles } from "./fallbackData";
+import { produceChartCandleUpdated } from "../kafka/eventProducers";
+import { logger } from "../utils/logger";
 
 export type LiveQuote = {
   symbol: string;
@@ -90,6 +92,22 @@ function tickSymbol(state: LiveSymbolState): void {
   const last = state.candles[state.candles.length - 1];
   const candle = nextCandle(last, state.symbol, now);
   state.candles.push(candle);
+  produceChartCandleUpdated({
+    symbol: state.symbol,
+    timeframe: "1m",
+    time: candle.time,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+  });
+  logger.info("published candle.updated", {
+    symbol: state.symbol,
+    timeframe: "1m",
+    time: candle.time,
+  });
+
   if (state.candles.length > MAX_BUFFER) {
     state.candles = state.candles.slice(-MAX_BUFFER);
   }
