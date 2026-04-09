@@ -101,10 +101,43 @@ export function createApp() {
 
   const portfolioController = createPortfolioController();
 
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
+    const local = getChartServiceHealthStatus();
+    let remote: {
+      reachable: boolean;
+      ok?: boolean;
+      statusCode?: number;
+      error?: string;
+    } = { reachable: false };
+
+    if (local.enabled) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(300, env.CHART_SERVICE_TIMEOUT_MS));
+
+      try {
+        const target = `${env.CHART_SERVICE_URL.replace(/\/$/, "")}/health`;
+        const response = await fetch(target, { method: "GET", signal: controller.signal });
+        remote = {
+          reachable: response.ok,
+          ok: response.ok,
+          statusCode: response.status,
+        };
+      } catch (error) {
+        remote = {
+          reachable: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     res.json({
       ok: true,
-      chartService: getChartServiceHealthStatus(),
+      chartService: {
+        local,
+        remote,
+      },
     });
   });
 

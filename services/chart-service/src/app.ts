@@ -85,9 +85,18 @@ export function createApp() {
   });
 
   app.get("/metrics", (_req, res) => {
+    const streaming = getStreamingHealth();
     res.json({
       service: "chart-service",
       counters: getMetricsSnapshot(),
+      streaming: {
+        processedCount: streaming.processedCount,
+        failedCount: streaming.failedCount,
+        dlqCount: streaming.dlqCount,
+        lastMessageTime: streaming.lastMessageTime,
+        lastProcessedAt: streaming.lastProcessedAt,
+        lastLagMs: streaming.lastLagMs,
+      },
     });
   });
 

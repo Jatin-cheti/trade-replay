@@ -30,6 +30,9 @@ export const env = {
   KAFKA_ENABLED: read("KAFKA_ENABLED", "false") === "true",
   KAFKA_BROKERS: read("KAFKA_BROKERS", "127.0.0.1:9092"),
   CHART_CANDLE_UPDATE_TOPIC: read("CHART_CANDLE_UPDATE_TOPIC", "chart.candle.updated"),
+  CHART_KAFKA_DLQ_TOPIC: read("CHART_KAFKA_DLQ_TOPIC", "chart.candle.updated.dlq"),
+  CHART_KAFKA_MAX_RETRIES: Math.max(0, Number(read("CHART_KAFKA_MAX_RETRIES", "5"))),
+  CHART_KAFKA_RETRY_BASE_MS: Math.max(10, Number(read("CHART_KAFKA_RETRY_BASE_MS", "200"))),
   CHART_KAFKA_CLIENT_ID: read("CHART_KAFKA_CLIENT_ID", "chart-service"),
   CHART_KAFKA_GROUP_ID: read("CHART_KAFKA_GROUP_ID", "chart-service-consumers"),
 };
