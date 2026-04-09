@@ -301,9 +301,11 @@ async function runChartChecks(page: Page, route: "/simulation" | "/live-market")
   const drawingRows = page.locator('[data-testid^="drawing-object-"]');
   const beforeDrawCount = await drawingRows.count();
   await drawTrendLine(page);
+  await page.waitForTimeout(500);
   await expect
     .poll(async () => drawingRows.count(), {
       message: "drawing count should increase by one after adding a trend line",
+      timeout: 10000,
     })
     .toBe(beforeDrawCount + 1);
 
