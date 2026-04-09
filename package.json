@@ -3,8 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "app": "concurrently -n backend,worker,logo-service,kafka,frontend -c green,yellow,magenta,blue,cyan \"npm --prefix backend run dev\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix frontend run dev\"",
-    "install:all": "npm --prefix backend install && npm --prefix frontend install && npm --prefix services/logo-service install",
+    "app": "concurrently -n backend,worker,logo-service,chart-service,kafka,frontend -c green,yellow,magenta,red,blue,cyan \"npm --prefix backend run dev\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix services/chart-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix frontend run dev\"",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install && npm --prefix services/logo-service install && npm --prefix services/chart-service install",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "typecheck": "npm --prefix backend run build && npm --prefix frontend run typecheck",
     "bench:charts": "npm --prefix packages/tradereplay-charts run bench",

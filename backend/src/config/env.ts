@@ -71,5 +71,8 @@ export const env = {
   LOGO_ENRICHMENT_ENABLED: readProfileVar("LOGO_ENRICHMENT_ENABLED", "true") === "true",
   LOGO_ENRICHMENT_INTERVAL_MS: Number(readProfileVar("LOGO_ENRICHMENT_INTERVAL_MS", String(6 * 60 * 60 * 1000))),
   LOGO_FALLBACK_TARGET_RATIO: Number(readProfileVar("LOGO_FALLBACK_TARGET_RATIO", "0.05")),
+  CHART_SERVICE_ENABLED: readProfileVar("CHART_SERVICE_ENABLED", "false") === "true",
+  CHART_SERVICE_URL: readProfileVar("CHART_SERVICE_URL", "http://127.0.0.1:4010"),
+  CHART_SERVICE_TIMEOUT_MS: Number(readProfileVar("CHART_SERVICE_TIMEOUT_MS", "4000")),
   USD_TO_INR: Number(readProfileVar("USD_TO_INR", "83.5")),
 };

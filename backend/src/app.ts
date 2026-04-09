@@ -18,6 +18,7 @@ import { createLiveMarketRoutes } from "./routes/liveMarketRoutes";
 import { createPortfolioRoutes } from "./routes/portfolioRoutes";
 import { createTradeRoutes } from "./routes/tradeRoutes";
 import { createSymbolRoutes } from "./routes/symbolRoutes";
+import { createChartRoutes } from "./routes/chartRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
 import { SimulationEngine } from "./services/simulationEngine";
@@ -112,6 +113,7 @@ export function createApp() {
   app.use("/api/portfolio", createPortfolioRoutes());
   app.use("/api/trade", createTradeRoutes(engine));
   app.use("/api/symbols", createSymbolRoutes());
+  app.use("/api/chart", createChartRoutes());
   app.use(notFoundHandler);
   app.use(errorHandler);
 

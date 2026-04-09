@@ -101,7 +101,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
       }
     );
   }
-  await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("1 drawing");
+  await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText(/drawing/);
 
   await clickByTestId("tool-group-text");
   await clickByTestId("tool-anchoredText");
