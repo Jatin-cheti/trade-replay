@@ -16,9 +16,10 @@ ssh "root@${DROPLET_IP}" << REMOTE
   set -euo pipefail
   cd ${REMOTE_DIR}
   git pull origin main
-  cd backend && npm ci --omit=dev
-  cd ..
-  pm2 restart ecosystem.config.cjs
+  cd backend && npm ci
+  cd ../services/logo-service && npm ci
+  cd ../..
+  pm2 startOrReload ecosystem.config.cjs
   pm2 save
   echo "=== Deploy complete ==="
 REMOTE
