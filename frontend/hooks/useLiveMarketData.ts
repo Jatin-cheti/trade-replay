@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CandleData } from "@/data/stockData";
-import { fetchLiveCandles, fetchLiveQuotes, type LiveQuote } from "@/services/live/liveMarketApi";
+import { fetchLiveQuotes, type LiveQuote } from "@/services/live/liveMarketApi";
+import { fetchChartBundle } from "@/services/api/chartBundle";
 
 type LiveMode = "symbol" | "portfolio";
 
@@ -155,11 +156,17 @@ export function useLiveMarketData(input: {
 
       try {
         const normalizedSymbol = normalizeSymbol(symbol);
-        const symbolPayload = await fetchLiveCandles({ symbol: normalizedSymbol, limit: 260 });
+        const symbolPayload = await fetchChartBundle({
+          symbol: normalizedSymbol,
+          timeframe: "1m",
+          limit: 260,
+          transformType: "renko",
+          params: { boxSize: 0.5 },
+          indicators: [{ id: "sma", params: { period: 20 } }],
+        });
 
         let partial: Partial<LiveMarketState> = {
           symbolCandles: symbolPayload.candles,
-          symbolQuote: symbolPayload.quote,
           isLoading: false,
           error: null,
         };
@@ -175,6 +182,7 @@ export function useLiveMarketData(input: {
           partial = {
             ...partial,
             quotesBySymbol: watchlistQuotesPayload.quotes,
+            symbolQuote: watchlistQuotesPayload.quotes[normalizedSymbol] ?? null,
           };
         }
 
@@ -185,7 +193,14 @@ export function useLiveMarketData(input: {
           if (missing.length > 0) {
             const candleLoads = await Promise.all(
               missing.map(async (item) => {
-                const response = await fetchLiveCandles({ symbol: item, limit: 220 });
+                const response = await fetchChartBundle({
+                  symbol: item,
+                  timeframe: "1m",
+                  limit: 220,
+                  transformType: "renko",
+                  params: { boxSize: 0.5 },
+                  indicators: [{ id: "sma", params: { period: 20 } }],
+                });
                 return { symbol: item, candles: response.candles };
               }),
             );

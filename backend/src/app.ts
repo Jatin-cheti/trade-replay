@@ -23,6 +23,7 @@ import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
+import { getChartServiceHealthStatus } from "./services/chartCompute.service";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
 
@@ -101,7 +102,10 @@ export function createApp() {
   const portfolioController = createPortfolioController();
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      chartService: getChartServiceHealthStatus(),
+    });
   });
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
