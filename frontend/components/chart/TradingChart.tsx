@@ -161,7 +161,11 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       if (!overlay || !series) return;
       const ctx = overlay.getContext('2d');
       if (!ctx) return;
-      ctx.clearRect(0, 0, overlay.clientWidth, overlay.clientHeight);
+      const cssWidth = overlay.clientWidth || 1;
+      const cssHeight = overlay.clientHeight || 1;
+      const dpr = overlay.width > 0 ? overlay.width / cssWidth : 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
 
       const toXY = (point: DrawPoint) => {
         const x = chartRef.current?.timeScale().timeToCoordinate(point.time);
@@ -238,7 +242,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             const p1 = points[points.length - 2];
             const p2 = points[points.length - 1];
             const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
-            const w = overlay.clientWidth;
+            const w = cssWidth;
             ctx.moveTo(p2.x, p2.y);
             ctx.lineTo(w, p2.y + m * (w - p2.x));
           }
@@ -263,6 +267,24 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   useEffect(() => {
     renderOverlay();
   }, [renderOverlay, toolState.drawings, chartType, selectedDrawingId]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const requestOverlayRender = () => renderOverlay();
+    container.addEventListener('wheel', requestOverlayRender, { passive: true });
+    container.addEventListener('pointermove', requestOverlayRender, { passive: true });
+    container.addEventListener('pointerup', requestOverlayRender);
+    container.addEventListener('pointerleave', requestOverlayRender);
+
+    return () => {
+      container.removeEventListener('wheel', requestOverlayRender);
+      container.removeEventListener('pointermove', requestOverlayRender);
+      container.removeEventListener('pointerup', requestOverlayRender);
+      container.removeEventListener('pointerleave', requestOverlayRender);
+    };
+  }, [chartContainerRef, renderOverlay]);
 
   useEffect(() => {
     resetForSymbol();
@@ -445,6 +467,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (overlayRef.current?.hasPointerCapture(event.pointerId)) overlayRef.current.releasePointerCapture(event.pointerId);
     if (dragAnchor) {
       setDragAnchor(null);
+      renderOverlay();
       return;
     }
 
