@@ -1,4 +1,5 @@
 import { expect, test } from "./playwright-fixture";
+import { installSymbolSearchMock } from "./helpers/mockSymbolSearch";
 
 test("live market loads and supports live symbol selection", async ({ page }) => {
   const uid = Date.now();
@@ -23,6 +24,7 @@ test("live market loads and supports live symbol selection", async ({ page }) =>
       });
 
   expect(authResponse.ok()).toBeTruthy();
+  await installSymbolSearchMock(page);
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
@@ -40,6 +42,11 @@ test("live market loads and supports live symbol selection", async ({ page }) =>
   await page.getByTestId("live-market-symbol-trigger").click();
   await expect(page.getByTestId("symbol-search-modal")).toBeVisible();
   await page.getByTestId("symbol-category-stocks").click();
+  await page.getByTestId("symbol-search-input").fill("AAPL");
+
+  await expect
+    .poll(async () => page.locator('[data-testid="symbol-result-row"]').count())
+    .toBeGreaterThan(0);
 
   const aaplRow = page.locator('[data-testid="symbol-result-row"][data-symbol="AAPL"]').first();
   await expect(aaplRow).toBeVisible();
