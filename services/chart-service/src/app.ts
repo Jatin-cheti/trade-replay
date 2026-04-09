@@ -17,6 +17,7 @@ import { getMetricsSnapshot, incrementCounter } from "./services/metrics";
 import { logInfo } from "./services/logger";
 import { isRedisReady } from "./config/redis";
 import { getStreamingHealth } from "./services/streaming";
+import { env } from "./config/env";
 
 export function createApp() {
   const app = express();
@@ -52,6 +53,35 @@ export function createApp() {
       redisReady: isRedisReady(),
       streaming: getStreamingHealth(),
     });
+  });
+
+  app.use((req, res, next) => {
+    if (!env.CHART_SERVICE_AUTH_ENABLED) {
+      next();
+      return;
+    }
+
+    if (req.path === "/health") {
+      next();
+      return;
+    }
+
+    const authHeader = req.headers.authorization;
+    const internalHeader = req.headers["x-internal-token"];
+    const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const token = bearer || (typeof internalHeader === "string" ? internalHeader.trim() : "");
+
+    if (!token) {
+      res.status(401).json({ code: "MISSING_INTERNAL_TOKEN", message: "Missing internal service token" });
+      return;
+    }
+
+    if (!env.CHART_SERVICE_AUTH_TOKEN || token !== env.CHART_SERVICE_AUTH_TOKEN) {
+      res.status(403).json({ code: "INVALID_INTERNAL_TOKEN", message: "Invalid internal service token" });
+      return;
+    }
+
+    next();
   });
 
   app.get("/metrics", (_req, res) => {

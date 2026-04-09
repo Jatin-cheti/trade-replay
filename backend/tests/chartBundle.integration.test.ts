@@ -50,10 +50,14 @@ async function run(): Promise<void> {
   const original = {
     enabled: env.CHART_SERVICE_ENABLED,
     retries: env.CHART_SERVICE_RETRY_COUNT,
+    authEnabled: env.CHART_SERVICE_AUTH_ENABLED,
+    authToken: env.CHART_SERVICE_AUTH_TOKEN,
   };
 
   env.CHART_SERVICE_ENABLED = true;
   env.CHART_SERVICE_RETRY_COUNT = 0;
+  env.CHART_SERVICE_AUTH_ENABLED = true;
+  env.CHART_SERVICE_AUTH_TOKEN = "internal-token";
 
   const app = express();
   app.use(express.json());
@@ -72,7 +76,10 @@ async function run(): Promise<void> {
   const token = signJwt({ userId: "u-1", email: "user@example.com" });
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input, init) => {
+    const auth = (init?.headers as Record<string, string> | undefined)?.authorization;
+    assert.equal(auth, `Bearer ${env.CHART_SERVICE_AUTH_TOKEN}`);
+
     return new Response(JSON.stringify({
       candlesCount: 2,
       candles: [
@@ -97,7 +104,10 @@ async function run(): Promise<void> {
   assert.equal(success.status, 200);
   assert.equal((success.json as { delegated?: boolean }).delegated, true);
 
+  env.CHART_SERVICE_AUTH_TOKEN = "";
+  let wasFetchCalled = false;
   globalThis.fetch = (async () => {
+    wasFetchCalled = true;
     throw new Error("TIMEOUT");
   }) as typeof globalThis.fetch;
 
@@ -108,12 +118,14 @@ async function run(): Promise<void> {
 
   assert.equal(fallback.status, 200);
   assert.equal((fallback.json as { delegated?: boolean }).delegated, false);
-  assert.equal((fallback.json as { fallbackReason?: string }).fallbackReason, "timeout");
+  assert.equal(wasFetchCalled, false);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
 
   env.CHART_SERVICE_ENABLED = original.enabled;
   env.CHART_SERVICE_RETRY_COUNT = original.retries;
+  env.CHART_SERVICE_AUTH_ENABLED = original.authEnabled;
+  env.CHART_SERVICE_AUTH_TOKEN = original.authToken;
   globalThis.fetch = originalFetch;
 
   console.log("chartBundle.integration.test.ts passed");

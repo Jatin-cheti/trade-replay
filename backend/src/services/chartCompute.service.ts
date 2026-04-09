@@ -78,6 +78,8 @@ const bundleMetrics: ChartBundleMetrics = {
   latencyTotalMs: 0,
 };
 
+let missingAuthTokenLogged = false;
+
 type ChartServiceError = Error & {
   reason: FallbackReason;
   retryable: boolean;
@@ -218,10 +220,16 @@ async function postChartService<T>(path: string, body: unknown): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(1000, env.CHART_SERVICE_TIMEOUT_MS));
 
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (env.CHART_SERVICE_AUTH_ENABLED) {
+    headers.authorization = `Bearer ${env.CHART_SERVICE_AUTH_TOKEN}`;
+    headers["x-internal-token"] = env.CHART_SERVICE_AUTH_TOKEN;
+  }
+
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -234,6 +242,25 @@ async function postChartService<T>(path: string, body: unknown): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function canUseChartServiceAuth(): boolean {
+  if (!env.CHART_SERVICE_AUTH_ENABLED) {
+    return true;
+  }
+
+  if (env.CHART_SERVICE_AUTH_TOKEN.trim()) {
+    return true;
+  }
+
+  if (!missingAuthTokenLogged) {
+    missingAuthTokenLogged = true;
+    logger.error("chart_service_auth_token_missing", {
+      message: "CHART_SERVICE_AUTH_ENABLED is true but CHART_SERVICE_AUTH_TOKEN is missing; using fallback mode",
+    });
+  }
+
+  return false;
 }
 
 async function delegateWithResilience<T>(path: string, body: unknown): Promise<T> {
@@ -325,6 +352,7 @@ export function resetChartServiceStateForTests(): void {
   bundleMetrics.fallbackUsed = 0;
   bundleMetrics.latencyCount = 0;
   bundleMetrics.latencyTotalMs = 0;
+  missingAuthTokenLogged = false;
 }
 
 export function getChartServiceHealthStatus(): ChartServiceHealth {
@@ -339,7 +367,7 @@ export function getChartServiceHealthStatus(): ChartServiceHealth {
 }
 
 export async function computeIndicators(input: IndicatorComputeInput) {
-  if (env.CHART_SERVICE_ENABLED) {
+  if (env.CHART_SERVICE_ENABLED && canUseChartServiceAuth()) {
     try {
       return await delegateWithResilience("/compute/indicators", input);
     } catch (error) {
@@ -354,7 +382,7 @@ export async function computeIndicators(input: IndicatorComputeInput) {
 }
 
 export async function transformCandles(input: TransformInput) {
-  if (env.CHART_SERVICE_ENABLED) {
+  if (env.CHART_SERVICE_ENABLED && canUseChartServiceAuth()) {
     try {
       return await delegateWithResilience("/transform", input);
     } catch (error) {
@@ -371,7 +399,7 @@ export async function transformCandles(input: TransformInput) {
 export async function computeBundle(input: BundleInput) {
   const startedAt = nowMs();
 
-  if (env.CHART_SERVICE_ENABLED) {
+  if (env.CHART_SERVICE_ENABLED && canUseChartServiceAuth()) {
     try {
       const delegated = await delegateWithResilience<{
         candlesCount: number;

@@ -73,6 +73,8 @@ export const env = {
   LOGO_FALLBACK_TARGET_RATIO: Number(readProfileVar("LOGO_FALLBACK_TARGET_RATIO", "0.05")),
   CHART_SERVICE_ENABLED: readProfileVar("CHART_SERVICE_ENABLED", "false") === "true",
   CHART_SERVICE_URL: readProfileVar("CHART_SERVICE_URL", "http://127.0.0.1:4010"),
+  CHART_SERVICE_AUTH_ENABLED: readProfileVar("CHART_SERVICE_AUTH_ENABLED", "false") === "true",
+  CHART_SERVICE_AUTH_TOKEN: readProfileVar("CHART_SERVICE_AUTH_TOKEN", ""),
   CHART_SERVICE_TIMEOUT_MS: Number(readProfileVar("CHART_SERVICE_TIMEOUT_MS", "1500")),
   CHART_SERVICE_RETRY_COUNT: Math.max(0, Number(readProfileVar("CHART_SERVICE_RETRY_COUNT", "1"))),
   CHART_SERVICE_RETRY_BASE_MS: Math.max(10, Number(readProfileVar("CHART_SERVICE_RETRY_BASE_MS", "150"))),
