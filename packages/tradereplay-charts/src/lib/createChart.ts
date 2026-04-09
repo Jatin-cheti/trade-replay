@@ -185,6 +185,7 @@ const DEFAULT_BAR_WIDTH = 8;
 const MIN_BAR_WIDTH = 2;
 const MAX_BAR_WIDTH = 60;
 const PRICE_PADDING = 0.1;
+const MAX_RIGHT_OFFSET_BARS = 24;
 /** Id of the default (main) pane that always exists. */
 const MAIN_PANE_ID: PaneId = 'main';
 /** Minimum pane height weight to prevent zero-height panes. */
@@ -325,6 +326,13 @@ export function createChart(
   function ch(): number { return height - TIME_AXIS_H; }
   function vbars(): number { return cw() / barWidth; }
 
+  function clampRightmostIndex(next: number): number {
+    if (!timeIndex.length) return 0;
+    const max = (timeIndex.length - 1) + MAX_RIGHT_OFFSET_BARS;
+    const min = Math.min(timeIndex.length - 1, Math.max(0, vbars() - 0.5));
+    return Math.max(min, Math.min(max, next));
+  }
+
   // bar index → screen x (center of bar)
   function barToX(idx: number): number {
     return cw() - (rightmostIndex - idx + 0.5) * barWidth;
@@ -372,10 +380,10 @@ export function createChart(
     const newLastTime = timeIndex.at(newLen - 1)!;
     if (oldLastTime === null || newLastTime !== oldLastTime) {
       // First load or symbol switch: jump to the live edge.
-      rightmostIndex = newLen - 1;
+      rightmostIndex = clampRightmostIndex(newLen - 1);
     } else {
       // Clamp to valid range (handles shrinking data sets).
-      rightmostIndex = Math.max(0, Math.min(rightmostIndex, newLen - 1));
+      rightmostIndex = clampRightmostIndex(rightmostIndex);
     }
 
     // Recompute all indicator outputs with the updated source data.
@@ -1011,6 +1019,10 @@ export function createChart(
   }
 
   function render(): void {
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
     const rs = computeRenderState();
 
     drawBackground();
@@ -1044,15 +1056,38 @@ export function createChart(
   // ── interaction ──────────────────────────────────────────────────────────
 
   let dragStart: { clientX: number; rightAtStart: number } | null = null;
+  let wheelAccumDelta = 0;
+  let wheelAnchorX: number | null = null;
+  let wheelRafId: number | null = null;
 
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
-    const factor = e.deltaY > 0 ? 0.9 : 1 / 0.9;
-    const mouseBar = xToBar(e.offsetX);
-    barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, barWidth * factor));
-    // Keep the bar under the mouse cursor fixed
-    rightmostIndex = mouseBar + 0.5 - (cw() - e.offsetX) / barWidth;
-    scheduleRender();
+
+    const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
+    wheelAccumDelta += e.deltaY * deltaScale;
+    wheelAnchorX = e.offsetX;
+
+    if (wheelRafId != null) return;
+    wheelRafId = requestAnimationFrame(() => {
+      wheelRafId = null;
+
+      const delta = wheelAccumDelta;
+      const anchorX = wheelAnchorX ?? cw() / 2;
+      wheelAccumDelta = 0;
+      wheelAnchorX = null;
+
+      if (Math.abs(delta) < 0.5) return;
+
+      const zoomFactor = Math.exp(-delta * 0.0015);
+      const nextBarWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, barWidth * zoomFactor));
+      if (Math.abs(nextBarWidth - barWidth) < 0.001) return;
+
+      const anchorBar = xToBar(anchorX);
+      barWidth = nextBarWidth;
+      // Keep the logical bar under the cursor anchored while zooming.
+      rightmostIndex = clampRightmostIndex(anchorBar + 0.5 - (cw() - anchorX) / barWidth);
+      scheduleRender();
+    });
   }
 
   function onPointerDown(e: PointerEvent): void {
@@ -1065,7 +1100,7 @@ export function createChart(
     crosshairY = e.offsetY;
     if (dragStart != null && (mode === 'pan' || mode === 'scroll' || mode === 'idle')) {
       const dx = e.clientX - dragStart.clientX;
-      rightmostIndex = dragStart.rightAtStart - dx / barWidth;
+      rightmostIndex = clampRightmostIndex(dragStart.rightAtStart - dx / barWidth);
     }
     scheduleRender();
   }
@@ -1180,21 +1215,21 @@ export function createChart(
     setVisibleLogicalRange(range: LogicalRange): void {
       const bars = Math.abs(range.to - range.from);
       if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / bars));
-      rightmostIndex = range.to;
+      rightmostIndex = clampRightmostIndex(range.to);
       scheduleRender();
     },
     applyOptions(opts: { rightOffset?: number; [key: string]: unknown }): void {
       if (typeof opts.rightOffset === 'number') {
-        rightmostIndex = (timeIndex.length - 1) - opts.rightOffset;
+        rightmostIndex = clampRightmostIndex((timeIndex.length - 1) - opts.rightOffset);
         scheduleRender();
       }
     },
     scrollToPosition(pos: number, _animate: boolean): void {
-      rightmostIndex = (timeIndex.length - 1) - pos;
+      rightmostIndex = clampRightmostIndex((timeIndex.length - 1) - pos);
       scheduleRender();
     },
     scrollToRealTime(): void {
-      rightmostIndex = timeIndex.length - 1;
+      rightmostIndex = clampRightmostIndex(timeIndex.length - 1);
       scheduleRender();
     },
     coordinateToTime(x: number): UTCTimestamp | null {
@@ -1214,7 +1249,7 @@ export function createChart(
       const toIdx = timeIndex.closestIndex(range.to);
       const bars = toIdx - fromIdx + 1;
       if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / bars));
-      rightmostIndex = toIdx;
+      rightmostIndex = clampRightmostIndex(toIdx);
       scheduleRender();
     },
   };
@@ -1393,6 +1428,7 @@ export function createChart(
     },
     remove(): void {
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+      if (wheelRafId != null) { cancelAnimationFrame(wheelRafId); wheelRafId = null; }
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
