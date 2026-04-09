@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  Camera,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -59,6 +60,7 @@ const iconMap = {
   TrendingDown: TrendingDown,
   Ruler: Ruler,
   ZoomIn: ZoomIn,
+  Camera: Camera,
 } as const;
 
 type ChartToolbarProps = {
@@ -75,6 +77,7 @@ type ChartToolbarProps = {
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
+  onExportPng: () => void;
   optionsOpen: boolean;
   setOptionsOpen: (value: boolean) => void;
   treeOpen: boolean;
@@ -100,6 +103,7 @@ export default function ChartToolbar({
   onUndo,
   onRedo,
   onClear,
+  onExportPng,
   optionsOpen,
   setOptionsOpen,
   treeOpen,
@@ -165,6 +169,9 @@ export default function ChartToolbar({
           <span className="inline-flex items-center gap-1.5"><Redo2 size={14} /> Redo</span>
         </button>
         <button type="button" data-testid="chart-clear" onClick={onClear} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-destructive/20 hover:text-destructive">Clear</button>
+        <button type="button" data-testid="chart-export-png" onClick={onExportPng} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
+          <span className="inline-flex items-center gap-1.5"><Camera size={14} /> Export PNG</span>
+        </button>
         <button type="button" onClick={() => setOptionsOpen(!optionsOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${optionsOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Options</button>
           <button type="button" onClick={() => setTreeOpen(!treeOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${treeOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Objects</button>
           <button

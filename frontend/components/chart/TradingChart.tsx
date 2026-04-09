@@ -43,6 +43,15 @@ function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y:
   ctx.fillText(text, x, y);
 }
 
+function formatExportTimestamp(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}${m}${d}-${hh}${mm}`;
+}
+
 export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
   const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>('candlestick');
@@ -620,6 +629,61 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     : 0;
   const legendChangeClass = legendChangePct >= 0 ? 'text-emerald-300' : 'text-rose-300';
 
+  const onExportPng = useCallback(() => {
+    const chartContainer = chartContainerRef.current;
+    if (!chartContainer) return;
+
+    const canvases = Array.from(chartContainer.querySelectorAll('canvas'));
+    const overlay = overlayRef.current;
+    if (overlay && !canvases.includes(overlay)) {
+      canvases.push(overlay);
+    }
+    if (!canvases.length) return;
+
+    const width = Math.max(1, chartContainer.clientWidth);
+    const height = Math.max(1, chartContainer.clientHeight);
+    const dpr = canvases.reduce((max, canvas) => {
+      const local = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+      return Math.max(max, Number.isFinite(local) && local > 0 ? local : 1);
+    }, 1);
+
+    const output = document.createElement('canvas');
+    output.width = Math.max(1, Math.round(width * dpr));
+    output.height = Math.max(1, Math.round(height * dpr));
+    const ctx = output.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    for (const canvas of canvases) {
+      ctx.drawImage(canvas, 0, 0, width, height);
+    }
+
+    const safeSymbol = symbol.replace(/[^A-Za-z0-9_-]+/g, '_');
+    const timeframe = '1m';
+    const filename = `${safeSymbol}-${timeframe}-${formatExportTimestamp(new Date())}.png`;
+
+    const triggerDownload = (url: string) => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+
+    output.toBlob((blob) => {
+      if (!blob) {
+        triggerDownload(output.toDataURL('image/png'));
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }, [chartContainerRef, overlayRef, symbol]);
+
   return (
     <div className="relative flex h-full w-full min-h-[340px] flex-col">
       <div
@@ -637,7 +701,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
         </div>
 
-        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
+        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
 
         <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
 

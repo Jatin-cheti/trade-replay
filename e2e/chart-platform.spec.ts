@@ -1,4 +1,5 @@
 import { expect, test } from "./playwright-fixture";
+import fs from "node:fs/promises";
 
 test("chart platform types, tools, and object actions", async ({ page }) => {
   const uid = Date.now();
@@ -118,4 +119,14 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   await clickByTestId("chart-clear");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("0 drawings");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator('[data-testid="chart-export-png"]:visible').first().click();
+  const download = await downloadPromise;
+  const path = await download.path();
+  expect(path).toBeTruthy();
+  if (path) {
+    const stat = await fs.stat(path);
+    expect(stat.size).toBeGreaterThan(0);
+  }
 });
