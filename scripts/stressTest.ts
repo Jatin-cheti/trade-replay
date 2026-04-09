@@ -3,6 +3,7 @@ type StressConfig = {
   concurrentUsers: number;
   searchRounds: number;
   queueSpikeJobs: number;
+  maxInFlight: number;
 };
 
 type LatencySummary = {
@@ -13,6 +14,7 @@ type LatencySummary = {
   p95: number;
   p99: number;
   avg: number;
+  statusCodes: Record<string, number>;
 };
 
 function percentile(values: number[], p: number): number {
@@ -22,7 +24,7 @@ function percentile(values: number[], p: number): number {
   return sorted[idx] ?? 0;
 }
 
-function summarize(latencies: number[], failed: number): LatencySummary {
+function summarize(latencies: number[], failed: number, statusCodes: Record<string, number>): LatencySummary {
   const total = latencies.length + failed;
   const success = latencies.length;
   const avg = success ? latencies.reduce((sum, ms) => sum + ms, 0) / success : 0;
@@ -35,6 +37,7 @@ function summarize(latencies: number[], failed: number): LatencySummary {
     p95: Number(percentile(latencies, 95).toFixed(2)),
     p99: Number(percentile(latencies, 99).toFixed(2)),
     avg: Number(avg.toFixed(2)),
+    statusCodes,
   };
 }
 
@@ -62,23 +65,39 @@ async function registerTempUser(apiBase: string): Promise<string> {
   return data.token;
 }
 
-async function timedRequest(url: string, init: RequestInit): Promise<{ ok: boolean; latencyMs: number }> {
+async function timedRequest(url: string, init: RequestInit): Promise<{ ok: boolean; latencyMs: number; statusCode: number }> {
   const startedAt = Date.now();
   const response = await fetch(url, init);
   return {
     ok: response.ok,
     latencyMs: Date.now() - startedAt,
+    statusCode: response.status,
   };
+}
+
+async function runWithPool(total: number, maxInFlight: number, task: (index: number) => Promise<void>): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.max(1, maxInFlight) }, async () => {
+    while (cursor < total) {
+      const index = cursor;
+      cursor += 1;
+      // eslint-disable-next-line no-await-in-loop
+      await task(index);
+    }
+  });
+
+  await Promise.all(workers);
 }
 
 async function runConcurrentSearchLoad(config: StressConfig, token: string): Promise<LatencySummary> {
   const latencies: number[] = [];
   let failed = 0;
+  const statusCodes: Record<string, number> = {};
   const totalRequests = config.concurrentUsers * config.searchRounds;
 
   const querySeeds = ["A", "N", "T", "US", "IN", "BTC", "EUR", "BANK", "TECH", "ENERGY"];
 
-  const jobs = Array.from({ length: totalRequests }, async (_, index) => {
+  await runWithPool(totalRequests, config.maxInFlight, async (index) => {
     const q = querySeeds[index % querySeeds.length];
     const url = `${config.apiBase}/simulation/assets?q=${encodeURIComponent(q)}&limit=50`;
 
@@ -90,6 +109,8 @@ async function runConcurrentSearchLoad(config: StressConfig, token: string): Pro
         },
       });
 
+      statusCodes[String(result.statusCode)] = (statusCodes[String(result.statusCode)] ?? 0) + 1;
+
       if (result.ok) {
         latencies.push(result.latencyMs);
       } else {
@@ -100,15 +121,15 @@ async function runConcurrentSearchLoad(config: StressConfig, token: string): Pro
     }
   });
 
-  await Promise.all(jobs);
-  return summarize(latencies, failed);
+  return summarize(latencies, failed, statusCodes);
 }
 
 async function runQueueSpike(config: StressConfig, token: string): Promise<LatencySummary> {
   const latencies: number[] = [];
   let failed = 0;
+  const statusCodes: Record<string, number> = {};
 
-  const jobs = Array.from({ length: config.queueSpikeJobs }, async (_, index) => {
+  await runWithPool(config.queueSpikeJobs, Math.max(20, Math.floor(config.maxInFlight / 2)), async (index) => {
     const symbol = `SPIKE${index}`;
     const payload = {
       symbol,
@@ -130,6 +151,8 @@ async function runQueueSpike(config: StressConfig, token: string): Promise<Laten
         body: JSON.stringify(payload),
       });
 
+      statusCodes[String(result.statusCode)] = (statusCodes[String(result.statusCode)] ?? 0) + 1;
+
       if (result.ok) {
         latencies.push(result.latencyMs);
       } else {
@@ -140,8 +163,7 @@ async function runQueueSpike(config: StressConfig, token: string): Promise<Laten
     }
   });
 
-  await Promise.all(jobs);
-  return summarize(latencies, failed);
+  return summarize(latencies, failed, statusCodes);
 }
 
 async function fetchMetrics(apiBase: string, token: string): Promise<unknown> {
@@ -165,6 +187,7 @@ async function main(): Promise<void> {
     concurrentUsers: Number(process.env.STRESS_CONCURRENT_USERS ?? "1000"),
     searchRounds: Number(process.env.STRESS_SEARCH_ROUNDS ?? "1"),
     queueSpikeJobs: Number(process.env.STRESS_QUEUE_SPIKE_JOBS ?? "500"),
+    maxInFlight: Number(process.env.STRESS_MAX_IN_FLIGHT ?? "200"),
   };
 
   const token = await registerTempUser(config.apiBase);
