@@ -7,9 +7,25 @@ function read(key: string, fallback: string): string {
   return process.env[key] ?? process.env[`LOCAL_${key}`] ?? fallback;
 }
 
+function normalizeRedis(url: string): string {
+  if (/redis:\/\/redis[:/]/i.test(url)) {
+    return "redis://127.0.0.1:6379";
+  }
+  return url;
+}
+
+function normalizeKafkaBrokers(brokers: string): string {
+  return brokers
+    .split(",")
+    .map((broker) => broker.trim())
+    .filter(Boolean)
+    .map((broker) => /^kafka:\d+$/i.test(broker) ? "localhost:19092" : broker)
+    .join(",") || "localhost:19092";
+}
+
 export const env = {
   PORT: Number(read("CHART_SERVICE_PORT", "4010")),
-  REDIS_URL: read("REDIS_URL", "redis://127.0.0.1:6379"),
+  REDIS_URL: normalizeRedis(read("REDIS_URL", "redis://127.0.0.1:6379")),
   MAIN_BACKEND_URL: read("MAIN_BACKEND_URL", "http://127.0.0.1:4000"),
   CHART_SERVICE_AUTH_ENABLED: read("CHART_SERVICE_AUTH_ENABLED", "false") === "true",
   CHART_SERVICE_AUTH_TOKEN: read("CHART_SERVICE_AUTH_TOKEN", ""),
@@ -20,7 +36,7 @@ export const env = {
   CHART_CANDLE_SOURCE_PATH: read("CHART_CANDLE_SOURCE_PATH", "/api/live/candles"),
   CHART_SERVICE_TIMEOUT_MS: Number(read("CHART_SERVICE_TIMEOUT_MS", "5000")),
   KAFKA_ENABLED: read("KAFKA_ENABLED", "false") === "true",
-  KAFKA_BROKERS: read("KAFKA_BROKERS", "127.0.0.1:9092"),
+  KAFKA_BROKERS: normalizeKafkaBrokers(read("KAFKA_BROKERS", "localhost:19092")),
   CHART_CANDLE_UPDATE_TOPIC: read("CHART_CANDLE_UPDATE_TOPIC", "chart.candle.updated"),
   CHART_KAFKA_DLQ_TOPIC: read("CHART_KAFKA_DLQ_TOPIC", "chart.candle.updated.dlq"),
   CHART_KAFKA_MAX_RETRIES: Math.max(0, Number(read("CHART_KAFKA_MAX_RETRIES", "5"))),

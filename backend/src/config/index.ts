@@ -61,6 +61,11 @@ function normalizeLocalEnv(): void {
   setIfMissing("LOGO_ENRICHMENT_ENABLED", "false");
   setIfMissing("LOGO_ENRICHMENT_INTERVAL_MS", "21600000");
   setIfMissing("LOGO_FALLBACK_TARGET_RATIO", "0.05");
+  setIfMissing("LOGO_SERVICE_ENABLED", "true");
+  setIfMissing("DEV_AUTO_START_INFRA", "true");
+  setIfMissing("E2E_USE_MEMORY_MONGO", "false");
+  setIfMissing("E2E_USE_MOCK_REDIS", "false");
+  setIfMissing("E2E", process.env.PLAYWRIGHT_TEST ? "1" : "0");
   setIfMissing("USD_TO_INR", process.env.LOCAL_USD_TO_INR ?? "83.5");
 }
 
@@ -119,6 +124,11 @@ const EnvSchema = z.object({
   CHART_SERVICE_BREAKER_FAILURE_THRESHOLD: z.string().optional(),
   CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS: z.string().optional(),
   CHART_SERVICE_BREAKER_COOLDOWN_MS: z.string().optional(),
+  LOGO_SERVICE_ENABLED: z.enum(["true", "false"]).optional(),
+  DEV_AUTO_START_INFRA: z.enum(["true", "false"]).optional(),
+  E2E_USE_MEMORY_MONGO: z.enum(["true", "false"]).optional(),
+  E2E_USE_MOCK_REDIS: z.enum(["true", "false"]).optional(),
+  E2E: z.enum(["0", "1"]).optional(),
   USD_TO_INR: z.string().min(1),
 });
 
@@ -258,5 +268,10 @@ export const CONFIG = {
   chartServiceBreakerFailureThreshold: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_THRESHOLD") ? Math.max(1, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_THRESHOLD"))) : 5,
   chartServiceBreakerFailureWindowMs: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS"))) : 30000,
   chartServiceBreakerCooldownMs: optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS"))) : 30000,
+  logoServiceEnabled: optionalEnv("LOGO_SERVICE_ENABLED") !== "false",
+  devAutoStartInfra: optionalEnv("DEV_AUTO_START_INFRA") !== "false",
+  e2eUseMemoryMongo: optionalEnv("E2E_USE_MEMORY_MONGO") === "true",
+  e2eUseMockRedis: optionalEnv("E2E_USE_MOCK_REDIS") === "true",
+  e2e: optionalEnv("E2E") === "1",
   usdToInr: numberEnv("USD_TO_INR"),
 };

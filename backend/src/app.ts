@@ -10,7 +10,7 @@ import { createBullBoard } from "@bull-board/api";
 import { ExpressAdapter } from "@bull-board/express";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { env } from "./config/env";
-import { redisClient, redisPublisher, redisSubscriber } from "./config/redis";
+import { isRedisMockMode, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
 import { verifyJwt } from "./utils/jwt";
 import { logger } from "./utils/logger";
 import authRoutes from "./routes/authRoutes";
@@ -67,7 +67,9 @@ export function createApp() {
     },
   });
 
-  io.adapter(createAdapter(redisPublisher, redisSubscriber));
+  if (!isRedisMockMode()) {
+    io.adapter(createAdapter(redisPublisher, redisSubscriber));
+  }
 
   const engine = new SimulationEngine(io);
 
@@ -110,13 +112,15 @@ export function createApp() {
     });
   }, 5 * 60 * 1000).unref();
 
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath("/admin/queues");
-  createBullBoard({
-    queues: [new BullMQAdapter(getLogoQueue())],
-    serverAdapter,
-  });
-  app.use("/admin/queues", serverAdapter.getRouter());
+  if (env.LOGO_SERVICE_ENABLED) {
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath("/admin/queues");
+    createBullBoard({
+      queues: [new BullMQAdapter(getLogoQueue())],
+      serverAdapter,
+    });
+    app.use("/admin/queues", serverAdapter.getRouter());
+  }
 
   const portfolioController = createPortfolioController();
 
@@ -157,44 +161,53 @@ export function createApp() {
         local,
         remote,
       },
+      logoService: {
+        enabled: env.LOGO_SERVICE_ENABLED,
+        degraded: !env.LOGO_SERVICE_ENABLED,
+      },
     });
   });
 
   app.get("/api/metrics", async (_req, res) => {
-    const queue = getLogoQueue();
-    const [waiting, active, delayed, completed, failed] = await Promise.all([
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getDelayedCount(),
-      queue.getCompletedCount(),
-      queue.getFailedCount(),
-    ]);
+    const queueStats = env.LOGO_SERVICE_ENABLED
+      ? await (async () => {
+        const queue = getLogoQueue();
+        const [waiting, active, delayed, completed, failed] = await Promise.all([
+          queue.getWaitingCount(),
+          queue.getActiveCount(),
+          queue.getDelayedCount(),
+          queue.getCompletedCount(),
+          queue.getFailedCount(),
+        ]);
+        return { waiting, active, delayed, completed, failed };
+      })()
+      : { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 };
 
     const now = Date.now();
     const elapsedMs = Math.max(1, now - lastMetricsSampleAt);
-    const completedDelta = Math.max(0, completed - lastCompletedCount);
+    const completedDelta = Math.max(0, queueStats.completed - lastCompletedCount);
     const processingRatePerMin = Number(((completedDelta * 60000) / elapsedMs).toFixed(2));
-    const settled = completed + failed;
-    const successRate = settled > 0 ? Number(((completed / settled) * 100).toFixed(2)) : 100;
-    const failureRate = settled > 0 ? Number(((failed / settled) * 100).toFixed(2)) : 0;
+    const settled = queueStats.completed + queueStats.failed;
+    const successRate = settled > 0 ? Number(((queueStats.completed / settled) * 100).toFixed(2)) : 100;
+    const failureRate = settled > 0 ? Number(((queueStats.failed / settled) * 100).toFixed(2)) : 0;
 
-    lastCompletedCount = completed;
+    lastCompletedCount = queueStats.completed;
     lastMetricsSampleAt = now;
 
     res.json({
       ...getMetricsSnapshot(),
       queueDepth: {
         logoEnrichment: {
-          waiting,
-          active,
-          delayed,
-          total: waiting + active + delayed,
+          waiting: queueStats.waiting,
+          active: queueStats.active,
+          delayed: queueStats.delayed,
+          total: queueStats.waiting + queueStats.active + queueStats.delayed,
         },
       },
       queueProcessing: {
         logoEnrichment: {
-          completed,
-          failed,
+          completed: queueStats.completed,
+          failed: queueStats.failed,
           processingRatePerMin,
           successRate,
           failureRate,
@@ -204,20 +217,25 @@ export function createApp() {
   });
 
   app.get("/metrics", async (_req, res) => {
-    const queue = getLogoQueue();
-    const [waiting, active, delayed, completed, failed] = await Promise.all([
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getDelayedCount(),
-      queue.getCompletedCount(),
-      queue.getFailedCount(),
-    ]);
+    const queueStats = env.LOGO_SERVICE_ENABLED
+      ? await (async () => {
+        const queue = getLogoQueue();
+        const [waiting, active, delayed, completed, failed] = await Promise.all([
+          queue.getWaitingCount(),
+          queue.getActiveCount(),
+          queue.getDelayedCount(),
+          queue.getCompletedCount(),
+          queue.getFailedCount(),
+        ]);
+        return { waiting, active, delayed, completed, failed };
+      })()
+      : { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 };
 
     const metrics = getMetricsSnapshot();
     const queueLag = Math.round(metrics.queueLatency.logoEnrichment?.avgLatencyMs ?? 0);
-    const settled = completed + failed;
-    const successRate = settled > 0 ? Number(((completed / settled) * 100).toFixed(2)) : 100;
-    const failureRate = settled > 0 ? Number(((failed / settled) * 100).toFixed(2)) : 0;
+    const settled = queueStats.completed + queueStats.failed;
+    const successRate = settled > 0 ? Number(((queueStats.completed / settled) * 100).toFixed(2)) : 100;
+    const failureRate = settled > 0 ? Number(((queueStats.failed / settled) * 100).toFixed(2)) : 0;
 
     let redisMemoryUsage = 0;
     try {
@@ -231,7 +249,7 @@ export function createApp() {
     const lines: string[] = [];
     lines.push("# HELP queue_depth Current queue depth (waiting + active + delayed)");
     lines.push("# TYPE queue_depth gauge");
-    lines.push(`queue_depth{queue=\"logo_enrichment\"} ${waiting + active + delayed}`);
+    lines.push(`queue_depth{queue=\"logo_enrichment\"} ${queueStats.waiting + queueStats.active + queueStats.delayed}`);
     lines.push("# HELP queue_lag Average queue latency in milliseconds");
     lines.push("# TYPE queue_lag gauge");
     lines.push(`queue_lag{queue=\"logo_enrichment\"} ${queueLag}`);
@@ -240,10 +258,10 @@ export function createApp() {
     lines.push(`queue_lag_seconds{queue=\"logo_enrichment\"} ${(queueLag / 1000).toFixed(3)}`);
     lines.push("# HELP worker_throughput_completed Total completed queue jobs");
     lines.push("# TYPE worker_throughput_completed counter");
-    lines.push(`worker_throughput_completed{queue=\"logo_enrichment\"} ${completed}`);
+    lines.push(`worker_throughput_completed{queue=\"logo_enrichment\"} ${queueStats.completed}`);
     lines.push("# HELP worker_throughput_failed Total failed queue jobs");
     lines.push("# TYPE worker_throughput_failed counter");
-    lines.push(`worker_throughput_failed{queue=\"logo_enrichment\"} ${failed}`);
+    lines.push(`worker_throughput_failed{queue=\"logo_enrichment\"} ${queueStats.failed}`);
     lines.push("# HELP queue_success_rate Queue success rate percentage");
     lines.push("# TYPE queue_success_rate gauge");
     lines.push(`queue_success_rate{queue=\"logo_enrichment\"} ${successRate}`);

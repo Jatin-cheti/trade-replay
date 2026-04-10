@@ -41,5 +41,10 @@ export const env = {
   CHART_SERVICE_BREAKER_FAILURE_THRESHOLD: CONFIG.chartServiceBreakerFailureThreshold,
   CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS: CONFIG.chartServiceBreakerFailureWindowMs,
   CHART_SERVICE_BREAKER_COOLDOWN_MS: CONFIG.chartServiceBreakerCooldownMs,
+  LOGO_SERVICE_ENABLED: CONFIG.logoServiceEnabled,
+  DEV_AUTO_START_INFRA: CONFIG.devAutoStartInfra,
+  E2E_USE_MEMORY_MONGO: CONFIG.e2eUseMemoryMongo,
+  E2E_USE_MOCK_REDIS: CONFIG.e2eUseMockRedis,
+  E2E: CONFIG.e2e,
   USD_TO_INR: CONFIG.usdToInr,
 };

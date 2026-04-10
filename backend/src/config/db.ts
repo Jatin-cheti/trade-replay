@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import { env } from "./env";
 import { logger } from "../utils/logger";
 
+let mongoMemoryServer: { stop: () => Promise<void>; getUri: () => string } | null = null;
+
 async function wait(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -17,7 +19,8 @@ function getMongoDbName(uri: string): string {
 
 export async function connectDB(): Promise<void> {
   let connected = false;
-  const dbName = getMongoDbName(env.MONGO_URI);
+  let mongoUri = env.MONGO_URI;
+  const dbName = getMongoDbName(mongoUri);
 
   logger.info("mongodb_connect_start", {
     uri: env.MONGO_URI,
@@ -37,18 +40,28 @@ export async function connectDB(): Promise<void> {
 
   for (let attempt = 1; attempt <= 10; attempt += 1) {
     try {
-      await mongoose.connect(env.MONGO_URI, { serverSelectionTimeoutMS: 2500 });
-      logger.info("mongodb_connected", { uri: env.MONGO_URI, dbName });
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2500 });
+      logger.info("mongodb_connected", { uri: mongoUri, dbName });
       connected = true;
       break;
     } catch (_error) {
-      logger.warn("mongodb_connect_retry", { attempt, uri: env.MONGO_URI, dbName });
+      logger.warn("mongodb_connect_retry", { attempt, uri: mongoUri, dbName });
       await wait(1500);
     }
   }
 
+  const shouldUseMemoryMongo = (env.NODE_ENV === "test" || env.E2E) && env.E2E_USE_MEMORY_MONGO;
+  if (!connected && shouldUseMemoryMongo) {
+    const { MongoMemoryServer } = await import("mongodb-memory-server");
+    mongoMemoryServer = await MongoMemoryServer.create();
+    mongoUri = mongoMemoryServer.getUri();
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2500 });
+    logger.warn("mongodb_memory_server_enabled", { uri: mongoUri });
+    connected = true;
+  }
+
   if (!connected) {
-    throw new Error(`MongoDB unavailable after retries: ${env.MONGO_URI} (${dbName})`);
+    throw new Error(`MongoDB unavailable after retries: ${mongoUri} (${dbName})`);
   }
 
   const db = mongoose.connection.db;
@@ -64,5 +77,13 @@ export async function connectDB(): Promise<void> {
     }
 
     logger.info("mongodb_collections_ready", { collections: requiredCollections, dbName });
+  }
+}
+
+export async function disconnectDB(): Promise<void> {
+  await mongoose.disconnect();
+  if (mongoMemoryServer) {
+    await mongoMemoryServer.stop();
+    mongoMemoryServer = null;
   }
 }

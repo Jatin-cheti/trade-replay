@@ -4,6 +4,8 @@ import { env } from "./env";
 export const redisClient = new IORedis(env.REDIS_URL, {
   lazyConnect: true,
   maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+  retryStrategy: () => null,
 });
 
 export async function connectRedis(): Promise<void> {
