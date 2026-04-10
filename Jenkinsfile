@@ -1,10 +1,5 @@
 pipeline {
   agent any
-
-  triggers {
-    githubPush()
-  }
-
   options {
     timestamps()
     disableConcurrentBuilds()
@@ -58,6 +53,17 @@ pipeline {
 
     stage('Post-Deploy Validation') {
       steps {
+        sh '''
+          echo "Waiting for backend to be ready..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:4000/api/health; then
+              echo "Backend is ready"
+              break
+            fi
+            echo "Retry $i..."
+            sleep 2
+          done
+        '''
         sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate'
         sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate:logo-pipeline'
       }
@@ -73,6 +79,9 @@ pipeline {
     }
   }
 }
+
+
+
 
 
 
