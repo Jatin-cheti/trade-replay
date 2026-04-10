@@ -72,11 +72,10 @@ pipeline {
             i=$((i + 1))
             sleep 2
           done
-          curl -sf http://127.0.0.1:4000/api/health > /dev/null
           echo "Backend is ready"
         '''
-        sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate'
-        sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate:logo-pipeline'
+        sh 'BACKEND_URL=http://host.docker.internal:4000 npm run validate'
+        sh 'BACKEND_URL=http://host.docker.internal:4000 npm run validate:logo-pipeline'
       }
     }
   }
