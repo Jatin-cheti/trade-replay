@@ -19,7 +19,7 @@ export function loadEnv(): { envPath: string; secretsPath: string; envLoaded: bo
   let secretsLoaded = false;
 
   if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath, override: false });
+    dotenv.config({ path: envPath, override: true });
     envLoaded = true;
   }
 

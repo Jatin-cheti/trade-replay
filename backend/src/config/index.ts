@@ -4,6 +4,68 @@ import { loadEnv } from "./loadEnv.js";
 // Load .env and .env.secrets deterministically (must be first)
 const envStatus = loadEnv();
 
+function setIfMissing(name: string, value: string | undefined): void {
+  if (value === undefined) return;
+  if (process.env[name] === undefined || process.env[name] === "") {
+    process.env[name] = value;
+  }
+}
+
+function normalizeLocalEnv(): void {
+  const localMongo = process.env.LOCAL_MONGO_URL
+    ?? process.env.LOCAL_MONGODB_URI
+    ?? process.env.LOCAL_MONGO_URI;
+  const localRedisRaw = process.env.LOCAL_REDIS_URL;
+  const localKafkaRaw = process.env.LOCAL_KAFKA_BROKERS;
+  const localRedis = localRedisRaw && /redis:\/\/redis[:/]/i.test(localRedisRaw)
+    ? "redis://127.0.0.1:6379"
+    : (localRedisRaw ?? "redis://127.0.0.1:6379");
+  const localKafkaBrokers = localKafkaRaw && /(^|,)\s*kafka:\d+/i.test(localKafkaRaw)
+    ? "localhost:19092"
+    : (localKafkaRaw ?? "localhost:19092");
+
+  setIfMissing("PORT", process.env.LOCAL_PORT);
+  setIfMissing("CLIENT_URL", process.env.LOCAL_CLIENT_URL);
+  setIfMissing("CLIENT_URLS", process.env.LOCAL_CLIENT_URLS);
+  setIfMissing("API_RATE_LIMIT_MAX", "2000");
+
+  setIfMissing("MONGO_URI", localMongo);
+  setIfMissing("MONGO_URI_LOCAL", localMongo);
+  setIfMissing("MONGO_URI_DOCKER", localMongo);
+  setIfMissing("MONGO_URI_PRODUCTION", localMongo);
+
+  setIfMissing("REDIS_URL", localRedis);
+  setIfMissing("REDIS_URL_LOCAL", localRedis);
+  setIfMissing("REDIS_URL_DOCKER", localRedis);
+  setIfMissing("REDIS_URL_PRODUCTION", localRedis);
+
+  setIfMissing("KAFKA_ENABLED", process.env.LOCAL_KAFKA_ENABLED ?? "false");
+  setIfMissing("KAFKA_BROKER", localKafkaBrokers);
+  setIfMissing("KAFKA_BROKER_LOCAL", localKafkaBrokers);
+  setIfMissing("KAFKA_BROKER_DOCKER", localKafkaBrokers);
+  setIfMissing("KAFKA_BROKER_PRODUCTION", localKafkaBrokers);
+  setIfMissing("KAFKA_DEFAULT_PARTITIONS", "3");
+  setIfMissing("KAFKA_SYMBOL_EVENT_PARTITIONS", "6");
+  setIfMissing("KAFKA_PORTFOLIO_EVENT_PARTITIONS", "6");
+  setIfMissing("ANALYTICS_CONSUMER_GROUP", "tradereplay-analytics-processor");
+  setIfMissing("KAFKA_SASL_MECHANISM", process.env.LOCAL_KAFKA_SASL_MECHANISM ?? "plain");
+  setIfMissing("KAFKA_SASL_USERNAME", process.env.LOCAL_KAFKA_SASL_USERNAME ?? "");
+  setIfMissing("KAFKA_SASL_PASSWORD", process.env.LOCAL_KAFKA_SASL_PASSWORD ?? "");
+
+  setIfMissing("JWT_SECRET", process.env.LOCAL_JWT_SECRET);
+  setIfMissing("CURSOR_SIGNING_SECRET", process.env.LOCAL_JWT_SECRET);
+  setIfMissing("ALPHA_VANTAGE_KEY", process.env.LOCAL_ALPHA_VANTAGE_KEY ?? "");
+  setIfMissing("GOOGLE_CLIENT_ID", process.env.LOCAL_GOOGLE_CLIENT_ID ?? "");
+
+  setIfMissing("LOG_REQUEST_SAMPLE_RATE", "0.1");
+  setIfMissing("LOGO_ENRICHMENT_ENABLED", "false");
+  setIfMissing("LOGO_ENRICHMENT_INTERVAL_MS", "21600000");
+  setIfMissing("LOGO_FALLBACK_TARGET_RATIO", "0.05");
+  setIfMissing("USD_TO_INR", process.env.LOCAL_USD_TO_INR ?? "83.5");
+}
+
+normalizeLocalEnv();
+
 const appEnv = (process.env.APP_ENV ?? "local").toLowerCase();
 
 const EnvSchema = z.object({
@@ -132,7 +194,7 @@ function readAwsConfigByMode(mode: string): {
     throw new Error("Production mode requires AWS_REGION, AWS_S3_BUCKET, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY");
   }
 
-  if (hasAny && !hasAll) {
+  if (mode === "production" && hasAny && !hasAll) {
     throw new Error("AWS config must provide all required fields or none");
   }
 

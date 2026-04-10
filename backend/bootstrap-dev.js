@@ -14,11 +14,11 @@ const __dirname = path.dirname(__filename);
 
 // Load .env and .env.secrets deterministically
 // Resolve paths from __dirname to avoid relative path issues in subprocess
-const envPath = path.resolve(__dirname, "../../.env");
-const secretsPath = path.resolve(__dirname, "../../.env.secrets");
+const envPath = path.resolve(__dirname, "../.env");
+const secretsPath = path.resolve(__dirname, "../.env.secrets");
 
 if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath, override: false });
+  dotenv.config({ path: envPath, override: true });
 }
 if (fs.existsSync(secretsPath)) {
   dotenv.config({ path: secretsPath, override: true });
