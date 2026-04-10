@@ -55,14 +55,18 @@ pipeline {
       steps {
         sh '''
           echo "Waiting for backend to be ready..."
-          for i in {1..30}; do
-            if curl -s http://127.0.0.1:4000/api/health; then
-              echo "Backend is ready"
-              break
+          i=1
+          max_retries=30
+          until curl -sf http://127.0.0.1:4000/api/health > /dev/null; do
+            if [ "$i" -ge "$max_retries" ]; then
+              echo "Backend failed to become ready after $max_retries attempts"
+              exit 1
             fi
-            echo "Retry $i..."
+            echo "Retry $i/$max_retries..."
+            i=$((i + 1))
             sleep 2
           done
+          echo "Backend is ready"
         '''
         sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate'
         sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate:logo-pipeline'
