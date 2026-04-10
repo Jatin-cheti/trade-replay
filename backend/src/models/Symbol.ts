@@ -16,6 +16,7 @@ const symbolSchema = new Schema(
     lastLogoAttemptAt: { type: Number },
     s3Icon: { type: String, trim: true, default: "" },
     popularity: { type: Number, required: true, default: 0 },
+    searchFrequency: { type: Number, required: true, default: 0 },
     source: { type: String, required: true, trim: true },
   },
   { timestamps: true },
@@ -34,6 +35,7 @@ symbolSchema.index(
     name: "symbol_popularity_active_idx",
   },
 );
+symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
 symbolSchema.index(
   { symbol: "text", name: "text", fullSymbol: "text" },
   {

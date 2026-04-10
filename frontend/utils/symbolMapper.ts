@@ -90,7 +90,11 @@ function categoryMarket(category: KnownCategory): AssetSearchItem["market"] {
 
 export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: string): AssetSearchItem {
   const category = inferCategory(item, requestedCategory);
-  const icons = resolveAssetIcons(item);
+  const normalized = {
+    ...item,
+    logoUrl: item.displayIconUrl || item.logoUrl || item.iconUrl,
+  };
+  const icons = resolveAssetIcons(normalized);
   const stockType = inferStockType(item);
   const fundType = inferFundType(item);
 
@@ -107,7 +111,7 @@ export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: str
       : item.instrumentType || item.type;
 
   return {
-    ...item,
+    ...normalized,
     ...icons,
     category,
     assetType: category,

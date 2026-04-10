@@ -12,6 +12,15 @@ type CacheBucket = {
 const apiLatency: Record<string, LatencyBucket> = {};
 const cacheStats: Record<string, CacheBucket> = {};
 const queueStats: Record<string, { samples: number; avgLatencyMs: number; maxLatencyMs: number }> = {};
+const iconQuality = {
+  realIcons: 0,
+  fallbackIcons: 0,
+};
+const symbolSearchLatency = {
+  samples: 0,
+  totalMs: 0,
+  p50Window: [] as number[],
+};
 
 function ensureLatencyBucket(key: string): LatencyBucket {
   if (!apiLatency[key]) {
@@ -54,10 +63,38 @@ export function recordQueueLatency(queueName: string, latencyMs: number): void {
   };
 }
 
+export function recordSymbolIconResult(isFallback: boolean): void {
+  if (isFallback) {
+    iconQuality.fallbackIcons += 1;
+    return;
+  }
+  iconQuality.realIcons += 1;
+}
+
+export function recordSymbolSearchLatency(durationMs: number): void {
+  symbolSearchLatency.samples += 1;
+  symbolSearchLatency.totalMs += durationMs;
+  symbolSearchLatency.p50Window.push(durationMs);
+  if (symbolSearchLatency.p50Window.length > 200) {
+    symbolSearchLatency.p50Window.shift();
+  }
+}
+
 export function getMetricsSnapshot(): {
   apiLatency: Record<string, { count: number; avgMs: number; maxMs: number }>;
   cacheHitRate: Record<string, { hits: number; misses: number; hitRate: number }>;
   queueLatency: Record<string, { samples: number; avgLatencyMs: number; maxLatencyMs: number }>;
+  iconAccuracy: {
+    realIconAccuracy: number;
+    fallbackUsageRate: number;
+    realIcons: number;
+    fallbackIcons: number;
+  };
+  symbolSearch: {
+    samples: number;
+    avgLatencyMs: number;
+    p50LatencyMs: number;
+  };
 } {
   const latency = Object.fromEntries(
     Object.entries(apiLatency).map(([key, value]) => ([
@@ -78,9 +115,35 @@ export function getMetricsSnapshot(): {
     }),
   );
 
+  const totalIconSamples = iconQuality.realIcons + iconQuality.fallbackIcons;
+  const realIconAccuracy = totalIconSamples
+    ? Number(((iconQuality.realIcons / totalIconSamples) * 100).toFixed(2))
+    : 0;
+  const fallbackUsageRate = totalIconSamples
+    ? Number(((iconQuality.fallbackIcons / totalIconSamples) * 100).toFixed(2))
+    : 0;
+
+  const sortedP50 = [...symbolSearchLatency.p50Window].sort((a, b) => a - b);
+  const p50LatencyMs = sortedP50.length
+    ? sortedP50[Math.floor(sortedP50.length * 0.5)]
+    : 0;
+
   return {
     apiLatency: latency,
     cacheHitRate: cache,
     queueLatency: queueStats,
+    iconAccuracy: {
+      realIconAccuracy,
+      fallbackUsageRate,
+      realIcons: iconQuality.realIcons,
+      fallbackIcons: iconQuality.fallbackIcons,
+    },
+    symbolSearch: {
+      samples: symbolSearchLatency.samples,
+      avgLatencyMs: symbolSearchLatency.samples
+        ? Number((symbolSearchLatency.totalMs / symbolSearchLatency.samples).toFixed(2))
+        : 0,
+      p50LatencyMs: Number(p50LatencyMs.toFixed(2)),
+    },
   };
 }

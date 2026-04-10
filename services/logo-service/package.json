@@ -16,7 +16,8 @@
     "kafkajs": "^2.2.4",
     "mongoose": "^8.17.2",
     "sharp": "^0.34.5",
-    "tradereplay": "file:../.."
+    "tradereplay": "file:../..",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.18.6",

@@ -3,9 +3,11 @@ import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { env } from "../config/env";
 import { resolveStaticIcon } from "../config/staticIconMap";
+import { isRedisReady } from "../config/redis";
 import { getOrSetCachedJsonWithLock } from "./cache.service";
 import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
 import { clusterScopedKey, stableHash } from "./redisKey.service";
+import { recordSymbolIconResult, recordSymbolSearchLatency } from "./metrics.service";
 
 type SymbolType = "stock" | "crypto" | "forex" | "index";
 const SUPPORTED_TYPES: SymbolType[] = ["stock", "crypto", "forex", "index"];
@@ -31,6 +33,11 @@ export interface SymbolRegistryItem {
   companyDomain?: string;
   s3Icon?: string;
   popularity: number;
+  searchFrequency?: number;
+  isFallback?: boolean;
+  realIconUrl?: string;
+  fallbackIconUrl?: string;
+  displayIconUrl?: string;
 }
 
 export interface SymbolSearchResult {
@@ -88,6 +95,11 @@ function buildFilter(params: { query: string; type?: string; country?: string })
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function fallbackSymbolIconUrl(exchange: string): string {
+  const exchangeDomain = exchange ? `${exchange.toLowerCase()}.com` : "example.com";
+  return `https://www.google.com/s2/favicons?domain=${exchangeDomain}&sz=128`;
 }
 
 function signCursorPayload(payload: string): string {
@@ -180,7 +192,11 @@ export async function searchSymbols(params: {
   offset?: number;
   cursor?: string;
   skipLogoEnrichment?: boolean;
+  disablePrefetch?: boolean;
+  skipSearchFrequencyUpdate?: boolean;
+  trackMetrics?: boolean;
 }): Promise<SymbolSearchResult> {
+  const startedAt = Date.now();
   const query = normalizeQuery(params.query);
   const limit = Math.max(1, Math.min(100, params.limit ?? 50));
   const offset = Math.max(0, params.offset ?? 0);
@@ -227,6 +243,7 @@ export async function searchSymbols(params: {
         companyDomain: 1,
         s3Icon: 1,
         popularity: 1,
+        searchFrequency: 1,
         createdAt: 1,
       })
       .sort({ createdAt: -1, _id: -1 })
@@ -237,10 +254,7 @@ export async function searchSymbols(params: {
       queryBuilder.skip(offset);
     }
 
-    const [total, rows] = await Promise.all([
-      SymbolModel.countDocuments(baseFilter),
-      queryBuilder,
-    ]);
+    const rows = await queryBuilder;
 
     const hasMore = rows.length > limit;
     const pagedRows = hasMore ? rows.slice(0, limit) : rows;
@@ -250,15 +264,23 @@ export async function searchSymbols(params: {
       : null;
     const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => {
       const staticIcon = resolveStaticIcon(rest.symbol);
+      const realIconUrl = rest.iconUrl || rest.s3Icon || staticIcon || "";
+      const fallbackIconUrl = fallbackSymbolIconUrl(rest.exchange);
+      const isFallback = !realIconUrl;
+      const displayIconUrl = isFallback ? fallbackIconUrl : realIconUrl;
       return {
         ...rest,
-        iconUrl: rest.iconUrl || rest.s3Icon || staticIcon || "",
+        iconUrl: realIconUrl,
+        realIconUrl,
+        fallbackIconUrl,
+        isFallback,
+        displayIconUrl,
       };
     });
 
     return {
       items: paged,
-      total,
+      total: -1,
       limit,
       offset,
       hasMore,
@@ -266,8 +288,46 @@ export async function searchSymbols(params: {
     };
   });
 
-  if (!params.skipLogoEnrichment) {
+  if (!params.skipLogoEnrichment && isRedisReady()) {
     enqueueSymbolLogoEnrichmentBatch(response.items.slice(0, 20));
+  }
+
+  if (response.items.length > 0 && !params.skipSearchFrequencyUpdate) {
+    const ids = response.items.slice(0, 20).map((item) => item.fullSymbol);
+    void SymbolModel.updateMany({ fullSymbol: { $in: ids } }, { $inc: { searchFrequency: 1 } }).catch(() => {
+      // Search path should not fail on frequency update issues.
+    });
+  }
+
+  if (response.nextCursor && !params.disablePrefetch) {
+    const nextKey = clusterScopedKey(
+      "app:symbols:search",
+      partition,
+      `${query.toLowerCase()}:${params.type ?? "all"}:${params.country ?? "all"}:${limit}:${response.nextCursor}`,
+    );
+
+    void getOrSetCachedJsonWithLock<SymbolSearchResult>(nextKey, CACHE_TTL_SECONDS, async () => {
+      return searchSymbols({
+        query,
+        type: params.type,
+        country: params.country,
+        limit,
+        cursor: response.nextCursor ?? undefined,
+        skipLogoEnrichment: true,
+        disablePrefetch: true,
+        skipSearchFrequencyUpdate: true,
+        trackMetrics: false,
+      });
+    }).catch(() => {
+      // Prefetch must never fail user requests.
+    });
+  }
+
+  if (params.trackMetrics !== false) {
+    for (const item of response.items) {
+      recordSymbolIconResult(Boolean(item.isFallback));
+    }
+    recordSymbolSearchLatency(Date.now() - startedAt);
   }
   return response;
 }
@@ -283,6 +343,7 @@ export async function warmSymbolSearchCache(): Promise<{ warmed: number; failed:
           query,
           limit: 40,
           skipLogoEnrichment: true,
+          trackMetrics: false,
         });
         warmed += 1;
       } catch {
@@ -358,7 +419,10 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
         ? "Forex"
         : "Indices";
 
-  const persistedIcon = symbol.iconUrl || symbol.s3Icon || resolveStaticIcon(symbol.symbol) || null;
+  const persistedIcon = symbol.realIconUrl || symbol.iconUrl || symbol.s3Icon || resolveStaticIcon(symbol.symbol) || "";
+  const fallbackIconUrl = symbol.fallbackIconUrl || fallbackSymbolIconUrl(symbol.exchange);
+  const isFallback = symbol.isFallback ?? !persistedIcon;
+  const displayIconUrl = symbol.displayIconUrl || (isFallback ? fallbackIconUrl : persistedIcon);
 
   return {
     ticker: symbol.symbol,
@@ -378,7 +442,9 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
     exchangeIcon: "",
     exchangeLogoUrl: "",
     iconUrl: persistedIcon,
-    logoUrl: persistedIcon,
+    logoUrl: displayIconUrl,
+    displayIconUrl,
+    isFallback,
     source: "symbol-registry",
   };
 }

@@ -28,6 +28,7 @@ const uploadUrlSchema = z.object({
   fileName: z.string().min(1).max(180),
   contentType: z.string().min(1).max(120).optional(),
   fileSizeBytes: z.number().int().positive().max(5 * 1024 * 1024).optional(),
+  portfolioId: z.string().min(1).max(120).optional(),
   userId: z.string().optional(),
 });
 
@@ -106,7 +107,8 @@ export function createPortfolioController() {
         return;
       }
 
-      if (!parsed.data.fileName.toLowerCase().endsWith(".csv")) {
+      const hasPortfolioId = typeof parsed.data.portfolioId === "string" && parsed.data.portfolioId.trim().length > 0;
+      if (!hasPortfolioId && !parsed.data.fileName.toLowerCase().endsWith(".csv")) {
         next(new AppError(400, "INVALID_FILE_TYPE", "Only CSV files allowed"));
         return;
       }
@@ -117,6 +119,7 @@ export function createPortfolioController() {
           parsed.data.fileName,
           parsed.data.contentType,
           parsed.data.fileSizeBytes,
+          parsed.data.portfolioId,
         );
         res.json(result);
       } catch (error) {

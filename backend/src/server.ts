@@ -1,6 +1,7 @@
 import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
 import { env } from "./config/env";
+import { CONFIG } from "./config/index";
 import { createApp } from "./app";
 import { bootstrapKafkaProducerOnly, shutdownKafka } from "./kafka";
 import { logger } from "./utils/logger";
@@ -9,14 +10,13 @@ type NodeErrorWithCode = Error & { code?: string };
 
 async function bootstrap() {
   logger.info("bootstrap_start");
-  logger.info("env_profile", {
-    nodeEnv: env.NODE_ENV,
-    port: env.PORT,
-    clientUrls: env.CLIENT_URLS,
-    mongoUri: env.MONGO_URI,
-    redisUrl: env.REDIS_URL,
-    kafkaEnabled: env.KAFKA_ENABLED,
+  console.log("CONFIG CHECK", {
+    env: process.env.APP_ENV,
+    redis: CONFIG.redisUrl,
+    kafka: CONFIG.kafkaBroker,
+    mongo: process.env.MONGO_URI,
   });
+  logger.info("redis_url_config", { url: env.REDIS_URL });
   logger.info("bootstrap_connect_mongodb");
   await connectDB();
   logger.info("bootstrap_connect_redis");

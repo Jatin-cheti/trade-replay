@@ -3,19 +3,20 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "app": "concurrently -n backend,worker,logo-service,chart-service,kafka,frontend -c green,yellow,magenta,red,blue,cyan \"npm --prefix backend run dev\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix services/chart-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix frontend run dev\"",
-    "install:all": "npm --prefix backend install && npm --prefix frontend install && npm --prefix services/logo-service install && npm --prefix services/chart-service install",
+    "app": "concurrently -n backend,worker,logo-service,kafka,frontend -c green,yellow,magenta,blue,cyan \"npm --prefix backend run dev\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix frontend run dev\"",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install && npm --prefix services/logo-service install",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "typecheck": "npm --prefix backend run build && npm --prefix frontend run typecheck",
-    "bench:charts": "npm --prefix packages/tradereplay-charts run bench",
     "migrate": "npm --prefix backend run migrate",
     "seed": "npm --prefix backend run seed",
-    "validate:symbols": "npm --prefix backend exec tsx ../scripts/validateSymbols.ts",
-    "stress:test": "npm --prefix backend exec tsx ../scripts/stressTest.ts",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts",
-    "test:e2e:external": "set E2E_USE_EXTERNAL_STACK=true&& playwright test -c e2e/playwright.config.ts",
+    "validate:symbols": "npm --prefix backend exec tsx ./tests/integration/validateSymbols.ts",
+    "validate": "npm --prefix backend exec tsx ./tests/integration/validateSystem.ts",
+    "validate:logo-pipeline": "npm --prefix backend exec tsx ./tests/load/testLogoPipeline.ts",
+    "stress:test": "npm --prefix backend exec tsx ./tests/load/stressTest.ts",
+    "test:e2e": "playwright test -c tests/integration/e2e/playwright.config.ts",
     "docker:up": "docker compose up --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "deploy:auto": "docker compose up -d redis kafka mongodb backend worker logo-service kafka-service && npm run validate"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

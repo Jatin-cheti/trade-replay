@@ -1,4 +1,5 @@
 import { Check, ChevronsUpDown } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -10,6 +11,7 @@ export interface SearchableDropdownItem {
   label: string;
   subtitle?: string;
   iconUrl?: string;
+  isFallback?: boolean;
 }
 
 interface SearchableDropdownProps {
@@ -34,6 +36,17 @@ export default function SearchableDropdown({
   disabled,
 }: SearchableDropdownProps) {
   const selected = items.find((item) => item.value === value);
+  const missingIconItems = useMemo(
+    () => items.filter((item) => item.isFallback || !item.iconUrl).map((item) => item.label),
+    [items],
+  );
+
+  useEffect(() => {
+    if (missingIconItems.length === 0) return;
+    for (const label of missingIconItems) {
+      console.warn("Missing icon:", label);
+    }
+  }, [missingIconItems]);
 
   return (
     <Popover>

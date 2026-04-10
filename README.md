@@ -9,11 +9,21 @@ Domain provider: Namecheap
 tradereplay/
 - frontend/
 - backend/
-- e2e/
+- services/
+- tests/
 - docker-compose.yml
 - package.json
 - README.md
 - .env
+- .env.secrets (gitignored)
+
+## Architecture
+
+- API service: Express backend handling auth, portfolio, simulation, trading, symbol search.
+- Logo microservice: dedicated worker for logo enrichment and optional S3/CDN upload.
+- Kafka service: consumer/producer worker for analytics and event fan-out.
+- Redis queue: BullMQ logo enrichment queue and cache/lock primitives.
+- CDN flow: logos may be uploaded to S3 and served from CDN base URL.
 
 ## Tech Stack
 
@@ -39,6 +49,12 @@ Saved portfolio endpoints:
 - `POST /api/portfolio/import` create portfolio from CSV (symbol, quantity, avgPrice)
 - `GET /api/portfolio/current` get live simulation account portfolio
 
+Upload endpoint:
+
+- `POST /api/portfolio/upload-url`
+- CSV import upload key pattern: `trade-replay/portfolios/{userId}/{timestamp}-{fileName}.csv`
+- Deterministic portfolio object upload key pattern (when `portfolioId` is provided): `trade-replay/portfolios/{userId}/{portfolioId}.json`
+
 ## Auth Flow
 
 1. Client authenticates via /api/auth/login or /api/auth/register.
@@ -49,21 +65,48 @@ Saved portfolio endpoints:
 
 ## Environment
 
-Use one root `.env` only, with profile prefixes:
+Use one root `.env` only.
 
-- `LOCAL_`
-- `DEV_`
-- `QA_`
-- `PROD_`
+Keep secrets in a separate `.env.secrets` file (gitignored) for local/deployment overrides:
 
-Examples:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `JWT_SECRET`
+- `CURSOR_SIGNING_SECRET`
 
-- `LOCAL_MONGO_URI`
-- `DEV_JWT_SECRET`
-- `QA_GOOGLE_CLIENT_ID`
-- `PROD_VITE_API_URL`
+Recommended additional AWS settings in `.env.secrets`:
 
-The app resolves profile values from `NODE_ENV` and falls back to `LOCAL_` values.
+- `AWS_REGION`
+- `AWS_S3_BUCKET`
+- `AWS_CDN_BASE_URL` (optional)
+
+Load order is:
+
+1. `.env`
+2. `.env.secrets` (overrides)
+
+Config is validated at startup with Zod; missing required values fail fast.
+
+AWS validation behavior:
+
+- `APP_ENV=production`: `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` are mandatory.
+- `APP_ENV=local` and `APP_ENV=docker`: AWS settings are optional.
+- If any required AWS field is present, all required AWS fields must be present.
+
+Runtime mode is selected using `APP_ENV`:
+
+- `APP_ENV=local` for host/local runs
+- `APP_ENV=docker` for Docker Compose runs
+- `APP_ENV=production` for host production runs
+
+Mode-specific infra keys are resolved as `<KEY>_<APP_ENV>`:
+
+- `MONGO_URI_LOCAL`, `MONGO_URI_DOCKER`, `MONGO_URI_PRODUCTION`
+- `REDIS_URL_LOCAL`, `REDIS_URL_DOCKER`, `REDIS_URL_PRODUCTION`
+- `KAFKA_BROKER_LOCAL`, `KAFKA_BROKER_DOCKER`, `KAFKA_BROKER_PRODUCTION`
+
+All non-mode-specific settings remain shared in `.env` (for example: `PORT`, `CLIENT_URL`, `KAFKA_ENABLED`, `GOOGLE_CLIENT_ID`, `ALPHA_VANTAGE_KEY`).
+Sensitive values remain in `.env.secrets` only.
 
 Google OAuth client ID is configured for local/dev/qa in `.env`:
 
@@ -128,7 +171,20 @@ npm run app
 - Frontend: http://localhost:8080
 - Backend health: http://localhost:4000/api/health
 
-## Docker (Backend + MongoDB + Redis)
+## Validation
+
+```bash
+npm run validate
+npm run validate:logo-pipeline
+```
+
+`validate:logo-pipeline` performs:
+
+- 100-symbol response-level icon accuracy check
+- 500-job queue spike/load check
+- queue drain/stall verification
+
+## Docker (Full Stack)
 
 ```bash
 npm run docker:up
@@ -137,8 +193,14 @@ npm run docker:up
 Compose services:
 
 - backend
+- worker
+- logo-service
+- kafka-service
 - mongodb
 - redis
+- kafka
+- prometheus
+- grafana
 
 To stop:
 
@@ -151,3 +213,74 @@ npm run docker:down
 ```bash
 npm run test:e2e
 ```
+
+## Monitoring
+
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3001
+- Prometheus scrape endpoint: `GET /metrics`
+- JSON metrics endpoint: `GET /api/metrics`
+
+Core metrics exported:
+
+- `queue_depth`
+- `queue_lag`
+- `worker_throughput_completed`
+- `worker_throughput_failed`
+- `queue_success_rate`
+- `queue_failure_rate`
+- `redis_memory_usage`
+- `api_latency`
+
+## S3/CDN Behavior
+
+- Logos are written under `trade-replay/logos/`.
+- Portfolio files are written under `trade-replay/portfolios/`.
+- When `AWS_CDN_BASE_URL` is configured, logo URLs are returned using the CDN base URL.
+- When `AWS_CDN_BASE_URL` is empty, logo URLs fall back to direct S3 object URLs.
+
+## CI/CD (Jenkins)
+
+Pipeline stages in Jenkinsfile:
+
+1. Checkout
+2. Install dependencies
+3. Build backend/frontend/logo-service
+4. Docker compose build
+5. Deploy stack
+6. Post-deploy validation (`npm run validate`)
+
+## Folder Structure
+
+```text
+backend/
+	src/
+		controllers/
+		services/
+		models/
+		jobs/
+		kafka/
+		utils/
+		config/
+		middlewares/
+
+frontend/
+	components/
+	services/
+	utils/
+	config/
+
+services/
+	logo-service/
+
+tests/
+	unit/
+	integration/
+	load/
+```
+
+## Scaling Roadmap
+
+- Short term: isolate API, worker/logo-service, and stateful infra (Redis/Kafka/Mongo) onto separate nodes.
+- Medium term: move workers to horizontal autoscaling consumers and orchestrate with Kubernetes.
+- Long term: managed DB cluster, dedicated Kafka/Redis, edge caching, global load balancing.

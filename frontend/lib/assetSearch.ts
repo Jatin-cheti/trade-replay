@@ -27,6 +27,8 @@ export interface AssetSearchItem {
   exchangeLogoUrl: string;
   iconUrl: string;
   logoUrl: string;
+  displayIconUrl?: string;
+  isFallback?: boolean;
   source: string;
   futureCategory?: string;
   economyCategory?: string;
@@ -62,6 +64,9 @@ export interface AssetSearchFiltersResponse {
 }
 
 function detectFallbackType(item: AssetSearchItem): string | null {
+  if (item.isFallback) {
+    return "generated";
+  }
   const icon = item.iconUrl || item.logoUrl || "";
   if (!icon) return "none";
   if (icon === item.exchangeIcon || icon === item.exchangeLogoUrl) return "exchange";
@@ -142,11 +147,16 @@ export async function searchAssets(params: {
     })
     .map((item) => {
       const key = iconCacheKey(item);
-      const icon = item.iconUrl || item.logoUrl || "";
+      const effectiveIcon = item.displayIconUrl || item.logoUrl || item.iconUrl || "";
 
-      if (icon) {
-        iconCache.set(key, icon);
-        return item;
+      if (effectiveIcon) {
+        iconCache.set(key, effectiveIcon);
+        return {
+          ...item,
+          logoUrl: effectiveIcon,
+          iconUrl: item.iconUrl || "",
+          displayIconUrl: effectiveIcon,
+        };
       }
 
       const cached = iconCache.get(key);
@@ -154,7 +164,7 @@ export async function searchAssets(params: {
 
       return {
         ...item,
-        iconUrl: cached,
+        displayIconUrl: cached,
         logoUrl: cached,
       };
     });

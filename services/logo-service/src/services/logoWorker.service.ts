@@ -21,9 +21,14 @@ type QueueSymbol = {
 const LOGO_QUEUE_NAME = "logo-enrichment";
 const LOGO_QUEUE_JOB = "symbol-logo-enrichment";
 const SUMMARY_LOG_INTERVAL_MS = 30000;
-const MAX_ATTEMPTS = 3;
-const ATTEMPT_COOLDOWN_MS = 60 * 60 * 1000;
+const MAX_ATTEMPTS = 50;
+const ATTEMPT_COOLDOWN_MS = 0;
 const WORKER_CONCURRENCY = Math.max(1, env.LOGO_WORKER_CONCURRENCY || 20);
+
+function domainFaviconUrl(domain: string): string {
+  const normalized = domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  return `https://www.google.com/s2/favicons?domain=${normalized}&sz=128`;
+}
 
 let processed = 0;
 let resolved = 0;
@@ -89,6 +94,8 @@ async function claimAttempt(fullSymbol: string): Promise<ClaimedSymbol | null> {
 }
 
 async function processJob(payload: QueueSymbol): Promise<void> {
+  console.log(JSON.stringify({ message: "logo_job_processing", fullSymbol: payload.fullSymbol }));
+
   const queueLatencyMs = Math.max(0, Date.now() - payload.createdAt);
   totalQueueLatencyMs += queueLatencyMs;
   maxQueueLatencyMs = Math.max(maxQueueLatencyMs, queueLatencyMs);
@@ -126,9 +133,17 @@ async function processJob(payload: QueueSymbol): Promise<void> {
   });
 
   if (!resolvedLogo.logoUrl) {
+    console.log(JSON.stringify({ message: "logo_fetch_unresolved", fullSymbol: claimed.fullSymbol }));
     failed += 1;
     return;
   }
+
+  console.log(JSON.stringify({
+    message: "logo_fetch_resolved",
+    fullSymbol: claimed.fullSymbol,
+    source: resolvedLogo.source,
+    logoUrl: resolvedLogo.logoUrl,
+  }));
 
   let s3 = null;
   try {
@@ -160,6 +175,7 @@ async function processJob(payload: QueueSymbol): Promise<void> {
   });
 
   resolved += 1;
+  console.log(JSON.stringify({ message: "logo_icon_updated", fullSymbol: claimed.fullSymbol, finalIcon }));
 }
 
 export function getLogoQueue() {

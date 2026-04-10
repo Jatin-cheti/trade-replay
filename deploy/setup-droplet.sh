@@ -46,7 +46,7 @@ REDIS_PASS=$(openssl rand -hex 16)
 sed -i "s/^# requirepass .*/requirepass ${REDIS_PASS}/" /etc/redis/redis.conf
 systemctl enable redis-server
 systemctl restart redis-server
-echo "Redis running on 127.0.0.1:6379 (password saved below)"
+echo "Redis running on redis://redis:6379 expectation for app config (password saved below)"
 
 # ---- Firewall ----
 ufw allow OpenSSH
@@ -86,7 +86,7 @@ echo "  Setup complete — Cost-optimized ($6 plan)"
 echo "============================================="
 echo ""
 echo "Redis password: ${REDIS_PASS}"
-echo "(Save this! You need it for PROD_REDIS_URL)"
+echo "(Save this! You need it for REDIS_URL_LOCAL or REDIS_URL_DOCKER)"
 echo ""
 echo "Next steps:"
 echo "  1. Run: bash /opt/tradereplay/deploy/setup-kafka-kraft.sh"
@@ -94,9 +94,11 @@ echo "  2. Create MongoDB Atlas FREE cluster (M0) at https://cloud.mongodb.com"
 echo "     - Whitelist this droplet IP: $(curl -s ifconfig.me)"
 echo "     - Create DB user and get connection string"
 echo "  3. Create .env at /opt/tradereplay/.env with:"
-echo "       PROD_MONGO_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/tradereplay?retryWrites=true&w=majority"
-echo "       PROD_REDIS_URL=redis://default:${REDIS_PASS}@127.0.0.1:6379"
-echo "       (plus other PROD_ values from .env.production.template)"
+echo "       APP_ENV=local"
+echo "       MONGO_URI_LOCAL=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/tradereplay?retryWrites=true&w=majority"
+echo "       REDIS_URL_LOCAL=redis://default:${REDIS_PASS}@127.0.0.1:6379"
+echo "       KAFKA_BROKER_LOCAL=127.0.0.1:9092"
+echo "       (plus shared settings like PORT/JWT_SECRET/CLIENT_URL/KAFKA_ENABLED)"
 echo "  4. Run: cd /opt/tradereplay && pm2 start ecosystem.config.cjs"
 echo "  5. Run: pm2 save"
 echo "  6. Point DNS: api.tradereplay.me → $(curl -s ifconfig.me)"
