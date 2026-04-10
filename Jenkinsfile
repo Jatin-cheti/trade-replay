@@ -8,11 +8,12 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
+    timeout(time: 120, unit: 'MINUTES')
   }
 
   environment {
     NODE_ENV = 'production'
-    NODE_OPTIONS = '--max-old-space-size=6144'
+    NODE_OPTIONS = '--max-old-space-size=4096'
     COMPOSE_PROJECT_NAME = 'tradereplay'
   }
 
@@ -25,10 +26,10 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        sh 'npm ci'
-        sh 'npm --prefix backend ci'
-        sh 'npm --prefix frontend ci'
-        sh 'npm --prefix services/logo-service ci'
+        sh 'npm ci --no-audit --no-fund'
+        sh 'npm --prefix backend ci --omit=optional --no-audit --no-fund'
+        sh 'npm --prefix frontend ci --no-audit --no-fund'
+        sh 'npm --prefix services/logo-service ci --omit=optional --no-audit --no-fund'
       }
     }
 
