@@ -74,8 +74,8 @@ pipeline {
           done
           echo "Backend is ready"
         '''
-        sh 'BACKEND_URL=http://host.docker.internal:4000 npm run validate'
-        sh 'BACKEND_URL=http://host.docker.internal:4000 npm run validate:logo-pipeline'
+        sh 'BACKEND_URL=http://host.docker.internal:4000 REDIS_URL_DOCKER=redis://host.docker.internal:6379 KAFKA_BROKER_DOCKER=host.docker.internal:19092 npm run validate'
+        sh 'BACKEND_URL=http://host.docker.internal:4000 REDIS_URL_DOCKER=redis://host.docker.internal:6379 KAFKA_BROKER_DOCKER=host.docker.internal:19092 npm run validate:logo-pipeline'
       }
     }
   }
