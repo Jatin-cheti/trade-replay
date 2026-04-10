@@ -28,7 +28,7 @@ pipeline {
       steps {
         sh 'npm ci --no-audit --no-fund'
         sh 'npm --prefix backend ci --ignore-scripts --omit=optional --no-audit --no-fund'
-        sh 'npm --prefix frontend ci --ignore-scripts --omit=optional --no-audit --no-fund'
+        sh 'npm --prefix frontend ci --ignore-scripts --no-audit --no-fund'
         sh 'npm --prefix services/logo-service ci --ignore-scripts --omit=optional --no-audit --no-fund'
       }
     }
