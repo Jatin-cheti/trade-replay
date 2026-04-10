@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { env } from "./env";
 import { logger } from "../utils/logger";
 
-let mongoMemoryServer: { stop: () => Promise<void>; getUri: () => string } | null = null;
+let mongoMemoryServer: { stop: () => Promise<boolean>; getUri: () => string } | null = null;
 
 async function wait(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,8 +53,9 @@ export async function connectDB(): Promise<void> {
   const shouldUseMemoryMongo = (env.NODE_ENV === "test" || env.E2E) && env.E2E_USE_MEMORY_MONGO;
   if (!connected && shouldUseMemoryMongo) {
     const { MongoMemoryServer } = await import("mongodb-memory-server");
-    mongoMemoryServer = await MongoMemoryServer.create();
-    mongoUri = mongoMemoryServer.getUri();
+    const memoryServer = await MongoMemoryServer.create();
+    mongoMemoryServer = memoryServer;
+    mongoUri = memoryServer.getUri();
     await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2500 });
     logger.warn("mongodb_memory_server_enabled", { uri: mongoUri });
     connected = true;
