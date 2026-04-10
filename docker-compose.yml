@@ -15,20 +15,17 @@ services:
       start_period: 20s
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
     container_name: tradereplay-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    restart: always
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
+      interval: 5s
+      timeout: 3s
       retries: 5
-      start_period: 10s
 
   kafka:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.10
@@ -60,6 +57,9 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
+    depends_on:
+      redis:
+        condition: service_healthy
 
   backend:
     build:
@@ -69,21 +69,20 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
+      - ./.env.secrets
     environment:
-      PORT: 4000
-      CLIENT_URL: http://localhost:8080
-      MONGO_URI: mongodb://mongodb:27017/tradereplay
-      REDIS_URL: redis://redis:6379
+      APP_ENV: docker
       KAFKA_ENABLED: "true"
-      KAFKA_BROKERS: kafka:9092
-      JWT_SECRET: docker-dev-secret
-      USD_TO_INR: 83.5
+      BACKEND_URL: http://127.0.0.1:4000
     ports:
       - "4000:4000"
     depends_on:
-      - mongodb
-      - redis
-      - kafka
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:4000/api/health"]
       interval: 30s
@@ -100,17 +99,19 @@ services:
     command: npm run start:worker
     env_file:
       - ./.env
+      - ./.env.secrets
     environment:
-      MONGO_URI: mongodb://mongodb:27017/tradereplay
-      REDIS_URL: redis://redis:6379
+      APP_ENV: docker
       KAFKA_ENABLED: "true"
-      KAFKA_BROKERS: kafka:9092
-      JWT_SECRET: docker-dev-secret
-      USD_TO_INR: 83.5
     depends_on:
-      - mongodb
-      - redis
-      - kafka
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "process.exit(0)"]
       interval: 30s
@@ -126,20 +127,19 @@ services:
     command: npm run start
     env_file:
       - ./.env
+      - ./.env.secrets
     environment:
-      MONGO_URI: mongodb://mongodb:27017/tradereplay
-      REDIS_URL: redis://redis:6379
+      APP_ENV: docker
       KAFKA_ENABLED: "true"
-      KAFKA_BROKERS: kafka:9092
-      AWS_REGION: ${AWS_REGION:-}
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_CDN_BASE_URL: ${AWS_CDN_BASE_URL:-}
     depends_on:
-      - mongodb
-      - redis
-      - kafka
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      worker:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "process.exit(0)"]
       interval: 30s
@@ -156,15 +156,17 @@ services:
     command: npm run start:kafka
     env_file:
       - ./.env
+      - ./.env.secrets
     environment:
-      REDIS_URL: redis://redis:6379
+      APP_ENV: docker
       KAFKA_ENABLED: "true"
-      KAFKA_BROKERS: kafka:9092
-      JWT_SECRET: docker-dev-secret
-      USD_TO_INR: 83.5
     depends_on:
-      - redis
-      - kafka
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "process.exit(0)"]
       interval: 30s
@@ -172,6 +174,35 @@ services:
       retries: 5
       start_period: 20s
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tradereplay-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      backend:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tradereplay-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+
 volumes:
   mongo_data:
-  redis_data:

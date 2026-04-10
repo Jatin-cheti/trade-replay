@@ -10,11 +10,8 @@ frontend/dist/
 
 # Environment files (contain secrets)
 .env
-.env.local
+.env.secrets
 .env.*.local
-
-# Keep template
-!.env.production.template
 
 # Logs
 *.log

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
@@ -9,7 +10,7 @@ import { createBullBoard } from "@bull-board/api";
 import { ExpressAdapter } from "@bull-board/express";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { env } from "./config/env";
-import { redisPublisher, redisSubscriber } from "./config/redis";
+import { redisClient, redisPublisher, redisSubscriber } from "./config/redis";
 import { verifyJwt } from "./utils/jwt";
 import { logger } from "./utils/logger";
 import authRoutes from "./routes/authRoutes";
@@ -30,6 +31,8 @@ import { requestLogger } from "./middlewares/requestLogger";
 export function createApp() {
   const app = express();
   const httpServer = createServer(app);
+  let lastCompletedCount = 0;
+  let lastMetricsSampleAt = Date.now();
   app.set("trust proxy", 1);
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -74,6 +77,7 @@ export function createApp() {
 
   app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
   app.use(helmet());
+  app.use(compression());
   app.use(express.json());
   app.use(requestLogger);
 
@@ -103,11 +107,24 @@ export function createApp() {
 
   app.get("/api/metrics", async (_req, res) => {
     const queue = getLogoQueue();
-    const [waiting, active, delayed] = await Promise.all([
+    const [waiting, active, delayed, completed, failed] = await Promise.all([
       queue.getWaitingCount(),
       queue.getActiveCount(),
       queue.getDelayedCount(),
+      queue.getCompletedCount(),
+      queue.getFailedCount(),
     ]);
+
+    const now = Date.now();
+    const elapsedMs = Math.max(1, now - lastMetricsSampleAt);
+    const completedDelta = Math.max(0, completed - lastCompletedCount);
+    const processingRatePerMin = Number(((completedDelta * 60000) / elapsedMs).toFixed(2));
+    const settled = completed + failed;
+    const successRate = settled > 0 ? Number(((completed / settled) * 100).toFixed(2)) : 100;
+    const failureRate = settled > 0 ? Number(((failed / settled) * 100).toFixed(2)) : 0;
+
+    lastCompletedCount = completed;
+    lastMetricsSampleAt = now;
 
     res.json({
       ...getMetricsSnapshot(),
@@ -119,7 +136,88 @@ export function createApp() {
           total: waiting + active + delayed,
         },
       },
+      queueProcessing: {
+        logoEnrichment: {
+          completed,
+          failed,
+          processingRatePerMin,
+          successRate,
+          failureRate,
+        },
+      },
     });
+  });
+
+  app.get("/metrics", async (_req, res) => {
+    const queue = getLogoQueue();
+    const [waiting, active, delayed, completed, failed] = await Promise.all([
+      queue.getWaitingCount(),
+      queue.getActiveCount(),
+      queue.getDelayedCount(),
+      queue.getCompletedCount(),
+      queue.getFailedCount(),
+    ]);
+
+    const metrics = getMetricsSnapshot();
+    const queueLag = Math.round(metrics.queueLatency.logoEnrichment?.avgLatencyMs ?? 0);
+    const settled = completed + failed;
+    const successRate = settled > 0 ? Number(((completed / settled) * 100).toFixed(2)) : 100;
+    const failureRate = settled > 0 ? Number(((failed / settled) * 100).toFixed(2)) : 0;
+
+    let redisMemoryUsage = 0;
+    try {
+      const info = await redisClient.info("memory");
+      const match = info.match(/used_memory:(\d+)/);
+      redisMemoryUsage = match ? Number(match[1]) : 0;
+    } catch {
+      redisMemoryUsage = 0;
+    }
+
+    const lines: string[] = [];
+    lines.push("# HELP queue_depth Current queue depth (waiting + active + delayed)");
+    lines.push("# TYPE queue_depth gauge");
+    lines.push(`queue_depth{queue=\"logo_enrichment\"} ${waiting + active + delayed}`);
+    lines.push("# HELP queue_lag Average queue latency in milliseconds");
+    lines.push("# TYPE queue_lag gauge");
+    lines.push(`queue_lag{queue=\"logo_enrichment\"} ${queueLag}`);
+    lines.push("# HELP queue_lag_seconds Average queue latency in seconds");
+    lines.push("# TYPE queue_lag_seconds gauge");
+    lines.push(`queue_lag_seconds{queue=\"logo_enrichment\"} ${(queueLag / 1000).toFixed(3)}`);
+    lines.push("# HELP worker_throughput_completed Total completed queue jobs");
+    lines.push("# TYPE worker_throughput_completed counter");
+    lines.push(`worker_throughput_completed{queue=\"logo_enrichment\"} ${completed}`);
+    lines.push("# HELP worker_throughput_failed Total failed queue jobs");
+    lines.push("# TYPE worker_throughput_failed counter");
+    lines.push(`worker_throughput_failed{queue=\"logo_enrichment\"} ${failed}`);
+    lines.push("# HELP queue_success_rate Queue success rate percentage");
+    lines.push("# TYPE queue_success_rate gauge");
+    lines.push(`queue_success_rate{queue=\"logo_enrichment\"} ${successRate}`);
+    lines.push("# HELP worker_success_rate Worker success rate percentage");
+    lines.push("# TYPE worker_success_rate gauge");
+    lines.push(`worker_success_rate{queue=\"logo_enrichment\"} ${successRate}`);
+    lines.push("# HELP queue_failure_rate Queue failure rate percentage");
+    lines.push("# TYPE queue_failure_rate gauge");
+    lines.push(`queue_failure_rate{queue=\"logo_enrichment\"} ${failureRate}`);
+    lines.push("# HELP redis_memory_usage Redis used memory in bytes");
+    lines.push("# TYPE redis_memory_usage gauge");
+    lines.push(`redis_memory_usage ${redisMemoryUsage}`);
+    lines.push("# HELP api_latency API average latency in milliseconds");
+    lines.push("# TYPE api_latency gauge");
+
+    lines.push("# HELP real_icon_accuracy Percentage of real non-fallback icons served");
+    lines.push("# TYPE real_icon_accuracy gauge");
+    lines.push(`real_icon_accuracy ${metrics.iconAccuracy.realIconAccuracy}`);
+    lines.push("# HELP fallback_ratio Percentage of fallback icons served");
+    lines.push("# TYPE fallback_ratio gauge");
+    lines.push(`fallback_ratio ${metrics.iconAccuracy.fallbackUsageRate}`);
+
+    for (const [route, stats] of Object.entries(metrics.apiLatency)) {
+      const routeLabel = route.replace(/\\/g, "\\\\").replace(/\"/g, "\\\"");
+      lines.push(`api_latency{route=\"${routeLabel}\"} ${stats.avgMs}`);
+    }
+
+    res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    res.send(`${lines.join("\n")}\n`);
   });
 
   app.use("/api", apiLimiter);

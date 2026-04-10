@@ -15,6 +15,7 @@ type QueueSymbol = {
   companyDomain?: string;
   popularity?: number;
   searchFrequency?: number;
+  missingIconCount?: number;
   createdAt: number;
 };
 
@@ -82,9 +83,7 @@ function hasExistingIcon(symbol: { iconUrl?: string; s3Icon?: string }): boolean
 }
 
 function priorityOf(symbol: QueueSymbol): number {
-  const basePriority = (symbol.popularity ?? 0) + (symbol.searchFrequency ?? 0);
-  const ageBoost = Date.now() - symbol.createdAt;
-  return Math.floor(basePriority + ageBoost * 0.0001);
+  return Math.max(1, (symbol.missingIconCount ?? 0) + (symbol.searchFrequency ?? 0));
 }
 
 function safeJobId(fullSymbol: string): string {
@@ -144,6 +143,11 @@ async function enqueueSymbolLogoEnrichmentInternal(symbol: QueueSymbolInput): Pr
     jobId: safeJobId(normalized.fullSymbol),
     priority: priorityOf(normalized),
   });
+
+  logger.info("logo_queue_enqueued", {
+    fullSymbol: normalized.fullSymbol,
+    queueSize: total + 1,
+  });
 }
 
 export function enqueueSymbolLogoEnrichment(symbol: QueueSymbolInput): void {
@@ -156,9 +160,78 @@ export function enqueueSymbolLogoEnrichment(symbol: QueueSymbolInput): void {
 }
 
 export function enqueueSymbolLogoEnrichmentBatch(symbols: QueueSymbolInput[]): void {
-  void Promise.all(
-    symbols.map((symbol) => enqueueSymbolLogoEnrichmentInternal({ ...symbol, createdAt: Date.now() })),
-  ).catch((error) => {
+  void (async () => {
+    const queueRef = getLogoQueue();
+    const now = Date.now();
+    const unresolved = symbols
+      .filter((symbol) => !hasExistingIcon(symbol))
+      .map((symbol) => ({
+        ...symbol,
+        symbol: symbol.symbol.toUpperCase(),
+        fullSymbol: symbol.fullSymbol.toUpperCase(),
+        exchange: symbol.exchange.toUpperCase(),
+        createdAt: symbol.createdAt || now,
+      }));
+
+    if (unresolved.length === 0) {
+      return;
+    }
+
+    const [waiting, active, delayed] = await Promise.all([
+      queueRef.getWaitingCount(),
+      queueRef.getActiveCount(),
+      queueRef.getDelayedCount(),
+    ]);
+    const currentDepth = waiting + active + delayed;
+    const capacity = Math.max(0, MAX_QUEUE_SIZE - currentDepth);
+
+    if (capacity === 0) {
+      droppedCounter += unresolved.length;
+      logger.warn("logo_queue_full_drop", { queueSize: currentDepth, maxQueueSize: MAX_QUEUE_SIZE });
+      return;
+    }
+
+    const candidates = unresolved.slice(0, capacity);
+    const deduped: QueueSymbol[] = [];
+    for (const symbol of candidates) {
+      const shouldEnqueue = await shouldEnqueueByDedupeWindow(symbol.fullSymbol);
+      if (!shouldEnqueue) {
+        skippedCounter += 1;
+        continue;
+      }
+      if (!canEnqueueNow()) {
+        droppedCounter += 1;
+        continue;
+      }
+      deduped.push(symbol);
+    }
+
+    if (deduped.length === 0) {
+      return;
+    }
+
+    const missingIconCount = deduped.length;
+    await queueRef.addBulk(
+      deduped.map((symbol) => ({
+        name: LOGO_QUEUE_JOB,
+        data: {
+          ...symbol,
+          missingIconCount,
+        },
+        opts: {
+          jobId: safeJobId(symbol.fullSymbol),
+          priority: priorityOf({ ...symbol, missingIconCount }),
+        },
+      })),
+    );
+
+    logger.info("logo_queue_batch_enqueued", {
+      enqueued: deduped.length,
+      unresolvedCandidates: unresolved.length,
+      queueSize: currentDepth + deduped.length,
+      missingIconCount,
+    });
+  })().catch((error) => {
     logger.error("logo_queue_batch_enqueue_failed", {
       error: error instanceof Error ? error.message : String(error),
     });

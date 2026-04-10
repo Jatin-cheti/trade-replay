@@ -1,63 +1,34 @@
-import dotenv from "dotenv";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const rootEnvPath = path.resolve(__dirname, "../../../.env");
-if (fs.existsSync(rootEnvPath)) {
-  dotenv.config({ path: rootEnvPath });
-}
-
-const targetEnv = (process.env.NODE_ENV ?? "local").toLowerCase();
-
-function getPrefixForNodeEnv(nodeEnv: string): "LOCAL" | "DEV" | "QA" | "PROD" {
-  if (nodeEnv === "production" || nodeEnv === "prod") return "PROD";
-  if (nodeEnv === "qa" || nodeEnv === "test") return "QA";
-  if (nodeEnv === "development" || nodeEnv === "dev") return "DEV";
-  return "LOCAL";
-}
-
-const envPrefix = getPrefixForNodeEnv(targetEnv);
-
-function readProfileVar(key: string, fallback: string): string {
-  return process.env[`${envPrefix}_${key}`]
-    ?? process.env[`LOCAL_${key}`]
-    ?? process.env[key]
-    ?? fallback;
-}
+import { CONFIG } from "./index";
 
 export const env = {
-  NODE_ENV: targetEnv,
-  PORT: Number(readProfileVar("PORT", "4000")),
-  API_RATE_LIMIT_MAX: Number(readProfileVar("API_RATE_LIMIT_MAX", "2000")),
-  CLIENT_URL: readProfileVar("CLIENT_URL", "http://localhost:8080"),
-  MONGO_URI: readProfileVar("MONGO_URI", "mongodb://127.0.0.1:27017/tradereplay"),
-  REDIS_URL: readProfileVar("REDIS_URL", "redis://127.0.0.1:6379"),
-  KAFKA_ENABLED: readProfileVar("KAFKA_ENABLED", "false") === "true",
-  KAFKA_BROKERS: readProfileVar("KAFKA_BROKERS", "127.0.0.1:9092"),
-  KAFKA_DEFAULT_PARTITIONS: Number(readProfileVar("KAFKA_DEFAULT_PARTITIONS", "3")),
-  KAFKA_SYMBOL_EVENT_PARTITIONS: Number(readProfileVar("KAFKA_SYMBOL_EVENT_PARTITIONS", "6")),
-  KAFKA_PORTFOLIO_EVENT_PARTITIONS: Number(readProfileVar("KAFKA_PORTFOLIO_EVENT_PARTITIONS", "6")),
-  ANALYTICS_CONSUMER_GROUP: readProfileVar("ANALYTICS_CONSUMER_GROUP", "tradereplay-analytics-processor"),
-  KAFKA_SASL_MECHANISM: readProfileVar("KAFKA_SASL_MECHANISM", "plain"),
-  KAFKA_SASL_USERNAME: readProfileVar("KAFKA_SASL_USERNAME", ""),
-  KAFKA_SASL_PASSWORD: readProfileVar("KAFKA_SASL_PASSWORD", ""),
-  JWT_SECRET: readProfileVar("JWT_SECRET", "dev-secret"),
-  CURSOR_SIGNING_SECRET: readProfileVar("CURSOR_SIGNING_SECRET", readProfileVar("JWT_SECRET", "dev-secret")),
-  ALPHA_VANTAGE_KEY: readProfileVar("ALPHA_VANTAGE_KEY", ""),
-  GOOGLE_CLIENT_ID: readProfileVar("GOOGLE_CLIENT_ID", ""),
-  FMP_API_KEY: readProfileVar("FMP_API_KEY", ""),
-  AWS_REGION: process.env.AWS_REGION ?? "",
-  AWS_S3_BUCKET: process.env.AWS_S3_BUCKET ?? "",
-  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "",
-  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? "",
-  AWS_CDN_BASE_URL: process.env.AWS_CDN_BASE_URL ?? "",
-  LOG_REQUEST_SAMPLE_RATE: Math.max(0, Math.min(1, Number(readProfileVar("LOG_REQUEST_SAMPLE_RATE", "0.1")) || 0.1)),
-  LOGO_ENRICHMENT_ENABLED: readProfileVar("LOGO_ENRICHMENT_ENABLED", "true") === "true",
-  LOGO_ENRICHMENT_INTERVAL_MS: Number(readProfileVar("LOGO_ENRICHMENT_INTERVAL_MS", String(6 * 60 * 60 * 1000))),
-  LOGO_FALLBACK_TARGET_RATIO: Number(readProfileVar("LOGO_FALLBACK_TARGET_RATIO", "0.05")),
-  USD_TO_INR: Number(readProfileVar("USD_TO_INR", "83.5")),
+  NODE_ENV: CONFIG.nodeEnv,
+  PORT: CONFIG.port,
+  API_RATE_LIMIT_MAX: CONFIG.apiRateLimitMax,
+  CLIENT_URL: CONFIG.clientUrl,
+  MONGO_URI: CONFIG.mongoUri,
+  REDIS_URL: CONFIG.redisUrl,
+  KAFKA_ENABLED: CONFIG.kafkaEnabled,
+  KAFKA_BROKERS: CONFIG.kafkaBroker,
+  KAFKA_DEFAULT_PARTITIONS: CONFIG.kafkaDefaultPartitions,
+  KAFKA_SYMBOL_EVENT_PARTITIONS: CONFIG.kafkaSymbolEventPartitions,
+  KAFKA_PORTFOLIO_EVENT_PARTITIONS: CONFIG.kafkaPortfolioEventPartitions,
+  ANALYTICS_CONSUMER_GROUP: CONFIG.analyticsConsumerGroup,
+  KAFKA_SASL_MECHANISM: CONFIG.kafkaSaslMechanism,
+  KAFKA_SASL_USERNAME: CONFIG.kafkaSaslUsername,
+  KAFKA_SASL_PASSWORD: CONFIG.kafkaSaslPassword,
+  JWT_SECRET: CONFIG.jwtSecret,
+  CURSOR_SIGNING_SECRET: CONFIG.cursorSigningSecret,
+  ALPHA_VANTAGE_KEY: CONFIG.alphaVantageKey,
+  GOOGLE_CLIENT_ID: CONFIG.googleClientId,
+  FMP_API_KEY: CONFIG.fmpApiKey,
+  AWS_REGION: CONFIG.awsRegion,
+  AWS_S3_BUCKET: CONFIG.awsS3Bucket,
+  AWS_ACCESS_KEY_ID: CONFIG.awsAccessKeyId,
+  AWS_SECRET_ACCESS_KEY: CONFIG.awsSecretAccessKey,
+  AWS_CDN_BASE_URL: CONFIG.awsCdnBaseUrl,
+  LOG_REQUEST_SAMPLE_RATE: Math.max(0, Math.min(1, CONFIG.logRequestSampleRate)),
+  LOGO_ENRICHMENT_ENABLED: CONFIG.logoEnrichmentEnabled,
+  LOGO_ENRICHMENT_INTERVAL_MS: CONFIG.logoEnrichmentIntervalMs,
+  LOGO_FALLBACK_TARGET_RATIO: CONFIG.logoFallbackTargetRatio,
+  USD_TO_INR: CONFIG.usdToInr,
 };

@@ -46,6 +46,10 @@ function sanitizeFileName(fileName: string): string {
   return safe.length > 120 ? safe.slice(-120) : safe;
 }
 
+function sanitizePathSegment(value: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
 function resolveCdnUrl(key: string): string {
   const base = env.AWS_CDN_BASE_URL.trim();
   if (base) {
@@ -118,8 +122,15 @@ async function optimizeLogoVariants(image: Buffer): Promise<Record<string, Buffe
 }
 
 export function buildPortfolioUploadKey(userId: string, fileName: string): string {
+  const safeUserId = sanitizePathSegment(userId);
   const safeName = sanitizeFileName(fileName);
-  return `${PORTFOLIO_PREFIX}/${userId}/${Date.now()}-${safeName}`;
+  return `${PORTFOLIO_PREFIX}/${safeUserId}/${Date.now()}-${safeName}`;
+}
+
+export function buildPortfolioJsonKey(userId: string, portfolioId: string): string {
+  const safeUserId = sanitizePathSegment(userId);
+  const safePortfolioId = sanitizePathSegment(portfolioId);
+  return `${PORTFOLIO_PREFIX}/${safeUserId}/${safePortfolioId}.json`;
 }
 
 function ensureCsvUploadRequest(fileName: string, contentType?: string, fileSizeBytes?: number): void {
@@ -149,10 +160,19 @@ export async function generatePortfolioUploadUrl(
   fileName: string,
   contentType?: string,
   fileSizeBytes?: number,
+  portfolioId?: string,
 ): Promise<{ uploadUrl: string; s3Key: string }> {
-  ensureCsvUploadRequest(fileName, contentType, fileSizeBytes);
-  const key = buildPortfolioUploadKey(userId, fileName);
-  const resolvedContentType = (contentType?.trim().toLowerCase() || "text/csv");
+  const hasPortfolioId = typeof portfolioId === "string" && portfolioId.trim().length > 0;
+  if (!hasPortfolioId) {
+    ensureCsvUploadRequest(fileName, contentType, fileSizeBytes);
+  }
+
+  const key = hasPortfolioId
+    ? buildPortfolioJsonKey(userId, portfolioId as string)
+    : buildPortfolioUploadKey(userId, fileName);
+  const resolvedContentType = hasPortfolioId
+    ? "application/json"
+    : (contentType?.trim().toLowerCase() || "text/csv");
 
   const command = new PutObjectCommand({
     Bucket: env.AWS_S3_BUCKET,
@@ -167,17 +187,25 @@ export async function generatePortfolioUploadUrl(
 
 function assertKeyOwnership(userId: string, key: string): void {
   const normalizedKey = key.trim();
-  const expectedPrefix = `${PORTFOLIO_PREFIX}/${userId}/`;
+  const expectedPrefix = `${PORTFOLIO_PREFIX}/${sanitizePathSegment(userId)}/`;
   if (!normalizedKey.startsWith(expectedPrefix)) {
     throw new Error("INVALID_S3_KEY_SCOPE");
   }
-  if (!normalizedKey.toLowerCase().endsWith(".csv")) {
+  if (!normalizedKey.toLowerCase().endsWith(".csv") && !normalizedKey.toLowerCase().endsWith(".json")) {
+    throw new Error("INVALID_S3_KEY_SCOPE");
+  }
+}
+
+function assertKeyOwnershipByExtension(userId: string, key: string, extension: "csv" | "json"): void {
+  assertKeyOwnership(userId, key);
+  const normalizedKey = key.trim().toLowerCase();
+  if (!normalizedKey.endsWith(`.${extension}`)) {
     throw new Error("INVALID_S3_KEY_SCOPE");
   }
 }
 
 export async function downloadPortfolioCsv(userId: string, key: string): Promise<string> {
-  assertKeyOwnership(userId, key);
+  assertKeyOwnershipByExtension(userId, key, "csv");
 
   const command = new GetObjectCommand({
     Bucket: env.AWS_S3_BUCKET,
