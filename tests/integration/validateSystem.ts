@@ -165,7 +165,21 @@ async function socketEndpointCheck(baseUrl: string): Promise<boolean> {
   }
 }
 
+async function waitForBackend(url: string): Promise<void> {
+  const retries = 10;
+  for (let i = 0; i < retries; i += 1) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // ignore and retry
+    }
+    await wait(2000);
+  }
+  throw new Error("Backend not reachable after retries");
+}
 async function run(): Promise<void> {
+  await waitForBackend(`${DEFAULT_BACKEND_URL}/api/health`);
   const health = await fetchJsonWithRetry(`${DEFAULT_BACKEND_URL}/api/health`);
   const metrics = await fetchJsonWithRetry(`${DEFAULT_BACKEND_URL}/api/metrics`);
 
@@ -224,3 +238,6 @@ run().catch((error) => {
   }, null, 2));
   process.exit(1);
 });
+
+
+

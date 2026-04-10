@@ -1,7 +1,6 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import mongoose from "mongoose";
 import { connectDB } from "../../backend/src/config/db";
 import { connectRedis, redisClient } from "../../backend/src/config/redis";
 import { SymbolModel } from "../../backend/src/models/Symbol";
@@ -334,10 +333,3 @@ run()
     console.error("test_logo_pipeline_failed", error instanceof Error ? error.message : String(error));
     process.exit(1);
   })
-  .finally(async () => {
-    try {
-      await mongoose.connection.close();
-    } catch {
-      // ignore
-    }
-  });

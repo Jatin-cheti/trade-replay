@@ -23,5 +23,8 @@
   "devDependencies": {
     "@playwright/test": "^1.57.0",
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.1"
   }
 }
