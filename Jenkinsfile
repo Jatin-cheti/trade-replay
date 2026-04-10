@@ -49,8 +49,8 @@ pipeline {
 
     stage('Deploy') {
       steps {
-        sh 'test -f .env || cp deploy/env/.env.ci .env'
-        sh 'test -f .env.secrets || cp deploy/env/.env.secrets.ci .env.secrets'
+        sh 'cp deploy/env/.env.ci .env'
+        sh 'cp deploy/env/.env.secrets.ci .env.secrets'
         sh 'docker compose down --remove-orphans'
         sh 'docker compose up -d redis kafka mongodb backend worker logo-service kafka-service'
       }
@@ -73,6 +73,7 @@ pipeline {
     }
   }
 }
+
 
 
 
