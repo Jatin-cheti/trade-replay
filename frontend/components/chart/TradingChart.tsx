@@ -126,7 +126,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     resetForSymbol,
   } = useTools();
 
-  const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType);
+  const resizeCallbackRef = useRef<(() => void) | null>(null);
+  const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType, () => resizeCallbackRef.current?.());
   const indicatorInstancesRef = useRef<Record<string, string>>({});
   const indicatorCatalog = useMemo(() => {
     return listIndicators()
@@ -450,6 +451,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     });
   }, [chartRef, drawingsRef, draftRef, getActiveSeries, overlayRef, selectedDrawingId, translateAnchors]);
 
+  resizeCallbackRef.current = renderOverlay;
+
   const lastRenderAtRef = useRef(0);
   const lastDrawCommitAtRef = useRef(0);
 
@@ -467,12 +470,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       getLastRenderAt: () => lastRenderAtRef.current,
       getLastDrawCommitAt: () => lastDrawCommitAtRef.current,
       getDrawings: () => drawingsRef.current,
+      getMagnetMode: () => magnetMode,
+      pointerToDataPoint: (clientX: number, clientY: number, snap: boolean) =>
+        pointerToDataPoint(clientX, clientY, crosshairSnapMode, snap),
     };
     (window as unknown as Record<string, unknown>).__chartDebug = debug;
     return () => {
       delete (window as unknown as Record<string, unknown>).__chartDebug;
     };
-  }, [drawingsRef]);
+  }, [crosshairSnapMode, drawingsRef, magnetMode, pointerToDataPoint]);
 
   useEffect(() => {
     renderOverlay();
@@ -578,6 +584,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   useEffect(() => {
     if (!isMobile) {
       setToolboxMinimized(false);
+      setToolbarCollapsed(false);
       setTreeOpen(true);
       applyTouchMode('idle');
       setTouchMode('idle');

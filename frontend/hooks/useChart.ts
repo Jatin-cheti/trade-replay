@@ -19,7 +19,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export type CrosshairSnapMode = 'free' | 'time' | 'ohlc';
 
-export function useChart(data: CandleData[], visibleCount: number, chartType: ChartType) {
+export function useChart(data: CandleData[], visibleCount: number, chartType: ChartType, onResize?: () => void) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
@@ -75,6 +75,7 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
       resizeDebounceRef.current = window.setTimeout(() => {
         if (!chartRef.current || !chartContainerRef.current || !overlayRef.current) return;
         resizeChartSurface(chartRef.current, chartContainerRef.current, overlayRef.current);
+        onResize?.();
       }, 90);
     });
 

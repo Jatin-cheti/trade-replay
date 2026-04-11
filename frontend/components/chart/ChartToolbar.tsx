@@ -168,15 +168,33 @@ export default function ChartToolbar({
           ))}
         </select>
 
-        <button type="button" data-testid="chart-undo" onClick={onUndo} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
+        <button type="button" data-testid="toolbar-undo" onClick={onUndo} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
           <span className="inline-flex items-center gap-1.5"><Undo2 size={14} /> Undo</span>
         </button>
-        <button type="button" data-testid="chart-redo" onClick={onRedo} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
+        <button type="button" data-testid="toolbar-redo" onClick={onRedo} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
           <span className="inline-flex items-center gap-1.5"><Redo2 size={14} /> Redo</span>
         </button>
         <button type="button" data-testid="chart-clear" onClick={onClear} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-destructive/20 hover:text-destructive">Clear</button>
         <button type="button" data-testid="chart-export-png" onClick={onExportPng} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
           <span className="inline-flex items-center gap-1.5"><Camera size={14} /> Export PNG</span>
+        </button>
+        <button
+          type="button"
+          data-testid="toolbar-magnet"
+          onClick={() => setMagnetMode(!magnetMode)}
+          className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${magnetMode ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
+          title="Magnet mode — snap to OHLC"
+        >
+          <span className="inline-flex items-center gap-1.5"><Magnet size={14} /> Magnet</span>
+        </button>
+        <button
+          type="button"
+          data-testid="toolbar-layout"
+          onClick={() => setToolboxMinimized(!toolboxMinimized)}
+          className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${!toolboxMinimized ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
+          title="Toggle layout toolbox"
+        >
+          <span className="inline-flex items-center gap-1.5"><Layers size={14} /> Layout</span>
         </button>
         <button
           type="button"

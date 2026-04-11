@@ -1367,15 +1367,9 @@ export function createChart(
   // ── time scale API ────────────────────────────────────────────────────────
 
   const visibleRangeListeners = new Set<() => void>();
-  let prevFirstBar = -1;
-  let prevLastBar = -1;
 
   function notifyVisibleRangeChange(): void {
     if (!visibleRangeListeners.size) return;
-    const rs = computeRenderState();
-    if (rs.firstBar === prevFirstBar && rs.lastBar === prevLastBar) return;
-    prevFirstBar = rs.firstBar;
-    prevLastBar = rs.lastBar;
     for (const fn of visibleRangeListeners) {
       try { fn(); } catch { /* listener error */ }
     }

@@ -144,10 +144,10 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await clickByTestId("tool-magnet");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("magnet: on");
 
-  await clickByTestId("chart-undo");
+  await clickByTestId("toolbar-undo");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: anchoredText");
 
-  await clickByTestId("chart-redo");
+  await clickByTestId("toolbar-redo");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("magnet: on");
 
   await clickByTestId("chart-clear");
