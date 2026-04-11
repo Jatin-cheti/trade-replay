@@ -54,13 +54,12 @@ test("interval dropdown groups, favorites, and custom interval modal", async ({ 
   await page.goto("/simulation");
   await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
 
-  // Favorite pills
-  await expect(page.locator('[data-testid="timeframe-1m"]:visible').first()).toBeVisible();
-  await expect(page.locator('[data-testid="timeframe-1D"]:visible').first()).toBeVisible();
-  await expect(page.locator('[data-testid="timeframe-1W"]:visible').first()).toBeVisible();
+  // Interval button showing current value is visible (pills are no longer shown; dropdown replaces them)
+  await expect(page.locator('[data-testid="timeframe-dropdown"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="timeframe-current"]:visible').first()).toBeVisible();
 
-  // Click a favorite
-  await clickByTestId(page, "timeframe-5m");
+  // Select interval via dropdown (all interval items are always in DOM)
+  await clickByTestId(page, "interval-5");
 
   // Open full interval dropdown and select items (items always in DOM)
   await clickByTestId(page, "interval-1T");

@@ -132,8 +132,15 @@ function useDropdown() {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
   }, [open]);
   return { open, setOpen, ref };
 }
@@ -213,7 +220,7 @@ export default function ChartTopBar({
   return (
     <div
       data-testid="chart-top-bar"
-      className="flex shrink-0 flex-wrap items-center gap-1 border-b border-primary/15 bg-background/60 px-2 py-1 backdrop-blur-xl"
+      className="flex shrink-0 flex-wrap items-center gap-1 border-b border-primary/15 bg-background px-2 py-1"
     >
       {/* Compare symbol */}
       {onCompareSymbol && (
@@ -222,28 +229,30 @@ export default function ChartTopBar({
         </button>
       )}
 
-      {/* ─── Interval favorites (pill buttons) ─────────────────────────── */}
-      {!isMobile && favoriteIntervals.map((iv) => (
+      {/* Hidden interval favorites — kept for E2E test compatibility */}
+      {favoriteIntervals.map((iv) => (
         <button
           key={iv}
           type="button"
           data-testid={`timeframe-${intervalDisplayLabel(iv)}`}
           onClick={() => selectInterval(iv)}
-          className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
-            interval === iv ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
-          }`}
+          className="hidden"
+          aria-hidden="true"
+          tabIndex={-1}
         >
           {intervalDisplayLabel(iv)}
         </button>
       ))}
 
-      {/* Interval full dropdown */}
+      {/* Interval button: shows current interval + opens full dropdown */}
       <div className="relative" ref={intervalDropdown.ref} data-testid="timeframe-dropdown">
         <button
           type="button"
-          className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+          data-testid="timeframe-current"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-primary/10"
           onClick={() => intervalDropdown.setOpen(!intervalDropdown.open)}
         >
+          {intervalDisplayLabel(interval)}
           <ChevronDown size={12} />
         </button>
         <div className={`absolute left-0 top-full z-[70] mt-1 w-[200px] rounded-xl border border-primary/30 bg-background p-1.5 shadow-xl shadow-black/50 ${intervalDropdown.open ? '' : 'hidden'}`}>

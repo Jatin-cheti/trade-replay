@@ -69,7 +69,7 @@ function formatExportTimestamp(date: Date): string {
 export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
   const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>('candlestick');
-  const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('lines');
+  const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>(null);
   const [cursorMode, setCursorMode] = useState<CursorMode>('cross');
   const [valuesTooltip, setValuesTooltip] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
