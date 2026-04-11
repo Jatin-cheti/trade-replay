@@ -11,7 +11,8 @@ import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
 import { useIsMobile } from '@/hooks/use-mobile';
 import ChartCanvas from '@/components/chart/ChartCanvas';
-import ChartToolbar from '@/components/chart/ChartToolbar';
+import ToolRail from '@/components/chart/ToolRail';
+import ChartTopBar from '@/components/chart/ChartTopBar';
 import ToolOptionsPanel from '@/components/chart/ToolOptionsPanel';
 import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 
@@ -74,20 +75,6 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const stored = window.localStorage.getItem('chart-crosshair-snap-mode');
     if (stored === 'time' || stored === 'ohlc' || stored === 'free') return stored;
     return 'free';
-  });
-  const [toolboxMinimized, setToolboxMinimized] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(max-width: 767px)').matches;
-  });
-  const [toolbarCollapsed, setToolbarCollapsed] = useState<boolean>(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
-      return true;
-    }
-    try {
-      return window.localStorage.getItem('chart-toolbar-collapsed') === '1';
-    } catch {
-      return false;
-    }
   });
   const [showGoLive, setShowGoLive] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -606,26 +593,14 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [drawingsRef, removeDrawing, selectedDrawingId]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem('chart-toolbar-collapsed', toolbarCollapsed ? '1' : '0');
-    } catch {
-      // Ignore storage errors in restricted environments.
-    }
-  }, [toolbarCollapsed]);
-
-  useEffect(() => {
     if (!isMobile) {
-      setToolboxMinimized(false);
-      setToolbarCollapsed(false);
       setTreeOpen(true);
       applyTouchMode('idle');
       setTouchMode('idle');
       return;
     }
 
-    setToolboxMinimized(true);
     setTreeOpen(false);
-    setToolbarCollapsed(true);
     applyTouchMode('scroll');
     setTouchMode('scroll');
   }, [applyTouchMode, isMobile]);
@@ -898,212 +873,222 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   return (
     <div className="relative flex h-full w-full min-h-[340px] flex-col">
-      <div
-        className="relative min-h-0 flex-1 overflow-hidden rounded-xl"
-        onTouchStart={onChartTouchStart}
-        onTouchMove={onChartTouchMove}
-        onTouchEnd={onChartTouchEnd}
-        onTouchCancel={onChartTouchEnd}
-        onMouseMove={(event) => updateHoverPoint(event.clientX, event.clientY)}
-        onMouseLeave={() => {
-          setHoverPoint(null);
-        }}
-      >
-        <div className="chart-wrapper h-full w-full touch-pan-y">
-          <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
-        </div>
+      {/* Top bar + rail + chart in a flex layout */}
+      <ChartTopBar chartType={chartType} setChartType={setChartType} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} indicatorsOpen={indicatorsOpen} setIndicatorsOpen={setIndicatorsOpen} activeIndicatorsCount={enabledIndicators.length} treeOpen={treeOpen} setTreeOpen={setTreeOpen} selectedDrawingVariant={selectedDrawing?.variant ?? null} isMobile={isMobile} />
 
-        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} indicatorsOpen={indicatorsOpen} setIndicatorsOpen={setIndicatorsOpen} activeIndicatorsCount={enabledIndicators.length} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} selectedDrawingVariant={selectedDrawing?.variant ?? null} />
+      <div className="flex min-h-0 flex-1">
+        {/* Tool Rail — thin left icon bar */}
+        <ToolRail toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} isMobile={isMobile} />
 
-        <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
+        {/* Chart area — maximized */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div
+            className="relative min-h-0 flex-1 overflow-hidden"
+            onTouchStart={onChartTouchStart}
+            onTouchMove={onChartTouchMove}
+            onTouchEnd={onChartTouchEnd}
+            onTouchCancel={onChartTouchEnd}
+            onMouseMove={(event) => updateHoverPoint(event.clientX, event.clientY)}
+            onMouseLeave={() => {
+              setHoverPoint(null);
+            }}
+          >
+            <div className="chart-wrapper h-full w-full touch-pan-y">
+              <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
+            </div>
 
-        {indicatorsOpen ? (
-          <div data-testid="indicators-panel" className="absolute right-3 top-[70px] z-40 w-[320px] rounded-xl border border-primary/25 bg-background/90 p-2.5 backdrop-blur-xl">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Indicators</span>
+            <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
+
+            {indicatorsOpen ? (
+              <div data-testid="indicators-panel" className="absolute right-3 top-2 z-40 w-[320px] rounded-xl border border-primary/25 bg-background/90 p-2.5 backdrop-blur-xl">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Indicators</span>
+                  <button
+                    type="button"
+                    onClick={() => setIndicatorsOpen(false)}
+                    className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <div data-testid="indicators-top5" className="rounded-md border border-border/60 bg-background/60 p-2">
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Top 5</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {topIndicators.map((indicator) => {
+                        const isActive = enabledIndicators.includes(indicator.id);
+                        return (
+                          <button
+                            key={indicator.id}
+                            type="button"
+                            data-testid={`indicator-top5-${indicator.id}`}
+                            onClick={() => {
+                              addIndicator(indicator.id);
+                              indicatorSearchInputRef.current?.focus();
+                            }}
+                            className={`rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] ${isActive ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300' : 'border-border/70 bg-background/80 text-foreground hover:border-primary/40 hover:bg-primary/10'}`}
+                          >
+                            {indicator.id.toUpperCase()} {isActive ? 'Added' : 'Add'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <input
+                      ref={indicatorSearchInputRef}
+                      data-testid="indicators-search"
+                      value={indicatorSearch}
+                      onChange={(event) => {
+                        setIndicatorSearch(event.target.value);
+                        setHighlightedResultIndex(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          setIndicatorsOpen(false);
+                          return;
+                        }
+                        if (!filteredIndicators.length) return;
+                        if (event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          setHighlightedResultIndex((prev) => (prev + 1) % filteredIndicators.length);
+                          return;
+                        }
+                        if (event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setHighlightedResultIndex((prev) => (prev - 1 + filteredIndicators.length) % filteredIndicators.length);
+                          return;
+                        }
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          const selected = filteredIndicators[highlightedResultIndex];
+                          if (selected) addIndicator(selected.id);
+                        }
+                      }}
+                      placeholder="Search indicators"
+                      className="w-full rounded-md border border-border/70 bg-background/70 px-2.5 py-2 text-[12px] text-foreground outline-none focus:border-primary/40"
+                    />
+                  </div>
+
+                  <div data-testid="indicators-dropdown" className="rounded-md border border-border/60 bg-background/60 p-1.5">
+                    {!indicatorSearch.trim() ? (
+                      <div className="px-1 py-1 text-[11px] text-muted-foreground">All indicators (type to search)</div>
+                    ) : null}
+                    <div data-testid="indicators-results" className="max-h-44 space-y-1 overflow-y-auto">
+                      {indicatorSearch.trim() ? (
+                        filteredIndicators.length ? filteredIndicators.map((indicator, index) => {
+                          const isHighlighted = index === highlightedResultIndex;
+                          const isActive = enabledIndicators.includes(indicator.id);
+                          return (
+                            <button
+                              key={indicator.id}
+                              type="button"
+                              data-testid={`indicator-option-${indicator.id}`}
+                              onMouseEnter={() => setHighlightedResultIndex(index)}
+                              onClick={() => addIndicator(indicator.id)}
+                              className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] ${isHighlighted ? 'bg-primary/20 text-foreground' : 'text-foreground hover:bg-primary/10'} ${isActive ? 'opacity-80' : ''}`}
+                            >
+                              <span className="truncate">{indicator.name}</span>
+                              <span className={`ml-2 text-[10px] uppercase tracking-[0.08em] ${isActive ? 'text-emerald-300' : 'text-muted-foreground'}`}>{isActive ? 'Added' : indicator.id}</span>
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-1 py-1 text-[11px] text-muted-foreground">No matching indicators.</div>
+                        )
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div data-testid="indicators-active" className="rounded-md border border-border/60 bg-background/60 p-2">
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Active</div>
+                    {enabledIndicators.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {enabledIndicators.map((indicatorId) => {
+                          const indicator = indicatorById.get(indicatorId);
+                          const label = indicator?.name ?? indicatorId.toUpperCase();
+                          return (
+                            <div key={indicatorId} className="inline-flex items-center gap-1 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200">
+                              <span className="max-w-[170px] truncate">{label}</span>
+                              <button
+                                type="button"
+                                data-testid={`indicator-remove-${indicatorId}`}
+                                onClick={() => removeEnabledIndicator(indicatorId)}
+                                className="rounded px-1 text-[10px] uppercase tracking-[0.08em] text-emerald-100 hover:bg-emerald-500/20"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-muted-foreground">No active indicators yet.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {showGoLive ? (
               <button
                 type="button"
-                onClick={() => setIndicatorsOpen(false)}
-                className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+                data-testid="chart-go-live"
+                onClick={() => {
+                  chartRef.current?.timeScale().scrollToRealTime();
+                  setShowGoLive(false);
+                  renderOverlay();
+                }}
+                className="absolute bottom-4 right-4 z-40 rounded-full border border-primary/55 bg-background/90 px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-lg shadow-primary/10 transition hover:bg-primary/15"
               >
-                Close
+                Go to live
               </button>
-            </div>
-            <div className="space-y-2">
-              <div data-testid="indicators-top5" className="rounded-md border border-border/60 bg-background/60 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Top 5</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {topIndicators.map((indicator) => {
-                    const isActive = enabledIndicators.includes(indicator.id);
-                    return (
-                      <button
-                        key={indicator.id}
-                        type="button"
-                        data-testid={`indicator-top5-${indicator.id}`}
-                        onClick={() => {
-                          addIndicator(indicator.id);
-                          indicatorSearchInputRef.current?.focus();
-                        }}
-                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] ${isActive ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300' : 'border-border/70 bg-background/80 text-foreground hover:border-primary/40 hover:bg-primary/10'}`}
-                      >
-                        {indicator.id.toUpperCase()} {isActive ? 'Added' : 'Add'}
-                      </button>
-                    );
-                  })}
+            ) : null}
+          </div>
+
+          {/* OHLC status bar */}
+          <div data-testid="ohlc-status" className="flex flex-wrap items-center gap-x-1 gap-y-1 border-t border-primary/15 bg-background/60 px-3 py-1 backdrop-blur-xl">
+            <div data-testid="chart-ohlc-legend" className="contents">
+            {currentLegendRow ? (
+              <>
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-foreground">O</span>
+                  <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.open.toFixed(2)}</span>
                 </div>
-              </div>
-
-              <div>
-                <input
-                  ref={indicatorSearchInputRef}
-                  data-testid="indicators-search"
-                  value={indicatorSearch}
-                  onChange={(event) => {
-                    setIndicatorSearch(event.target.value);
-                    setHighlightedResultIndex(0);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      event.preventDefault();
-                      setIndicatorsOpen(false);
-                      return;
-                    }
-                    if (!filteredIndicators.length) return;
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setHighlightedResultIndex((prev) => (prev + 1) % filteredIndicators.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      setHighlightedResultIndex((prev) => (prev - 1 + filteredIndicators.length) % filteredIndicators.length);
-                      return;
-                    }
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      const selected = filteredIndicators[highlightedResultIndex];
-                      if (selected) addIndicator(selected.id);
-                    }
-                  }}
-                  placeholder="Search indicators"
-                  className="w-full rounded-md border border-border/70 bg-background/70 px-2.5 py-2 text-[12px] text-foreground outline-none focus:border-primary/40"
-                />
-              </div>
-
-              <div data-testid="indicators-dropdown" className="rounded-md border border-border/60 bg-background/60 p-1.5">
-                {!indicatorSearch.trim() ? (
-                  <div className="px-1 py-1 text-[11px] text-muted-foreground">All indicators (type to search)</div>
-                ) : null}
-                <div data-testid="indicators-results" className="max-h-44 space-y-1 overflow-y-auto">
-                  {indicatorSearch.trim() ? (
-                    filteredIndicators.length ? filteredIndicators.map((indicator, index) => {
-                      const isHighlighted = index === highlightedResultIndex;
-                      const isActive = enabledIndicators.includes(indicator.id);
-                      return (
-                        <button
-                          key={indicator.id}
-                          type="button"
-                          data-testid={`indicator-option-${indicator.id}`}
-                          onMouseEnter={() => setHighlightedResultIndex(index)}
-                          onClick={() => addIndicator(indicator.id)}
-                          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] ${isHighlighted ? 'bg-primary/20 text-foreground' : 'text-foreground hover:bg-primary/10'} ${isActive ? 'opacity-80' : ''}`}
-                        >
-                          <span className="truncate">{indicator.name}</span>
-                          <span className={`ml-2 text-[10px] uppercase tracking-[0.08em] ${isActive ? 'text-emerald-300' : 'text-muted-foreground'}`}>{isActive ? 'Added' : indicator.id}</span>
-                        </button>
-                      );
-                    }) : (
-                      <div className="px-1 py-1 text-[11px] text-muted-foreground">No matching indicators.</div>
-                    )
-                  ) : null}
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-foreground">H</span>
+                  <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.high.toFixed(2)}</span>
                 </div>
-              </div>
-
-              <div data-testid="indicators-active" className="rounded-md border border-border/60 bg-background/60 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Active</div>
-                {enabledIndicators.length ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {enabledIndicators.map((indicatorId) => {
-                      const indicator = indicatorById.get(indicatorId);
-                      const label = indicator?.name ?? indicatorId.toUpperCase();
-                      return (
-                        <div key={indicatorId} className="inline-flex items-center gap-1 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200">
-                          <span className="max-w-[170px] truncate">{label}</span>
-                          <button
-                            type="button"
-                            data-testid={`indicator-remove-${indicatorId}`}
-                            onClick={() => removeEnabledIndicator(indicatorId)}
-                            className="rounded px-1 text-[10px] uppercase tracking-[0.08em] text-emerald-100 hover:bg-emerald-500/20"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-muted-foreground">No active indicators yet.</div>
-                )}
-              </div>
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-foreground">L</span>
+                  <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.low.toFixed(2)}</span>
+                </div>
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-foreground">C</span>
+                  <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.close.toFixed(2)}</span>
+                </div>
+                <span className={`text-[11px] font-bold tabular-nums ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
+                <span className="mx-1 h-3 w-px bg-border/60" />
+                <span className="text-[10px] tabular-nums uppercase tracking-wider text-muted-foreground">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
+                <span className="mx-1 h-3 w-px bg-border/60" />
+                <span className="text-[10px] tabular-nums text-muted-foreground">Cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
+                <span className="mx-1 h-3 w-px bg-border/60" />
+                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary/80">{crosshairSnapMode}</span>
+              </>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">No data</span>
+            )}
             </div>
           </div>
-        ) : null}
-
-        {showGoLive ? (
-          <button
-            type="button"
-            data-testid="chart-go-live"
-            onClick={() => {
-              chartRef.current?.timeScale().scrollToRealTime();
-              setShowGoLive(false);
-              renderOverlay();
-            }}
-            className="absolute bottom-4 right-4 z-40 rounded-full border border-primary/55 bg-background/90 px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-lg shadow-primary/10 transition hover:bg-primary/15"
-          >
-            Go to live
-          </button>
-        ) : null}
-      </div>
-
-      <div data-testid="ohlc-status" className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 rounded-xl border border-primary/25 bg-background/90 px-3 py-1.5 backdrop-blur-xl">
-        <div data-testid="chart-ohlc-legend" className="contents">
-        {currentLegendRow ? (
-          <>
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-foreground">O</span>
-              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.open.toFixed(2)}</span>
-            </div>
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-foreground">H</span>
-              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.high.toFixed(2)}</span>
-            </div>
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-foreground">L</span>
-              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.low.toFixed(2)}</span>
-            </div>
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-foreground">C</span>
-              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.close.toFixed(2)}</span>
-            </div>
-            <span className={`text-[11px] font-bold tabular-nums ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
-            <span className="mx-1 h-3 w-px bg-border/60" />
-            <span className="text-[10px] tabular-nums uppercase tracking-wider text-muted-foreground">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
-            <span className="mx-1 h-3 w-px bg-border/60" />
-            <span className="text-[10px] tabular-nums text-muted-foreground">Cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
-            <span className="mx-1 h-3 w-px bg-border/60" />
-            <span data-testid="snap-dropdown" className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary/80">{crosshairSnapMode}</span>
-          </>
-        ) : (
-          <span className="text-[11px] text-muted-foreground">No data</span>
-        )}
         </div>
       </div>
 
-      <div className="mt-1.5">
+      <div>
         <ObjectTreePanel open={treeOpen} isMobile={isMobile} drawings={toolState.drawings} selectedDrawingId={selectedDrawingId} onSelect={setSelectedDrawingId} onToggleVisible={(id) => updateDrawing(id, (d) => ({ ...d, visible: !d.visible, options: { ...d.options, visible: !d.options.visible } }))} onToggleLocked={(id) => updateDrawing(id, (d) => ({ ...d, locked: !d.locked, options: { ...d.options, locked: !d.options.locked } }))} onDelete={removeDrawing} onTogglePanel={() => setTreeOpen((prev) => !prev)} />
       </div>
 
-      <div data-testid="drawing-badge" className="mt-2 rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xl">
+      <div data-testid="drawing-badge" className="mt-1 rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xl">
         {symbol} · {mode} · {chartType} · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
       </div>
     </div>

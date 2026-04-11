@@ -1,7 +1,7 @@
 import type { UTCTimestamp } from '@tradereplay/charts';
 import { baseOptionSchema, defaultToolOptions, mergeToolOptions, type OptionField, type ToolOptions } from './toolOptions';
 
-export type ToolCategory = 'trend' | 'shape' | 'text' | 'annotation' | 'measure' | 'fib' | 'pattern' | 'position' | 'system';
+export type ToolCategory = 'cursor' | 'trend' | 'channel' | 'pitchfork' | 'fib' | 'gann' | 'shape' | 'text' | 'pattern' | 'elliott' | 'measure' | 'position' | 'system';
 
 export type ToolFamily = 'line' | 'shape' | 'text' | 'fib' | 'pattern' | 'measure' | 'position' | 'system';
 
@@ -115,12 +115,12 @@ export const toolDefinitions: ToolDefinition[] = [
   def({ id: 'trend', label: 'Trend Line', category: 'trend', family: 'line', iconKey: 'Move3d', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
   def({ id: 'ray', label: 'Ray', category: 'trend', family: 'line', iconKey: 'Waves', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, defaultOptions: { rayMode: true }, optionsSchema: lineSchema }),
   def({ id: 'extendedLine', label: 'Extended Line', category: 'trend', family: 'line', iconKey: 'ArrowRight', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, defaultOptions: { extendLeft: true, extendRight: true }, optionsSchema: lineSchema }),
-  def({ id: 'channel', label: 'Channel', category: 'trend', family: 'line', iconKey: 'Layers', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: false }, optionsSchema: lineSchema }),
+  def({ id: 'channel', label: 'Parallel Channel', category: 'channel', family: 'line', iconKey: 'Layers', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: false }, optionsSchema: lineSchema }),
 
-  def({ id: 'hline', label: 'Horizontal Line', category: 'annotation', family: 'line', iconKey: 'Minus', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
-  def({ id: 'vline', label: 'Vertical Line', category: 'annotation', family: 'line', iconKey: 'Plus', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
-  def({ id: 'horizontalRay', label: 'Horizontal Ray', category: 'annotation', family: 'line', iconKey: 'ArrowRight', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, defaultOptions: { rayMode: true }, optionsSchema: lineSchema }),
-  def({ id: 'verticalLine', label: 'Vertical Marker', category: 'annotation', family: 'line', iconKey: 'SeparatorVertical', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
+  def({ id: 'hline', label: 'Horizontal Line', category: 'trend', family: 'line', iconKey: 'Minus', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
+  def({ id: 'vline', label: 'Vertical Line', category: 'trend', family: 'line', iconKey: 'Plus', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
+  def({ id: 'horizontalRay', label: 'Horizontal Ray', category: 'trend', family: 'line', iconKey: 'ArrowRight', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, defaultOptions: { rayMode: true }, optionsSchema: lineSchema }),
+  def({ id: 'verticalLine', label: 'Vertical Marker', category: 'trend', family: 'line', iconKey: 'SeparatorVertical', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
 
   def({ id: 'rectangle', label: 'Rectangle', category: 'shape', family: 'shape', iconKey: 'RectangleHorizontal', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: true, supportsFill: true, supportsLevels: false }, optionsSchema: shapeSchema, behaviors: { shapeKind: 'rectangle' } }),
   def({ id: 'circle', label: 'Circle', category: 'shape', family: 'shape', iconKey: 'Circle', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: true, supportsFill: true, supportsLevels: false }, optionsSchema: shapeSchema, behaviors: { shapeKind: 'circle' } }),
@@ -148,18 +148,18 @@ export const toolDefinitions: ToolDefinition[] = [
   def({ id: 'fibFan', label: 'Fib Fan', category: 'fib', family: 'fib', iconKey: 'Fan', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
   def({ id: 'fibSpiral', label: 'Fib Spiral', category: 'fib', family: 'fib', iconKey: 'Orbit', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
   def({ id: 'fibTimeZones', label: 'Fib Time Zones', category: 'fib', family: 'fib', iconKey: 'Clock3', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: true, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
-  def({ id: 'gannBox', label: 'Gann Box', category: 'fib', family: 'fib', iconKey: 'Box', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: true }, optionsSchema: fibSchema }),
-  def({ id: 'gannSquare', label: 'Gann Square', category: 'fib', family: 'fib', iconKey: 'Square', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: true }, optionsSchema: fibSchema }),
-  def({ id: 'gannFan', label: 'Gann Fan', category: 'fib', family: 'fib', iconKey: 'Fan', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
-  def({ id: 'pitchfork', label: 'Pitchfork', category: 'fib', family: 'fib', iconKey: 'GitFork', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
-  def({ id: 'schiffPitchfork', label: 'Schiff Pitchfork', category: 'fib', family: 'fib', iconKey: 'GitFork', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
-  def({ id: 'insidePitchfork', label: 'Inside Pitchfork', category: 'fib', family: 'fib', iconKey: 'GitFork', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
+  def({ id: 'gannBox', label: 'Gann Box', category: 'gann', family: 'fib', iconKey: 'Box', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: true }, optionsSchema: fibSchema }),
+  def({ id: 'gannSquare', label: 'Gann Square', category: 'gann', family: 'fib', iconKey: 'Square', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: true }, optionsSchema: fibSchema }),
+  def({ id: 'gannFan', label: 'Gann Fan', category: 'gann', family: 'fib', iconKey: 'Fan', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
+  def({ id: 'pitchfork', label: 'Pitchfork', category: 'pitchfork', family: 'fib', iconKey: 'GitFork', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
+  def({ id: 'schiffPitchfork', label: 'Schiff Pitchfork', category: 'pitchfork', family: 'fib', iconKey: 'GitFork', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
+  def({ id: 'insidePitchfork', label: 'Inside Pitchfork', category: 'pitchfork', family: 'fib', iconKey: 'GitFork', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: true }, optionsSchema: fibSchema }),
 
   def({ id: 'xabcd', label: 'XABCD Pattern', category: 'pattern', family: 'pattern', iconKey: 'GitMerge', capabilities: { anchors: 5, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
   def({ id: 'trianglePattern', label: 'Triangle Pattern', category: 'pattern', family: 'pattern', iconKey: 'Play', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
   def({ id: 'headAndShoulders', label: 'Head & Shoulders', category: 'pattern', family: 'pattern', iconKey: 'Mountain', capabilities: { anchors: 5, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
-  def({ id: 'elliottImpulse', label: 'Elliott Impulse', category: 'pattern', family: 'pattern', iconKey: 'Activity', capabilities: { anchors: 5, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
-  def({ id: 'elliottCorrection', label: 'Elliott Correction', category: 'pattern', family: 'pattern', iconKey: 'ActivitySquare', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
+  def({ id: 'elliottImpulse', label: 'Elliott Impulse', category: 'elliott', family: 'pattern', iconKey: 'Activity', capabilities: { anchors: 5, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
+  def({ id: 'elliottCorrection', label: 'Elliott Correction', category: 'elliott', family: 'pattern', iconKey: 'ActivitySquare', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
 
   def({ id: 'longPosition', label: 'Long Position', category: 'position', family: 'position', iconKey: 'TrendingUp', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: true, supportsFill: true, supportsLevels: false }, optionsSchema: shapeSchema }),
   def({ id: 'shortPosition', label: 'Short Position', category: 'position', family: 'position', iconKey: 'TrendingDown', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: true, supportsFill: true, supportsLevels: false }, optionsSchema: shapeSchema }),
@@ -171,28 +171,33 @@ export function getToolDefinition(id: ToolVariant): ToolDefinition | null {
   return toolDefinitionMap.get(id) || null;
 }
 
-export const toolGroups: Array<{ id: ToolCategory; label: string; variants: Array<{ id: ToolVariant; label: string; iconKey: string }> }> = [
-  'trend',
-  'shape',
-  'text',
-  'annotation',
-  'fib',
-  'pattern',
-  'position',
-  'measure',
-  'system',
-]
-  .map((category) => {
-    const items = toolDefinitions.filter((tool) => tool.category === category);
+const categoryMeta: Array<{ id: ToolCategory; label: string; railIcon: string }> = [
+  { id: 'cursor', label: 'Cursor', railIcon: 'MousePointer2' },
+  { id: 'trend', label: 'Trend Line', railIcon: 'Move3d' },
+  { id: 'channel', label: 'Channels', railIcon: 'Layers' },
+  { id: 'pitchfork', label: 'Pitchforks', railIcon: 'GitFork' },
+  { id: 'fib', label: 'Fibonacci', railIcon: 'Waves' },
+  { id: 'gann', label: 'Gann', railIcon: 'Box' },
+  { id: 'pattern', label: 'Patterns', railIcon: 'GitMerge' },
+  { id: 'elliott', label: 'Elliott Waves', railIcon: 'Activity' },
+  { id: 'shape', label: 'Shapes', railIcon: 'RectangleHorizontal' },
+  { id: 'text', label: 'Text', railIcon: 'Type' },
+  { id: 'measure', label: 'Measure', railIcon: 'Ruler' },
+  { id: 'position', label: 'Position', railIcon: 'TrendingUp' },
+];
+
+export const toolGroups: Array<{ id: ToolCategory; label: string; railIcon: string; variants: Array<{ id: ToolVariant; label: string; iconKey: string }> }> = categoryMeta
+  .map((meta) => {
+    const items = toolDefinitions.filter((tool) => tool.category === meta.id);
     if (!items.length) return null;
-    const label = category === 'fib' ? 'Fibonacci/Gann' : category[0].toUpperCase() + category.slice(1);
     return {
-      id: category as ToolCategory,
-      label,
+      id: meta.id,
+      label: meta.label,
+      railIcon: meta.railIcon,
       variants: items.map((tool) => ({ id: tool.id, label: tool.label, iconKey: tool.iconKey })),
     };
   })
-  .filter(Boolean) as Array<{ id: ToolCategory; label: string; variants: Array<{ id: ToolVariant; label: string; iconKey: string }> }>;
+  .filter(Boolean) as Array<{ id: ToolCategory; label: string; railIcon: string; variants: Array<{ id: ToolVariant; label: string; iconKey: string }> }>;
 
 export const toolCursor: Record<ToolVariant, string> = toolDefinitions.reduce(
   (acc, tool) => ({ ...acc, [tool.id]: tool.family === 'text' ? 'text' : tool.id === 'zoom' ? 'zoom-in' : 'crosshair' }),

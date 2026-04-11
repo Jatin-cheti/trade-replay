@@ -40,8 +40,8 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
   await expect(chartOverlay).toBeVisible();
 
-  await page.locator('[data-testid="toolbox-collapse"]:visible').first().click();
-  await page.locator('[data-testid="toolbox-expand"]:visible').first().click();
+  await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
 
   await page.locator('[data-testid="indicators-button"]:visible').first().click();
   const indicatorsPanel = page.locator('[data-testid="indicators-panel"]:visible').first();
@@ -108,11 +108,13 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   }
 
   for (const type of dropdownTypes) {
-    await page.locator('[data-testid="chart-type-dropdown"]:visible').first().selectOption(type);
+    await clickByTestId("charttype-dropdown");
+    await clickByTestId(`chart-type-${type}`);
   }
 
   await clickByTestId("chart-type-candlestick");
 
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: trend");
 
@@ -137,7 +139,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   }
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText(/drawing/);
 
-  await clickByTestId("tool-group-text");
+  await clickByTestId("rail-text");
   await clickByTestId("tool-anchoredText");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: anchoredText");
 

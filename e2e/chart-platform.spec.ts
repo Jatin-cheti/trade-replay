@@ -70,16 +70,18 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
     }, testId);
   };
 
-  for (const testId of quickChartTypes) {
-    await clickByTestId(testId);
+  // Open chart type dropdown, click through all types
+  const allChartTestIds = [...quickChartTypes.map((id) => id.replace("chart-type-", "")), ...dropdownTypes];
+  for (const type of allChartTestIds) {
+    await clickByTestId("charttype-dropdown");
+    await clickByTestId(`chart-type-${type}`);
   }
 
-  for (const type of dropdownTypes) {
-    await page.locator('[data-testid="chart-type-dropdown"]:visible').first().selectOption(type);
-  }
-
+  await clickByTestId("charttype-dropdown");
   await clickByTestId("chart-type-candlestick");
 
+  // Open trend rail submenu, select trend tool
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: trend");
 
@@ -104,7 +106,8 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   }
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText(/drawing/);
 
-  await clickByTestId("tool-group-text");
+  // Open text rail submenu, select anchoredText
+  await clickByTestId("rail-text");
   await clickByTestId("tool-anchoredText");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: anchoredText");
 
@@ -177,7 +180,8 @@ test("drawing visibility: single drawing appears immediately", async ({ page }) 
   // Start with 0 drawings
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("0 drawings");
 
-  // Select trend tool
+  // Select trend tool via rail
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: trend");
 
@@ -263,6 +267,7 @@ test("drawing anchoring: coordinates stable across data updates", async ({ page 
   };
 
   // Select trend tool and draw
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   const box = await chartOverlay.boundingBox();
   expect(box).toBeTruthy();
@@ -344,7 +349,8 @@ test("toolbar actions: all controls visible on desktop", async ({ page }) => {
   await expect(page.locator('[data-testid="toolbar-undo"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="toolbar-redo"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="toolbar-magnet"]:visible').first()).toBeVisible();
-  await expect(page.locator('[data-testid="toolbar-layout"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="indicators-button"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="chart-export-png"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="chart-clear"]:visible').first()).toBeVisible();
@@ -393,6 +399,7 @@ test("drawing visible regardless of object tree state", async ({ page }) => {
   };
 
   // Draw a trend line with object tree EXPANDED (default on desktop)
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   const box = await chartOverlay.boundingBox();
   expect(box).toBeTruthy();
@@ -541,6 +548,7 @@ test("selected tool badge does not block clicks", async ({ page }) => {
   };
 
   // Select trend tool and draw to get a selected drawing
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   const box = await chartOverlay.boundingBox();
   expect(box).toBeTruthy();
@@ -563,26 +571,22 @@ test("selected tool badge does not block clicks", async ({ page }) => {
   }
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("1 drawing");
 
-  // Selected indicator should be in the toolbox header, not floating
+  // Selected indicator should be in the top bar
   const badge = page.locator('[data-testid="selected-tool-indicator"]');
   if (await badge.count() > 0) {
-    // Badge must have pointer-events: none
-    const pe = await badge.first().evaluate((el) => getComputedStyle(el).pointerEvents);
-    expect(pe).toBe("none");
+    // Badge is visible in top bar
+    await expect(badge.first()).toBeVisible();
   }
 
-  // Toolbox collapse/expand must still be clickable
-  await clickByTestId("toolbox-collapse");
-  await expect(page.locator('[data-testid="toolbox-expand"]:visible').first()).toBeVisible();
-  await clickByTestId("toolbox-expand");
-  await expect(page.locator('[data-testid="toolbox-collapse"]:visible').first()).toBeVisible();
+  // Tool rail must still be clickable
+  await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
 
   // Toolbar buttons must still be clickable
   await clickByTestId("toolbar-undo");
   await clickByTestId("toolbar-redo");
 });
 
-test("toolbox expand button remains visible and clickable", async ({ page }) => {
+test("tool rail opens submenus on click", async ({ page }) => {
   const uid = Date.now();
   const email = `tbxvis_${uid}@example.com`;
   const password = "pass1234";
@@ -614,37 +618,33 @@ test("toolbox expand button remains visible and clickable", async ({ page }) => 
   await page.goto("/simulation");
   await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
 
-  // Toolbox panel is visible
-  await expect(page.locator('[data-testid="toolbox-panel"]:visible').first()).toBeVisible();
+  const clickByTestId = async (testId: string) => {
+    await page.evaluate((id) => {
+      const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+      const target = nodes.find((n) => n instanceof HTMLElement && n.offsetParent !== null) ?? nodes[0];
+      if (target instanceof HTMLElement) target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }, testId);
+  };
 
-  // Collapse button visible and has proper hit area
-  const collapseBtn = page.locator('[data-testid="toolbox-collapse"]:visible').first();
-  await expect(collapseBtn).toBeVisible();
-  const collapseBox = await collapseBtn.boundingBox();
-  expect(collapseBox).toBeTruthy();
-  if (collapseBox) {
-    expect(collapseBox.width).toBeGreaterThanOrEqual(32);
-    expect(collapseBox.height).toBeGreaterThanOrEqual(32);
-  }
+  // Tool rail is visible
+  await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
 
-  // Click collapse
-  await collapseBtn.click();
+  // Click trend rail icon opens submenu
+  await clickByTestId("rail-trend");
+  await expect(page.locator('[data-testid="submenu-trend"]:visible').first()).toBeVisible();
 
-  // Expand button now visible with proper hit area
-  const expandBtn = page.locator('[data-testid="toolbox-expand"]:visible').first();
-  await expect(expandBtn).toBeVisible();
-  const expandBox = await expandBtn.boundingBox();
-  expect(expandBox).toBeTruthy();
-  if (expandBox) {
-    expect(expandBox.width).toBeGreaterThanOrEqual(32);
-    expect(expandBox.height).toBeGreaterThanOrEqual(32);
-  }
+  // Click trend rail again closes submenu
+  await clickByTestId("rail-trend");
+  await expect(page.locator('[data-testid="submenu-trend"]')).toHaveCount(0);
 
-  // Click expand
-  await expandBtn.click();
+  // Click fib rail icon opens fib submenu
+  await clickByTestId("rail-fib");
+  await expect(page.locator('[data-testid="submenu-fib"]:visible').first()).toBeVisible();
 
-  // Collapse button is back
-  await expect(page.locator('[data-testid="toolbox-collapse"]:visible').first()).toBeVisible();
+  // Select fib retracement closes submenu
+  await clickByTestId("tool-fibRetracement");
+  await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: fibRetracement");
+  await expect(page.locator('[data-testid="submenu-fib"]')).toHaveCount(0);
 });
 
 test("status row and toolbox header are uncluttered", async ({ page }) => {
@@ -679,23 +679,21 @@ test("status row and toolbox header are uncluttered", async ({ page }) => {
   await page.goto("/simulation");
   await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
 
-  // OHLC status row exists outside the toolbox
+  // OHLC status row exists
   const statusRow = page.locator('[data-testid="ohlc-status"]:visible').first();
   await expect(statusRow).toBeVisible();
 
-  // Snap mode is in the toolbar, NOT inside toolbox panel
-  const toolboxPanel = page.locator('[data-testid="toolbox-panel"]:visible').first();
-  await expect(toolboxPanel).toBeVisible();
+  // Tool rail is visible
+  await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
 
-  // Toolbox should not contain snap mode dropdown
-  const snapInToolbox = toolboxPanel.locator('[data-testid="chart-snap-mode"]');
-  await expect(snapInToolbox).toHaveCount(0);
+  // Top bar is visible
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
 
-  // Snap mode selector should be in the toolbar area (outside toolbox)
-  await expect(page.locator('[data-testid="chart-snap-mode"]:visible').first()).toBeVisible();
+  // Snap dropdown is in the top bar
+  await expect(page.locator('[data-testid="snap-dropdown"]:visible').first()).toBeVisible();
 });
 
-test("toolbox scroll: reach bottom group and pick a tool", async ({ page }) => {
+test("tool rail: select measure tool via submenu", async ({ page }) => {
   const uid = Date.now();
   const email = `tbxscrl_${uid}@example.com`;
   const password = "pass1234";
@@ -735,21 +733,14 @@ test("toolbox scroll: reach bottom group and pick a tool", async ({ page }) => {
     }, testId);
   };
 
-  // Toolbox scroll container exists
-  const scrollContainer = page.locator('[data-testid="toolbox-scroll"]:visible').first();
-  await expect(scrollContainer).toBeVisible();
+  // Tool rail is visible
+  await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
 
-  // Scroll to the bottom of the toolbox
-  await scrollContainer.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  // Open measure submenu from rail
+  await clickByTestId("rail-measure");
+  await expect(page.locator('[data-testid="submenu-measure"]:visible').first()).toBeVisible();
 
-  // The last tool group ("system") should be visible after scrolling
-  const systemGroup = page.locator('[data-testid="tool-group-system"]:visible').first();
-  await expect(systemGroup).toBeVisible();
-
-  // Expand system group
-  await clickByTestId("tool-group-system");
-
-  // Pick the zoom tool from system group
+  // Pick the zoom tool from measure submenu
   await clickByTestId("tool-zoom");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: zoom");
 });
@@ -856,6 +847,7 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
 
   // Draw in pane 0
   await clickByTestId("super-pane-0");
+  await clickByTestId("rail-trend");
   await clickByTestId("tool-trend");
   const overlay = page.locator('[data-testid="super-pane-0"] canvas[aria-label="chart-drawing-overlay"]').first();
   await expect(overlay).toBeVisible();
