@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
+import { listIndicators } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
@@ -79,6 +80,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   });
   const [showGoLive, setShowGoLive] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const [enabledIndicators, setEnabledIndicators] = useState<string[]>([]);
   const [treeOpen, setTreeOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
     return !window.matchMedia('(max-width: 767px)').matches;
@@ -110,7 +113,13 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     resetForSymbol,
   } = useTools();
 
-  const { chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType);
+  const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType);
+  const indicatorInstancesRef = useRef<Record<string, string>>({});
+  const availableIndicatorIds = useMemo(() => {
+    const preferred = ['sma', 'ema', 'rsi'];
+    const catalog = new Set(listIndicators().map((indicator) => indicator.id));
+    return preferred.filter((id) => catalog.has(id));
+  }, []);
 
   const applyTouchMode = useCallback((mode: 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch') => {
     const chart = chartRef.current;
@@ -203,6 +212,44 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   useEffect(() => {
     setHoverPoint(null);
   }, [symbol, transformedData]);
+
+  useEffect(() => {
+    setEnabledIndicators((prev) => prev.filter((id) => availableIndicatorIds.includes(id)));
+  }, [availableIndicatorIds]);
+
+  useEffect(() => {
+    if (!availableIndicatorIds.length) {
+      setIndicatorsOpen(false);
+    }
+  }, [availableIndicatorIds]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const currentInstances = indicatorInstancesRef.current;
+    const enabledSet = new Set(enabledIndicators);
+
+    for (const [indicatorId, instanceId] of Object.entries(currentInstances)) {
+      if (enabledSet.has(indicatorId)) continue;
+      try {
+        chart.removeIndicator(instanceId);
+      } catch {
+        // Ignore indicator cleanup failures during rapid chart transitions.
+      }
+      delete currentInstances[indicatorId];
+    }
+
+    for (const indicatorId of enabledIndicators) {
+      if (currentInstances[indicatorId]) continue;
+      try {
+        const instanceId = chart.addIndicator(indicatorId);
+        currentInstances[indicatorId] = instanceId;
+      } catch {
+        // Ignore unknown/unsupported indicators and continue applying the rest.
+      }
+    }
+  }, [chartRef, enabledIndicators, ready]);
 
   const rafRef = useRef<number | null>(null);
   const renderOverlay = useCallback(() => {
@@ -701,30 +748,45 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
         </div>
 
-        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
+        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} indicatorsOpen={indicatorsOpen} setIndicatorsOpen={setIndicatorsOpen} activeIndicatorsCount={enabledIndicators.length} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
 
         <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
 
-        <div data-testid="chart-ohlc-legend" className="absolute left-3 top-3 z-40 rounded-xl border border-primary/25 bg-background/90 px-3 py-2 backdrop-blur-xl">
-          {currentLegendRow ? (
-            <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              <div className="flex items-center gap-3">
-              <span className="font-semibold text-foreground">O {currentLegendRow.open.toFixed(2)}</span>
-              <span className="font-semibold text-foreground">H {currentLegendRow.high.toFixed(2)}</span>
-              <span className="font-semibold text-foreground">L {currentLegendRow.low.toFixed(2)}</span>
-              <span className="font-semibold text-foreground">C {currentLegendRow.close.toFixed(2)}</span>
-              <span className={`font-semibold ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
-                <span>{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
-                <span>cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
-                <span>snap {crosshairSnapMode}</span>
-              </div>
+        {indicatorsOpen ? (
+          <div data-testid="indicators-panel" className="absolute right-3 top-[70px] z-40 w-[220px] rounded-xl border border-primary/25 bg-background/90 p-2.5 backdrop-blur-xl">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Indicators</span>
+              <button
+                type="button"
+                onClick={() => setIndicatorsOpen(false)}
+                className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+              >
+                Close
+              </button>
             </div>
-          ) : (
-            <div className="text-[11px] text-muted-foreground">No data</div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              {availableIndicatorIds.length ? availableIndicatorIds.map((indicatorId) => {
+                const checked = enabledIndicators.includes(indicatorId);
+                return (
+                  <label key={indicatorId} className="flex items-center justify-between rounded-md border border-border/70 bg-background/70 px-2 py-1.5 text-[12px] text-foreground">
+                    <span className="uppercase tracking-[0.05em]">{indicatorId}</span>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setEnabledIndicators((prev) => checked ? prev.filter((id) => id !== indicatorId) : [...prev, indicatorId]);
+                      }}
+                    />
+                  </label>
+                );
+              }) : (
+                <div className="rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-[11px] text-muted-foreground">
+                  No supported indicators found.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {showGoLive ? (
           <button
@@ -742,6 +804,25 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         ) : null}
 
         {selectedDrawing && <div className="absolute right-3 top-3 z-40 rounded-lg border border-primary/25 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">selected: {selectedDrawing.variant}</div>}
+      </div>
+
+      <div data-testid="ohlc-status" className="mt-2 rounded-xl border border-primary/25 bg-background/90 px-3 py-2 backdrop-blur-xl">
+        <div data-testid="chart-ohlc-legend" className="text-[11px] text-muted-foreground">
+          {currentLegendRow ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-semibold text-foreground">O {currentLegendRow.open.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">H {currentLegendRow.high.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">L {currentLegendRow.low.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">C {currentLegendRow.close.toFixed(2)}</span>
+              <span className={`font-semibold ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
+              <span className="uppercase tracking-[0.1em] text-muted-foreground/80">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
+              <span className="uppercase tracking-[0.1em] text-muted-foreground/80">cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
+              <span className="uppercase tracking-[0.1em] text-muted-foreground/80">snap {crosshairSnapMode}</span>
+            </div>
+          ) : (
+            <div>No data</div>
+          )}
+        </div>
       </div>
 
       <div className="mt-2">

@@ -80,6 +80,9 @@ type ChartToolbarProps = {
   onExportPng: () => void;
   optionsOpen: boolean;
   setOptionsOpen: (value: boolean) => void;
+  indicatorsOpen: boolean;
+  setIndicatorsOpen: (value: boolean) => void;
+  activeIndicatorsCount: number;
   treeOpen: boolean;
   setTreeOpen: (value: boolean) => void;
   toolboxMinimized: boolean;
@@ -106,6 +109,9 @@ export default function ChartToolbar({
   onExportPng,
   optionsOpen,
   setOptionsOpen,
+  indicatorsOpen,
+  setIndicatorsOpen,
+  activeIndicatorsCount,
   treeOpen,
   setTreeOpen,
   toolboxMinimized,
@@ -171,6 +177,14 @@ export default function ChartToolbar({
         <button type="button" data-testid="chart-clear" onClick={onClear} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-destructive/20 hover:text-destructive">Clear</button>
         <button type="button" data-testid="chart-export-png" onClick={onExportPng} className="rounded-lg px-3 py-2 text-[13px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground">
           <span className="inline-flex items-center gap-1.5"><Camera size={14} /> Export PNG</span>
+        </button>
+        <button
+          type="button"
+          data-testid="indicators-button"
+          onClick={() => setIndicatorsOpen(!indicatorsOpen)}
+          className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${indicatorsOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
+        >
+          Indicators{activeIndicatorsCount > 0 ? ` (${activeIndicatorsCount})` : ''}
         </button>
         <button type="button" onClick={() => setOptionsOpen(!optionsOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${optionsOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Options</button>
           <button type="button" onClick={() => setTreeOpen(!treeOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${treeOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Objects</button>

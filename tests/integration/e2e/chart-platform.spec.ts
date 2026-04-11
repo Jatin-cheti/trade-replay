@@ -34,8 +34,19 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
 
+  await expect(page.locator('[data-testid="ohlc-status"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="chart-ohlc-legend"]:visible').first()).toBeVisible();
+
   const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
   await expect(chartOverlay).toBeVisible();
+
+  await page.locator('[data-testid="tool-minimize"]:visible').first().click();
+  await page.locator('[data-testid="tool-minimize"]:visible').first().click();
+
+  await page.locator('[data-testid="indicators-button"]:visible').first().click();
+  await expect(page.locator('[data-testid="indicators-panel"]:visible').first()).toBeVisible();
+  await page.locator('[data-testid="indicators-button"]:visible').first().click();
+  await expect(page.locator('[data-testid="indicators-panel"]:visible')).toHaveCount(0);
 
   const quickChartTypes = ["chart-type-candlestick", "chart-type-line", "chart-type-area"];
   const dropdownTypes = [
