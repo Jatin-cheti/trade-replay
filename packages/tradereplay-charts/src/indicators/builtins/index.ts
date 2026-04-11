@@ -138,6 +138,100 @@ import {
   cpDarkCloudDef,
   cpTweezerDef,
 } from './candlePatterns.ts';
+import {
+  volume24hDef,
+  advDeclineRatioDef,
+  advDeclineRatioBarsDef,
+  autoFibRetracementDef,
+  autoFibExtensionDef,
+  autoPitchforkDef,
+  autoTrendlinesDef,
+  avgDailyRangeDef,
+  bbTrendDef,
+  bollingerBarsDef,
+  chandeKrollStopDef,
+  chandelierExitDef,
+  chopZoneDef,
+  correlationCoeffDef,
+  cumulativeVolumeIndexDef,
+  klingerOscDef,
+  knowSureThingDef,
+  linearRegChannelDef,
+  maCrossDef,
+  mcginleyDynamicDef,
+  maRibbonDef,
+  netVolumeDef,
+  performanceDef,
+  pivotHighLowDef,
+  priceMomentumOscDef,
+  pringsSpecialKDef,
+  rankCorrelationDef,
+  rciRibbonDef,
+  relativeVolatilityIndexDef,
+  robBookerPivotsDef,
+  robBookerKnoxvilleDef,
+  robBookerMissedPivotsDef,
+  robBookerReversalDef,
+  robBookerZivGhostDef,
+  rsiDivergenceDef,
+  smiErgodicDef,
+  smiErgodicOscDef,
+  twapDef,
+  tradingSessionsDef,
+  visibleAvgPriceDef,
+  volatilityStopDef,
+  volumeDef,
+  volumeDeltaDef,
+  vwmaDef,
+  vwapAutoAnchoredDef,
+  woodiesCciDef,
+  zigZagDef,
+  moonPhasesDef,
+  multiTimePeriodDef,
+  openInterestDef,
+  priceTargetDef,
+  seasonalityDef,
+  technicalRatingsDef,
+  relativeVolumeAtTimeDef,
+} from './batch5.ts';
+import { allStrategies } from './strategies.ts';
+import { allProfiles } from './profiles.ts';
+import { allChartPatterns } from './chartPatterns.ts';
+import {
+  cpAbandonedBabyDef,
+  cpDojiStarDef,
+  cpDownsideTasukiGapDef,
+  cpDragonflyDojiDef,
+  cpGravestoneDojiDef,
+  cpHangingManDef,
+  cpInvertedHammerDef,
+  cpKickingDef,
+  cpLongLowerShadowDef,
+  cpLongUpperShadowDef,
+  cpMarubozuBlackDef,
+  cpMarubozuWhiteDef,
+  cpRisingFallingThreeDef,
+  cpSpinningTopBlackDef,
+  cpSpinningTopWhiteDef,
+  cpThreeInsideDef,
+  cpThreeOutsideDef,
+  cpTriStarDef,
+  cpTweezerTopDef,
+  cpTweezerBottomDef,
+  cpUpsideTasukiGapDef,
+  cpRisingWindowDef,
+  cpFallingWindowDef,
+  cpBeltHoldDef,
+  cpCounterattackDef,
+  cpHaramiCrossDef,
+  cpHomingPigeonDef,
+  cpLadderBottomDef,
+  cpMatchingLowDef,
+  cpStickSandwichDef,
+  cpTasukiLineDef,
+  cpThreeStarsInSouthDef,
+  cpUniqueThreeRiverDef,
+} from './candlePatterns2.ts';
 import { allStubs } from './stubs.ts';
 
 let _registered = false;
@@ -266,6 +360,101 @@ export function registerBuiltins(): void {
   registerIndicator(cpPiercingLineDef);
   registerIndicator(cpDarkCloudDef);
   registerIndicator(cpTweezerDef);
+  // Batch 5 indicators
+  registerIndicator(volume24hDef);
+  registerIndicator(advDeclineRatioDef);
+  registerIndicator(advDeclineRatioBarsDef);
+  registerIndicator(autoFibRetracementDef);
+  registerIndicator(autoFibExtensionDef);
+  registerIndicator(autoPitchforkDef);
+  registerIndicator(autoTrendlinesDef);
+  registerIndicator(avgDailyRangeDef);
+  registerIndicator(bbTrendDef);
+  registerIndicator(bollingerBarsDef);
+  registerIndicator(chandeKrollStopDef);
+  registerIndicator(chandelierExitDef);
+  registerIndicator(chopZoneDef);
+  registerIndicator(correlationCoeffDef);
+  registerIndicator(cumulativeVolumeIndexDef);
+  registerIndicator(klingerOscDef);
+  registerIndicator(knowSureThingDef);
+  registerIndicator(linearRegChannelDef);
+  registerIndicator(maCrossDef);
+  registerIndicator(mcginleyDynamicDef);
+  registerIndicator(maRibbonDef);
+  registerIndicator(netVolumeDef);
+  registerIndicator(performanceDef);
+  registerIndicator(pivotHighLowDef);
+  registerIndicator(priceMomentumOscDef);
+  registerIndicator(pringsSpecialKDef);
+  registerIndicator(rankCorrelationDef);
+  registerIndicator(rciRibbonDef);
+  registerIndicator(relativeVolatilityIndexDef);
+  registerIndicator(robBookerPivotsDef);
+  registerIndicator(robBookerKnoxvilleDef);
+  registerIndicator(robBookerMissedPivotsDef);
+  registerIndicator(robBookerReversalDef);
+  registerIndicator(robBookerZivGhostDef);
+  registerIndicator(rsiDivergenceDef);
+  registerIndicator(smiErgodicDef);
+  registerIndicator(smiErgodicOscDef);
+  registerIndicator(twapDef);
+  registerIndicator(tradingSessionsDef);
+  registerIndicator(visibleAvgPriceDef);
+  registerIndicator(volatilityStopDef);
+  registerIndicator(volumeDef);
+  registerIndicator(volumeDeltaDef);
+  registerIndicator(vwmaDef);
+  registerIndicator(vwapAutoAnchoredDef);
+  registerIndicator(woodiesCciDef);
+  registerIndicator(zigZagDef);
+  registerIndicator(moonPhasesDef);
+  registerIndicator(multiTimePeriodDef);
+  registerIndicator(openInterestDef);
+  registerIndicator(priceTargetDef);
+  registerIndicator(seasonalityDef);
+  registerIndicator(technicalRatingsDef);
+  registerIndicator(relativeVolumeAtTimeDef);
+  // Candlestick Patterns (batch 2)
+  registerIndicator(cpAbandonedBabyDef);
+  registerIndicator(cpDojiStarDef);
+  registerIndicator(cpDownsideTasukiGapDef);
+  registerIndicator(cpDragonflyDojiDef);
+  registerIndicator(cpGravestoneDojiDef);
+  registerIndicator(cpHangingManDef);
+  registerIndicator(cpInvertedHammerDef);
+  registerIndicator(cpKickingDef);
+  registerIndicator(cpLongLowerShadowDef);
+  registerIndicator(cpLongUpperShadowDef);
+  registerIndicator(cpMarubozuBlackDef);
+  registerIndicator(cpMarubozuWhiteDef);
+  registerIndicator(cpRisingFallingThreeDef);
+  registerIndicator(cpSpinningTopBlackDef);
+  registerIndicator(cpSpinningTopWhiteDef);
+  registerIndicator(cpThreeInsideDef);
+  registerIndicator(cpThreeOutsideDef);
+  registerIndicator(cpTriStarDef);
+  registerIndicator(cpTweezerTopDef);
+  registerIndicator(cpTweezerBottomDef);
+  registerIndicator(cpUpsideTasukiGapDef);
+  registerIndicator(cpRisingWindowDef);
+  registerIndicator(cpFallingWindowDef);
+  registerIndicator(cpBeltHoldDef);
+  registerIndicator(cpCounterattackDef);
+  registerIndicator(cpHaramiCrossDef);
+  registerIndicator(cpHomingPigeonDef);
+  registerIndicator(cpLadderBottomDef);
+  registerIndicator(cpMatchingLowDef);
+  registerIndicator(cpStickSandwichDef);
+  registerIndicator(cpTasukiLineDef);
+  registerIndicator(cpThreeStarsInSouthDef);
+  registerIndicator(cpUniqueThreeRiverDef);
+  // Strategies
+  for (const def of allStrategies) registerIndicator(def);
+  // Profiles
+  for (const def of allProfiles) registerIndicator(def);
+  // Chart Patterns
+  for (const def of allChartPatterns) registerIndicator(def);
   // Stubs (financials, fundamentals, community, breadth)
   for (const def of allStubs) registerIndicator(def);
 }

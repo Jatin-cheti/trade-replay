@@ -214,38 +214,6 @@ export default function IndicatorsModal({
                       <p className="text-sm font-medium text-foreground/80">Community Store</p>
                       <p className="mt-1 text-xs text-muted-foreground">Browse community-built indicators, strategies, and more.</p>
                     </div>
-                  ) : activeSidebar === 'technicals' && (activeTechTab === 'strategies' || activeTechTab === 'profiles') && !search.trim() ? (
-                    <div className="space-y-4">
-                      {/* Show tabs even on empty tabs */}
-                      <div className="flex gap-1.5 border-b border-primary/10 pb-3">
-                        {technicalsTabs.map((tab) => (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            data-testid={`tech-tab-${tab.id}`}
-                            onClick={() => setActiveTechTab(tab.id)}
-                            className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                              activeTechTab === tab.id
-                                ? 'bg-primary/15 text-primary'
-                                : 'text-muted-foreground hover:bg-primary/8 hover:text-foreground'
-                            }`}
-                          >
-                            {tab.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <Lock size={28} className="mb-3 text-muted-foreground/60" />
-                        <p className="text-sm font-medium text-foreground/80">
-                          {activeTechTab === 'strategies' ? 'No strategies yet' : 'No profiles yet'}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {activeTechTab === 'strategies'
-                            ? 'Community strategies will appear here as they are added.'
-                            : 'Volume and session profiles will appear here as they are added.'}
-                        </p>
-                      </div>
-                    </div>
                   ) : filteredSections.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <Search size={28} className="mb-3 text-muted-foreground/60" />

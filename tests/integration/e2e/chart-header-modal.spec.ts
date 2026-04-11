@@ -202,13 +202,13 @@ test("indicators modal: technicals sub-tabs switch content", async ({ page }) =>
   await expect(modal.getByTestId("indicator-catalog-cp_doji")).toBeVisible();
   await expect(modal.getByTestId("indicator-catalog-cp_hammer")).toBeVisible();
 
-  // Switch to Strategies — empty state
+  // Switch to Strategies — strategy items should appear
   await modal.getByTestId("tech-tab-strategies").click();
-  await expect(modal.getByText("No strategies yet")).toBeVisible();
+  await expect(modal.getByTestId("indicator-catalog-strat_bollingerBands")).toBeVisible();
 
-  // Switch to Profiles — empty state
+  // Switch to Profiles — profile items should appear
   await modal.getByTestId("tech-tab-profiles").click();
-  await expect(modal.getByText("No profiles yet")).toBeVisible();
+  await expect(modal.getByTestId("indicator-catalog-prof_volumeProfileFR")).toBeVisible();
 
   // Switch back to Indicators
   await modal.getByTestId("tech-tab-indicators").click();

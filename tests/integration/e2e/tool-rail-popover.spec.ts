@@ -76,29 +76,34 @@ async function selectTool(page: Page, group: string, toolTestId: string, badgeTe
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText(badgeText, { timeout: 5000 });
 }
 
-async function draw2PointShape(page: Page): Promise<void> {
+async function draw2PointShape(page: Page, region: 'left' | 'center' | 'right' = 'center'): Promise<void> {
   const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
   const box = await overlay.boundingBox();
   expect(box).toBeTruthy();
   if (!box) return;
 
-  const x1 = box.x + box.width * 0.32;
-  const y1 = box.y + box.height * 0.35;
-  const x2 = box.x + box.width * 0.62;
-  const y2 = box.y + box.height * 0.55;
+  // Use distinct regions so drawings don't overlap and accidentally select each other
+  const offsets = {
+    left:   { x1: 0.10, y1: 0.25, x2: 0.28, y2: 0.40 },
+    center: { x1: 0.32, y1: 0.35, x2: 0.62, y2: 0.55 },
+    right:  { x1: 0.68, y1: 0.30, x2: 0.88, y2: 0.50 },
+  };
+  const o = offsets[region];
+  const x1 = box.x + box.width * o.x1;
+  const y1 = box.y + box.height * o.y1;
+  const x2 = box.x + box.width * o.x2;
+  const y2 = box.y + box.height * o.y2;
 
-  await page.evaluate(
-    ({ sx, sy, ex, ey }) => {
-      const c = document.querySelector('canvas[aria-label="chart-drawing-overlay"]:not([style*="display: none"])') as HTMLCanvasElement | null;
-      if (!c) return;
-      c.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: sx, clientY: sy }));
-      c.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: ex, clientY: ey }));
-      c.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: ex, clientY: ey }));
-    },
-    { sx: x1, sy: y1, ex: x2, ey: y2 }
-  );
+  // Use Playwright mouse API for realistic event timing
+  await page.mouse.move(x1, y1);
+  await page.waitForTimeout(50);
+  await page.mouse.down();
+  await page.waitForTimeout(50);
+  await page.mouse.move(x2, y2, { steps: 5 });
+  await page.waitForTimeout(50);
+  await page.mouse.up();
 
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(350);
 }
 
 test.describe("Tool Rail Popover", () => {
@@ -169,15 +174,15 @@ test.describe("Tool Rail Popover", () => {
 
   test("representative tools draw from each required group", async ({ page }) => {
     await selectTool(page, "lines", "tool-trendline", "tool: trend");
-    await draw2PointShape(page);
+    await draw2PointShape(page, 'left');
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("1 drawing");
 
-    await selectTool(page, "fib", "fib-retracement", "tool: fibRetracement");
-    await draw2PointShape(page);
+    await selectTool(page, "fib", "fib-speed-resistance-fan", "tool: fibSpeedResistFan");
+    await draw2PointShape(page, 'center');
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("2 drawing");
 
     await selectTool(page, "patterns", "tool-xabcd", "tool: xabcd");
-    await draw2PointShape(page);
+    await draw2PointShape(page, 'right');
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("3 drawing");
 
     await ensureGroupMenuOpen(page, "cursor");
