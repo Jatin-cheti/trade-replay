@@ -40,8 +40,8 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
   await expect(chartOverlay).toBeVisible();
 
-  await page.locator('[data-testid="tool-minimize"]:visible').first().click();
-  await page.locator('[data-testid="tool-minimize"]:visible').first().click();
+  await page.locator('[data-testid="toolbox-collapse"]:visible').first().click();
+  await page.locator('[data-testid="toolbox-expand"]:visible').first().click();
 
   await page.locator('[data-testid="indicators-button"]:visible').first().click();
   const indicatorsPanel = page.locator('[data-testid="indicators-panel"]:visible').first();
@@ -141,7 +141,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await clickByTestId("tool-anchoredText");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: anchoredText");
 
-  await clickByTestId("tool-magnet");
+  await clickByTestId("toolbar-magnet");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("magnet: on");
 
   await clickByTestId("toolbar-undo");

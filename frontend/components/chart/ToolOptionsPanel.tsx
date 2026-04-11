@@ -13,7 +13,7 @@ export default function ToolOptionsPanel({ open, options, optionsSchema = baseOp
   const fields = optionsSchema.length ? optionsSchema : baseOptionSchema;
 
   return (
-    <aside className="absolute left-[245px] top-3 z-30 w-[240px] rounded-xl border border-primary/25 bg-background/85 p-2 backdrop-blur-xl">
+    <aside className="absolute left-[290px] top-3 z-[35] w-[240px] rounded-xl border border-primary/25 bg-background/85 p-2 backdrop-blur-xl">
       <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Tool Options</div>
       <div className="space-y-2">
         {fields.map((field) => {

@@ -108,7 +108,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await clickByTestId("tool-anchoredText");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: anchoredText");
 
-  await clickByTestId("tool-magnet");
+  await clickByTestId("toolbar-magnet");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("magnet: on");
 
   await clickByTestId("toolbar-undo");
@@ -496,4 +496,201 @@ test("indicators: search and add non-top indicator", async ({ page }) => {
 
   // Should appear in active list
   await expect(panel.getByTestId("indicators-active")).toContainText(/bollinger|bbands/i);
+});
+
+test("selected tool badge does not block clicks", async ({ page }) => {
+  const uid = Date.now();
+  const email = `badge_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `badge_${uid}` },
+  });
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+
+  const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  await expect(chartOverlay).toBeVisible();
+
+  const clickByTestId = async (testId: string) => {
+    await page.evaluate((id) => {
+      const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+      const target = nodes.find((n) => n instanceof HTMLElement && n.offsetParent !== null) ?? nodes[0];
+      if (target instanceof HTMLElement) target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }, testId);
+  };
+
+  // Select trend tool and draw to get a selected drawing
+  await clickByTestId("tool-trend");
+  const box = await chartOverlay.boundingBox();
+  expect(box).toBeTruthy();
+  if (box) {
+    await page.evaluate(
+      ({ x1, y1, x2, y2 }) => {
+        const canvas = document.querySelector('canvas[aria-label="chart-drawing-overlay"]:not([style*="display: none"])') as HTMLCanvasElement | null;
+        if (!canvas) return;
+        canvas.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: x1, clientY: y1 }));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: x2, clientY: y2 }));
+        canvas.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: x2, clientY: y2 }));
+      },
+      {
+        x1: box.x + box.width * 0.3,
+        y1: box.y + box.height * 0.35,
+        x2: box.x + box.width * 0.55,
+        y2: box.y + box.height * 0.52,
+      }
+    );
+  }
+  await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("1 drawing");
+
+  // Selected indicator should be in the toolbox header, not floating
+  const badge = page.locator('[data-testid="selected-tool-indicator"]');
+  if (await badge.count() > 0) {
+    // Badge must have pointer-events: none
+    const pe = await badge.first().evaluate((el) => getComputedStyle(el).pointerEvents);
+    expect(pe).toBe("none");
+  }
+
+  // Toolbox collapse/expand must still be clickable
+  await clickByTestId("toolbox-collapse");
+  await expect(page.locator('[data-testid="toolbox-expand"]:visible').first()).toBeVisible();
+  await clickByTestId("toolbox-expand");
+  await expect(page.locator('[data-testid="toolbox-collapse"]:visible').first()).toBeVisible();
+
+  // Toolbar buttons must still be clickable
+  await clickByTestId("toolbar-undo");
+  await clickByTestId("toolbar-redo");
+});
+
+test("toolbox expand button remains visible and clickable", async ({ page }) => {
+  const uid = Date.now();
+  const email = `tbxvis_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `tbxvis_${uid}` },
+  });
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+
+  // Toolbox panel is visible
+  await expect(page.locator('[data-testid="toolbox-panel"]:visible').first()).toBeVisible();
+
+  // Collapse button visible and has proper hit area
+  const collapseBtn = page.locator('[data-testid="toolbox-collapse"]:visible').first();
+  await expect(collapseBtn).toBeVisible();
+  const collapseBox = await collapseBtn.boundingBox();
+  expect(collapseBox).toBeTruthy();
+  if (collapseBox) {
+    expect(collapseBox.width).toBeGreaterThanOrEqual(32);
+    expect(collapseBox.height).toBeGreaterThanOrEqual(32);
+  }
+
+  // Click collapse
+  await collapseBtn.click();
+
+  // Expand button now visible with proper hit area
+  const expandBtn = page.locator('[data-testid="toolbox-expand"]:visible').first();
+  await expect(expandBtn).toBeVisible();
+  const expandBox = await expandBtn.boundingBox();
+  expect(expandBox).toBeTruthy();
+  if (expandBox) {
+    expect(expandBox.width).toBeGreaterThanOrEqual(32);
+    expect(expandBox.height).toBeGreaterThanOrEqual(32);
+  }
+
+  // Click expand
+  await expandBtn.click();
+
+  // Collapse button is back
+  await expect(page.locator('[data-testid="toolbox-collapse"]:visible').first()).toBeVisible();
+});
+
+test("status row and toolbox header are uncluttered", async ({ page }) => {
+  const uid = Date.now();
+  const email = `status_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `status_${uid}` },
+  });
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+
+  // OHLC status row exists outside the toolbox
+  const statusRow = page.locator('[data-testid="ohlc-status"]:visible').first();
+  await expect(statusRow).toBeVisible();
+
+  // Snap mode is in the toolbar, NOT inside toolbox panel
+  const toolboxPanel = page.locator('[data-testid="toolbox-panel"]:visible').first();
+  await expect(toolboxPanel).toBeVisible();
+
+  // Toolbox should not contain snap mode dropdown
+  const snapInToolbox = toolboxPanel.locator('[data-testid="chart-snap-mode"]');
+  await expect(snapInToolbox).toHaveCount(0);
+
+  // Snap mode selector should be in the toolbar area (outside toolbox)
+  await expect(page.locator('[data-testid="chart-snap-mode"]:visible').first()).toBeVisible();
 });

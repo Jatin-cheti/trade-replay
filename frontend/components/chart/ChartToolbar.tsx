@@ -90,6 +90,7 @@ type ChartToolbarProps = {
   toolbarCollapsed: boolean;
   setToolbarCollapsed: (value: boolean) => void;
   isMobile: boolean;
+  selectedDrawingVariant?: string | null;
 };
 
 export default function ChartToolbar({
@@ -119,6 +120,7 @@ export default function ChartToolbar({
   toolbarCollapsed,
   setToolbarCollapsed,
   isMobile,
+  selectedDrawingVariant,
 }: ChartToolbarProps) {
   const quickTypes: ChartType[] = ['candlestick', 'line', 'area'];
   const allTypes = chartTypeGroups.flatMap((group) => group.types);
@@ -187,6 +189,17 @@ export default function ChartToolbar({
         >
           <span className="inline-flex items-center gap-1.5"><Magnet size={14} /> Magnet</span>
         </button>
+        <select
+          data-testid="chart-snap-mode"
+          value={crosshairSnapMode}
+          onChange={(event) => setCrosshairSnapMode(event.target.value as CrosshairSnapMode)}
+          className="rounded-lg border border-primary/20 bg-background/70 px-2.5 py-2 text-[13px] font-semibold text-foreground outline-none"
+          title="Crosshair snap mode"
+        >
+          <option value="free">Snap: Free</option>
+          <option value="time">Snap: Time</option>
+          <option value="ohlc">Snap: OHLC</option>
+        </select>
         <button
           type="button"
           data-testid="toolbar-layout"
@@ -205,16 +218,16 @@ export default function ChartToolbar({
           Indicators{activeIndicatorsCount > 0 ? ` (${activeIndicatorsCount})` : ''}
         </button>
         <button type="button" onClick={() => setOptionsOpen(!optionsOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${optionsOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Options</button>
-          <button type="button" onClick={() => setTreeOpen(!treeOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${treeOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Objects</button>
-          <button
-            type="button"
-            data-testid="chart-toolbar-toggle"
-            onClick={() => setToolbarCollapsed(true)}
-            className="rounded-lg px-2 py-2 text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
-            title="Collapse chart toolbar"
-          >
-            <ChevronRight size={16} />
-          </button>
+        <button type="button" onClick={() => setTreeOpen(!treeOpen)} className={`rounded-lg px-3 py-2 text-[13px] font-semibold ${treeOpen ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}>Objects</button>
+        <button
+          type="button"
+          data-testid="chart-toolbar-toggle"
+          onClick={() => setToolbarCollapsed(true)}
+          className="rounded-lg px-2 py-2 text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
+          title="Collapse chart toolbar"
+        >
+          <ChevronRight size={16} />
+        </button>
         </div>
       </div>
 
@@ -231,40 +244,25 @@ export default function ChartToolbar({
         </button>
       )}
 
-      <div className={`absolute left-3 top-3 z-40 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${toolboxMinimized ? '-translate-x-[110%] pointer-events-none opacity-0' : 'translate-x-0 opacity-100'} bottom-3 w-[268px] max-w-[80vw] overflow-y-auto` : `${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px] overflow-y-auto'}`}`}>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Toolbox</span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              data-testid="tool-magnet"
-              onClick={() => setMagnetMode(!magnetMode)}
-              className={`rounded-md p-1.5 transition ${magnetMode ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
-              title="Magnet mode"
-            >
-              <Magnet size={16} />
-            </button>
-            <select
-              data-testid="chart-snap-mode"
-              value={crosshairSnapMode}
-              onChange={(event) => setCrosshairSnapMode(event.target.value as CrosshairSnapMode)}
-              className="rounded-md border border-border/70 bg-background/80 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground outline-none hover:text-foreground"
-              title="Crosshair snap mode"
-            >
-              <option value="free">Free</option>
-              <option value="time">Time</option>
-              <option value="ohlc">OHLC</option>
-            </select>
-            <button
-              type="button"
-              data-testid="tool-minimize"
-              onClick={() => setToolboxMinimized(!toolboxMinimized)}
-              className="rounded-md p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
-              title={toolboxMinimized ? 'Expand toolbox' : 'Minimize toolbox'}
-            >
-              {toolboxMinimized ? '+' : '−'}
-            </button>
+      <div data-testid="toolbox-panel" className={`absolute left-3 top-3 z-40 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${toolboxMinimized ? '-translate-x-[110%] pointer-events-none opacity-0' : 'translate-x-0 opacity-100'} bottom-3 w-[268px] max-w-[80vw] overflow-y-auto` : `${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px] overflow-y-auto'}`}`}>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Toolbox</span>
+            {selectedDrawingVariant && (
+              <span data-testid="selected-tool-indicator" className="pointer-events-none truncate rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary/80">
+                {selectedDrawingVariant}
+              </span>
+            )}
           </div>
+          <button
+            type="button"
+            data-testid={toolboxMinimized ? 'toolbox-expand' : 'toolbox-collapse'}
+            onClick={() => setToolboxMinimized(!toolboxMinimized)}
+            className="inline-flex min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
+            title={toolboxMinimized ? 'Expand toolbox' : 'Collapse toolbox'}
+          >
+            {toolboxMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
         {!toolboxMinimized && toolGroups.map((group) => {
