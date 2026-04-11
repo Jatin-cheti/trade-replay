@@ -450,6 +450,30 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     });
   }, [chartRef, drawingsRef, draftRef, getActiveSeries, overlayRef, selectedDrawingId, translateAnchors]);
 
+  const lastRenderAtRef = useRef(0);
+  const lastDrawCommitAtRef = useRef(0);
+
+  useEffect(() => {
+    lastRenderAtRef.current = Date.now();
+  });
+
+  useEffect(() => {
+    lastDrawCommitAtRef.current = Date.now();
+  }, [toolState.drawings]);
+
+  useEffect(() => {
+    const debug = {
+      getDrawingsCount: () => drawingsRef.current.length,
+      getLastRenderAt: () => lastRenderAtRef.current,
+      getLastDrawCommitAt: () => lastDrawCommitAtRef.current,
+      getDrawings: () => drawingsRef.current,
+    };
+    (window as unknown as Record<string, unknown>).__chartDebug = debug;
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__chartDebug;
+    };
+  }, [drawingsRef]);
+
   useEffect(() => {
     renderOverlay();
   }, [renderOverlay, toolState.drawings, chartType, selectedDrawingId]);
@@ -471,6 +495,20 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       container.removeEventListener('pointerleave', requestOverlayRender);
     };
   }, [chartContainerRef, renderOverlay]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const repaint = () => renderOverlay();
+    chart.timeScale().subscribeVisibleTimeRangeChange(repaint);
+    return () => {
+      try {
+        chart.timeScale().unsubscribeVisibleTimeRangeChange(repaint);
+      } catch {
+        // Chart may have been removed.
+      }
+    };
+  }, [chartRef, renderOverlay, ready]);
 
   useEffect(() => {
     resetForSymbol();
@@ -683,8 +721,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (result.kind === 'finalized') {
       const d = drawingsRef.current[drawingsRef.current.length - 1];
       if (d) setSelectedDrawingId(d.id);
-      renderOverlay();
     }
+    renderOverlay();
     overlayRef.current?.setPointerCapture(event.pointerId);
   };
 

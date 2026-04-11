@@ -106,6 +106,8 @@ export interface ITimeScaleApi {
   coordinateToTime(x: number): UTCTimestamp | null;
   timeToCoordinate(time: UTCTimestamp): number | null;
   setVisibleRange(range: TimeRange): void;
+  subscribeVisibleTimeRangeChange(handler: () => void): void;
+  unsubscribeVisibleTimeRangeChange(handler: () => void): void;
 }
 
 export interface ChartOptions {
@@ -1123,6 +1125,8 @@ export function createChart(
       barCount: rs.lastBar >= rs.firstBar ? rs.lastBar - rs.firstBar + 1 : 0,
       indicatorCount: indicatorInstances.size,
     });
+
+    notifyVisibleRangeChange();
   }
 
   // ── interaction ──────────────────────────────────────────────────────────
@@ -1362,6 +1366,21 @@ export function createChart(
 
   // ── time scale API ────────────────────────────────────────────────────────
 
+  const visibleRangeListeners = new Set<() => void>();
+  let prevFirstBar = -1;
+  let prevLastBar = -1;
+
+  function notifyVisibleRangeChange(): void {
+    if (!visibleRangeListeners.size) return;
+    const rs = computeRenderState();
+    if (rs.firstBar === prevFirstBar && rs.lastBar === prevLastBar) return;
+    prevFirstBar = rs.firstBar;
+    prevLastBar = rs.lastBar;
+    for (const fn of visibleRangeListeners) {
+      try { fn(); } catch { /* listener error */ }
+    }
+  }
+
   const timeScaleApi: ITimeScaleApi = {
     scrollPosition(): number {
       return (timeIndex.length - 1) - rightmostIndex;
@@ -1409,6 +1428,12 @@ export function createChart(
       if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / bars));
       rightmostIndex = clampRightmostIndex(toIdx);
       scheduleRender();
+    },
+    subscribeVisibleTimeRangeChange(handler: () => void): void {
+      visibleRangeListeners.add(handler);
+    },
+    unsubscribeVisibleTimeRangeChange(handler: () => void): void {
+      visibleRangeListeners.delete(handler);
     },
   };
 
