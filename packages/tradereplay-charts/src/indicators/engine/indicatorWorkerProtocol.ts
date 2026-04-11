@@ -37,5 +37,7 @@ export interface IndicatorWorkerResponse {
   requestId: number;
   window: IndicatorComputeWindow;
   results: IndicatorWorkerResultItem[];
+  /** Actual compute duration (ms) inside the worker, for perf telemetry. */
+  durationMs?: number;
   error?: string;
 }

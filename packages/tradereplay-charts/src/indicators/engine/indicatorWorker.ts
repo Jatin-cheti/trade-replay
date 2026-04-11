@@ -23,6 +23,7 @@ function sliceContext(source: IndicatorWorkerRequest['source'], start: number, e
 
 self.onmessage = (event: MessageEvent<IndicatorWorkerRequest>) => {
   const request = event.data;
+  const computeStart = performance.now();
 
   try {
     const ctxSlice = sliceContext(request.source, request.window.start, request.window.end);
@@ -43,6 +44,7 @@ self.onmessage = (event: MessageEvent<IndicatorWorkerRequest>) => {
       requestId: request.requestId,
       window: request.window,
       results,
+      durationMs: performance.now() - computeStart,
     };
     postMessage(response);
   } catch (error) {
@@ -50,6 +52,7 @@ self.onmessage = (event: MessageEvent<IndicatorWorkerRequest>) => {
       requestId: request.requestId,
       window: request.window,
       results: [],
+      durationMs: performance.now() - computeStart,
       error: error instanceof Error ? error.message : 'Unknown indicator worker error',
     };
     postMessage(response);

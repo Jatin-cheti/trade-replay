@@ -37,6 +37,7 @@ export {
 } from './indicators/types';
 
 export { registerIndicator, getIndicator, listIndicators } from './indicators/registry';
+export { getGlobalPerfTelemetry, enableGlobalPerfTelemetry } from './lib/perfTelemetry';
 
 export {
   type TransformOhlc,

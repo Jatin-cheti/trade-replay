@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { listIndicators } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
@@ -357,6 +357,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (rafRef.current != null) return;
     rafRef.current = window.requestAnimationFrame(() => {
       rafRef.current = null;
+      const overlayStart = performance.now();
       const overlay = overlayRef.current;
       const series = getActiveSeries();
       if (!overlay || !series) return;
@@ -477,6 +478,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       }
 
       if (draftRef.current) drawTool(draftRef.current, true);
+
+      getGlobalPerfTelemetry()?.record('overlay', performance.now() - overlayStart);
     });
   }, [chartRef, drawingsRef, draftRef, getActiveSeries, getVisibleTimeRange, overlayRef, selectedDrawingId, translateAnchors]);
 

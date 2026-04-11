@@ -12,6 +12,7 @@ import type {
   IndicatorWorkerRequest,
   IndicatorWorkerResponse,
 } from '../indicators/engine/indicatorWorkerProtocol';
+import { getGlobalPerfTelemetry, enableGlobalPerfTelemetry } from './perfTelemetry';
 
 // Auto-register built-in indicators so they are available from the first createChart call.
 registerBuiltins();
@@ -159,6 +160,12 @@ export interface ChartOptions {
     visibleRangeOnly?: boolean;
     windowPaddingBars?: number;
   };
+  /**
+   * Enable opt-in perf instrumentation.  Logs a throttled summary
+   * (avg / p95 per metric) to the console every 5 s.
+   * Can also be enabled at runtime: `window.__TRADEREPLAY_PERF_DEBUG__ = true`.
+   */
+  perfDebug?: boolean;
 }
 
 export interface IChartApi {
@@ -348,7 +355,10 @@ export function createChart(
   );
   const debugHooks = (globalThis as typeof globalThis & { __TRADEREPLAY_CHART_DEBUG__?: ChartDebugHooks }).__TRADEREPLAY_CHART_DEBUG__;
 
-  // ── canvas setup ──
+  // ── perf telemetry (opt-in) ──
+  // Activating via chart option also flips the global flag so that overlay renderers
+  // (e.g. TradingChart.tsx) can find the same singleton via getGlobalPerfTelemetry().
+  const perf = initOpts?.perfDebug ? enableGlobalPerfTelemetry() : getGlobalPerfTelemetry();
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:absolute;inset:0;user-select:none;touch-action:none;';
   container.style.position = 'relative';
@@ -691,6 +701,11 @@ export function createChart(
         applyIndicatorOutputWindow(inst, response.window, source.times, item.outputs);
       }
 
+      if (response.durationMs != null) {
+        // Record actual off-thread compute time reported back by the worker.
+        perf?.record('indicatorWorker', response.durationMs);
+      }
+
       indicatorComputeWindow = response.window;
       scheduleRender();
     };
@@ -724,11 +739,16 @@ export function createChart(
       indicatorWorkerLastAppliedSeq = Math.max(indicatorWorkerLastAppliedSeq, indicatorWorkerRequestSeq);
     }
 
+    const recomputeDurationMs = performance.now() - recomputeStart;
     debugHooks?.onRecomputeEnd?.({
       indicatorCount: indicatorInstances.size,
       sourceLength,
-      durationMs: performance.now() - recomputeStart,
+      durationMs: recomputeDurationMs,
     });
+    // For the worker path, durationMs is near-zero (work is off-thread); the actual
+    // worker compute time is not instrumented here since it's asynchronous.  We label
+    // the metric clearly so consumers know this is main-thread-side latency only.
+    perf?.record(usedWorker ? 'indicatorDispatch' : 'indicatorCompute', recomputeDurationMs);
   }
 
   function scheduleIndicatorRecompute(): void {
@@ -1320,11 +1340,13 @@ export function createChart(
     drawTimeAxis(rs);
     drawPriceAxis(rs);
 
+    const renderDurationMs = performance.now() - renderStart;
     debugHooks?.onRenderEnd?.({
-      durationMs: performance.now() - renderStart,
+      durationMs: renderDurationMs,
       barCount: rs.lastBar >= rs.firstBar ? rs.lastBar - rs.firstBar + 1 : 0,
       indicatorCount: indicatorInstances.size,
     });
+    perf?.record('render', renderDurationMs);
 
     notifyVisibleRangeChange();
   }
