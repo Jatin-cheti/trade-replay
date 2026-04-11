@@ -285,6 +285,12 @@ interface IndicatorInstance {
   ownedPaneId?: PaneId;
   /** Series ids for each output, parallel to `definition.outputs`. */
   outputSeriesIds: string[];
+  /**
+   * Length of the source array at the time of the last full recompute.
+   * Used by the incremental update path to detect when a full recompute
+   * is needed (params changed, bars inserted mid-series, etc.).
+   */
+  lastFullComputeLength?: number;
 }
 
 /** Per-render geometry and price range for a single pane. */
@@ -624,6 +630,135 @@ export function createChart(
     }
   }
 
+  /**
+   * Compute the minimum lookback horizon needed for an incremental tail recompute.
+   *
+   * For most indicators the relevant horizon is the largest numeric param value
+   * (period) multiplied by a 3× safety factor to account for cascaded EMAs or
+   * multi-smoothing indicators (e.g. MACD signal = EMA of EMA of close).
+   *
+   * Minimum horizon is 2 (always recompute at least the last two bars so carry-
+   * forward logic has a predecessor to read).
+   */
+  function getIncrementalLookback(inst: IndicatorInstance): number {
+    const maxPeriod = Object.values(inst.params).reduce(
+      (acc, v) => (typeof v === 'number' && v > acc ? v : acc),
+      0,
+    );
+    return Math.max(2, Math.ceil(maxPeriod * 3));
+  }
+
+  /**
+   * Patch output stores for a single indicator instance using a tail recompute.
+   *
+   * Strategy:
+   *   1. Determine the recompute start index: `max(0, srcLen - lookback)`.
+   *   2. Run the indicator's `compute()` on the tail slice.
+   *   3. Write back only the tail values with `store.setAt()` — leaving the
+   *      already-correct head values untouched and avoiding a full `setData`.
+   *
+   * The function returns `true` on success and `false` when a full recompute is
+   * required instead (e.g. source length changed by more than the lookback).
+   */
+  function applyIndicatorIncrementalTail(
+    inst: IndicatorInstance,
+    source: {
+      times: UTCTimestamp[];
+      open: (number | null)[];
+      high: (number | null)[];
+      low: (number | null)[];
+      close: (number | null)[];
+      volume: (number | null)[];
+    },
+  ): boolean {
+    const srcLen = source.times.length;
+    if (srcLen === 0) return false;
+
+    const prev = inst.lastFullComputeLength ?? 0;
+    const lookback = getIncrementalLookback(inst);
+
+    // If too many new bars have appeared since last full compute, fall back.
+    const addedBars = srcLen - prev;
+    if (addedBars < 0 || addedBars > lookback) return false;
+
+    // Tail start: far enough back to cover the lookback window.
+    const tailStart = Math.max(0, srcLen - lookback);
+
+    const tailCtx = {
+      times: source.times.slice(tailStart),
+      open:   source.open.slice(tailStart),
+      high:   source.high.slice(tailStart),
+      low:    source.low.slice(tailStart),
+      close:  source.close.slice(tailStart),
+      volume: source.volume.slice(tailStart),
+      params: inst.params,
+    };
+
+    const result = inst.definition.compute(tailCtx);
+
+    // Patch the output store tail in-place.
+    for (let oi = 0; oi < inst.outputSeriesIds.length; oi++) {
+      const sid = inst.outputSeriesIds[oi];
+      const ss  = seriesList.find((s) => s.id === sid);
+      if (!ss) continue;
+
+      const values = result.outputs[oi] ?? [];
+      for (let k = 0; k < values.length; k++) {
+        const v = values[k];
+        const absoluteIndex = tailStart + k;
+        if (absoluteIndex >= srcLen) break;
+        const t = source.times[absoluteIndex];
+        const alignedIdx = timeIndex.indexOf(t);
+        if (alignedIdx < 0) continue;
+
+        if (v == null) {
+          // The indicator produced null for this slot — honour it.
+          ss.store.setAt(alignedIdx, null as unknown as TimedRow);
+        } else {
+          ss.store.setAt(alignedIdx, { time: t, value: v } as TimedRow);
+        }
+      }
+    }
+
+    inst.lastFullComputeLength = srcLen;
+    return true;
+  }
+
+  /**
+   * Incremental recompute path for the streaming `update()` call.
+   *
+   * For each registered indicator instance this tries the fast tail recompute.
+   * If any instance cannot be patched incrementally, that instance falls back to
+   * a full window recompute (only for those that need it).
+   * Never calls `clearIndicatorOutputs()` — existing values outside the tail
+   * remain intact.
+   */
+  function recomputeIndicatorsIncremental(source: {
+    times: UTCTimestamp[];
+    open: (number | null)[];
+    high: (number | null)[];
+    low: (number | null)[];
+    close: (number | null)[];
+    volume: (number | null)[];
+  }): void {
+    const windowRange = getIndicatorWindow(source.times.length);
+
+    for (const inst of indicatorInstances.values()) {
+      const ok = applyIndicatorIncrementalTail(inst, source);
+      if (!ok) {
+        // Fallback for this specific indicator: window recompute.
+        const windowSrc = sourceForWindow(source, windowRange);
+        const ctx = { ...windowSrc, params: inst.params };
+        const result = inst.definition.compute(ctx);
+        applyIndicatorOutputWindow(inst, windowRange, source.times, result.outputs);
+        inst.lastFullComputeLength = source.times.length;
+      }
+    }
+
+    indicatorComputeWindow = windowRange;
+    perf?.record('indicatorIncremental', 0); // signal incremental path was used
+  }
+
   function recomputeIndicatorsMainThread(
     source: {
       times: UTCTimestamp[];
@@ -648,6 +783,7 @@ export function createChart(
     for (const inst of indicatorInstances.values()) {
       const result = inst.definition.compute({ ...ctx, params: inst.params });
       applyIndicatorOutputWindow(inst, windowRange, source.times, result.outputs);
+      inst.lastFullComputeLength = source.times.length;
     }
 
     indicatorComputeWindow = windowRange;
@@ -699,6 +835,7 @@ export function createChart(
         const inst = indicatorInstances.get(item.instanceId);
         if (!inst) continue;
         applyIndicatorOutputWindow(inst, response.window, source.times, item.outputs);
+        inst.lastFullComputeLength = source.times.length;
       }
 
       if (response.durationMs != null) {
@@ -1543,7 +1680,16 @@ export function createChart(
         }
 
         // Keep indicator outputs in sync with streaming source data.
-        if (!sState.indicatorInstanceId) {
+        // Use the incremental tail-recompute path when possible so we avoid a
+        // full O(bars × indicators) recompute on every live-market tick.
+        if (!sState.indicatorInstanceId && indicatorInstances.size > 0) {
+          const src = getSourceOhlcv();
+          if (src && src.times.length > 0) {
+            recomputeIndicatorsIncremental(src);
+          } else {
+            scheduleIndicatorRecompute();
+          }
+        } else if (!sState.indicatorInstanceId) {
           scheduleIndicatorRecompute();
         }
 
