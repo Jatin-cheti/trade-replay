@@ -143,9 +143,9 @@ export default function IndicatorsModal({
             </div>
 
             {/* Body: sidebar + content */}
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
               {/* Sidebar */}
-              <div className="w-[200px] shrink-0 border-r border-primary/10 bg-background/50">
+              <div className="w-[200px] shrink-0 overflow-hidden border-r border-primary/10 bg-background/50">
                 <ScrollArea className="h-full">
                   <div className="py-2">
                     {/* Personal */}
@@ -176,7 +176,8 @@ export default function IndicatorsModal({
               </div>
 
               {/* Content */}
-              <ScrollArea className="flex-1">
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
                 <div className="p-4">
                   {activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly' ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -282,6 +283,7 @@ export default function IndicatorsModal({
                   )}
                 </div>
               </ScrollArea>
+              </div>
             </div>
           </div>
         </div>

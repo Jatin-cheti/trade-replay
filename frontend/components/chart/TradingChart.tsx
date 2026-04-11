@@ -1100,7 +1100,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [removeDrawing, selectedDrawingId]);
 
   return (
-    <div className="relative flex h-full w-full min-h-[340px] flex-col">
+    <div className="relative flex h-full max-h-[calc(100vh-100px)] w-full min-h-[340px] flex-col">
       {/* Top bar + rail + chart in a flex layout */}
       <ChartTopBar chartType={chartType} setChartType={setChartType} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} indicatorsOpen={indicatorsOpen} setIndicatorsOpen={setIndicatorsOpen} activeIndicatorsCount={enabledIndicators.length} treeOpen={treeOpen} setTreeOpen={setTreeOpen} selectedDrawingVariant={selectedDrawing?.variant ?? null} isMobile={isMobile} />
 

@@ -218,8 +218,13 @@ export default function ToolRail({
         positionSubmenu();
       });
     };
+    const onScroll = (e: Event) => {
+      // Allow scrolling within the submenu itself
+      if (submenuRef.current?.contains(e.target as Node)) return;
+      setExpandedCategory(null);
+    };
     window.addEventListener('resize', throttledPosition);
-    window.addEventListener('scroll', throttledPosition, true);
+    window.addEventListener('scroll', onScroll, true);
 
     let ro: ResizeObserver | undefined;
     if (railRef.current) {
@@ -229,7 +234,7 @@ export default function ToolRail({
 
     return () => {
       window.removeEventListener('resize', throttledPosition);
-      window.removeEventListener('scroll', throttledPosition, true);
+      window.removeEventListener('scroll', onScroll, true);
       ro?.disconnect();
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };

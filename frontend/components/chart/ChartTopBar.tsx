@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, ChevronDown, Magnet, Plus, Redo2, Undo2, X } from 'lucide-react';
+import { AreaChart, BarChart3, Camera, CandlestickChart, ChevronDown, LineChart, Magnet, Plus, Redo2, TrendingUp, Undo2, X, type LucideIcon } from 'lucide-react';
 import type { ChartType } from '@/services/chart/dataTransforms';
 import { chartTypeGroups, chartTypeLabels } from '@/services/chart/dataTransforms';
 import type { CrosshairSnapMode } from '@/hooks/useChart';
@@ -106,6 +106,20 @@ const snapLabels: Record<CrosshairSnapMode, string> = {
   free: 'Free',
   time: 'Time',
   ohlc: 'OHLC',
+};
+
+/* ─── Chart style icon per chart type ─────────────────────────────────── */
+
+const chartTypeIconMap: Partial<Record<ChartType, LucideIcon>> = {
+  candlestick: CandlestickChart,
+  bar: BarChart3,
+  ohlc: BarChart3,
+  line: LineChart,
+  area: AreaChart,
+  baseline: TrendingUp,
+  histogram: BarChart3,
+  heikinAshi: CandlestickChart,
+  hollowCandles: CandlestickChart,
 };
 
 /* ─── Dropdown helper (click-outside close) ───────────────────────────── */
@@ -232,7 +246,7 @@ export default function ChartTopBar({
         >
           <ChevronDown size={12} />
         </button>
-        <div className={`absolute left-0 top-full z-[70] mt-1 w-[200px] rounded-xl border border-primary/30 bg-background/98 p-1.5 shadow-xl shadow-black/50 backdrop-blur-xl ${intervalDropdown.open ? '' : 'hidden'}`}>
+        <div className={`absolute left-0 top-full z-[70] mt-1 w-[200px] rounded-xl border border-primary/30 bg-background p-1.5 shadow-xl shadow-black/50 ${intervalDropdown.open ? '' : 'hidden'}`}>
             {intervalGroups.map((group) => (
               <div key={group.label}>
                 <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{group.label}</div>
@@ -268,17 +282,19 @@ export default function ChartTopBar({
 
       <span className="h-4 w-px bg-border/40" />
 
-      {/* ─── Chart style dropdown ──────────────────────────────────────── */}
+      {/* ─── Chart style icon + dropdown ─────────────────────────────── */}
       <div className="relative" ref={chartTypeDropdown.ref} data-testid="charttype-dropdown">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-primary/10"
-          onClick={() => chartTypeDropdown.setOpen(!chartTypeDropdown.open)}
-        >
-          {chartTypeLabels[chartType]}
-          <ChevronDown size={12} />
-        </button>
-        <div className={`absolute left-0 top-full z-[70] mt-1 max-h-[70vh] w-[230px] overflow-y-auto rounded-xl border border-primary/30 bg-background/98 p-1 shadow-xl shadow-black/50 backdrop-blur-xl ${chartTypeDropdown.open ? '' : 'hidden'}`}>
+        {(() => { const ChartIcon = chartTypeIconMap[chartType] ?? CandlestickChart; return (
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+            onClick={() => chartTypeDropdown.setOpen(!chartTypeDropdown.open)}
+            title={chartTypeLabels[chartType]}
+          >
+            <ChartIcon size={15} />
+          </button>
+        ); })()}
+        <div className={`absolute left-0 top-full z-[70] mt-1 max-h-[70vh] w-[230px] overflow-y-auto rounded-xl border border-primary/30 bg-background p-1 shadow-xl shadow-black/50 ${chartTypeDropdown.open ? '' : 'hidden'}`}>
             {chartTypeGroups.map((group) => (
               <div key={group.id}>
                 <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{group.label}</div>
@@ -334,7 +350,7 @@ export default function ChartTopBar({
           Snap: {snapLabels[crosshairSnapMode]}
           <ChevronDown size={11} />
         </button>
-        <div className={`absolute left-0 top-full z-[70] mt-1 w-[130px] rounded-xl border border-primary/30 bg-background/98 p-1 shadow-xl shadow-black/50 backdrop-blur-xl ${snapDropdown.open ? '' : 'hidden'}`}>
+        <div className={`absolute left-0 top-full z-[70] mt-1 w-[130px] rounded-xl border border-primary/30 bg-background p-1 shadow-xl shadow-black/50 ${snapDropdown.open ? '' : 'hidden'}`}>
             {(['free', 'time', 'ohlc'] as CrosshairSnapMode[]).map((mode) => (
               <button
                 key={mode}
@@ -358,11 +374,12 @@ export default function ChartTopBar({
         type="button"
         data-testid="indicators-button"
         onClick={() => setIndicatorsOpen(!indicatorsOpen)}
-        className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition ${
           indicatorsOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
         }`}
       >
-        Indicators{activeIndicatorsCount > 0 ? ` (${activeIndicatorsCount})` : ''}
+        <TrendingUp size={14} />
+        <span>Indicators{activeIndicatorsCount > 0 ? ` (${activeIndicatorsCount})` : ''}</span>
       </button>
 
       {/* Options */}
