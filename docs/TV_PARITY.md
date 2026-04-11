@@ -39,94 +39,144 @@
 
 ---
 
-## B) Drawing Tools (44 registered)
+## B) Drawing Tool Menus (TradingView-parity rail layout)
 
-### Trend Lines (Tier 1)
+### Cursor Menu (rail-cursor)
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Trend Line | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | Yes |
-| Ray | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Extended Line | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Channel | ✅ Supported | ⚠️ Partial | ✅ | ✅ | ✅ | ✅ | No |
+| Tool | Status | Tier | Notes |
+|------|--------|------|-------|
+| Cross | ✅ Supported | 1 | Default cursor mode |
+| Dot | ✅ Supported | 1 | UI state change |
+| Arrow | ✅ Supported | 1 | UI state change |
+| Demonstration | ✅ Supported | 1 | UI state change |
+| Eraser | ✅ Supported | 1 | Deletes drawings on click |
+| Values tooltip toggle | ✅ Supported | 1 | Persisted to localStorage |
 
-### Annotations (Tier 1)
+### Lines Menu (rail-lines)
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Horizontal Line | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Vertical Line | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Horizontal Ray | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Vertical Marker | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
+#### Lines section
 
-### Shapes (Tier 1)
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Trendline | ✅ Supported | ✅ | ✅ | ✅ | Yes |
+| Ray | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Info line | ❌ Missing | — | — | — | No |
+| Extended line | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Trend angle | ❌ Missing | — | — | — | No |
+| Horizontal line | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Horizontal ray | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Vertical line | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Cross line | ❌ Missing | — | — | — | No |
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Rectangle | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Circle | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Triangle | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Brush | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
+#### Channels section
 
-### Text (Tier 1)
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Parallel channel | ✅ Supported | ⚠️ Partial | ✅ | ✅ | No |
+| Regression trend | ❌ Missing | — | — | — | No |
+| Flat top/bottom | ❌ Missing | — | — | — | No |
+| Disjoint channel | ❌ Missing | — | — | — | No |
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Anchored Text | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | Yes |
-| Note | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Price Label | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Callout | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Comment | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Pin | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Emoji | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Icon Up/Down/Flag | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
+#### Pitchforks section
 
-### Measure (Tier 1)
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Pitchfork | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Schiff pitchfork | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Modified Schiff pitchfork | ❌ Missing | — | — | — | No |
+| Inside pitchfork | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Measure | ✅ Supported | ⚠️ Basic line only | ✅ | ✅ | ✅ | ✅ | No |
-| Zoom | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
+### Fibonacci Menu (rail-fib)
 
-### Fibonacci / Gann (Tier 2)
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Fib retracement | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Trend-based fib extension | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Fib channel | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Fib time zone | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Fib speed resistance fan | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Trend-based fib time | ❌ Missing | — | — | — | No |
+| Fib circles | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Fib spiral | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Fib speed resistance arcs | ❌ Missing | — | — | — | No |
+| Fib wedge | ❌ Missing | — | — | — | No |
+| Pitchfan | ❌ Missing | — | — | — | No |
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Fib Retracement | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Fib Extension | ✅ Supported | ✅ | ✅ | ✅ | ✅ | ✅ | No |
-| Fib Channel | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Fib Arcs | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Fib Fan | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Fib Spiral | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Fib Time Zones | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Gann Box | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Gann Square | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Gann Fan | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
+### Gann Menu (rail-gann)
 
-### Pitchforks (Tier 2)
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Gann box | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Gann square fixed | ❌ Missing | — | — | — | No |
+| Gann square | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Gann fan | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Pitchfork | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Schiff Pitchfork | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Inside Pitchfork | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
+### Patterns Menu (rail-patterns)
 
-### Patterns (Tier 2)
+#### Chart Patterns section
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| XABCD Pattern | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Triangle Pattern | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Head & Shoulders | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Elliott Impulse | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Elliott Correction | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| XABCD pattern | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Cypher pattern | ❌ Missing | — | — | — | No |
+| Head and shoulders | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| ABCD pattern | ❌ Missing | — | — | — | No |
+| Triangle pattern | ✅ Supported | ⚠️ Basic | ✅ | ✅ | Yes |
+| Three drives pattern | ❌ Missing | — | — | — | No |
 
-### Positions (Tier 2)
+#### Elliott Waves section
 
-| Tool | Status | Rendering | Object Tree | Select/Move | Undo/Redo | Magnet | E2E Test |
-|------|--------|-----------|-------------|-------------|-----------|--------|----------|
-| Long Position | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
-| Short Position | ✅ Supported | ⚠️ Basic | ✅ | ✅ | ✅ | ✅ | No |
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Elliott impulse wave (1-2-3-4-5) | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Elliott correction wave (A-B-C) | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Elliott triangle wave (A-B-C-D-E) | ❌ Missing | — | — | — | No |
+| Elliott double combo wave (W-X-Y) | ❌ Missing | — | — | — | No |
+| Elliott triple combo wave (W-X-Y-X-Z) | ❌ Missing | — | — | — | No |
+
+#### Cycles section
+
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Cyclic lines | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Time cycles | ❌ Missing | — | — | — | No |
+| Sine line | ❌ Missing | — | — | — | No |
+
+### Shapes Menu (rail-shape)
+
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Rectangle | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Circle | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Triangle | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Brush | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+
+### Text Menu (rail-text)
+
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Anchored Text | ✅ Supported | ✅ | ✅ | ✅ | Yes |
+| Note | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Price Label | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Callout | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Comment | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Pin | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Emoji | ✅ Supported | ✅ | ✅ | ✅ | No |
+| Icon Up/Down/Flag | ✅ Supported | ✅ | ✅ | ✅ | No |
+
+### Measure Menu (rail-measure)
+
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Measure | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Zoom | ✅ Supported | ✅ | ✅ | ✅ | No |
+
+### Position Menu (rail-position)
+
+| Tool | Status | Rendering | Select/Move | Undo/Redo | E2E |
+|------|--------|-----------|-------------|-----------|-----|
+| Long Position | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
+| Short Position | ✅ Supported | ⚠️ Basic | ✅ | ✅ | No |
 
 ---
 
@@ -172,11 +222,17 @@ Keyboard navigation: ✅ Implemented
 | Object Tree (select/lock/hide/delete) | ✅ Supported | Partial |
 | Magnet mode (OHLC snap) | ✅ Supported | Yes |
 | Crosshair snap modes (free/time/ohlc) | ✅ Supported | No |
+| Cursor modes (cross/dot/arrow/demo/eraser) | ✅ Supported | No |
+| Values tooltip on long press | ✅ Supported | No |
 | Export PNG | ✅ Supported | Yes |
 | Go to Live button | ✅ Supported | No |
 | OHLC status row | ✅ Supported | Yes |
-| Toolbar collapse/expand | ✅ Supported | Yes |
-| Toolbox collapse/expand | ✅ Supported | Yes |
+| Left tool rail (TradingView-style) | ✅ Supported | Yes |
+| Top bar (chart type, undo/redo, magnet, snap, indicators) | ✅ Supported | Yes |
+| Anchored popover submenus | ✅ Supported | Yes |
+| Sectioned submenus (Lines/Channels/Pitchforks) | ✅ Supported | No |
+| Disabled tool "Coming soon" labels | ✅ Supported | No |
+| Dropdown styling (contrast/borders/hover) | ✅ Supported | Yes |
 | Drawing anchoring (time/price) | ✅ Supported | Yes |
 | Drawing visibility during resize | ✅ Supported | Yes |
 | Mobile touch modes (pan/zoom/scroll) | ✅ Supported | No |

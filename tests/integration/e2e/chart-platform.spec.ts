@@ -1,4 +1,4 @@
-import { expect, test } from "./playwright-fixture";
+﻿import { expect, test } from "./playwright-fixture";
 import fs from "node:fs/promises";
 
 test("chart platform types, tools, and object actions", async ({ page }) => {
@@ -27,7 +27,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator('input[type="password"]').first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -103,6 +103,55 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
     }, testId);
   };
 
+  // Cursor menu parity
+  await clickByTestId("rail-cursor");
+  await expect(page.locator('[data-testid="tool-menu-popover"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="menu-cursor"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="cursor-cross"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="cursor-dot"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="cursor-arrow"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="cursor-demo"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="cursor-eraser"]:visible').first()).toBeVisible();
+  await clickByTestId("cursor-dot");
+  await clickByTestId("rail-cursor");
+  await clickByTestId("cursor-cross");
+
+  // Lines/Fib/Gann/Patterns menu structure parity
+  await clickByTestId("rail-lines");
+  await expect(page.locator('[data-testid="menu-lines"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-trendline"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-ray"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-horizontal-line"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-vertical-line"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-parallel-channel"]:visible').first()).toBeVisible();
+
+  await clickByTestId("rail-fib");
+  await expect(page.locator('[data-testid="menu-fib"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="fib-retracement"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="fib-extension"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="fib-channel"]:visible').first()).toBeVisible();
+
+  await clickByTestId("rail-gann");
+  await expect(page.locator('[data-testid="menu-gann"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="gann-box"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="gann-square-fixed"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="gann-square"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="gann-fan"]:visible').first()).toBeVisible();
+
+  await clickByTestId("rail-patterns");
+  await expect(page.locator('[data-testid="menu-patterns"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-trianglePattern"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-elliottImpulse"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="tool-cyclicLines"]:visible').first()).toBeVisible();
+
+  // Dropdown parity: chart type + timeframe + snap
+  await clickByTestId("charttype-dropdown");
+  await clickByTestId("chart-type-line");
+  await clickByTestId("timeframe-dropdown");
+  await clickByTestId("timeframe-1W");
+  await clickByTestId("snap-dropdown");
+  await clickByTestId("snap-option-time");
+
   for (const testId of quickChartTypes) {
     await clickByTestId(testId);
   }
@@ -114,8 +163,8 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   await clickByTestId("chart-type-candlestick");
 
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: trend");
 
   const box = await chartOverlay.boundingBox();

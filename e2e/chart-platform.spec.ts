@@ -1,4 +1,4 @@
-import { expect, test } from "./playwright-fixture";
+﻿import { expect, test } from "./playwright-fixture";
 import fs from "node:fs/promises";
 
 test("chart platform types, tools, and object actions", async ({ page }) => {
@@ -27,7 +27,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -81,8 +81,8 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await clickByTestId("chart-type-candlestick");
 
   // Open trend rail submenu, select trend tool
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: trend");
 
   const box = await chartOverlay.boundingBox();
@@ -159,7 +159,7 @@ test("drawing visibility: single drawing appears immediately", async ({ page }) 
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -181,8 +181,8 @@ test("drawing visibility: single drawing appears immediately", async ({ page }) 
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("0 drawings");
 
   // Select trend tool via rail
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: trend");
 
   // Draw a single trend line
@@ -248,7 +248,7 @@ test("drawing anchoring: coordinates stable across data updates", async ({ page 
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -267,8 +267,8 @@ test("drawing anchoring: coordinates stable across data updates", async ({ page 
   };
 
   // Select trend tool and draw
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   const box = await chartOverlay.boundingBox();
   expect(box).toBeTruthy();
   if (box) {
@@ -337,7 +337,7 @@ test("toolbar actions: all controls visible on desktop", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -380,7 +380,7 @@ test("drawing visible regardless of object tree state", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -399,8 +399,8 @@ test("drawing visible regardless of object tree state", async ({ page }) => {
   };
 
   // Draw a trend line with object tree EXPANDED (default on desktop)
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   const box = await chartOverlay.boundingBox();
   expect(box).toBeTruthy();
   if (box) {
@@ -477,7 +477,7 @@ test("indicators: search and add non-top indicator", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -529,7 +529,7 @@ test("selected tool badge does not block clicks", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -548,8 +548,8 @@ test("selected tool badge does not block clicks", async ({ page }) => {
   };
 
   // Select trend tool and draw to get a selected drawing
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   const box = await chartOverlay.boundingBox();
   expect(box).toBeTruthy();
   if (box) {
@@ -610,7 +610,7 @@ test("tool rail opens submenus on click", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -630,21 +630,21 @@ test("tool rail opens submenus on click", async ({ page }) => {
   await expect(page.locator('[data-testid="tool-rail"]:visible').first()).toBeVisible();
 
   // Click trend rail icon opens submenu
-  await clickByTestId("rail-trend");
-  await expect(page.locator('[data-testid="submenu-trend"]:visible').first()).toBeVisible();
+  await clickByTestId("rail-lines");
+  await expect(page.locator('[data-testid="menu-lines"]:visible').first()).toBeVisible();
 
   // Click trend rail again closes submenu
-  await clickByTestId("rail-trend");
-  await expect(page.locator('[data-testid="submenu-trend"]')).toHaveCount(0);
+  await clickByTestId("rail-lines");
+  await expect(page.locator('[data-testid="menu-lines"]')).toHaveCount(0);
 
   // Click fib rail icon opens fib submenu
   await clickByTestId("rail-fib");
-  await expect(page.locator('[data-testid="submenu-fib"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="menu-fib"]:visible').first()).toBeVisible();
 
   // Select fib retracement closes submenu
-  await clickByTestId("tool-fibRetracement");
+  await clickByTestId("fib-retracement");
   await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: fibRetracement");
-  await expect(page.locator('[data-testid="submenu-fib"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="menu-fib"]')).toHaveCount(0);
 });
 
 test("status row and toolbox header are uncluttered", async ({ page }) => {
@@ -671,7 +671,7 @@ test("status row and toolbox header are uncluttered", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -717,7 +717,7 @@ test("tool rail: select measure tool via submenu", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -738,7 +738,7 @@ test("tool rail: select measure tool via submenu", async ({ page }) => {
 
   // Open measure submenu from rail
   await clickByTestId("rail-measure");
-  await expect(page.locator('[data-testid="submenu-measure"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="menu-measure"]:visible').first()).toBeVisible();
 
   // Pick the zoom tool from measure submenu
   await clickByTestId("tool-zoom");
@@ -769,7 +769,7 @@ test("OHLC legend row displays structured values", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -823,7 +823,7 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("input[type=\"password\"]").first().fill(password);
   await page.locator("form").getByRole("button", { name: "Login" }).click();
   await expect(page).toHaveURL(/homepage|\/$/);
 
@@ -847,8 +847,8 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
 
   // Draw in pane 0
   await clickByTestId("super-pane-0");
-  await clickByTestId("rail-trend");
-  await clickByTestId("tool-trend");
+  await clickByTestId("rail-lines");
+  await clickByTestId("tool-trendline");
   const overlay = page.locator('[data-testid="super-pane-0"] canvas[aria-label="chart-drawing-overlay"]').first();
   await expect(overlay).toBeVisible();
   const box = await overlay.boundingBox();
@@ -882,3 +882,4 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
   const singleOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
   await expect(singleOverlay).toBeVisible();
 });
+

@@ -177,7 +177,15 @@ async function drawTrendLine(page: Page): Promise<void> {
   await expect(overlay).toBeVisible();
 
   await page.evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll('[data-testid="tool-trend"]'));
+    const railBtn = Array.from(document.querySelectorAll('[data-testid="rail-lines"]'));
+    const railTarget = railBtn.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? railBtn[0];
+    if (railTarget instanceof HTMLElement) {
+      railTarget.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+  });
+
+  await page.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll('[data-testid="tool-trendline"]'));
     const target = nodes.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? nodes[0];
     if (target instanceof HTMLElement) {
       target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
