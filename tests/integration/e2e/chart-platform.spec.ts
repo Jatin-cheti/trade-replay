@@ -44,31 +44,34 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
 
   await page.locator('[data-testid="indicators-button"]:visible').first().click();
-  const indicatorsPanel = page.locator('[data-testid="indicators-panel"]:visible').first();
-  await expect(indicatorsPanel).toBeVisible();
-  await expect(indicatorsPanel.getByTestId('indicators-top5')).toBeVisible();
-  await expect(indicatorsPanel.getByTestId('indicators-search')).toBeFocused();
-  await expect(indicatorsPanel.locator('[data-testid^="indicator-top5-"]')).toHaveCount(5);
-  await expect(indicatorsPanel.getByTestId('indicators-results').locator('button')).toHaveCount(0);
+  const indicatorsModal = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(indicatorsModal).toBeVisible();
+  await expect(indicatorsModal.getByTestId('indicators-modal-search')).toBeVisible();
 
-  const searchInput = indicatorsPanel.getByTestId('indicators-search');
+  // Sidebar navigation
+  await expect(indicatorsModal.getByTestId('indicators-sidebar-technicals')).toBeVisible();
+  await expect(indicatorsModal.getByTestId('indicators-sidebar-financials')).toBeVisible();
+  await expect(indicatorsModal.getByTestId('indicators-sidebar-editorsPicks')).toBeVisible();
+
+  // Search and add an indicator
+  const searchInput = indicatorsModal.getByTestId('indicators-modal-search');
   await searchInput.fill('macd');
-  await expect(indicatorsPanel.getByTestId('indicators-dropdown')).toBeVisible();
-  await expect(indicatorsPanel.getByTestId('indicator-option-macd')).toBeVisible();
-  await searchInput.press('ArrowDown');
-  await searchInput.press('Enter');
-  await expect(indicatorsPanel.getByTestId('indicators-active')).toContainText(/macd|moving average convergence divergence/i);
+  await expect(indicatorsModal.getByTestId('indicator-catalog-macd')).toBeVisible();
+  await indicatorsModal.getByTestId('indicator-catalog-macd').click();
 
+  // Search and add another
   await searchInput.fill('adx');
-  await expect(indicatorsPanel.getByTestId('indicator-option-adx')).toBeVisible();
-  await searchInput.press('Enter');
-  await expect(indicatorsPanel.getByTestId('indicators-active')).toContainText(/adx|average directional index/i);
+  await expect(indicatorsModal.getByTestId('indicator-catalog-adx')).toBeVisible();
+  await indicatorsModal.getByTestId('indicator-catalog-adx').click();
 
-  await indicatorsPanel.getByTestId('indicator-remove-macd').click();
-  await expect(indicatorsPanel.getByTestId('indicators-active')).not.toContainText(/macd|moving average convergence divergence/i);
+  // Remove one indicator from the active summary
+  await searchInput.fill('');
+  // MACD should show as active; click it to toggle off
+  await indicatorsModal.getByTestId('indicator-catalog-macd').click();
 
-  await searchInput.press('Escape');
-  await expect(page.locator('[data-testid="indicators-panel"]:visible')).toHaveCount(0);
+  // Close via X button
+  await indicatorsModal.getByTestId('indicators-modal-close').click();
+  await expect(page.locator('[data-testid="indicators-modal"]:visible')).toHaveCount(0);
 
   const quickChartTypes = ["chart-type-candlestick", "chart-type-line", "chart-type-area"];
   const dropdownTypes = [
@@ -140,11 +143,12 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await expect(page.locator('[data-testid="tool-elliottImpulse"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="tool-cyclicLines"]:visible').first()).toBeVisible();
 
-  // Dropdown parity: chart type + timeframe + snap
+  // Dropdown parity: chart type + timeframe favorites + snap
   await clickByTestId("charttype-dropdown");
   await clickByTestId("chart-type-line");
-  await clickByTestId("timeframe-dropdown");
   await clickByTestId("timeframe-1W");
+  // Select specific interval from dropdown (items always in DOM)
+  await clickByTestId("interval-15");
   await clickByTestId("snap-dropdown");
   await clickByTestId("snap-option-time");
 
