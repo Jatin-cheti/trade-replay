@@ -14,7 +14,7 @@ export default defineConfig({
     {
       command: "node ..\\..\\..\\backend\\bootstrap-dev.js",
       url: "http://localhost:4000/api/health",
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 120_000,
       env: {
         NODE_ENV: "test",
@@ -32,7 +32,7 @@ export default defineConfig({
     {
       command: "npm --prefix ..\\..\\..\\services\\chart-service run dev",
       url: "http://localhost:4010/health",
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 120_000,
       env: {
         NODE_ENV: "test",
@@ -45,7 +45,7 @@ export default defineConfig({
     {
       command: "npm --prefix ..\\..\\..\\frontend run dev",
       url: "http://localhost:8080",
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 120_000,
     },
   ],

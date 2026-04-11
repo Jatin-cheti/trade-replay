@@ -7,6 +7,11 @@ import { priceToY, yToPrice, sepPriceToY, sepYToPrice, padPriceRange } from './s
 import { getIndicator } from '../indicators/registry';
 import { registerBuiltins } from '../indicators/builtins/index';
 import type { IndicatorDefinition, IndicatorInstanceId } from '../indicators/types';
+import type {
+  IndicatorComputeWindow,
+  IndicatorWorkerRequest,
+  IndicatorWorkerResponse,
+} from '../indicators/engine/indicatorWorkerProtocol';
 
 // Auto-register built-in indicators so they are available from the first createChart call.
 registerBuiltins();
@@ -149,6 +154,11 @@ export interface ChartOptions {
     vertTouchDrag?: boolean;
     horzTouchDrag?: boolean;
   };
+  indicatorEngine?: {
+    mode?: 'auto' | 'main-thread' | 'worker';
+    visibleRangeOnly?: boolean;
+    windowPaddingBars?: number;
+  };
 }
 
 export interface IChartApi {
@@ -188,6 +198,8 @@ const MIN_BAR_WIDTH = 2;
 const MAX_BAR_WIDTH = 60;
 const PRICE_PADDING = 0.1;
 const MAX_RIGHT_OFFSET_BARS = 24;
+const DEFAULT_INDICATOR_WINDOW_PADDING_BARS = 500;
+const MIN_INDICATOR_WINDOW_PADDING_BARS = 64;
 /** Id of the default (main) pane that always exists. */
 const MAIN_PANE_ID: PaneId = 'main';
 /** Minimum pane height weight to prevent zero-height panes. */
@@ -255,6 +267,7 @@ interface SeriesState {
 /** Internal state for a live indicator instance. */
 interface IndicatorInstance {
   instanceId: IndicatorInstanceId;
+  indicatorId: string;
   definition: IndicatorDefinition;
   /** Resolved params merged with defaults from the definition. */
   params: Record<string, number>;
@@ -322,6 +335,17 @@ export function createChart(
   const indicatorInstances = new Map<IndicatorInstanceId, IndicatorInstance>();
   let rafId: number | null = null;
   let indicatorRafId: number | null = null;
+  let indicatorWorker: Worker | null = null;
+  let indicatorWorkerRequestSeq = 0;
+  let indicatorWorkerLastAppliedSeq = 0;
+  let indicatorWorkerInFlightRequestId: number | null = null;
+  let indicatorComputeWindow: IndicatorComputeWindow | null = null;
+  const indicatorEngineMode = initOpts?.indicatorEngine?.mode ?? 'auto';
+  const indicatorVisibleRangeOnly = initOpts?.indicatorEngine?.visibleRangeOnly ?? false;
+  const indicatorWindowPaddingBars = Math.max(
+    MIN_INDICATOR_WINDOW_PADDING_BARS,
+    Math.floor(initOpts?.indicatorEngine?.windowPaddingBars ?? DEFAULT_INDICATOR_WINDOW_PADDING_BARS),
+  );
   const debugHooks = (globalThis as typeof globalThis & { __TRADEREPLAY_CHART_DEBUG__?: ChartDebugHooks }).__TRADEREPLAY_CHART_DEBUG__;
 
   // ── canvas setup ──
@@ -381,6 +405,73 @@ export function createChart(
   // screen x → bar index (float)
   function xToBar(x: number): number {
     return rightmostIndex + 0.5 - (cw() - x) / barWidth;
+  }
+
+  function isWorkerModeEnabled(): boolean {
+    if (indicatorEngineMode === 'main-thread') return false;
+    if (indicatorEngineMode === 'worker') return typeof Worker !== 'undefined';
+    return typeof Worker !== 'undefined' && typeof window !== 'undefined';
+  }
+
+  function ensureIndicatorWorker(): Worker | null {
+    if (!isWorkerModeEnabled()) return null;
+    if (indicatorWorker) return indicatorWorker;
+
+    try {
+      indicatorWorker = new Worker(
+        new URL('../indicators/engine/indicatorWorker.ts', import.meta.url),
+        { type: 'module' },
+      );
+      return indicatorWorker;
+    } catch {
+      indicatorWorker = null;
+      return null;
+    }
+  }
+
+  function getVisibleBarWindow(): { first: number; last: number } {
+    const first = Math.max(0, Math.floor(xToBar(0)));
+    const last = Math.min(timeIndex.length - 1, Math.ceil(rightmostIndex));
+    return { first, last };
+  }
+
+  function getIndicatorWindow(totalBars: number): IndicatorComputeWindow {
+    if (!indicatorVisibleRangeOnly || totalBars <= 0) {
+      return { start: 0, end: Math.max(0, totalBars - 1) };
+    }
+
+    const visible = getVisibleBarWindow();
+    const start = Math.max(0, visible.first - indicatorWindowPaddingBars);
+    const end = Math.min(totalBars - 1, visible.last + indicatorWindowPaddingBars);
+    return { start, end };
+  }
+
+  function sourceForWindow(
+    source: {
+      times: UTCTimestamp[];
+      open: (number | null)[];
+      high: (number | null)[];
+      low: (number | null)[];
+      close: (number | null)[];
+      volume: (number | null)[];
+    },
+    windowRange: IndicatorComputeWindow,
+  ): {
+    times: UTCTimestamp[];
+    open: (number | null)[];
+    high: (number | null)[];
+    low: (number | null)[];
+    close: (number | null)[];
+    volume: (number | null)[];
+  } {
+    return {
+      times: source.times.slice(windowRange.start, windowRange.end + 1),
+      open: source.open.slice(windowRange.start, windowRange.end + 1),
+      high: source.high.slice(windowRange.start, windowRange.end + 1),
+      low: source.low.slice(windowRange.start, windowRange.end + 1),
+      close: source.close.slice(windowRange.start, windowRange.end + 1),
+      volume: source.volume.slice(windowRange.start, windowRange.end + 1),
+    };
   }
 
   // ── time management ──
@@ -486,56 +577,151 @@ export function createChart(
    * every tick.  Incremental paths (using `SeriesStore.update()`) can be added
    * per-indicator in the future without changing this interface.
    */
-  function recomputeIndicators(): void {
-    if (indicatorInstances.size === 0) return;
-  const sourceLength = timeIndex.length;
-  const recomputeStart = performance.now();
-  debugHooks?.onRecomputeStart?.({ indicatorCount: indicatorInstances.size, sourceLength });
-
-    const src = getSourceOhlcv();
-    if (!src) {
-      // No source data yet — clear all indicator stores.
-      for (const inst of indicatorInstances.values()) {
-        for (const sid of inst.outputSeriesIds) {
-          const ss = seriesList.find((s) => s.id === sid);
-          if (ss) {
-            ss.store.setData([]);
-            ss.store.realign();
-          }
-        }
+  function clearIndicatorOutputs(): void {
+    for (const inst of indicatorInstances.values()) {
+      for (const sid of inst.outputSeriesIds) {
+        const ss = seriesList.find((s) => s.id === sid);
+        if (!ss) continue;
+        ss.store.setData([]);
+        ss.store.realign();
       }
-      return;
     }
+  }
 
+  function applyIndicatorOutputWindow(
+    inst: IndicatorInstance,
+    windowRange: IndicatorComputeWindow,
+    sourceTimes: UTCTimestamp[],
+    outputs: (number | null)[][],
+  ): void {
+    for (let oi = 0; oi < inst.outputSeriesIds.length; oi++) {
+      const sid = inst.outputSeriesIds[oi];
+      const ss = seriesList.find((s) => s.id === sid);
+      if (!ss) continue;
+
+      const values = outputs[oi] ?? [];
+      const rows: TimedRow[] = [];
+      for (let k = 0; k < values.length; k++) {
+        const v = values[k];
+        if (v == null) continue;
+        const absoluteIndex = windowRange.start + k;
+        if (absoluteIndex < 0 || absoluteIndex >= sourceTimes.length) continue;
+        rows.push({ time: sourceTimes[absoluteIndex], value: v } as TimedRow);
+      }
+
+      ss.store.setData(rows);
+      ss.store.realign();
+    }
+  }
+
+  function recomputeIndicatorsMainThread(
+    source: {
+      times: UTCTimestamp[];
+      open: (number | null)[];
+      high: (number | null)[];
+      low: (number | null)[];
+      close: (number | null)[];
+      volume: (number | null)[];
+    },
+    windowRange: IndicatorComputeWindow,
+  ): void {
+    const windowSource = sourceForWindow(source, windowRange);
     const ctx = {
-      times: src.times,
-      open: src.open,
-      high: src.high,
-      low: src.low,
-      close: src.close,
-      volume: src.volume,
+      times: windowSource.times,
+      open: windowSource.open,
+      high: windowSource.high,
+      low: windowSource.low,
+      close: windowSource.close,
+      volume: windowSource.volume,
     };
 
     for (const inst of indicatorInstances.values()) {
       const result = inst.definition.compute({ ...ctx, params: inst.params });
+      applyIndicatorOutputWindow(inst, windowRange, source.times, result.outputs);
+    }
 
-      for (let oi = 0; oi < inst.outputSeriesIds.length; oi++) {
-        const sid = inst.outputSeriesIds[oi];
-        const ss = seriesList.find((s) => s.id === sid);
-        if (!ss) continue;
+    indicatorComputeWindow = windowRange;
+  }
 
-        const values = result.outputs[oi] ?? [];
-        // Build rows only for non-null values; the store will fill nulls via realign.
-        const rows: TimedRow[] = [];
-        for (let k = 0; k < values.length && k < src.times.length; k++) {
-          const v = values[k];
-          if (v == null) continue;
-          rows.push({ time: src.times[k], value: v } as TimedRow);
-        }
+  function recomputeIndicatorsWorker(
+    source: {
+      times: UTCTimestamp[];
+      open: (number | null)[];
+      high: (number | null)[];
+      low: (number | null)[];
+      close: (number | null)[];
+      volume: (number | null)[];
+    },
+    windowRange: IndicatorComputeWindow,
+  ): boolean {
+    const worker = ensureIndicatorWorker();
+    if (!worker) return false;
+    if (indicatorWorkerInFlightRequestId != null) return false;
 
-        ss.store.setData(rows);
-        ss.store.realign();
+    const requestId = ++indicatorWorkerRequestSeq;
+    indicatorWorkerInFlightRequestId = requestId;
+    const request: IndicatorWorkerRequest = {
+      requestId,
+      source,
+      window: windowRange,
+      instances: Array.from(indicatorInstances.values()).map((inst) => ({
+        instanceId: inst.instanceId,
+        indicatorId: inst.indicatorId,
+        params: inst.params,
+        outputCount: inst.outputSeriesIds.length,
+      })),
+    };
+
+    worker.onmessage = (event: MessageEvent<IndicatorWorkerResponse>) => {
+      const response = event.data;
+      if (response.requestId !== requestId) return;
+      indicatorWorkerInFlightRequestId = null;
+      if (response.requestId <= indicatorWorkerLastAppliedSeq) return;
+      indicatorWorkerLastAppliedSeq = response.requestId;
+
+      if (response.error) {
+        recomputeIndicatorsMainThread(source, windowRange);
+        scheduleRender();
+        return;
       }
+
+      for (const item of response.results) {
+        const inst = indicatorInstances.get(item.instanceId);
+        if (!inst) continue;
+        applyIndicatorOutputWindow(inst, response.window, source.times, item.outputs);
+      }
+
+      indicatorComputeWindow = response.window;
+      scheduleRender();
+    };
+
+    worker.onerror = () => {
+      indicatorWorkerInFlightRequestId = null;
+    };
+
+    worker.postMessage(request);
+    return true;
+  }
+
+  function recomputeIndicators(): void {
+    if (indicatorInstances.size === 0) return;
+
+    const sourceLength = timeIndex.length;
+    const recomputeStart = performance.now();
+    debugHooks?.onRecomputeStart?.({ indicatorCount: indicatorInstances.size, sourceLength });
+
+    const src = getSourceOhlcv();
+    if (!src || src.times.length === 0) {
+      clearIndicatorOutputs();
+      indicatorComputeWindow = null;
+      return;
+    }
+
+    const windowRange = getIndicatorWindow(src.times.length);
+    const usedWorker = recomputeIndicatorsWorker(src, windowRange);
+    if (!usedWorker) {
+      recomputeIndicatorsMainThread(src, windowRange);
+      indicatorWorkerLastAppliedSeq = Math.max(indicatorWorkerLastAppliedSeq, indicatorWorkerRequestSeq);
     }
 
     debugHooks?.onRecomputeEnd?.({
@@ -1093,6 +1279,20 @@ export function createChart(
       ? `${rs.paneStates[0].min.toFixed(2)}:${rs.paneStates[0].max.toFixed(2)}`
       : '';
 
+    if (indicatorInstances.size > 0 && indicatorVisibleRangeOnly && timeIndex.length > 0) {
+      // Trigger recompute only when the visible range goes OUTSIDE the already-computed
+      // window, not every time the centered-window boundaries shift.  This gives true
+      // hysteresis: while the user pans/zooms within the ±padding band no extra compute
+      // fires; only when we reach the edge of the buffer do we recompute.
+      const needsRecompute = indicatorComputeWindow === null || (() => {
+        const vis = getVisibleBarWindow();
+        return vis.first < indicatorComputeWindow!.start || vis.last > indicatorComputeWindow!.end;
+      })();
+      if (needsRecompute) {
+        scheduleIndicatorRecompute();
+      }
+    }
+
     drawBackground();
     drawGrid(rs);
 
@@ -1533,6 +1733,7 @@ export function createChart(
 
       const instance: IndicatorInstance = {
         instanceId,
+        indicatorId,
         definition: def,
         params: resolvedParams,
         ownedPaneId: subpaneId,
@@ -1568,6 +1769,9 @@ export function createChart(
       }
 
       indicatorInstances.delete(instanceId);
+      if (indicatorInstances.size === 0) {
+        indicatorComputeWindow = null;
+      }
       scheduleRender();
     },
     addPane(opts?: { height?: number; id?: string }): string {
@@ -1607,7 +1811,13 @@ export function createChart(
     },
     remove(): void {
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+      if (indicatorRafId != null) { cancelAnimationFrame(indicatorRafId); indicatorRafId = null; }
       if (wheelRafId != null) { cancelAnimationFrame(wheelRafId); wheelRafId = null; }
+      if (indicatorWorker) {
+        indicatorWorker.terminate();
+        indicatorWorker = null;
+      }
+      indicatorWorkerInFlightRequestId = null;
       paneResizeDrag = null;
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('pointerdown', onPointerDown);

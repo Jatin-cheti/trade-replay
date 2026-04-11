@@ -6,6 +6,7 @@ import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
 import { nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
+import { DrawingTimeIndex } from '@/services/tools/drawingTimeIndex';
 import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -106,6 +107,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
   const touchRafRef = useRef<number | null>(null);
   const indicatorSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const drawingIndexRef = useRef(new DrawingTimeIndex());
 
   const {
     toolState,
@@ -258,6 +260,20 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     return transformedData.ohlcRows[idx] ?? transformedData.ohlcRows[transformedData.ohlcRows.length - 1] ?? null;
   }, [transformedData.ohlcRows, transformedData.times]);
 
+  const getVisibleTimeRange = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart || !transformedData.times.length) return null;
+    const logical = chart.timeScale().getVisibleLogicalRange();
+    if (!logical) return null;
+
+    const startIndex = Math.max(0, Math.min(transformedData.times.length - 1, Math.floor(logical.from)));
+    const endIndex = Math.max(startIndex, Math.min(transformedData.times.length - 1, Math.ceil(logical.to)));
+    return {
+      from: transformedData.times[startIndex],
+      to: transformedData.times[endIndex],
+    };
+  }, [chartRef, transformedData.times]);
+
   const updateHoverPoint = useCallback((clientX: number, clientY: number) => {
     const point = pointerToDataPoint(clientX, clientY, crosshairSnapMode, false) ?? fallbackPoint();
     setHoverPoint(point);
@@ -331,6 +347,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       }
     }
   }, [chartRef, enabledIndicators, ready]);
+
+  useEffect(() => {
+    drawingIndexRef.current.rebuild(toolState.drawings);
+  }, [toolState.drawings]);
 
   const rafRef = useRef<number | null>(null);
   const renderOverlay = useCallback(() => {
@@ -446,10 +466,19 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         }
       };
 
-      drawingsRef.current.forEach((drawing) => drawTool(drawing));
+      const visibleRange = getVisibleTimeRange();
+      const visibleIds = visibleRange
+        ? new Set(drawingIndexRef.current.query(visibleRange))
+        : new Set(drawingsRef.current.map((drawing) => drawing.id));
+
+      for (const drawing of drawingsRef.current) {
+        if (!visibleIds.has(drawing.id) && drawing.id !== selectedDrawingId) continue;
+        drawTool(drawing);
+      }
+
       if (draftRef.current) drawTool(draftRef.current, true);
     });
-  }, [chartRef, drawingsRef, draftRef, getActiveSeries, overlayRef, selectedDrawingId, translateAnchors]);
+  }, [chartRef, drawingsRef, draftRef, getActiveSeries, getVisibleTimeRange, overlayRef, selectedDrawingId, translateAnchors]);
 
   resizeCallbackRef.current = renderOverlay;
 
@@ -705,7 +734,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (!point) return;
 
     if (toolState.variant === 'none') {
-      const selected = selectNearestDrawingId(drawingsRef.current, point);
+      const visibleRange = getVisibleTimeRange();
+      const visibleIds = visibleRange
+        ? new Set(drawingIndexRef.current.query(visibleRange))
+        : null;
+      const candidates = visibleIds
+        ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id))
+        : drawingsRef.current;
+
+      const selected = selectNearestDrawingId(candidates, point);
       setSelectedDrawingId(selected);
       if (selected) {
         const drawing = drawingsRef.current.find((item) => item.id === selected);
