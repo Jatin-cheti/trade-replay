@@ -50,25 +50,11 @@ type ClaimedSymbol = {
 
 async function claimAttempt(fullSymbol: string): Promise<ClaimedSymbol | null> {
   const now = Date.now();
-  const cooldownCutoff = now - ATTEMPT_COOLDOWN_MS;
 
   const claimed = await SymbolModel.findOneAndUpdate(
     {
       fullSymbol,
-      $and: [
-        {
-          $or: [{ iconUrl: { $exists: false } }, { iconUrl: "" }],
-        },
-        {
-          $or: [{ s3Icon: { $exists: false } }, { s3Icon: "" }],
-        },
-        {
-          $or: [{ logoAttempts: { $exists: false } }, { logoAttempts: { $lt: MAX_ATTEMPTS } }],
-        },
-        {
-          $or: [{ lastLogoAttemptAt: { $exists: false } }, { lastLogoAttemptAt: { $lt: cooldownCutoff } }],
-        },
-      ],
+      $or: [{ iconUrl: { $exists: false } }, { iconUrl: "" }],
     },
     {
       $inc: { logoAttempts: 1 },
@@ -102,18 +88,6 @@ async function processJob(payload: QueueSymbol): Promise<void> {
 
   if (!isRedisReady()) {
     throw new Error("REDIS_NOT_READY");
-  }
-
-  const dedupe = await redisClient.set(
-    `app:dedupe:logo-worker:${payload.fullSymbol}`,
-    "1",
-    "EX",
-    60,
-    "NX",
-  );
-  if (dedupe !== "OK") {
-    skipped += 1;
-    return;
   }
 
   const claimed = await claimAttempt(payload.fullSymbol.toUpperCase());

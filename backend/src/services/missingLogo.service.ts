@@ -3,7 +3,7 @@ import { MissingLogoModel } from "../models/MissingLogo";
 import { SymbolModel } from "../models/Symbol";
 import { nextRetryAt, shouldMarkUnresolvable, shouldSkipForNow } from "./retryManager.service";
 
-const MAX_RETRY_COUNT = 3;
+const MAX_RETRY_COUNT = 6;
 
 export interface MissingLogoWorkItem {
   symbol: string;
@@ -17,7 +17,7 @@ export interface MissingLogoWorkItem {
   userUsage: number;
   retryCount: number;
   status: "pending" | "resolved" | "failed" | "unresolved" | "unresolvable";
-  popularity: number;
+  popularity?: number;
   nextRetryAt?: Date;
   lastAttemptFailedAt?: Date;
 }
@@ -53,17 +53,17 @@ export async function upsertMissingLogoFromSymbol(input: {
         exchange: input.exchange.toUpperCase(),
         type: input.type.toLowerCase(),
         country: input.country.toUpperCase(),
-        firstSeenAt: now,
-      },
-      $set: {
         fallbackType: "detected",
-        lastSeenAt: now,
         status: "pending",
         nextRetryAt: null,
         retryCount: 0,
         lastAttemptFailedAt: null,
         lastAttemptAt: null,
         lastError: "",
+        firstSeenAt: now,
+      },
+      $set: {
+        lastSeenAt: now,
       },
       $inc: {
         count: 1,
@@ -88,6 +88,19 @@ export async function repopulateMissingLogos(): Promise<{ scanned: number; queue
 
   let scanned = 0;
   let queued = 0;
+  const bulkOps: Array<{
+    updateOne: {
+      filter: { fullSymbol: string };
+      update: Record<string, unknown>;
+      upsert: true;
+    };
+  }> = [];
+
+  async function flushBulkOps(): Promise<void> {
+    if (!bulkOps.length) return;
+    await MissingLogoModel.bulkWrite(bulkOps, { ordered: false });
+    bulkOps.length = 0;
+  }
 
   for await (const symbol of cursor as AsyncIterable<{
     symbol: string;
@@ -104,17 +117,49 @@ export async function repopulateMissingLogos(): Promise<{ scanned: number; queue
       continue;
     }
 
-    await upsertMissingLogoFromSymbol({
-      symbol: symbol.symbol,
-      fullSymbol: symbol.fullSymbol,
-      name: symbol.name,
-      exchange: symbol.exchange,
-      type: symbol.type,
-      country: symbol.country,
+    const now = new Date();
+    bulkOps.push({
+      updateOne: {
+        filter: { fullSymbol: symbol.fullSymbol.toUpperCase() },
+        update: {
+          $setOnInsert: {
+            symbol: symbol.symbol.toUpperCase(),
+            fullSymbol: symbol.fullSymbol.toUpperCase(),
+            name: symbol.name,
+            exchange: symbol.exchange.toUpperCase(),
+            type: symbol.type.toLowerCase(),
+            country: symbol.country.toUpperCase(),
+            fallbackType: "detected",
+            status: "pending",
+            nextRetryAt: null,
+            retryCount: 0,
+            lastAttemptFailedAt: null,
+            lastAttemptAt: null,
+            lastError: "",
+            firstSeenAt: now,
+          },
+          $set: {
+            lastSeenAt: now,
+          },
+          $inc: {
+            count: 1,
+            searchFrequency: 1,
+            userUsage: 1,
+          },
+        },
+        upsert: true,
+      },
     });
+
+    if (bulkOps.length >= 500) {
+      // eslint-disable-next-line no-await-in-loop
+      await flushBulkOps();
+    }
 
     queued += 1;
   }
+
+  await flushBulkOps();
 
   return { scanned, queued };
 }
@@ -189,7 +234,8 @@ export async function getMissingLogosBatch(limit: number, options?: { includeUnr
     },
     {
       $addFields: {
-        popularity: { $ifNull: [{ $arrayElemAt: ["$symbolDoc.popularity", 0] }, 0] },
+        searchFrequencyLookup: { $ifNull: [{ $arrayElemAt: ["$symbolDoc.searchFrequency", 0] }, 0] },
+        userUsageLookup: { $ifNull: [{ $arrayElemAt: ["$symbolDoc.userUsage", 0] }, 0] },
       },
     },
     {
@@ -224,7 +270,8 @@ export async function getMissingLogosBatch(limit: number, options?: { includeUnr
             { $multiply: ["$count", 5] },
             "$searchFrequency",
             { $multiply: ["$userUsage", 2] },
-            "$popularity",
+            "$searchFrequencyLookup",
+            { $multiply: ["$userUsageLookup", 2] },
             "$indiaBoost",
             "$knownExchangeBoost",
             "$cleanTickerBoost",
@@ -247,7 +294,6 @@ export async function getMissingLogosBatch(limit: number, options?: { includeUnr
         userUsage: 1,
         retryCount: 1,
         status: 1,
-        popularity: 1,
         nextRetryAt: 1,
         lastAttemptFailedAt: 1,
       },
@@ -347,3 +393,4 @@ export async function markFailed(fullSymbol: string, reason: string, options?: {
     );
   }
 }
+

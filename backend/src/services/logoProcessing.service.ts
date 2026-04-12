@@ -22,7 +22,7 @@ async function processSingleSymbol(
       country: item.country,
       strategy,
       minConfidence: options.minConfidence,
-      forceAttempt: item.popularity >= options.popularityForceThreshold,
+      forceAttempt: (item.searchFrequency ?? 0) + (item.userUsage ?? 0) >= options.popularityForceThreshold,
     });
 
     if (!resolvedLogo.logoUrl) {

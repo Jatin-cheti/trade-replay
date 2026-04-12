@@ -1,4 +1,4 @@
-import { produce } from "../kafka/producer";
+﻿import { produce } from "../kafka/producer";
 import {
   KAFKA_TOPICS,
   TradeExecutePayload,
@@ -7,6 +7,11 @@ import {
   SimulationEventPayload,
   UserActivityPayload,
   SymbolLogoEnrichedPayload,
+  AlertFiredPayload,
+  SymbolIngestPayload,
+  LogoResolvePayload,
+  LogoRetryPayload,
+  LogoCompletedPayload,
 } from "../kafka/topics";
 
 // --- Trade Events ---
@@ -41,4 +46,28 @@ export function produceUserActivity(payload: UserActivityPayload): void {
 
 export function produceSymbolLogoEnriched(payload: SymbolLogoEnrichedPayload): void {
   produce(KAFKA_TOPICS.SYMBOL_LOGO_ENRICHED, payload, payload.fullSymbol);
+}
+
+// --- Alert Events ---
+
+export function produceAlertFired(payload: AlertFiredPayload): void {
+  produce(KAFKA_TOPICS.ALERT_FIRED, payload, payload.alertId);
+}
+
+// --- Scaling Pipeline Events ---
+
+export function produceSymbolIngest(payload: SymbolIngestPayload): void {
+  produce(KAFKA_TOPICS.SYMBOL_INGEST, payload, payload.fullSymbol);
+}
+
+export function produceLogoResolve(payload: LogoResolvePayload): void {
+  produce(KAFKA_TOPICS.LOGO_RESOLVE, payload, payload.fullSymbol);
+}
+
+export function produceLogoRetry(payload: LogoRetryPayload): void {
+  produce(KAFKA_TOPICS.LOGO_RETRY, payload, payload.fullSymbol);
+}
+
+export function produceLogoCompleted(payload: LogoCompletedPayload): void {
+  produce(KAFKA_TOPICS.LOGO_COMPLETED, payload, payload.fullSymbol);
 }

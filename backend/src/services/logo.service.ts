@@ -1,394 +1,33 @@
-import { SymbolModel } from "../models/Symbol";
-import { env } from "../config/env";
+﻿import { SymbolModel } from "../models/Symbol";
 import { inferDomainWithConfidence } from "./domainConfidence.service";
 import { classifySymbol, type SymbolClass } from "./symbolClassifier.service";
 import { FailureReason, recordResolverDiagnostic } from "./diagnostics.service";
 import { getKnownDomain, rememberResolvedDomain } from "./domainMemory.service";
 import { getCuratedDomain, saveToDomainDataset } from "./curatedDomainDataset.service";
 import { invalidateSymbolCaches } from "./cacheInvalidation.service";
+import { recalculatePriorityScores } from "./symbol.service";
+import { resolveTrustedDomainMultiSource } from "./domain-intelligence.service";
+import { getHighConfidenceDomain } from "../config/highConfidenceDomainMap";
 
-function clearbitUrl(domain: string): string {
-  return `https://logo.clearbit.com/${domain}`;
-}
+import {
+  normalizeDomain,
+  normalizeSymbol,
+  googleFaviconUrl,
+  duckduckgoIconUrl,
+  CRYPTO_ICON_MAP,
+  extractBaseSymbol,
+  extractCryptoBaseSymbol,
+  etfFallbackLogoUrl,
+  forexFallbackLogoUrl,
+  validateLogoUrlDetailed,
+} from "./logo.helpers";
 
-function fmpLogoUrl(symbol: string): string {
-  const apiKeySuffix = env.FMP_API_KEY ? `?apikey=${encodeURIComponent(env.FMP_API_KEY)}` : "";
-  return `https://financialmodelingprep.com/image-stock/${symbol.toUpperCase()}.png${apiKeySuffix}`;
-}
+import {
+  tryFetchFmpLogo,
+  tryFetchCoinGeckoLogo,
+} from "./logo.providers";
 
-function googleFaviconUrl(domain: string): string {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-}
-
-function duckduckgoIconUrl(domain: string): string {
-  return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-}
-
-function normalizeDomain(domain: string): string {
-  return domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-}
-
-function normalizeSymbol(symbol: string): string {
-  return symbol.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, "");
-}
-
-const failedDomains = new Set<string>();
-const validDomains = new Set<string>();
-const CIRCUIT_BREAKER_THRESHOLD = 15;
-const CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
-let externalFailureCount = 0;
-let circuitOpenUntil = 0;
-const CRYPTO_ICON_MAP: Record<string, string> = {
-  BTC: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
-  ETH: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
-  USDT: "https://assets.coingecko.com/coins/images/325/small/tether.png",
-  BNB: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png",
-  SOL: "https://assets.coingecko.com/coins/images/4128/small/solana.png",
-  XRP: "https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png",
-  ADA: "https://assets.coingecko.com/coins/images/975/small/cardano.png",
-  DOGE: "https://assets.coingecko.com/coins/images/5/small/dogecoin.png",
-  MATIC: "https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png",
-  DOT: "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
-  AVAX: "https://assets.coingecko.com/coins/images/12559/small/coin-round-red.png",
-  LINK: "https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png",
-  LTC: "https://assets.coingecko.com/coins/images/2/small/litecoin.png",
-  SHIB: "https://assets.coingecko.com/coins/images/11939/small/shiba.png",
-};
-
-function extractBaseSymbol(rawSymbol: string): string {
-  const upper = rawSymbol.trim().toUpperCase();
-  const [head] = upper.split(/[-.$]/);
-  return head || upper;
-}
-
-function extractCryptoBaseSymbol(rawSymbol: string): string {
-  const upper = normalizeSymbol(rawSymbol);
-  const quoteSuffixes = ["USDT", "USDC", "BUSD", "USD", "INR", "BTC", "ETH", "BNB", "EUR", "TRY"];
-  for (const suffix of quoteSuffixes) {
-    if (upper.endsWith(suffix) && upper.length > suffix.length + 1) {
-      return upper.slice(0, -suffix.length);
-    }
-  }
-  return upper;
-}
-
-function generateCryptoDomainGuesses(symbol: string): string[] {
-  const base = extractCryptoBaseSymbol(symbol).toLowerCase();
-  if (!base || base.length < 3) return [];
-  return [`${base}.com`, `${base}.org`, `${base}.io`];
-}
-
-function isBlockedGuessedDomain(domain: string): boolean {
-  const normalized = normalizeDomain(domain);
-  const blockedRoots = new Set(["usdt", "usdc", "busd", "usd", "inr", "btc", "eth", "bnb"]);
-  const root = normalized.split(".")[0] || "";
-  return blockedRoots.has(root);
-}
-
-function isPlausibleGuessedDomain(domain: string): boolean {
-  const normalized = normalizeDomain(domain);
-  if (!normalized || !normalized.includes(".")) return false;
-  if (isBlockedGuessedDomain(normalized)) return false;
-  const root = normalized.split(".")[0] || "";
-  if (root.length < 3) return false;
-  return /^[a-z0-9][a-z0-9-]*\.[a-z0-9.-]+$/.test(normalized);
-}
-
-const GENERIC_LOW_CONFIDENCE_TOKENS = new Set([
-  "india",
-  "indian",
-  "global",
-  "group",
-  "holding",
-  "holdings",
-  "service",
-  "services",
-  "solution",
-  "solutions",
-  "system",
-  "systems",
-  "enterprise",
-  "enterprises",
-  "industry",
-  "industries",
-  "financial",
-  "finance",
-  "capital",
-  "investment",
-  "investments",
-  "ventures",
-  "infra",
-  "energy",
-  "auto",
-  "motors",
-  "technology",
-  "technologies",
-]);
-
-function pickLowConfidenceToken(symbol: string, name: string, country?: string): string {
-  const base = extractBaseSymbol(symbol).toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (base.length >= 4 && !GENERIC_LOW_CONFIDENCE_TOKENS.has(base)) {
-    return base;
-  }
-
-  const isIndia = (country || "").toUpperCase() === "IN" || (country || "").toUpperCase() === "INDIA";
-  const cleanedNameTokens = name
-    .toLowerCase()
-    .replace(/\b(limited|ltd|inc\.?|corp\.?|plc|company|co\.?|holdings|group)\b/gi, "")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter((part) => part.length >= 4 && !GENERIC_LOW_CONFIDENCE_TOKENS.has(part));
-
-  if (!cleanedNameTokens.length) return "";
-  if (!isIndia) return cleanedNameTokens[0] ?? "";
-  return cleanedNameTokens.sort((a, b) => b.length - a.length)[0] ?? "";
-}
-
-function generateLowConfidenceDomainGuesses(input: { symbol: string; name: string; country?: string }): string[] {
-  const token = pickLowConfidenceToken(input.symbol, input.name, input.country);
-  if (!token) return [];
-  return [];
-}
-
-function etfFallbackLogoUrl(): string {
-  return "https://www.google.com/s2/favicons?domain=etf.com&sz=128";
-}
-
-function forexFallbackLogoUrl(symbol: string): string {
-  const normalized = normalizeSymbol(symbol);
-  return `https://www.google.com/s2/favicons?domain=xe.com&sz=128&pair=${normalized}`;
-}
-
-function isCircuitOpen(): boolean {
-  return Date.now() < circuitOpenUntil;
-}
-
-function markExternalCallSuccess(): void {
-  externalFailureCount = 0;
-}
-
-function markExternalCallFailure(): void {
-  externalFailureCount += 1;
-  if (externalFailureCount >= CIRCUIT_BREAKER_THRESHOLD) {
-    circuitOpenUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
-  }
-}
-
-async function validateLogoUrl(url: string): Promise<boolean> {
-  if (isCircuitOpen()) return false;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
-  try {
-    const response = await fetch(url, {
-      method: "HEAD",
-      signal: controller.signal,
-      headers: { "User-Agent": "tradereplay-logo-worker/1.0" },
-    });
-    if (response.ok) return true;
-
-    const fallback = await fetch(url, {
-      method: "GET",
-      signal: controller.signal,
-      headers: { "User-Agent": "tradereplay-logo-worker/1.0", Range: "bytes=0-64" },
-    });
-    if (fallback.ok) {
-      markExternalCallSuccess();
-      return true;
-    }
-    markExternalCallFailure();
-    return false;
-  } catch {
-    markExternalCallFailure();
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function validateLogoUrlDetailed(url: string): Promise<{ ok: boolean; failureReason?: FailureReason }> {
-  if (isCircuitOpen()) {
-    return { ok: false, failureReason: FailureReason.RATE_LIMIT };
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
-  try {
-    const response = await fetch(url, {
-      method: "HEAD",
-      signal: controller.signal,
-      headers: { "User-Agent": "tradereplay-logo-worker/1.0" },
-    });
-    if (response.ok) {
-      markExternalCallSuccess();
-      return { ok: true };
-    }
-    if (response.status === 404) return { ok: false, failureReason: FailureReason.API_404 };
-    if (response.status === 429) return { ok: false, failureReason: FailureReason.RATE_LIMIT };
-
-    const fallback = await fetch(url, {
-      method: "GET",
-      signal: controller.signal,
-      headers: { "User-Agent": "tradereplay-logo-worker/1.0", Range: "bytes=0-64" },
-    });
-    if (fallback.ok) {
-      markExternalCallSuccess();
-      return { ok: true };
-    }
-    if (fallback.status === 404) return { ok: false, failureReason: FailureReason.API_404 };
-    if (fallback.status === 429) return { ok: false, failureReason: FailureReason.RATE_LIMIT };
-    markExternalCallFailure();
-    return { ok: false, failureReason: FailureReason.INVALID_LOGO };
-  } catch {
-    markExternalCallFailure();
-    return { ok: false, failureReason: FailureReason.INVALID_LOGO };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function isValidDomain(domain: string): Promise<boolean> {
-  if (isCircuitOpen()) return false;
-
-  const normalized = normalizeDomain(domain);
-  if (!normalized || failedDomains.has(normalized)) return false;
-  if (validDomains.has(normalized)) return true;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2000);
-  try {
-    const res = await fetch(`https://${normalized}`, {
-      method: "HEAD",
-      signal: controller.signal,
-      headers: { "User-Agent": "tradereplay-domain-check/1.0" },
-    });
-    if (res.ok) {
-      validDomains.add(normalized);
-      markExternalCallSuccess();
-      return true;
-    }
-
-    // Some hosts reject HEAD but are still valid; verify with a tiny GET probe.
-    const fallback = await fetch(`https://${normalized}`, {
-      method: "GET",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "tradereplay-domain-check/1.0",
-        Range: "bytes=0-64",
-      },
-    });
-
-    if (fallback.ok || (fallback.status >= 300 && fallback.status < 500 && fallback.status !== 404)) {
-      validDomains.add(normalized);
-      markExternalCallSuccess();
-      return true;
-    }
-
-    failedDomains.add(normalized);
-    markExternalCallFailure();
-    return false;
-  } catch {
-    failedDomains.add(normalized);
-    markExternalCallFailure();
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function getValidatedDomain(domain: string | null | undefined): Promise<string | null> {
-  if (!domain) return null;
-  const normalized = normalizeDomain(domain);
-  if (!normalized) return null;
-  if (!(await isValidDomain(normalized))) return null;
-  return normalized;
-}
-
-export async function tryFetchLogo(domain: string): Promise<string | null> {
-  const normalized = normalizeDomain(domain);
-  if (!normalized) return null;
-
-  // 1) Clearbit
-  const clearbit = clearbitUrl(normalized);
-  if (await validateLogoUrl(clearbit)) return clearbit;
-
-  // 2) Google favicon
-  const google = googleFaviconUrl(normalized);
-  if (await validateLogoUrl(google)) return google;
-
-  // 3) DuckDuckGo host icon
-  const duck = duckduckgoIconUrl(normalized);
-  if (await validateLogoUrl(duck)) return duck;
-
-  return null;
-}
-
-async function tryFetchFmpLogo(symbol: string): Promise<string | null> {
-  if (!env.FMP_API_KEY) return null;
-  const normalizedSymbol = normalizeSymbol(symbol);
-  if (!normalizedSymbol) return null;
-
-  const candidate = fmpLogoUrl(normalizedSymbol);
-  if (await validateLogoUrl(candidate)) return candidate;
-  return null;
-}
-
-async function tryFetchCryptoLogo(symbol: string): Promise<string | null> {
-  const base = extractCryptoBaseSymbol(symbol).toLowerCase();
-  if (!base) return null;
-
-  const sources = [
-    `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/128/color/${base}.png`,
-    `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/128/icon/${base}.png`,
-  ];
-
-  for (const source of sources) {
-    // eslint-disable-next-line no-await-in-loop
-    if (await validateLogoUrl(source)) return source;
-  }
-
-  return null;
-}
-
-async function tryFetchCoinGeckoLogo(symbol: string): Promise<string | null> {
-  if (isCircuitOpen()) return null;
-
-  const base = extractCryptoBaseSymbol(symbol).toLowerCase();
-  if (!base) return null;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2500);
-  try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(base)}`, {
-      method: "GET",
-      signal: controller.signal,
-      headers: { "User-Agent": "tradereplay-logo-worker/1.0" },
-    });
-    if (!res.ok) {
-      markExternalCallFailure();
-      return null;
-    }
-
-    const payload = await res.json() as {
-      coins?: Array<{ symbol?: string; large?: string; thumb?: string; id?: string }>;
-    };
-
-    const coins = payload.coins ?? [];
-    const exact = coins.find((coin) => (coin.symbol || "").toLowerCase() === base) ?? coins[0];
-    const candidate = exact?.large || exact?.thumb || null;
-    if (!candidate) return null;
-
-    if (await validateLogoUrl(candidate)) return candidate;
-    markExternalCallFailure();
-    return null;
-  } catch {
-    markExternalCallFailure();
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+export { tryFetchLogo } from "./logo.providers";
 
 export interface ResolveLogoResult {
   logoUrl: string | null;
@@ -419,6 +58,55 @@ export async function resolveLogoForSymbol(input: {
   const country = (input.country || "GLOBAL").toUpperCase();
   const baseSymbol = extractBaseSymbol(input.symbol);
 
+  const normalizeCompanyName = (name: string): string => name
+    .toLowerCase()
+    .replace(/\b(limited|ltd|inc\.?|corp\.?|corporation|plc|company|co\.?)\b/g, " ")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const domainRoot = (domain: string): string => normalizeDomain(domain).split(".")[0] || "";
+
+  const domainSimilarity = (domain: string, companyName: string): number => {
+    const root = domainRoot(domain);
+    if (!root) return 0;
+    const tokens = normalizeCompanyName(companyName).split(" ").filter((token) => token.length >= 3);
+    if (!tokens.length) return 0;
+    const joined = tokens.join("");
+    if (joined.includes(root) || root.includes(joined)) return 1;
+    const overlaps = tokens.filter((token) => root.includes(token) || token.includes(root));
+    return overlaps.length / tokens.length;
+  };
+
+  const isGenericDomain = (domain: string): boolean => {
+    const root = domainRoot(domain);
+    return new Set(["group", "global", "holding", "holdings", "service", "services"]).has(root);
+  };
+
+  const isDomainReusedAcrossCompanies = async (domain: string): Promise<boolean> => {
+    const normalizedDomain = normalizeDomain(domain);
+    const normalizedSymbol = normalizeSymbol(input.symbol);
+    const normalizedName = normalizeCompanyName(input.name);
+    const rows = await SymbolModel.find({ companyDomain: normalizedDomain, symbol: { $ne: normalizedSymbol } })
+      .select({ name: 1 })
+      .limit(5)
+      .lean<Array<{ name: string }>>();
+    return rows.some((row) => normalizeCompanyName(row.name) !== normalizedName);
+  };
+
+  const acceptDomain = async (domain: string | null, confidence: number): Promise<boolean> => {
+    if (!domain) return false;
+    const normalized = normalizeDomain(domain);
+    if (!normalized || normalized.length <= 4 || !normalized.includes(".")) return false;
+    if (domainRoot(normalized).length <= 1 || isGenericDomain(normalized)) return false;
+    const similarity = domainSimilarity(normalized, input.name);
+    const keywordMatched = normalizeCompanyName(input.name).split(" ").some((token) => token.length >= 4 && domainRoot(normalized).includes(token));
+    if (similarity <= 0.5 && !keywordMatched) return false;
+    if (similarity <= 0.55 && confidence < 0.65) return false;
+    if (confidence < 0.95 && await isDomainReusedAcrossCompanies(normalized)) return false;
+    return true;
+  };
+
   if (baseSymbol && baseSymbol !== input.symbol.toUpperCase()) {
     attemptedSources.push("base-symbol-lookup");
     const baseRecord = await SymbolModel.findOne({
@@ -431,7 +119,7 @@ export async function resolveLogoForSymbol(input: {
 
     const reusedIcon = baseRecord?.iconUrl || baseRecord?.s3Icon || "";
     if (reusedIcon.startsWith("http")) {
-      const baseCompanyDomain = baseRecord && baseRecord.companyDomain ? baseRecord.companyDomain : null;
+      const baseCompanyDomain = baseRecord?.companyDomain || null;
       const result: ResolveLogoResult = {
         logoUrl: reusedIcon,
         domain: baseCompanyDomain,
@@ -462,41 +150,23 @@ export async function resolveLogoForSymbol(input: {
     type: input.type,
   });
 
-  if (classification === "forex") {
-    attemptedSources.push("forex-fallback");
-    const result: ResolveLogoResult = {
-      logoUrl: forexFallbackLogoUrl(input.symbol),
-      domain: "xe.com",
-      hasDomain: true,
-      confidence: 1,
-      classification,
-      attemptedSources,
-      source: "forex-fallback",
-    };
-    recordResolverDiagnostic({
-      symbol: input.symbol,
-      type: input.type || classification,
-      country,
-      attemptedSources,
-      domain: result.domain,
-      confidence: result.confidence,
-      result: "resolved",
-      source: result.source,
-    });
-    await rememberResolvedDomain({ symbol: input.symbol, domain: "xe.com", confidence: 1, source: "forex-fallback" });
-    return result;
-  }
+  const normalizedInputType = (input.type || "").toLowerCase();
+  const controlledFallbackClass = classification === "forex" || classification === "unknown" || normalizedInputType === "index";
 
-  if (classification === "fund") {
-    attemptedSources.push("fund-fallback");
+  if (controlledFallbackClass) {
+    const source = classification === "forex" ? "forex-fallback" : "fund-fallback";
+    attemptedSources.push(source);
+    const genericIcon = classification === "forex"
+      ? forexFallbackLogoUrl(input.symbol)
+      : etfFallbackLogoUrl();
     const result: ResolveLogoResult = {
-      logoUrl: etfFallbackLogoUrl(),
-      domain: "etf.com",
-      hasDomain: true,
+      logoUrl: genericIcon,
+      domain: null,
+      hasDomain: false,
       confidence: 1,
       classification,
       attemptedSources,
-      source: "fund-fallback",
+      source,
     };
     recordResolverDiagnostic({
       symbol: input.symbol,
@@ -508,7 +178,6 @@ export async function resolveLogoForSymbol(input: {
       result: "resolved",
       source: result.source,
     });
-    await rememberResolvedDomain({ symbol: input.symbol, domain: "etf.com", confidence: 1, source: "fund-fallback" });
     return result;
   }
 
@@ -517,7 +186,7 @@ export async function resolveLogoForSymbol(input: {
     const mappedCryptoIcon = CRYPTO_ICON_MAP[cryptoBase];
     if (mappedCryptoIcon) {
       attemptedSources.push("crypto-static-map");
-      const result: ResolveLogoResult = {
+      return {
         logoUrl: mappedCryptoIcon,
         domain: null,
         hasDomain: false,
@@ -526,106 +195,143 @@ export async function resolveLogoForSymbol(input: {
         attemptedSources,
         source: "crypto-static-map",
       };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      return result;
-    }
-
-    const existingCrypto = await SymbolModel.findOne({
-      symbol: input.symbol.toUpperCase(),
-    })
-      .sort({ logoValidatedAt: -1 })
-      .select({ iconUrl: 1, s3Icon: 1 })
-      .lean<{ iconUrl?: string; s3Icon?: string } | null>();
-
-    const existingIcon = existingCrypto?.iconUrl || existingCrypto?.s3Icon || null;
-    if (existingIcon && existingIcon.startsWith("http")) {
-      attemptedSources.push("crypto-existing-icon");
-      const result: ResolveLogoResult = {
-        logoUrl: existingIcon,
-        domain: null,
-        hasDomain: false,
-        confidence: 1,
-        classification,
-        attemptedSources,
-        source: "crypto-existing-icon",
-      };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      return result;
     }
 
     attemptedSources.push("coingecko");
     const coingeckoLogo = await tryFetchCoinGeckoLogo(input.symbol);
     if (coingeckoLogo) {
-      const result: ResolveLogoResult = {
+      return {
         logoUrl: coingeckoLogo,
-        domain: "coingecko.com",
+        domain: null,
         hasDomain: false,
         confidence: 0.95,
         classification,
         attemptedSources,
         source: "coingecko",
       };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      return result;
-    }
-
-    attemptedSources.push("crypto-cdn");
-    const cryptoLogo = await tryFetchCryptoLogo(input.symbol);
-    if (cryptoLogo) {
-      const result: ResolveLogoResult = {
-        logoUrl: cryptoLogo,
-        domain: "crypto-icons.local",
-        hasDomain: false,
-        confidence: 0.9,
-        classification,
-        attemptedSources,
-        source: "crypto-cdn",
-      };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      return result;
     }
 
     attemptedSources.push("fmp");
     const cryptoFmp = await tryFetchFmpLogo(input.symbol);
     if (cryptoFmp) {
-      const result: ResolveLogoResult = {
+      return {
         logoUrl: cryptoFmp,
+        domain: null,
+        hasDomain: false,
+        confidence: 0.8,
+        classification,
+        attemptedSources,
+        source: "fmp",
+      };
+    }
+
+    return {
+      logoUrl: null,
+      domain: null,
+      hasDomain: false,
+      confidence: 0,
+      classification,
+      reason: FailureReason.NO_DOMAIN,
+      attemptedSources,
+    };
+  }
+
+  const fullSymbol = input.fullSymbol || `${(input.exchange || "GLOBAL").toUpperCase()}:${input.symbol}`;
+  const highConfidenceDomain = getHighConfidenceDomain(input.symbol);
+  const curatedDomain = await getCuratedDomain({ symbol: input.symbol, fullSymbol });
+  const validatedCuratedDomain = curatedDomain ? normalizeDomain(curatedDomain) : null;
+
+  const confidenceMeta = inferDomainWithConfidence({
+    symbol: input.symbol,
+    name: input.name,
+    exchange: input.exchange,
+  });
+  const inferredTrustedDomain = confidenceMeta.reason.startsWith("verified")
+    ? normalizeDomain(confidenceMeta.domain || "")
+    : null;
+
+  const knownDomain = await getKnownDomain(input.symbol);
+  const validatedKnownDomain = knownDomain ? normalizeDomain(knownDomain) : null;
+
+  const trustedResolution = await resolveTrustedDomainMultiSource({
+    symbol: input.symbol,
+    companyName: input.name,
+    exchange: input.exchange,
+  });
+  const trustedDomain = trustedResolution.domain ? normalizeDomain(trustedResolution.domain) : null;
+  if (trustedResolution.source) {
+    attemptedSources.push(`domain-intelligence:${trustedResolution.source}`);
+  }
+
+  const domainCandidates = [
+    { domain: highConfidenceDomain ? normalizeDomain(highConfidenceDomain) : null, confidence: 0.995, source: "high-confidence-map" },
+    { domain: trustedDomain, confidence: trustedResolution.confidence, source: "domain-intelligence" },
+    { domain: validatedCuratedDomain, confidence: 0.99, source: "domain-dataset" },
+    { domain: inferredTrustedDomain, confidence: confidenceMeta.confidence, source: "verified-map" },
+    { domain: validatedKnownDomain, confidence: 0.95, source: "domain-memory" },
+  ].filter((entry): entry is { domain: string; confidence: number; source: string } => Boolean(entry.domain));
+
+  for (const entry of domainCandidates) {
+    const trustedBypass = entry.source === "domain-intelligence" && entry.confidence >= 0.75;
+    if (!trustedBypass && !(await acceptDomain(entry.domain, entry.confidence))) {
+      continue;
+    }
+
+    attemptedSources.push(entry.source);
+    const candidates: Array<{ source: string; url: string }> = [
+      { source: "google", url: googleFaviconUrl(entry.domain) },
+      { source: "duckduckgo", url: duckduckgoIconUrl(entry.domain) },
+    ];
+
+    for (const candidate of candidates) {
+      attemptedSources.push(candidate.source);
+      // eslint-disable-next-line no-await-in-loop
+      const validation = await validateLogoUrlDetailed(candidate.url);
+      const allowUnverifiedTrustedLogo = (strategy === "deep_enrichment"
+        && entry.confidence >= 0.75
+        && candidate.source === "google")
+        || (trustedBypass && candidate.source === "google");
+      if (validation.ok || allowUnverifiedTrustedLogo) {
+        const result: ResolveLogoResult = {
+          logoUrl: candidate.url,
+          domain: entry.domain,
+          hasDomain: true,
+          confidence: entry.confidence,
+          classification,
+          attemptedSources,
+          source: candidate.source,
+        };
+
+        await rememberResolvedDomain({
+          symbol: input.symbol,
+          domain: entry.domain,
+          confidence: Math.max(0.8, entry.confidence),
+          source: candidate.source,
+          companyName: input.name,
+        });
+        await saveToDomainDataset(input.symbol, entry.domain, entry.confidence);
+
+        recordResolverDiagnostic({
+          symbol: input.symbol,
+          type: input.type || classification,
+          country,
+          attemptedSources,
+          domain: result.domain,
+          confidence: result.confidence,
+          result: "resolved",
+          source: result.source,
+        });
+        return result;
+      }
+    }
+  }
+
+  if (!strictDomainOnly) {
+    attemptedSources.push("fmp");
+    const fmp = await tryFetchFmpLogo(input.symbol);
+    if (fmp) {
+      const result: ResolveLogoResult = {
+        logoUrl: fmp,
         domain: null,
         hasDomain: false,
         confidence: 0.8,
@@ -638,282 +344,7 @@ export async function resolveLogoForSymbol(input: {
         type: input.type || classification,
         country,
         attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      return result;
-    }
-
-    const cryptoFail: ResolveLogoResult = {
-      logoUrl: null,
-      domain: null,
-      hasDomain: false,
-      confidence: 0,
-      classification,
-      reason: FailureReason.NO_DOMAIN,
-      attemptedSources,
-    };
-    recordResolverDiagnostic({
-      symbol: input.symbol,
-      type: input.type || classification,
-      country,
-      attemptedSources,
-      domain: null,
-      confidence: 0,
-      result: "failed",
-      failureReason: FailureReason.NO_DOMAIN,
-    });
-    return cryptoFail;
-  }
-
-  const fullSymbol = input.fullSymbol || `${(input.exchange || "GLOBAL").toUpperCase()}:${input.symbol}`;
-  const curatedDomain = await getCuratedDomain({
-    symbol: input.symbol,
-    fullSymbol,
-  });
-  const validatedCuratedDomain = await getValidatedDomain(curatedDomain);
-  const knownDomain = await getKnownDomain(input.symbol);
-  const validatedKnownDomain = await getValidatedDomain(knownDomain);
-  const registryDomainRecord = await SymbolModel.findOne({
-    $or: [{ symbol: input.symbol.toUpperCase() }, { symbol: baseSymbol }],
-    companyDomain: { $ne: "" },
-  })
-    .sort({ logoValidatedAt: -1 })
-    .select({ companyDomain: 1 })
-    .lean<{ companyDomain?: string } | null>();
-  const validatedRegistryDomain = await getValidatedDomain(registryDomainRecord?.companyDomain || null);
-
-  if (validatedCuratedDomain || validatedKnownDomain || validatedRegistryDomain) {
-    const prioritizedDomain = validatedCuratedDomain || validatedKnownDomain || validatedRegistryDomain;
-    if (validatedCuratedDomain) attemptedSources.push("domain-dataset");
-    if (!validatedCuratedDomain && validatedKnownDomain) attemptedSources.push("domain-memory");
-    if (!validatedCuratedDomain && !validatedKnownDomain && validatedRegistryDomain) attemptedSources.push("symbol-registry-domain");
-
-    if (prioritizedDomain) {
-      const preferredDomainCandidates: Array<{ source: string; url: string }> = [
-        { source: "google", url: googleFaviconUrl(prioritizedDomain) },
-        { source: "duckduckgo", url: duckduckgoIconUrl(prioritizedDomain) },
-      ];
-
-      for (const candidate of preferredDomainCandidates) {
-        attemptedSources.push(candidate.source);
-        // eslint-disable-next-line no-await-in-loop
-        const validation = await validateLogoUrlDetailed(candidate.url);
-        if (validation.ok) {
-          const result: ResolveLogoResult = {
-            logoUrl: candidate.url,
-            domain: prioritizedDomain,
-            hasDomain: true,
-            confidence: 0.99,
-            classification,
-            attemptedSources,
-            source: candidate.source,
-          };
-          recordResolverDiagnostic({
-            symbol: input.symbol,
-            type: input.type || classification,
-            country,
-            attemptedSources,
-            domain: result.domain,
-            confidence: result.confidence,
-            result: "resolved",
-            source: result.source,
-          });
-          await rememberResolvedDomain({ symbol: input.symbol, domain: prioritizedDomain, confidence: 0.99, source: candidate.source });
-          await saveToDomainDataset(input.symbol, prioritizedDomain);
-          return result;
-        }
-      }
-    }
-  }
-
-  const confidenceMeta = inferDomainWithConfidence({
-    symbol: input.symbol,
-    name: input.name,
-    exchange: input.exchange,
-  });
-  const inferredRaw = validatedCuratedDomain
-    || validatedKnownDomain
-    || validatedRegistryDomain
-    || input.companyDomain
-    || (confidenceMeta.reason === "nse_symbol_map" ? confidenceMeta.domain : null);
-  const inferred = await getValidatedDomain(inferredRaw);
-  const minimumConfidence = strategy === "deep_enrichment" || strictDomainOnly
-    ? 0
-    : (input.minConfidence ?? (strategy === "aggressive" ? 0.5 : 0.7));
-  const isCuratedMapping = confidenceMeta.reason === "nse_symbol_map";
-  const allowLowConfidenceMode = !strictDomainOnly
-    && (Boolean(input.forceAttempt) || !inferred || confidenceMeta.confidence < minimumConfidence);
-
-  if (strictDomainOnly && !validatedKnownDomain && !validatedCuratedDomain && !validatedRegistryDomain && !(isCuratedMapping && inferred)) {
-    const strictFail: ResolveLogoResult = {
-      logoUrl: null,
-      domain: null,
-      hasDomain: false,
-      confidence: confidenceMeta.confidence,
-      classification,
-      reason: FailureReason.NO_DOMAIN,
-      attemptedSources: [...attemptedSources, "strict-domain-only-skip"],
-    };
-    recordResolverDiagnostic({
-      symbol: input.symbol,
-      type: input.type || classification,
-      country,
-      attemptedSources: strictFail.attemptedSources,
-      domain: null,
-      confidence: strictFail.confidence,
-      result: "failed",
-      failureReason: FailureReason.NO_DOMAIN,
-    });
-    return strictFail;
-  }
-
-  if (allowLowConfidenceMode) {
-    attemptedSources.push("domain-confidence-check");
-
-    const guessedDomains = Array.from(
-      new Set(
-        [
-          ...(inferred ? [inferred] : []),
-          ...generateLowConfidenceDomainGuesses({ symbol: input.symbol, name: input.name, country }),
-        ]
-          .map((candidate) => normalizeDomain(candidate))
-          .filter((candidate) => isPlausibleGuessedDomain(candidate))
-      )
-    ).filter((candidate) => !failedDomains.has(candidate));
-
-    attemptedSources.push("fmp");
-    const fmpLowConfidence = await tryFetchFmpLogo(input.symbol);
-    if (fmpLowConfidence) {
-      const result: ResolveLogoResult = {
-        logoUrl: fmpLowConfidence,
-        domain: normalizeSymbol(input.symbol),
-        hasDomain: false,
-        confidence: confidenceMeta.confidence,
-        classification,
-        reason: FailureReason.LOW_CONFIDENCE,
-        attemptedSources,
-        source: "fmp",
-      };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      if (inferred) {
-        await saveToDomainDataset(input.symbol, inferred);
-      }
-      return result;
-    }
-
-    for (const domainGuess of guessedDomains) {
-      // eslint-disable-next-line no-await-in-loop
-      if (!(await isValidDomain(domainGuess))) {
-        continue;
-      }
-
-      const lowConfidenceCandidates: Array<{ source: string; url: string }> = strategy === "deep_enrichment"
-        ? [
-            { source: "google", url: googleFaviconUrl(domainGuess) },
-            { source: "duckduckgo", url: duckduckgoIconUrl(domainGuess) },
-            { source: "clearbit", url: clearbitUrl(domainGuess) },
-          ]
-        : [
-            { source: "google", url: googleFaviconUrl(domainGuess) },
-            { source: "duckduckgo", url: duckduckgoIconUrl(domainGuess) },
-            { source: "clearbit", url: clearbitUrl(domainGuess) },
-          ];
-
-      for (const candidate of lowConfidenceCandidates) {
-        attemptedSources.push(candidate.source);
-        // eslint-disable-next-line no-await-in-loop
-        const validation = await validateLogoUrlDetailed(candidate.url);
-        if (validation.ok) {
-          const result: ResolveLogoResult = {
-            logoUrl: candidate.url,
-            domain: domainGuess,
-            hasDomain: true,
-            confidence: confidenceMeta.confidence,
-            classification,
-            reason: FailureReason.LOW_CONFIDENCE,
-            attemptedSources,
-            source: candidate.source,
-          };
-          await rememberResolvedDomain({
-            symbol: input.symbol,
-            domain: domainGuess,
-            confidence: Math.max(0.3, confidenceMeta.confidence),
-            source: candidate.source,
-          });
-          recordResolverDiagnostic({
-            symbol: input.symbol,
-            type: input.type || classification,
-            country,
-            attemptedSources,
-            domain: result.domain,
-            confidence: result.confidence,
-            result: "resolved",
-            source: result.source,
-          });
-          return result;
-        }
-
-        if (validation.failureReason === FailureReason.API_404) {
-          failedDomains.add(domainGuess);
-          validDomains.delete(domainGuess);
-        }
-      }
-    }
-
-    const reason = !inferred ? FailureReason.NO_DOMAIN : FailureReason.LOW_CONFIDENCE;
-    const result: ResolveLogoResult = {
-      logoUrl: null,
-      domain: null,
-      hasDomain: false,
-      confidence: confidenceMeta.confidence,
-      classification,
-      reason,
-      attemptedSources,
-    };
-    recordResolverDiagnostic({
-      symbol: input.symbol,
-      type: input.type || classification,
-      country,
-      attemptedSources,
-      domain: result.domain,
-      confidence: result.confidence,
-      result: "failed",
-      failureReason: reason,
-    });
-    return result;
-  }
-
-  if (!strictDomainOnly) {
-    attemptedSources.push("fmp");
-    const fmp = await tryFetchFmpLogo(input.symbol);
-    if (fmp) {
-      const result: ResolveLogoResult = {
-        logoUrl: fmp,
-        domain: inferred || normalizeSymbol(input.symbol),
-        hasDomain: Boolean(inferred),
-        confidence: confidenceMeta.confidence,
-        classification,
-        attemptedSources,
-        source: "fmp",
-      };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
+        domain: null,
         confidence: result.confidence,
         result: "resolved",
         source: result.source,
@@ -922,83 +353,13 @@ export async function resolveLogoForSymbol(input: {
     }
   }
 
-  if (!inferred) {
-    const noDomainResult: ResolveLogoResult = {
-      logoUrl: null,
-      domain: null,
-      hasDomain: false,
-      confidence: confidenceMeta.confidence,
-      classification,
-      reason: FailureReason.NO_DOMAIN,
-      attemptedSources,
-    };
-    recordResolverDiagnostic({
-      symbol: input.symbol,
-      type: input.type || classification,
-      country,
-      attemptedSources,
-      domain: null,
-      confidence: noDomainResult.confidence,
-      result: "failed",
-      failureReason: FailureReason.NO_DOMAIN,
-    });
-    return noDomainResult;
-  }
-
-  const domainSourceCandidates: Array<{ source: string; url: string }> = [
-    { source: "google", url: googleFaviconUrl(inferred) },
-    { source: "duckduckgo", url: duckduckgoIconUrl(inferred) },
-    { source: "clearbit", url: clearbitUrl(inferred) },
-  ];
-
-  let lastFailureReason: FailureReason = FailureReason.INVALID_LOGO;
-  for (const candidate of domainSourceCandidates) {
-    attemptedSources.push(candidate.source);
-    // eslint-disable-next-line no-await-in-loop
-    const validation = await validateLogoUrlDetailed(candidate.url);
-    if (validation.ok) {
-      const result: ResolveLogoResult = {
-        domain: inferred,
-        logoUrl: candidate.url,
-        hasDomain: true,
-        confidence: confidenceMeta.confidence,
-        classification,
-        attemptedSources,
-        source: candidate.source,
-      };
-      recordResolverDiagnostic({
-        symbol: input.symbol,
-        type: input.type || classification,
-        country,
-        attemptedSources,
-        domain: result.domain,
-        confidence: result.confidence,
-        result: "resolved",
-        source: result.source,
-      });
-      await rememberResolvedDomain({
-        symbol: input.symbol,
-        domain: inferred,
-        confidence: Math.max(0.6, confidenceMeta.confidence),
-        source: candidate.source,
-      });
-      await saveToDomainDataset(input.symbol, inferred);
-      return result;
-    }
-    lastFailureReason = validation.failureReason ?? FailureReason.INVALID_LOGO;
-    if (lastFailureReason === FailureReason.API_404) {
-      failedDomains.add(inferred);
-      validDomains.delete(inferred);
-    }
-  }
-
-  const result: ResolveLogoResult = {
+  const noDomainResult: ResolveLogoResult = {
     logoUrl: null,
-    domain: inferred,
-    hasDomain: Boolean(inferred),
+    domain: null,
+    hasDomain: false,
     confidence: confidenceMeta.confidence,
     classification,
-    reason: lastFailureReason,
+    reason: FailureReason.NO_DOMAIN,
     attemptedSources,
   };
   recordResolverDiagnostic({
@@ -1006,12 +367,12 @@ export async function resolveLogoForSymbol(input: {
     type: input.type || classification,
     country,
     attemptedSources,
-    domain: result.domain,
-    confidence: result.confidence,
+    domain: null,
+    confidence: noDomainResult.confidence,
     result: "failed",
-    failureReason: result.reason,
+    failureReason: FailureReason.NO_DOMAIN,
   });
-  return result;
+  return noDomainResult;
 }
 
 export async function updateSymbolLogo(fullSymbol: string, logoUrl: string, domain: string, s3Icon = ""): Promise<boolean> {
@@ -1031,6 +392,7 @@ export async function updateSymbolLogo(fullSymbol: string, logoUrl: string, doma
 
   if (result.modifiedCount > 0) {
     await invalidateSymbolCaches(fullSymbol);
+    await recalculatePriorityScores([fullSymbol.toUpperCase()]);
     return true;
   }
 

@@ -1,6 +1,6 @@
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const RECENT_FAILURE_WINDOW_MS = 30 * 60 * 1000;
-const UNRESOLVABLE_RETRY_LIMIT = 3;
+const UNRESOLVABLE_RETRY_LIMIT = 6;
 
 export function shouldSkipForNow(input: { retryCount: number; lastAttemptFailedAt?: Date | string | null; now?: Date }): boolean {
   const now = input.now ?? new Date();

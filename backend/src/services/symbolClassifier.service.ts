@@ -1,4 +1,4 @@
-export type SymbolClass = "company" | "fund" | "forex" | "crypto" | "unknown";
+﻿export type SymbolClass = "company" | "fund" | "forex" | "crypto" | "unknown";
 
 export function classifySymbol(input: { symbol: string; name: string; type?: string; exchange?: string }): SymbolClass {
   const symbol = input.symbol.toUpperCase();
@@ -19,7 +19,7 @@ export function classifySymbol(input: { symbol: string; name: string; type?: str
     return "forex";
   }
 
-  if (name.includes("etf") || name.includes("fund") || type.includes("fund")) {
+  if (/\betf\b/.test(name) || /\bfund\b/.test(name) || type.includes("fund")) {
     return "fund";
   }
 

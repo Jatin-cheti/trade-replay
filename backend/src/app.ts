@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -19,12 +19,18 @@ import { createLiveMarketRoutes } from "./routes/liveMarketRoutes";
 import { createPortfolioRoutes } from "./routes/portfolioRoutes";
 import { createTradeRoutes } from "./routes/tradeRoutes";
 import { createSymbolRoutes } from "./routes/symbolRoutes";
+import { createAlertsRoutes } from "./routes/alertsRoutes";
+import { createDatafeedRoutes } from "./routes/datafeedRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
 import { warmSymbolSearchCache } from "./services/symbol.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
+import { getFullCoverageReport, runTailEliminationOnce, startTailOrchestrator, stopTailOrchestrator, isOrchestratorRunning } from "./services/tailOrchestrator.service";
+import { startScalingOrchestrator, stopScalingOrchestrator, isScalingOrchestratorRunning, getLiveScalingReport, runExpansionOnce, runSyncOnce, getScalingStatus } from "./services/scalingOrchestrator.service";
+import { getExpansionStats } from "./services/symbolExpansion.service";
+import { getShardStats } from "./services/redisShard.service";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
 
@@ -103,6 +109,76 @@ export function createApp() {
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // ── Logo coverage & tail elimination endpoints ───────────────────────
+  app.get("/api/logo-coverage", async (_req, res) => {
+    const report = await getFullCoverageReport();
+    res.json(report);
+  });
+
+  app.post("/api/logo-tail-elimination", async (_req, res) => {
+    const result = await runTailEliminationOnce();
+    res.json(result);
+  });
+
+  app.post("/api/logo-orchestrator/start", (_req, res) => {
+    if (isOrchestratorRunning()) {
+      res.json({ status: "already_running" });
+      return;
+    }
+    void startTailOrchestrator();
+    res.json({ status: "started" });
+  });
+
+  app.post("/api/logo-orchestrator/stop", (_req, res) => {
+    stopTailOrchestrator();
+    res.json({ status: "stopped" });
+  });
+
+  // ── Scaling orchestrator endpoints ─────────────────────────────────────
+  app.post("/api/scaling/start", (_req, res) => {
+    if (isScalingOrchestratorRunning()) {
+      res.json({ status: "already_running" });
+      return;
+    }
+    void startScalingOrchestrator();
+    res.json({ status: "started" });
+  });
+
+  app.post("/api/scaling/stop", (_req, res) => {
+    stopScalingOrchestrator();
+    res.json({ status: "stopped" });
+  });
+
+  app.get("/api/scaling/report", async (_req, res) => {
+    const report = await getLiveScalingReport();
+    res.json(report);
+  });
+
+  app.get("/api/scaling/status", async (_req, res) => {
+    const status = await getScalingStatus();
+    res.json(status);
+  });
+
+  app.post("/api/scaling/expand", async (_req, res) => {
+    const report = await runExpansionOnce();
+    res.json(report);
+  });
+
+  app.post("/api/scaling/sync", async (_req, res) => {
+    const result = await runSyncOnce();
+    res.json(result);
+  });
+
+  app.get("/api/scaling/expansion-stats", async (_req, res) => {
+    const stats = await getExpansionStats();
+    res.json(stats);
+  });
+
+  app.get("/api/scaling/shard-stats", async (_req, res) => {
+    const stats = await getShardStats("app:logo");
+    res.json(stats);
   });
 
   app.get("/api/metrics", async (_req, res) => {
@@ -231,6 +307,8 @@ export function createApp() {
   app.use("/api/portfolio", createPortfolioRoutes());
   app.use("/api/trade", createTradeRoutes(engine));
   app.use("/api/symbols", createSymbolRoutes());
+  app.use("/api/alerts", createAlertsRoutes());
+  app.use("/api/datafeed", createDatafeedRoutes());
   app.use(notFoundHandler);
   app.use(errorHandler);
 

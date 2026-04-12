@@ -14,10 +14,14 @@ import { inferDomainWithConfidence } from "../services/domainConfidence.service"
 import { classifySymbol } from "../services/symbolClassifier.service";
 import { isRedisReady, redisClient } from "../config/redis";
 import { clusterScopedKey } from "../services/redisKey.service";
+import { eliminateTail } from "../services/tailElimination.service";
+import { resolveCluster } from "../services/clusterCache.service";
+import { getCostMetrics } from "../services/costGuardrails.service";
+import { detectStagnation } from "../services/adaptiveRetry.service";
 
-const BASE_PER_WORKER_BATCH_SIZE = 300;
-const BASE_MAX_WORKERS = 4;
-const BASE_PROCESS_CONCURRENCY = 20;
+const BASE_PER_WORKER_BATCH_SIZE = 50;
+const BASE_MAX_WORKERS = 2;
+const BASE_PROCESS_CONCURRENCY = 10;
 const ACTIVE_SLEEP_MS = 300;
 const FINAL_PHASE_SLEEP_MS = 100;
 const WATCHDOG_INTERVAL_MS = 10000;
@@ -31,7 +35,7 @@ let watchdogHandle: NodeJS.Timeout | null = null;
 let strategyMode: "normal" | "aggressive" | "deep_enrichment" | "strict_domain_only" = "normal";
 let focusHighConfidenceOnly = false;
 let minConfidenceThreshold = 0.5;
-const POPULARITY_FORCE_ATTEMPT_THRESHOLD = 120;
+const POPULARITY_FORCE_ATTEMPT_THRESHOLD = 10;
 let lastFallbackRatio: number | null = null;
 let lowProgressStreak = 0;
 const PASS_LOCK_TTL_SECONDS = 120;
@@ -47,18 +51,18 @@ interface CycleTuning {
 function getCycleTuning(fallbackRatio: number, mode: "normal" | "aggressive" | "deep_enrichment" | "strict_domain_only"): CycleTuning {
   if (mode === "strict_domain_only") {
     return {
-      perWorkerBatchSize: 1000,
-      maxWorkers: 6,
-      concurrency: 30,
+      perWorkerBatchSize: 50,
+      maxWorkers: 2,
+      concurrency: 20,
       sleepMs: FINAL_PHASE_SLEEP_MS,
     };
   }
 
   if (fallbackRatio < 0.2 || mode === "deep_enrichment") {
     return {
-      perWorkerBatchSize: 1000,
-      maxWorkers: 6,
-      concurrency: 30,
+      perWorkerBatchSize: 50,
+      maxWorkers: 2,
+      concurrency: 20,
       sleepMs: FINAL_PHASE_SLEEP_MS,
     };
   }
@@ -120,7 +124,7 @@ function qualityScore(item: MissingLogoWorkItem): number {
 
   return classScore
     + domainMeta.confidence * 100
-    + item.popularity * 0.7
+    + (item.searchFrequency ?? 0) * 0.5
     + item.searchFrequency * 1.2
     + item.userUsage * 0.4
     + item.count * 0.2;
@@ -244,8 +248,46 @@ export async function runLogoEnrichmentPass(): Promise<{ processed: number; reso
       minConfidence: minConfidenceThreshold,
       popularityForceThreshold: POPULARITY_FORCE_ATTEMPT_THRESHOLD,
     });
-    const { processed, resolved } = workerResult;
+    let { processed, resolved } = workerResult;
     lastProcessedAt = Date.now();
+
+    // ── Tail elimination phase ─────────────────────────────────────────
+    // After normal processing, run cluster resolution + tail pipeline
+    // on remaining unresolved items to push toward 100%.
+    const tailBatch = await getMissingLogosBatch(100, { includeUnresolved: true });
+    let tailResolved = 0;
+    if (tailBatch.length > 0) {
+      // Cheap cluster pass first (no network calls)
+      const clusterResult = await resolveCluster(
+        tailBatch.map((item) => ({ fullSymbol: item.fullSymbol, symbol: item.symbol })),
+      );
+      tailResolved += clusterResult.resolved;
+
+      // Full 8-strategy tail elimination
+      const tailResult = await eliminateTail(tailBatch, { batchSize: 100 });
+      tailResolved += tailResult.resolved;
+      processed += tailResult.processed;
+      resolved += tailResolved;
+
+      logger.info("tail_elimination_pass", {
+        tailProcessed: tailResult.processed,
+        tailResolved: tailResult.resolved,
+        clusterResolved: clusterResult.resolved,
+        strategyBreakdown: tailResult.strategyBreakdown,
+        exhausted: tailResult.exhausted,
+        skipped: tailResult.skipped,
+        costMetrics: getCostMetrics(),
+      });
+    }
+
+    // Anti-stagnation detection
+    const stagnation = detectStagnation(resolved, tailBatch.length);
+    if (stagnation.stagnant) {
+      logger.warn("logo_worker_stagnation_detected", { ...stagnation });
+      if (strategyMode !== "deep_enrichment" && strategyMode !== "strict_domain_only") {
+        strategyMode = "deep_enrichment";
+      }
+    }
 
     const diagnostics = getFailureStatsSnapshot();
     const successRate = diagnostics.successRate;
@@ -385,3 +427,4 @@ export function startLogoEnrichmentScheduler(): void {
     popularityForceAttemptThreshold: POPULARITY_FORCE_ATTEMPT_THRESHOLD,
   });
 }
+

@@ -1,235 +1,46 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
-import { flushSync } from "react-dom";
-import { useApp } from "@/context/AppContext";
-import { api } from "@/lib/api";
-import { getApiErrorMessage } from "@/lib/api";
-import { scenarios } from "@/data/stockData";
-import { toast } from "sonner";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import PremiumSelect from "@/components/simulation/PremiumSelect";
 import BrandLottie from "@/components/BrandLottie";
 import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { Carousel, CarouselApi, CarouselContent, CarouselItem } from "@/components/ui/carousel";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
-import PremiumSelect from "@/components/simulation/PremiumSelect";
-
-interface SavedPortfolio {
-  id: string;
-  name: string;
-  baseCurrency: string;
-  holdings: Array<{ symbol: string; quantity: number; avgPrice: number }>;
-  totalValue: number;
-  pnl: number;
-  pnlPercent: number;
-}
+import { scenarios } from "@/data/stockData";
+import { useDashboard } from "@/hooks/useDashboard";
 
 export default function Dashboard() {
-  const { isAuthenticated } = useApp();
-  const navigate = useNavigate();
-  const [items, setItems] = useState<SavedPortfolio[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedScenarioByPortfolio, setSelectedScenarioByPortfolio] = useState<Record<string, string>>({});
-  const [featuredScenarioId, setFeaturedScenarioId] = useState(scenarios[0]?.id ?? "2008-crash");
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [scenarioCarouselApi, setScenarioCarouselApi] = useState<CarouselApi>();
-  const [canScrollPrev, setCanScrollPrev] = useState(false);
-  const [canScrollNext, setCanScrollNext] = useState(false);
-  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
-  const [selectedPortfolioIdsForBulkApply, setSelectedPortfolioIdsForBulkApply] = useState<string[]>([]);
-  const [openPortfolioScenarioDropdownId, setOpenPortfolioScenarioDropdownId] = useState<string | null>(null);
-  const featuredScenario = scenarios.find((scenario) => scenario.id === featuredScenarioId) ?? scenarios[0];
-  const featuredScenarioIndex = Math.max(0, scenarios.findIndex((scenario) => scenario.id === featuredScenarioId));
-  const scenarioSelectOptions = useMemo(
-    () => scenarios.map((scenario) => ({ value: scenario.id, label: scenario.name, subtitle: scenario.description })),
-    []
-  );
-
-  const totalAum = useMemo(() => items.reduce((acc, portfolio) => acc + portfolio.totalValue, 0), [items]);
-
-  const loadPortfolios = async () => {
-    setIsLoading(true);
-    try {
-      const response = await api.get<SavedPortfolio[]>("/portfolio");
-      setItems(response.data);
-      setSelectedPortfolioIdsForBulkApply(response.data.map((portfolio) => portfolio.id));
-      setSelectedScenarioByPortfolio((prev) => {
-        const next = { ...prev };
-        response.data.forEach((portfolio) => {
-          if (!next[portfolio.id]) {
-            next[portfolio.id] = scenarios[0]?.id ?? "2008-crash";
-          }
-        });
-        return next;
-      });
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not load portfolios"));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    void loadPortfolios();
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-
-    const mediaQuery = window.matchMedia("(pointer: coarse)");
-    const updatePointerType = () => setIsCoarsePointer(mediaQuery.matches);
-
-    updatePointerType();
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", updatePointerType);
-      return () => mediaQuery.removeEventListener("change", updatePointerType);
-    }
-
-    mediaQuery.addListener(updatePointerType);
-    return () => mediaQuery.removeListener(updatePointerType);
-  }, []);
-
-  useEffect(() => {
-    if (!openPortfolioScenarioDropdownId) return;
-
-    let closed = false;
-
-    const isInsidePremiumSelectContent = (target: EventTarget | null) => {
-      if (!(target instanceof Node)) return false;
-      const element = target instanceof Element ? target : target.parentElement;
-      return !!element?.closest('[data-premium-select-content="true"]');
-    };
-
-    const closeDropdownImmediately = (event?: Event) => {
-      if (closed) return;
-      if (event && isInsidePremiumSelectContent(event.target)) return;
-      closed = true;
-      flushSync(() => {
-        setOpenPortfolioScenarioDropdownId(null);
-      });
-    };
-
-    // Capture wheel/touch intent before the page visually scrolls so the menu does not appear to move.
-    window.addEventListener("wheel", closeDropdownImmediately, { capture: true, passive: true });
-    window.addEventListener("touchmove", closeDropdownImmediately, { capture: true, passive: true });
-    window.addEventListener("scroll", closeDropdownImmediately, { passive: true });
-    window.addEventListener("resize", closeDropdownImmediately);
-
-    return () => {
-      window.removeEventListener("wheel", closeDropdownImmediately, true);
-      window.removeEventListener("touchmove", closeDropdownImmediately, true);
-      window.removeEventListener("scroll", closeDropdownImmediately);
-      window.removeEventListener("resize", closeDropdownImmediately);
-    };
-  }, [openPortfolioScenarioDropdownId]);
-
-  useEffect(() => {
-    if (!scenarioCarouselApi) return;
-
-    const syncStateFromCarousel = () => {
-      setCanScrollPrev(scenarioCarouselApi.canScrollPrev());
-      setCanScrollNext(scenarioCarouselApi.canScrollNext());
-      const snapIndex = scenarioCarouselApi.selectedScrollSnap();
-      const selectedScenario = scenarios[snapIndex];
-      if (selectedScenario && selectedScenario.id !== featuredScenarioId) {
-        setFeaturedScenarioId(selectedScenario.id);
-      }
-    };
-
-    syncStateFromCarousel();
-    scenarioCarouselApi.on("select", syncStateFromCarousel);
-    scenarioCarouselApi.on("reInit", syncStateFromCarousel);
-
-    return () => {
-      scenarioCarouselApi.off("select", syncStateFromCarousel);
-      scenarioCarouselApi.off("reInit", syncStateFromCarousel);
-    };
-  }, [scenarioCarouselApi, featuredScenarioId]);
-
-  useEffect(() => {
-    if (!scenarioCarouselApi) return;
-    if (scenarioCarouselApi.selectedScrollSnap() !== featuredScenarioIndex) {
-      scenarioCarouselApi.scrollTo(featuredScenarioIndex);
-    }
-  }, [scenarioCarouselApi, featuredScenarioIndex]);
-
-  const handleScenarioWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (isCoarsePointer || !scenarioCarouselApi) return;
-
-    const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-    if (Math.abs(dominantDelta) < 6) return;
-
-    if (dominantDelta > 0) {
-      if (!scenarioCarouselApi.canScrollNext()) return;
-      event.preventDefault();
-      scenarioCarouselApi.scrollNext();
-      return;
-    }
-
-    if (!scenarioCarouselApi.canScrollPrev()) return;
-    event.preventDefault();
-    scenarioCarouselApi.scrollPrev();
-  }, [isCoarsePointer, scenarioCarouselApi]);
-
-  const openSimulation = (portfolioId: string) => {
-    const scenarioId = selectedScenarioByPortfolio[portfolioId] ?? scenarios[0].id;
-    navigate(`/simulation?portfolioId=${portfolioId}&scenarioId=${scenarioId}`);
-  };
-
-  const toggleSelectedPortfolioId = (portfolioId: string, checked: boolean) => {
-    setSelectedPortfolioIdsForBulkApply((prev) => {
-      if (checked) {
-        if (prev.includes(portfolioId)) return prev;
-        return [...prev, portfolioId];
-      }
-      return prev.filter((id) => id !== portfolioId);
-    });
-  };
-
-  const applyFeaturedScenarioToSelectedPortfolios = () => {
-    if (selectedPortfolioIdsForBulkApply.length === 0) {
-      toast.error("Select at least one portfolio");
-      return;
-    }
-
-    const selected = new Set(selectedPortfolioIdsForBulkApply);
-    setSelectedScenarioByPortfolio((prev) => {
-      const next = { ...prev };
-      items.forEach((portfolio) => {
-        if (selected.has(portfolio.id)) {
-          next[portfolio.id] = featuredScenarioId;
-        }
-      });
-      return next;
-    });
-
-    toast.success(`Scenario applied to ${selectedPortfolioIdsForBulkApply.length} selected portfolio(s)`);
-  };
-
-  const importFromDashboard = async () => {
-    if (!csvFile) {
-      toast.error("Please choose a CSV file first");
-      return;
-    }
-
-    try {
-      const form = new FormData();
-      form.append("file", csvFile);
-      form.append("name", `Imported ${new Date().toLocaleDateString()}`);
-      await api.post("/portfolio/import", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      toast.success("Portfolio imported");
-      setCsvFile(null);
-      await loadPortfolios();
-    } catch (_error) {
-      toast.error("CSV import failed");
-    }
-  };
+  const {
+    isAuthenticated,
+    navigate,
+    items,
+    isLoading,
+    csvFile,
+    setCsvFile,
+    scenarioCarouselApi,
+    setScenarioCarouselApi,
+    canScrollPrev,
+    canScrollNext,
+    isCoarsePointer,
+    selectedPortfolioIdsForBulkApply,
+    setSelectedPortfolioIdsForBulkApply,
+    openPortfolioScenarioDropdownId,
+    setOpenPortfolioScenarioDropdownId,
+    featuredScenarioId,
+    setFeaturedScenarioId,
+    featuredScenario,
+    scenarioSelectOptions,
+    selectedScenarioByPortfolio,
+    setSelectedScenarioByPortfolio,
+    totalAum,
+    handleScenarioWheel,
+    openSimulation,
+    toggleSelectedPortfolioId,
+    applyFeaturedScenarioToSelectedPortfolios,
+    importFromDashboard,
+  } = useDashboard();
 
   return (
     <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
@@ -278,24 +89,24 @@ export default function Dashboard() {
               <p className="eyebrow-label">Scenario Navigator</p>
               {!isCoarsePointer ? (
                 <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => scenarioCarouselApi?.scrollPrev()}
-                  disabled={!canScrollPrev}
-                  className="h-9 w-9 rounded-full border border-border bg-secondary/45 flex items-center justify-center text-foreground disabled:opacity-35 transition-all hover:border-primary/45 hover:bg-secondary/65"
-                  aria-label="Previous scenario"
-                >
-                  <ArrowLeft size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scenarioCarouselApi?.scrollNext()}
-                  disabled={!canScrollNext}
-                  className="h-9 w-9 rounded-full border border-border bg-secondary/45 flex items-center justify-center text-foreground disabled:opacity-35 transition-all hover:border-primary/45 hover:bg-secondary/65"
-                  aria-label="Next scenario"
-                >
-                  <ArrowRight size={16} />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => scenarioCarouselApi?.scrollPrev()}
+                    disabled={!canScrollPrev}
+                    className="h-9 w-9 rounded-full border border-border bg-secondary/45 flex items-center justify-center text-foreground disabled:opacity-35 transition-all hover:border-primary/45 hover:bg-secondary/65"
+                    aria-label="Previous scenario"
+                  >
+                    <ArrowLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scenarioCarouselApi?.scrollNext()}
+                    disabled={!canScrollNext}
+                    className="h-9 w-9 rounded-full border border-border bg-secondary/45 flex items-center justify-center text-foreground disabled:opacity-35 transition-all hover:border-primary/45 hover:bg-secondary/65"
+                    aria-label="Next scenario"
+                  >
+                    <ArrowRight size={16} />
+                  </button>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">Tap to choose scenario</p>
@@ -380,56 +191,56 @@ export default function Dashboard() {
 
             <div className="mt-4 panel-shell card-tertiary px-4 py-3 overflow-hidden">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <p className="eyebrow-label">Featured Scenario</p>
-                <p className="font-display text-base md:text-lg text-foreground">{featuredScenario?.name}</p>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button className="w-full sm:w-auto px-3 py-2 rounded-lg border border-border bg-secondary/40 text-sm hover:border-primary/45 hover:bg-secondary/65 transition-all">
-                      Select Portfolios ({selectedPortfolioIdsForBulkApply.length})
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[min(22rem,calc(100vw-2rem))] glass-strong border-border/70 p-3">
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground mb-2">Apply To</p>
-                    <div className="space-y-2 max-h-56 overflow-auto pr-1">
-                      {items.map((portfolio) => (
-                        <label key={portfolio.id} className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-secondary/20 px-2.5 py-2 text-sm">
-                          <span className="truncate">{portfolio.name}</span>
-                          <Checkbox
-                            checked={selectedPortfolioIdsForBulkApply.includes(portfolio.id)}
-                            onCheckedChange={(checked) => toggleSelectedPortfolioId(portfolio.id, checked === true)}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPortfolioIdsForBulkApply(items.map((portfolio) => portfolio.id))}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Select all
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Featured Scenario</p>
+                  <p className="font-display text-base md:text-lg text-foreground">{featuredScenario?.name}</p>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="w-full sm:w-auto px-3 py-2 rounded-lg border border-border bg-secondary/40 text-sm hover:border-primary/45 hover:bg-secondary/65 transition-all">
+                        Select Portfolios ({selectedPortfolioIdsForBulkApply.length})
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPortfolioIdsForBulkApply([])}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[min(22rem,calc(100vw-2rem))] glass-strong border-border/70 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground mb-2">Apply To</p>
+                      <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                        {items.map((portfolio) => (
+                          <label key={portfolio.id} className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-secondary/20 px-2.5 py-2 text-sm">
+                            <span className="truncate">{portfolio.name}</span>
+                            <Checkbox
+                              checked={selectedPortfolioIdsForBulkApply.includes(portfolio.id)}
+                              onCheckedChange={(checked) => toggleSelectedPortfolioId(portfolio.id, checked === true)}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPortfolioIdsForBulkApply(items.map((p) => p.id))}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPortfolioIdsForBulkApply([])}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-                <button
-                  onClick={applyFeaturedScenarioToSelectedPortfolios}
-                  className="w-full sm:w-auto px-4 py-2 rounded-lg bg-primary/90 text-primary-foreground text-sm interactive-cta"
-                >
-                  Apply To Selected
-                </button>
-              </div>
+                  <button
+                    onClick={applyFeaturedScenarioToSelectedPortfolios}
+                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-primary/90 text-primary-foreground text-sm interactive-cta"
+                  >
+                    Apply To Selected
+                  </button>
+                </div>
               </div>
             </div>
           </ScrollReveal>
@@ -445,11 +256,9 @@ export default function Dashboard() {
 
           {isLoading ? (
             <div className="glass-strong card-tertiary rounded-xl p-8 text-muted-foreground">
-              <div>
-                <div className="flex items-center justify-center gap-3">
-                  <BrandLottie size={54} className="shrink-0" />
-                  <p>Loading portfolios...</p>
-                </div>
+              <div className="flex items-center justify-center gap-3">
+                <BrandLottie size={54} className="shrink-0" />
+                <p>Loading portfolios...</p>
               </div>
             </div>
           ) : items.length === 0 ? (
@@ -479,7 +288,7 @@ export default function Dashboard() {
                       <div className="flex items-start justify-between">
                         <div className="min-w-0 pr-2">
                           <h3 className="text-lg font-semibold text-foreground truncate" title={portfolio.name}>{portfolio.name}</h3>
-                          <p className="text-xs text-muted-foreground">{portfolio.holdings.length} holdings • {portfolio.baseCurrency}</p>
+                          <p className="text-xs text-muted-foreground">{portfolio.holdings.length} holdings &bull; {portfolio.baseCurrency}</p>
                         </div>
                         <span className={`text-xs px-2 py-1 rounded ${positive ? "bg-neon-green/20 text-profit" : "bg-neon-red/20 text-loss"}`}>
                           {positive ? "+" : ""}{portfolio.pnlPercent.toFixed(2)}%

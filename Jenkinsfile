@@ -47,7 +47,7 @@ pipeline {
         sh 'cp deploy/env/.env.ci .env'
         sh 'cp deploy/env/.env.secrets.ci .env.secrets'
         sh 'docker compose down --remove-orphans'
-        sh 'docker compose up -d redis kafka mongodb backend worker logo-service kafka-service'
+        sh 'docker compose up -d redis kafka mongodb backend worker logo-service kafka-service global-expansion'
       }
     }
 

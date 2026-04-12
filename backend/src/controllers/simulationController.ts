@@ -127,6 +127,7 @@ export function createSimulationController(service: SimulationService) {
         ? req.query.type
         : mapCategoryToSymbolType(category);
 
+      const userId = req.user?.userId;
       let payload;
       try {
         payload = await searchSymbols({
@@ -135,6 +136,7 @@ export function createSimulationController(service: SimulationService) {
           country: typeof req.query.country === "string" ? req.query.country : undefined,
           limit: safeLimit,
           cursor,
+          userId,
         });
       } catch (error) {
         if (error instanceof Error && error.message === "INVALID_CURSOR_TOKEN") {

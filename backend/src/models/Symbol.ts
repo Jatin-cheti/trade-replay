@@ -17,6 +17,10 @@ const symbolSchema = new Schema(
     s3Icon: { type: String, trim: true, default: "" },
     popularity: { type: Number, required: true, default: 0 },
     searchFrequency: { type: Number, required: true, default: 0 },
+    userUsage: { type: Number, required: true, default: 0 },
+    priorityScore: { type: Number, required: true, default: 0 },
+    searchPrefixes: { type: [String], default: [] },
+    baseSymbol: { type: String, trim: true, uppercase: true, default: "" },
     source: { type: String, required: true, trim: true },
   },
   { timestamps: true },
@@ -29,13 +33,12 @@ symbolSchema.index({ createdAt: -1, _id: -1 });
 symbolSchema.index({ type: 1, country: 1, createdAt: -1, _id: -1 });
 symbolSchema.index({ symbol: 1, type: 1, country: 1, createdAt: -1 });
 symbolSchema.index(
-  { popularity: -1, createdAt: -1 },
-  {
-    partialFilterExpression: { popularity: { $gt: 0 } },
-    name: "symbol_popularity_active_idx",
-  },
+  { priorityScore: -1, createdAt: -1 },
+  { name: "symbol_priority_score_idx" },
 );
 symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
+symbolSchema.index({ searchPrefixes: 1 }, { name: "symbol_prefix_idx" });
+symbolSchema.index({ baseSymbol: 1, priorityScore: -1 }, { name: "symbol_base_cluster_idx" });
 symbolSchema.index(
   { symbol: "text", name: "text", fullSymbol: "text" },
   {

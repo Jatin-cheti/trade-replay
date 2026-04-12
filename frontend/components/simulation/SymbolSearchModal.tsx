@@ -1,15 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Globe, Search, X } from "lucide-react";
+﻿import { ArrowLeft, Globe, Search, X } from "lucide-react";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  fetchAssetSearchFilters,
-  searchAssets,
-  type AssetCategory,
-  type AssetSearchFilterOption,
-  type AssetSearchItem,
-} from "@/lib/assetSearch";
+import type { AssetCategory, AssetSearchItem } from "@/lib/assetSearch";
 import { FilterDropdown, ModalPanel, ModalTriggerButton, SYMBOL_CATEGORIES } from "@/components/simulation/symbolSearchModalParts";
+import { useSymbolSearch } from "@/components/simulation/useSymbolSearch";
+import { FutureContractsView } from "@/components/simulation/FutureContractsView";
 
 const FALLBACK_ICON = "/icons/exchange/default.svg";
 
@@ -28,322 +23,54 @@ export default function SymbolSearchModal({
   onSelect,
   initialCategory = "all",
 }: SymbolSearchModalProps) {
-  const [view, setView] = useState<"search" | "sources" | "countries" | "futureContracts">("search");
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<(typeof SYMBOL_CATEGORIES)[number]["id"]>(initialCategory);
-  const [country, setCountry] = useState("all");
-  const [type, setType] = useState("all");
-  const [sector, setSector] = useState("all");
-  const [source, setSource] = useState("all");
-  const [exchangeType, setExchangeType] = useState("all");
-  const [futureCategory, setFutureCategory] = useState("all");
-  const [economyCategory, setEconomyCategory] = useState("all");
-
-  const [rows, setRows] = useState<AssetSearchItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [total, setTotal] = useState(0);
-
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
-  const [countryOptions, setCountryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [typeOptions, setTypeOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [sectorOptions, setSectorOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [sourceOptions, setSourceOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [exchangeTypeOptions, setExchangeTypeOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [futureCategoryOptions, setFutureCategoryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [economyCategoryOptions, setEconomyCategoryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [sourceUiType, setSourceUiType] = useState<"modal" | "dropdown">("modal");
-
-  const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
-
-  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number; nextCursor: string | null }>());
-  const listContainerRef = useRef<HTMLDivElement | null>(null);
-  const paginationInFlightRef = useRef(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setCategory(initialCategory);
-  }, [initialCategory, open]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetchAssetSearchFilters({ category: category === "all" ? undefined : category });
-        if (cancelled) return;
-
-        setActiveFilters(response.activeFilters ?? []);
-        setCountryOptions(response.countries ?? []);
-        setTypeOptions(response.types ?? []);
-        setSectorOptions(response.sectors ?? []);
-        setSourceOptions(response.sources ?? []);
-        setExchangeTypeOptions(response.exchangeTypes ?? []);
-        setFutureCategoryOptions(response.futureCategories ?? []);
-        setEconomyCategoryOptions(response.economyCategories ?? []);
-        setSourceUiType(response.sourceUiType ?? "modal");
-      } catch {
-        if (cancelled) return;
-        setActiveFilters([]);
-        setCountryOptions([]);
-        setTypeOptions([]);
-        setSectorOptions([]);
-        setSourceOptions([]);
-        setExchangeTypeOptions([]);
-        setFutureCategoryOptions([]);
-        setEconomyCategoryOptions([]);
-        setSourceUiType("modal");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [category, open]);
-
-  useEffect(() => {
-    setCountry("all");
-    setType("all");
-    setSector("all");
-    setSource("all");
-    setExchangeType("all");
-    setFutureCategory("all");
-    setEconomyCategory("all");
-    setView("search");
-    setSelectedFutureRoot(null);
-  }, [category]);
-
-  const filterKey = useMemo(() => JSON.stringify({
-    q: query.trim(),
-    category,
-    country,
-    type,
-    sector,
-    source,
-    exchangeType,
-    futureCategory,
-    economyCategory,
-  }), [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const loadFirstPage = async () => {
-      const cached = resultCache.current.get(filterKey);
-      if (cached) {
-        setRows(cached.rows);
-        setHasMore(cached.hasMore);
-        setTotal(cached.total);
-        setNextCursor(cached.nextCursor);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const response = await searchAssets({
-          q: query.trim(),
-          category: category === "all" ? undefined : category,
-          country: country === "all" ? undefined : country,
-          type: type === "all" ? undefined : type,
-          sector: sector === "all" ? undefined : sector,
-          source: source === "all" ? undefined : source,
-          exchangeType: exchangeType === "all" ? undefined : exchangeType,
-          futureCategory: futureCategory === "all" ? undefined : futureCategory,
-          economyCategory: economyCategory === "all" ? undefined : economyCategory,
-          limit: 50,
-        });
-
-        setRows(response.assets);
-        setHasMore(response.hasMore);
-        setTotal(response.total);
-        setNextCursor(response.nextCursor ?? null);
-        resultCache.current.set(filterKey, {
-          rows: response.assets,
-          hasMore: response.hasMore,
-          total: response.total,
-          nextCursor: response.nextCursor ?? null,
-        });
-      } catch {
-        setRows([]);
-        setHasMore(false);
-        setTotal(0);
-        setNextCursor(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const timer = window.setTimeout(async () => {
-      await loadFirstPage();
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }, [open, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
-
-  useEffect(() => {
-    if (!open) return;
-    const container = listContainerRef.current;
-    if (!container) return;
-
-    const onScroll = () => {
-      if (loading || loadingMore || paginationInFlightRef.current || !hasMore || !nextCursor) return;
-
-      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom > 80) return;
-
-      paginationInFlightRef.current = true;
-      setLoadingMore(true);
-      void (async () => {
-        try {
-          const response = await searchAssets({
-            q: query.trim(),
-            category: category === "all" ? undefined : category,
-            country: country === "all" ? undefined : country,
-            type: type === "all" ? undefined : type,
-            sector: sector === "all" ? undefined : sector,
-            source: source === "all" ? undefined : source,
-            exchangeType: exchangeType === "all" ? undefined : exchangeType,
-            futureCategory: futureCategory === "all" ? undefined : futureCategory,
-            economyCategory: economyCategory === "all" ? undefined : economyCategory,
-            cursor: nextCursor,
-            limit: 50,
-          });
-
-          setRows((previous) => {
-            const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
-            response.assets.forEach((item) => {
-              mergedMap.set(`${item.category}|${item.ticker}|${item.exchange}`, item);
-            });
-            const merged = Array.from(mergedMap.values());
-            resultCache.current.set(filterKey, {
-              rows: merged,
-              hasMore: response.hasMore,
-              total: response.total,
-              nextCursor: response.nextCursor ?? null,
-            });
-            return merged;
-          });
-
-          setHasMore(response.hasMore);
-          setTotal(response.total);
-          setNextCursor(response.nextCursor ?? null);
-        } catch {
-          // Keep existing list on pagination failures.
-        } finally {
-          paginationInFlightRef.current = false;
-          setLoadingMore(false);
-        }
-      })();
-    };
-
-    container.addEventListener("scroll", onScroll);
-    return () => container.removeEventListener("scroll", onScroll);
-  }, [open, loading, loadingMore, hasMore, nextCursor, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, filterKey]);
-
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setView("search");
-    setSelectedFutureRoot(null);
-  }, [open, selectedSymbol]);
-
-  const selectedCountryLabel = useMemo(() => {
-    return countryOptions.find((optionItem) => optionItem.value === country)?.label || "All Countries";
-  }, [country, countryOptions]);
-
-  const selectedTypeLabel = useMemo(() => {
-    return typeOptions.find((optionItem) => optionItem.value === type)?.label || "All Types";
-  }, [type, typeOptions]);
-
-  const selectedSectorLabel = useMemo(() => {
-    return sectorOptions.find((optionItem) => optionItem.value === sector)?.label || "All Sectors";
-  }, [sector, sectorOptions]);
-
-  const selectedSourceLabel = useMemo(() => {
-    return sourceOptions.find((optionItem) => optionItem.value === source)?.label || "All Sources";
-  }, [source, sourceOptions]);
-
-  const selectedExchangeTypeLabel = useMemo(() => {
-    return exchangeTypeOptions.find((optionItem) => optionItem.value === exchangeType)?.label || "All";
-  }, [exchangeType, exchangeTypeOptions]);
-
-  const selectedFutureCategoryLabel = useMemo(() => {
-    return futureCategoryOptions.find((optionItem) => optionItem.value === futureCategory)?.label || "All Categories";
-  }, [futureCategory, futureCategoryOptions]);
-
-  const selectedEconomyCategoryLabel = useMemo(() => {
-    return economyCategoryOptions.find((optionItem) => optionItem.value === economyCategory)?.label || "All Categories";
-  }, [economyCategory, economyCategoryOptions]);
+  const {
+    view, setView,
+    query, setQuery,
+    category, setCategory,
+    country, setCountry,
+    type, setType,
+    sector, setSector,
+    source, setSource,
+    exchangeType, setExchangeType,
+    futureCategory, setFutureCategory,
+    economyCategory, setEconomyCategory,
+    rows,
+    loading,
+    loadingMore,
+    total,
+    activeFilters,
+    countryOptions,
+    typeOptions,
+    sectorOptions,
+    sourceOptions,
+    exchangeTypeOptions,
+    futureCategoryOptions,
+    economyCategoryOptions,
+    sourceUiType,
+    selectedFutureRoot, setSelectedFutureRoot,
+    selectedCountryLabel,
+    selectedTypeLabel,
+    selectedSectorLabel,
+    selectedSourceLabel,
+    selectedExchangeTypeLabel,
+    selectedFutureCategoryLabel,
+    selectedEconomyCategoryLabel,
+    listContainerRef,
+  } = useSymbolSearch(open, selectedSymbol, initialCategory);
 
   if (view === "futureContracts" && selectedFutureRoot) {
-    const contracts = selectedFutureRoot.contracts ?? [];
-
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent data-testid="symbol-search-modal" className="w-[min(960px,94vw)] max-w-none gap-0 border-border/80 bg-background/95 p-0 backdrop-blur-xl">
-          <DialogHeader className="flex flex-row items-center gap-3 border-b border-border/60 px-5 pt-5 pb-4">
-            <button
-              type="button"
-              onClick={() => {
-                setView("search");
-                setSelectedFutureRoot(null);
-              }}
-              className="rounded-full p-1 transition-colors hover:bg-secondary/60"
-              aria-label="Back"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <DialogTitle className="font-display text-xl">{selectedFutureRoot.ticker} Contracts</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 px-5 py-4">
-            <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/20 px-3 py-2.5">
-              <AssetAvatar src={selectedFutureRoot.iconUrl || FALLBACK_ICON} label={selectedFutureRoot.name} className="h-8 w-8 rounded-full object-cover" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{selectedFutureRoot.ticker}</p>
-                <p className="truncate text-xs text-muted-foreground">{selectedFutureRoot.name}</p>
-              </div>
-            </div>
-
-            <div className="max-h-[52vh] overflow-y-auto rounded-xl border border-border/70">
-              {contracts.map((contract) => (
-                <button
-                  key={`${contract.ticker}-${contract.exchange}`}
-                  data-testid="symbol-contract-row"
-                  data-symbol={contract.ticker}
-                  type="button"
-                  onClick={() => {
-                    onSelect(contract);
-                    onOpenChange(false);
-                  }}
-                  className={`grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-secondary/45 ${
-                    contract.ticker === selectedSymbol ? "bg-secondary/65" : "bg-secondary/20"
-                  }`}
-                >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <AssetAvatar src={contract.iconUrl || FALLBACK_ICON} label={contract.name} className="h-7 w-7 rounded-full object-cover" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{contract.ticker}</p>
-                      <p className="truncate text-xs text-muted-foreground">{contract.name}</p>
-                    </div>
-                  </div>
-
-                  <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <AssetAvatar src={contract.exchangeLogoUrl || contract.exchangeIcon} label={contract.exchange} className="h-4 w-4 rounded-sm object-cover" />
-                    <span className="font-medium text-foreground">{contract.exchange}</span>
-                  </div>
-                </button>
-              ))}
-              {contracts.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-center text-muted-foreground">No contracts available</p>
-              ) : null}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FutureContractsView
+        open={open}
+        onOpenChange={onOpenChange}
+        selectedSymbol={selectedSymbol}
+        selectedFutureRoot={selectedFutureRoot}
+        onBack={() => {
+          setView("search");
+          setSelectedFutureRoot(null);
+        }}
+        onSelect={onSelect}
+      />
     );
   }
 
@@ -550,7 +277,7 @@ export default function SymbolSearchModal({
                 }`}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
-                    <AssetAvatar src={item.iconUrl || FALLBACK_ICON} label={item.name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+                  <AssetAvatar src={item.iconUrl || FALLBACK_ICON} label={item.name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
 
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{item.ticker}</p>

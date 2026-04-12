@@ -5,8 +5,23 @@ import { CONFIG } from "./config/index";
 import { createApp } from "./app";
 import { bootstrapKafkaProducerOnly, shutdownKafka } from "./kafka";
 import { logger } from "./utils/logger";
+import { bootstrapAlerts } from "./services/alertsEngine.service";
+import { SymbolModel } from "./models/Symbol";
+import { ingestGlobalSymbols } from "./services/ingestion.service";
 
 type NodeErrorWithCode = Error & { code?: string };
+
+async function ensureSymbolsIngested(): Promise<void> {
+  const symbolCount = await SymbolModel.estimatedDocumentCount();
+  if (symbolCount > 0) {
+    logger.info("symbol_ingestion_skip_existing", { count: symbolCount });
+    return;
+  }
+
+  logger.warn("symbol_ingestion_auto_bootstrap_start", { reason: "empty_symbols_collection" });
+  const result = await ingestGlobalSymbols();
+  logger.info("symbol_ingestion_auto_bootstrap_done", result);
+}
 
 async function bootstrap() {
   logger.info("bootstrap_start");
@@ -21,7 +36,10 @@ async function bootstrap() {
   await connectDB();
   logger.info("bootstrap_connect_redis");
   await connectRedis();
+  await ensureSymbolsIngested();
   await bootstrapKafkaProducerOnly();
+  logger.info("bootstrap_alerts");
+  await bootstrapAlerts();
   logger.info("bootstrap_create_app");
   const { httpServer } = createApp();
   const listenPort = env.PORT;

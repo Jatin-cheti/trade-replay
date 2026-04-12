@@ -3,7 +3,9 @@ import { OAuth2Client } from "google-auth-library";
 import { PortfolioModel } from "../models/Portfolio";
 import { UserModel } from "../models/User";
 import { env } from "../config/env";
+import { CONFIG } from "../config/index";
 import { signJwt } from "../utils/jwt";
+import { logger } from "../utils/logger";
 
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID || undefined);
 
@@ -59,15 +61,41 @@ export async function googleLogin(input: { idToken?: string; email?: string; nam
   }
 
   let { email, name, googleId } = input;
+  const isLocalDev = CONFIG.appEnv === "local" || CONFIG.appEnv === "docker";
 
-  const ticket = await googleClient.verifyIdToken({
-    idToken: input.idToken,
-    audience: env.GOOGLE_CLIENT_ID,
-  });
-  const payload = ticket.getPayload();
-  googleId = payload?.sub;
-  email = payload?.email;
-  name = payload?.name;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: input.idToken,
+      audience: env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    googleId = payload?.sub;
+    email = payload?.email;
+    name = payload?.name;
+  } catch (error) {
+    if (!isLocalDev) {
+      throw error;
+    }
+
+    const parts = input.idToken.split(".");
+    if (parts.length < 2) {
+      throw new Error("INVALID_GOOGLE_TOKEN_FORMAT");
+    }
+
+    try {
+      const payloadRaw = Buffer.from(parts[1], "base64url").toString("utf8");
+      const payload = JSON.parse(payloadRaw) as { sub?: string; email?: string; name?: string };
+      googleId = payload.sub;
+      email = payload.email;
+      name = payload.name;
+      logger.warn("google_id_token_local_decode_fallback", {
+        appEnv: CONFIG.appEnv,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      throw new Error("INVALID_GOOGLE_TOKEN_PAYLOAD");
+    }
+  }
 
   if (!email) {
     throw new Error("MISSING_GOOGLE_EMAIL");

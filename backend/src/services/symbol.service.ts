@@ -1,25 +1,29 @@
-import crypto from "node:crypto";
-import { FilterQuery, Types } from "mongoose";
+﻿import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
-import { env } from "../config/env";
 import { resolveStaticIcon } from "../config/staticIconMap";
 import { isRedisReady } from "../config/redis";
 import { getOrSetCachedJsonWithLock } from "./cache.service";
 import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
 import { clusterScopedKey, stableHash } from "./redisKey.service";
 import { recordSymbolIconResult, recordSymbolSearchLatency } from "./metrics.service";
+import { intelligentSearch, trackRecentSymbol, type ScoredSymbol } from "./searchIntelligence.service";
 
-type SymbolType = "stock" | "crypto" | "forex" | "index";
-const SUPPORTED_TYPES: SymbolType[] = ["stock", "crypto", "forex", "index"];
-
-function coerceSymbolType(value?: string): SymbolType | undefined {
-  if (!value) return undefined;
-  const normalized = value.toLowerCase();
-  if (SUPPORTED_TYPES.includes(normalized as SymbolType)) {
-    return normalized as SymbolType;
-  }
-  return undefined;
-}
+import {
+  type SymbolType,
+  type StableCursor,
+  type CursorDecodeResult,
+  CACHE_TTL_SECONDS,
+  SEARCH_PRECACHE_QUERIES,
+  coerceSymbolType,
+  normalizeQuery,
+  buildFilter,
+  escapeRegex,
+  fallbackSymbolIconUrl,
+  toTypeLabel,
+  encodeCursor,
+  decodeCursor,
+  resolveCursorAnchor,
+} from "./symbol.helpers";
 
 export interface SymbolRegistryItem {
   symbol: string;
@@ -47,142 +51,11 @@ export interface SymbolSearchResult {
   offset: number;
   hasMore: boolean;
   nextCursor?: string | null;
+  matchBreakdown?: { exact: number; prefix: number; fuzzy: number; name: number; sector: number };
+  clusters?: Record<string, string[]>;
 }
 
 type SymbolRegistryRow = SymbolRegistryItem & { _id: Types.ObjectId };
-
-type StableCursor = {
-  createdAt: Date;
-  _id: Types.ObjectId;
-};
-
-type CursorDecodeResult =
-  | { ok: true; cursor?: StableCursor }
-  | { ok: false };
-
-const CACHE_TTL_SECONDS = 60;
-const SEARCH_PRECACHE_QUERIES = ["A", "S", "B", "N", "US", "IN", "BTC", "USD", "EUR", "NASDAQ", "NSE"];
-
-function normalizeQuery(query: string): string {
-  return query.trim();
-}
-
-function buildFilter(params: { query: string; type?: string; country?: string }): FilterQuery<SymbolDocument> {
-  const filter: FilterQuery<SymbolDocument> = {};
-  const q = normalizeQuery(params.query);
-
-  if (q) {
-    filter.$or = [
-      { symbol: { $regex: `^${escapeRegex(q)}`, $options: "i" } },
-      { name: { $regex: escapeRegex(q), $options: "i" } },
-      { fullSymbol: { $regex: escapeRegex(q), $options: "i" } },
-    ];
-  }
-
-  if (params.type) {
-    const type = coerceSymbolType(params.type);
-    if (type) {
-      filter.type = type;
-    }
-  }
-
-  if (params.country) {
-    filter.country = params.country.toUpperCase();
-  }
-
-  return filter;
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function fallbackSymbolIconUrl(exchange: string): string {
-  const exchangeDomain = exchange ? `${exchange.toLowerCase()}.com` : "example.com";
-  return `https://www.google.com/s2/favicons?domain=${exchangeDomain}&sz=128`;
-}
-
-function signCursorPayload(payload: string): string {
-  return crypto
-    .createHmac("sha256", env.CURSOR_SIGNING_SECRET)
-    .update(payload)
-    .digest("base64url");
-}
-
-function safeEquals(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left, "utf8");
-  const rightBuffer = Buffer.from(right, "utf8");
-  if (leftBuffer.length !== rightBuffer.length) return false;
-  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function encodeCursor(cursor: { createdAt: Date; _id: Types.ObjectId | string }): string {
-  const payload = Buffer.from(
-    JSON.stringify({
-      createdAt: cursor.createdAt.toISOString(),
-      _id: String(cursor._id),
-    }),
-    "utf8",
-  ).toString("base64url");
-
-  const signature = signCursorPayload(payload);
-  return `${payload}.${signature}`;
-}
-
-function decodeCursor(raw?: string): CursorDecodeResult {
-  if (!raw) return { ok: true, cursor: undefined };
-
-  const [payload, signature] = raw.split(".");
-  if (!payload || !signature) {
-    return { ok: false };
-  }
-
-  const expectedSignature = signCursorPayload(payload);
-  if (!safeEquals(signature, expectedSignature)) {
-    return { ok: false };
-  }
-
-  try {
-    const decoded = Buffer.from(payload, "base64url").toString("utf8");
-    const parsed = JSON.parse(decoded) as { createdAt?: string; _id?: string };
-    if (!parsed.createdAt || !parsed._id || !Types.ObjectId.isValid(parsed._id)) {
-      return { ok: false };
-    }
-
-    const createdAt = new Date(parsed.createdAt);
-    if (!Number.isFinite(createdAt.getTime())) {
-      return { ok: false };
-    }
-
-    return {
-      ok: true,
-      cursor: {
-        createdAt,
-        _id: new Types.ObjectId(parsed._id),
-      },
-    };
-  } catch {
-    return { ok: false };
-  }
-}
-
-async function resolveCursorAnchor(cursor?: StableCursor): Promise<StableCursor | undefined> {
-  if (!cursor) return undefined;
-
-  // Always anchor pagination from DB-stored createdAt to avoid client/server clock skew effects.
-  const row = await SymbolModel.findById(cursor._id)
-    .select({ createdAt: 1 })
-    .lean<{ _id: Types.ObjectId; createdAt?: Date } | null>();
-
-  if (!row?.createdAt || !Number.isFinite(new Date(row.createdAt).getTime())) {
-    throw new Error("INVALID_CURSOR_TOKEN");
-  }
-
-  return {
-    _id: row._id,
-    createdAt: new Date(row.createdAt),
-  };
-}
 
 export async function searchSymbols(params: {
   query: string;
@@ -191,6 +64,8 @@ export async function searchSymbols(params: {
   limit?: number;
   offset?: number;
   cursor?: string;
+  userId?: string;
+  userCountry?: string;
   skipLogoEnrichment?: boolean;
   disablePrefetch?: boolean;
   skipSearchFrequencyUpdate?: boolean;
@@ -205,6 +80,78 @@ export async function searchSymbols(params: {
     throw new Error("INVALID_CURSOR_TOKEN");
   }
   const cursor = await resolveCursorAnchor(decodedCursor.cursor);
+
+  // --- INTELLIGENT SEARCH: first page uses prefix+fuzzy+clustering ---
+  if (query && !cursor && !params.cursor) {
+    const smartResult = await intelligentSearch({
+      query,
+      type: params.type,
+      country: params.country,
+      limit,
+      userId: params.userId,
+      userCountry: params.userCountry,
+    });
+
+    const smartItems: SymbolRegistryItem[] = smartResult.items.map((item) => {
+      const staticIcon = resolveStaticIcon(item.symbol);
+      const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
+      const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
+      const isFallback = !realIconUrl;
+      const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
+      return {
+        symbol: item.symbol,
+        fullSymbol: item.fullSymbol,
+        name: item.name,
+        exchange: item.exchange,
+        country: item.country,
+        type: item.type as SymbolType,
+        currency: item.currency,
+        iconUrl: realIconUrl,
+        companyDomain: item.companyDomain,
+        s3Icon: item.s3Icon,
+        popularity: item.popularity,
+        searchFrequency: item.searchFrequency,
+        realIconUrl,
+        fallbackIconUrl: fallbackIcon,
+        isFallback,
+        displayIconUrl,
+      };
+    });
+
+    const smartResponse: SymbolSearchResult = {
+      items: smartItems,
+      total: smartResult.total,
+      limit,
+      offset: 0,
+      hasMore: smartResult.hasMore,
+      nextCursor: null,
+    };
+
+    if (!params.skipLogoEnrichment && isRedisReady()) {
+      enqueueSymbolLogoEnrichmentBatch(smartResponse.items.slice(0, 20));
+    }
+
+    if (smartResponse.items.length > 0 && !params.skipSearchFrequencyUpdate) {
+      const ids = smartResponse.items.slice(0, 20).map((item) => item.fullSymbol);
+      void SymbolModel.updateMany({ fullSymbol: { $in: ids } }, { $inc: { searchFrequency: 1 } })
+        .then(() => recalculatePriorityScores(ids))
+        .catch(() => {});
+    }
+
+    if (params.userId && smartResponse.items.length > 0) {
+      void trackRecentSymbol(params.userId, smartResponse.items[0].fullSymbol).catch(() => {});
+    }
+
+    if (params.trackMetrics !== false) {
+      for (const item of smartResponse.items) {
+        recordSymbolIconResult(Boolean(item.isFallback));
+      }
+      recordSymbolSearchLatency(Date.now() - startedAt);
+    }
+
+    return smartResponse;
+  }
+  // --- END INTELLIGENT SEARCH ---
 
   const partition = stableHash(`${query.toLowerCase()}:${params.type ?? "all"}:${params.country ?? "all"}`);
   const cacheKey = clusterScopedKey(
@@ -254,7 +201,25 @@ export async function searchSymbols(params: {
       queryBuilder.skip(offset);
     }
 
-    const rows = await queryBuilder;
+    const [regexRows, exactRows] = await Promise.all([
+      queryBuilder,
+      SymbolModel.find({
+        symbol: query.toUpperCase(),
+        ...(params.type ? { type: coerceSymbolType(params.type) || params.type } : {}),
+        ...(params.country ? { country: params.country.toUpperCase() } : {}),
+      })
+        .select({
+          symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1, type: 1,
+          currency: 1, iconUrl: 1, companyDomain: 1, s3Icon: 1, popularity: 1,
+          searchFrequency: 1, priorityScore: 1, createdAt: 1,
+        })
+        .sort({ priorityScore: -1, createdAt: -1 })
+        .limit(5)
+        .lean<Array<SymbolRegistryRow & { createdAt: Date }>>(),
+    ]);
+    const pinnedFullSymbols = new Set(exactRows.map((r) => r.fullSymbol));
+    const deduped = regexRows.filter((r) => !pinnedFullSymbols.has(r.fullSymbol));
+    const rows = [...exactRows, ...deduped];
 
     const hasMore = rows.length > limit;
     const pagedRows = hasMore ? rows.slice(0, limit) : rows;
@@ -265,14 +230,14 @@ export async function searchSymbols(params: {
     const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => {
       const staticIcon = resolveStaticIcon(rest.symbol);
       const realIconUrl = rest.iconUrl || rest.s3Icon || staticIcon || "";
-      const fallbackIconUrl = fallbackSymbolIconUrl(rest.exchange);
+      const fallbackIcon = fallbackSymbolIconUrl(rest.exchange);
       const isFallback = !realIconUrl;
-      const displayIconUrl = isFallback ? fallbackIconUrl : realIconUrl;
+      const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
       return {
         ...rest,
         iconUrl: realIconUrl,
         realIconUrl,
-        fallbackIconUrl,
+        fallbackIconUrl: fallbackIcon,
         isFallback,
         displayIconUrl,
       };
@@ -294,7 +259,9 @@ export async function searchSymbols(params: {
 
   if (response.items.length > 0 && !params.skipSearchFrequencyUpdate) {
     const ids = response.items.slice(0, 20).map((item) => item.fullSymbol);
-    void SymbolModel.updateMany({ fullSymbol: { $in: ids } }, { $inc: { searchFrequency: 1 } }).catch(() => {
+    void SymbolModel.updateMany({ fullSymbol: { $in: ids } }, { $inc: { searchFrequency: 1 } })
+      .then(() => recalculatePriorityScores(ids))
+      .catch(() => {
       // Search path should not fail on frequency update issues.
     });
   }
@@ -384,14 +351,6 @@ export async function fetchSymbolFilters(type?: string): Promise<{
   };
 }
 
-function toTypeLabel(type: string): string {
-  if (type === "stock") return "Stock";
-  if (type === "crypto") return "Crypto";
-  if (type === "forex") return "Forex";
-  if (type === "index") return "Index";
-  return type;
-}
-
 export function mapCategoryToSymbolType(category?: string): SymbolType | undefined {
   if (!category) return undefined;
   const normalized = category.toLowerCase();
@@ -420,9 +379,9 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
         : "Indices";
 
   const persistedIcon = symbol.realIconUrl || symbol.iconUrl || symbol.s3Icon || resolveStaticIcon(symbol.symbol) || "";
-  const fallbackIconUrl = symbol.fallbackIconUrl || fallbackSymbolIconUrl(symbol.exchange);
+  const fallbackIcon = symbol.fallbackIconUrl || fallbackSymbolIconUrl(symbol.exchange);
   const isFallback = symbol.isFallback ?? !persistedIcon;
-  const displayIconUrl = symbol.displayIconUrl || (isFallback ? fallbackIconUrl : persistedIcon);
+  const displayIconUrl = symbol.displayIconUrl || (isFallback ? fallbackIcon : persistedIcon);
 
   return {
     ticker: symbol.symbol,
@@ -447,4 +406,41 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
     isFallback,
     source: "symbol-registry",
   };
+}
+
+const PRIORITY_SCORE_PIPELINE = [
+  {
+    $set: {
+      priorityScore: {
+        $add: [
+          { $multiply: [{ $ifNull: ["$searchFrequency", 0] }, 0.5] },
+          { $multiply: [{ $ifNull: ["$userUsage", 0] }, 0.3] },
+          {
+            $cond: [
+              { $or: [{ $gt: ["$iconUrl", ""] }, { $gt: ["$s3Icon", ""] }] },
+              50,
+              0,
+            ],
+          },
+        ],
+      },
+    },
+  },
+];
+
+export async function recalculatePriorityScores(fullSymbols?: string[]): Promise<void> {
+  const filter = fullSymbols ? { fullSymbol: { $in: fullSymbols } } : {};
+  await SymbolModel.updateMany(filter, PRIORITY_SCORE_PIPELINE);
+}
+
+export async function incrementUserUsage(symbols: string[]): Promise<void> {
+  if (!symbols.length) return;
+  await SymbolModel.updateMany(
+    { symbol: { $in: symbols.map((s) => s.toUpperCase()) } },
+    { $inc: { userUsage: 1 } },
+  );
+  const docs = await SymbolModel.find({ symbol: { $in: symbols.map((s) => s.toUpperCase()) } })
+    .select({ fullSymbol: 1 })
+    .lean<Array<{ fullSymbol: string }>>();
+  await recalculatePriorityScores(docs.map((d) => d.fullSymbol));
 }

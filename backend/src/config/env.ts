@@ -1,4 +1,4 @@
-import { CONFIG } from "./index";
+﻿import { CONFIG } from "./index";
 
 export const env = {
   NODE_ENV: CONFIG.nodeEnv,
@@ -21,6 +21,8 @@ export const env = {
   ALPHA_VANTAGE_KEY: CONFIG.alphaVantageKey,
   GOOGLE_CLIENT_ID: CONFIG.googleClientId,
   FMP_API_KEY: CONFIG.fmpApiKey,
+  COINGECKO_API_KEY: CONFIG.coingeckoApiKey,
+  OPENFIGI_API_KEY: CONFIG.openfigiApiKey,
   AWS_REGION: CONFIG.awsRegion,
   AWS_S3_BUCKET: CONFIG.awsS3Bucket,
   AWS_ACCESS_KEY_ID: CONFIG.awsAccessKeyId,
@@ -32,3 +34,5 @@ export const env = {
   LOGO_FALLBACK_TARGET_RATIO: CONFIG.logoFallbackTargetRatio,
   USD_TO_INR: CONFIG.usdToInr,
 };
+
+

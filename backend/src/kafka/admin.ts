@@ -4,6 +4,12 @@ import { logger } from "../utils/logger";
 import { env } from "../config/env";
 
 function partitionsForTopic(topic: string): number {
+  // Scaling pipeline topics get higher partition counts for throughput
+  const scalingTopics = new Set(["symbol.ingest", "logo.resolve", "logo.retry", "logo.completed"]);
+  if (scalingTopics.has(topic)) {
+    return Math.max(12, env.KAFKA_SYMBOL_EVENT_PARTITIONS * 4);
+  }
+
   if (topic === "symbol.logo.enriched") {
     return Math.max(1, env.KAFKA_SYMBOL_EVENT_PARTITIONS);
   }

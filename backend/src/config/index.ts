@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+﻿import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,8 @@ const EnvSchema = z.object({
   ALPHA_VANTAGE_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   FMP_API_KEY: z.string().optional(),
+  COINGECKO_API_KEY: z.string().optional(),
+  OPENFIGI_API_KEY: z.string().optional(),
   AWS_REGION: z.string().min(1).optional(),
   AWS_S3_BUCKET: z.string().min(1).optional(),
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
@@ -175,6 +177,8 @@ export const CONFIG = {
   alphaVantageKey: optionalEnv("ALPHA_VANTAGE_KEY"),
   googleClientId: optionalEnv("GOOGLE_CLIENT_ID"),
   fmpApiKey: optionalEnv("FMP_API_KEY"),
+  coingeckoApiKey: optionalEnv("COINGECKO_API_KEY"),
+  openfigiApiKey: optionalEnv("OPENFIGI_API_KEY"),
   awsRegion: awsConfig.awsRegion,
   awsS3Bucket: awsConfig.awsS3Bucket,
   awsAccessKeyId: awsConfig.awsAccessKeyId,
@@ -186,3 +190,6 @@ export const CONFIG = {
   logoFallbackTargetRatio: numberEnv("LOGO_FALLBACK_TARGET_RATIO"),
   usdToInr: numberEnv("USD_TO_INR"),
 };
+
+
+

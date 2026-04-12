@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "../utils/appError";
+import { AuthenticatedRequest } from "../types/auth";
 import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../services/symbol.service";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
@@ -36,6 +37,7 @@ export function createSymbolController() {
 
       try {
         const resolvedType = parsed.data.type ?? mapCategoryToSymbolType(parsed.data.category);
+        const userId = (req as AuthenticatedRequest).user?.userId;
         const payload = await searchSymbols({
           query: parsed.data.query,
           type: resolvedType,
@@ -43,6 +45,7 @@ export function createSymbolController() {
           limit: parsed.data.limit,
           offset: parsed.data.offset,
           cursor: parsed.data.cursor,
+          userId,
         });
 
         res.json(payload);
