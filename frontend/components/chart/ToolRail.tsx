@@ -56,6 +56,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { toolGroups, type CursorMode, type ToolCategory, type ToolGroup, type ToolGroupVariant, type ToolState, type ToolVariant } from '@/services/tools/toolRegistry';
+import IconToolPanel, { type IconPresetSelection } from '@/components/chart/IconToolPanel';
 
 /* ── Icon map ───────────────────────────────────────────────── */
 const railIconMap: Record<string, React.ComponentType<any>> = {
@@ -117,8 +118,10 @@ type ToolRailProps = {
   expandedCategory: ToolCategory | null;
   setExpandedCategory: (value: ToolCategory | null) => void;
   onVariant: (group: ToolCategory, variant: ToolVariant) => void;
+  selectedIconPreset: IconPresetSelection | null;
+  onIconPresetSelect: (preset: IconPresetSelection) => void;
   cursorMode: CursorMode;
-  setCursorMode: (mode: CursorMode) => void;
+  onCursorModeSelect: (mode: CursorMode) => void;
   valuesTooltip: boolean;
   setValuesTooltip: (value: boolean) => void;
   isMobile: boolean;
@@ -142,8 +145,10 @@ export default function ToolRail({
   expandedCategory,
   setExpandedCategory,
   onVariant,
+  selectedIconPreset,
+  onIconPresetSelect,
   cursorMode,
-  setCursorMode,
+  onCursorModeSelect,
   valuesTooltip,
   setValuesTooltip,
   isMobile,
@@ -167,6 +172,20 @@ export default function ToolRail({
 
   const activeGroup = toolGroups.find((g) => g.id === expandedCategory) ?? null;
   const railGroups = toolGroups;
+  const isIconGroup = expandedCategory === 'icon';
+  const iconDefaultTab = toolState.variant === 'sticker' ? 'sticker' : toolState.variant === 'iconTool' ? 'icon' : 'emoji';
+  const handlePopoverWheelCapture = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const scrollSelector = '[data-testid="toolrail-scroll"], [data-testid="icon-panel-scroll"]';
+    const scroller = (target.closest(scrollSelector) as HTMLElement | null) ?? (submenuRef.current?.querySelector(scrollSelector) as HTMLElement | null);
+
+    if (scroller && scroller.scrollHeight > scroller.clientHeight) {
+      scroller.scrollTop += e.deltaY;
+      e.preventDefault();
+    }
+
+    e.stopPropagation();
+  }, []);
 
   /* ── Position submenu anchored to rail button ─────────────── */
   const positionSubmenu = useCallback(() => {
@@ -177,9 +196,10 @@ export default function ToolRail({
     const railRect = railRef.current.getBoundingClientRect();
     const viewW = window.innerWidth;
     const viewH = window.innerHeight;
-    const menuW = submenuRef.current?.offsetWidth ?? 260;
-    const menuH = submenuRef.current?.offsetHeight ?? 280;
-    const cappedMenuH = Math.min(menuH, viewH - 16);
+    const menuW = submenuRef.current?.offsetWidth ?? (expandedCategory === 'icon' ? 344 : 260);
+    const menuH = submenuRef.current?.offsetHeight ?? (expandedCategory === 'icon' ? 540 : 280);
+    const maxMenuH = expandedCategory === 'icon' ? 540 : 420;
+    const cappedMenuH = Math.min(menuH, viewH - 16, maxMenuH);
 
     // Anchor vertically to the clicked button
     let top = btnRect.top;
@@ -345,7 +365,7 @@ export default function ToolRail({
             type="button"
             data-testid={`cursor-${item.id}`}
             onClick={() => {
-              setCursorMode(item.id);
+              onCursorModeSelect(item.id);
               if (item.id !== 'eraser') setExpandedCategory(null);
             }}
             className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px] transition ${
@@ -432,13 +452,30 @@ export default function ToolRail({
           ref={submenuRef}
           data-testid="toolrail-popover"
           style={submenuStyle}
-          className="min-w-[220px] max-w-[280px] overflow-hidden rounded-xl border border-primary/25 bg-background/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur-xl"
+          onWheelCapture={handlePopoverWheelCapture}
+          className={isIconGroup ? 'w-[344px] max-w-[calc(100vw-20px)] overflow-hidden rounded-xl border border-primary/25 bg-background/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur-xl' : 'min-w-[220px] max-w-[280px] overflow-hidden rounded-xl border border-primary/25 bg-background/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur-xl'}
         >
           <div data-testid={expandedCategory === 'cursor' ? 'menu-cursor' : `menu-${expandedCategory}`} className="mb-1 shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
             {expandedCategory === 'cursor' ? 'Cursor' : activeGroup?.label ?? ''}
           </div>
-          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
-            {expandedCategory === 'cursor' ? renderCursorMenu() : renderSubmenuContent()}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {expandedCategory === 'cursor' ? (
+              <div data-testid="toolrail-scroll" className="min-h-0 flex-1 overflow-y-scroll">{renderCursorMenu()}</div>
+            ) : isIconGroup ? (
+              <IconToolPanel
+                defaultTab={iconDefaultTab}
+                selectedPreset={selectedIconPreset}
+                onSelectPreset={(preset) => {
+                  if (toolState.variant !== preset.variant) {
+                    onVariant('icon', preset.variant);
+                  }
+                  onIconPresetSelect(preset);
+                  setExpandedCategory(null);
+                }}
+              />
+            ) : (
+              <div data-testid="toolrail-scroll" className="min-h-0 flex-1 overflow-y-scroll">{renderSubmenuContent()}</div>
+            )}
           </div>
         </div>,
         document.body

@@ -106,6 +106,44 @@ async function draw2PointShape(page: Page, region: 'left' | 'center' | 'right' =
   await page.waitForTimeout(350);
 }
 
+async function readChartCursor(page: Page): Promise<string> {
+  return page.locator('[data-testid="chart-container"]:visible').first().evaluate((el) => getComputedStyle(el).cursor);
+}
+
+async function dispatchTouch(page: Page, type: 'touchstart' | 'touchmove' | 'touchend', x: number, y: number): Promise<void> {
+  await page.evaluate(
+    ({ type, x, y }) => {
+      const surface = document.querySelector('[data-testid="chart-interaction-surface"]') as HTMLElement | null;
+      if (!surface) return;
+      const touch = new Touch({
+        identifier: 1,
+        target: surface,
+        clientX: x,
+        clientY: y,
+        pageX: x,
+        pageY: y,
+        screenX: x,
+        screenY: y,
+        radiusX: 1,
+        radiusY: 1,
+        rotationAngle: 0,
+        force: 1,
+      });
+      const touches = type === 'touchend' ? [] : [touch];
+      surface.dispatchEvent(
+        new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches,
+          targetTouches: touches,
+          changedTouches: [touch],
+        })
+      );
+    },
+    { type, x, y }
+  );
+}
+
 test.describe("Tool Rail Popover", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -169,6 +207,34 @@ test.describe("Tool Rail Popover", () => {
         return Array.from(pop.querySelectorAll("button")).filter((b) => b.textContent?.includes("Soon")).length;
       });
       expect(soonCount).toBe(0);
+    }
+  });
+
+  test("lines menu exposes every line, channel, and pitchfork option", async ({ page }) => {
+    await ensureGroupMenuOpen(page, "lines");
+    const popover = page.locator('[data-testid="toolrail-popover"]:visible').first();
+    await expect(popover).toBeVisible({ timeout: 5000 });
+
+    for (const testId of [
+      "tool-trendline",
+      "tool-ray",
+      "tool-info-line",
+      "tool-extended-line",
+      "tool-trend-angle",
+      "tool-horizontal-line",
+      "tool-horizontal-ray",
+      "tool-vertical-line",
+      "tool-cross-line",
+      "tool-parallel-channel",
+      "tool-regression-trend",
+      "tool-flat-top-bottom",
+      "tool-disjoint-channel",
+      "tool-pitchfork",
+      "tool-schiff-pitchfork",
+      "tool-modified-schiff-pitchfork",
+      "tool-inside-pitchfork",
+    ]) {
+      await expect(popover.getByTestId(testId)).toBeVisible();
     }
   });
 
@@ -238,6 +304,92 @@ test.describe("Tool Rail Popover", () => {
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: priceRange", { timeout: 3000 });
   });
 
+  test("cursor menu changes the chart cursor surface", async ({ page }) => {
+    await ensureGroupMenuOpen(page, "cursor");
+    const chartCursor = async () => readChartCursor(page);
+
+    await clickByTestId(page, "cursor-cross");
+    await expect.poll(chartCursor).toMatch(/crosshair/);
+
+    await ensureGroupMenuOpen(page, "cursor");
+    await clickByTestId(page, "cursor-dot");
+    const dotCursor = await chartCursor();
+    expect(dotCursor).toContain("url(");
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: none");
+
+    await ensureGroupMenuOpen(page, "cursor");
+    await clickByTestId(page, "cursor-arrow");
+    await expect.poll(chartCursor).toBe("default");
+
+    await ensureGroupMenuOpen(page, "cursor");
+    await clickByTestId(page, "cursor-demo");
+    const demoCursor = await chartCursor();
+    expect(demoCursor).toBe("pointer");
+
+    await ensureGroupMenuOpen(page, "cursor");
+    await clickByTestId(page, "cursor-eraser");
+    const eraserCursor = await chartCursor();
+    expect(eraserCursor).not.toEqual("default");
+  });
+
+  test("eraser removes a line by hitting the body", async ({ page }) => {
+    await selectTool(page, "lines", "tool-trendline", "tool: trend");
+    await draw2PointShape(page, 'center');
+
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("1 drawing");
+
+    await ensureGroupMenuOpen(page, "cursor");
+    await clickByTestId(page, "cursor-eraser");
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.45);
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.45);
+
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("0 drawings", { timeout: 5000 });
+  });
+
+  test("values tooltip long press follows the toggle", async ({ page }) => {
+    await ensureGroupMenuOpen(page, "cursor");
+    const toggle = page.locator('[data-testid="cursor-values-tooltip-toggle"] [role="switch"]');
+    await expect(toggle).toBeVisible();
+
+    const surface = page.locator('[data-testid="chart-interaction-surface"]:visible').first();
+    const box = await surface.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const x = box.x + box.width * 0.45;
+    const y = box.y + box.height * 0.44;
+
+    const toggleState = async (expected: 'true' | 'false') => {
+      await expect(toggle).toHaveAttribute('aria-checked', expected);
+    };
+
+    if ((await toggle.getAttribute('aria-checked')) === 'true') {
+      await clickByTestId(page, 'cursor-values-tooltip-toggle');
+      await toggleState('false');
+    }
+
+    await dispatchTouch(page, 'touchstart', x, y);
+    await page.waitForTimeout(550);
+    await expect(page.locator('[data-testid="values-tooltip"]:visible')).toHaveCount(0);
+    await dispatchTouch(page, 'touchend', x, y);
+
+    await clickByTestId(page, 'cursor-values-tooltip-toggle');
+    await toggleState('true');
+
+    await dispatchTouch(page, 'touchstart', x, y);
+    await page.waitForTimeout(550);
+    await expect(page.locator('[data-testid="values-tooltip"]:visible')).toBeVisible({ timeout: 3000 });
+    await dispatchTouch(page, 'touchend', x, y);
+    await page.waitForTimeout(100);
+    await expect(page.locator('[data-testid="values-tooltip"]:visible')).toHaveCount(0);
+  });
+
   test("forecasting/brush/text/icon menus open and have tools", async ({ page }) => {
     for (const group of ["forecasting", "brush", "text", "icon"]) {
       await ensureGroupMenuOpen(page, group);
@@ -248,5 +400,67 @@ test.describe("Tool Rail Popover", () => {
       const toolCount = await popover.evaluate((el) => el.querySelectorAll("button").length);
       expect(toolCount).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  test("tool menus scroll with mouse wheel", async ({ page }) => {
+    for (const group of ["lines", "fib", "patterns", "forecasting", "brush", "text", "icon"]) {
+      await ensureGroupMenuOpen(page, group);
+      const popover = page.locator('[data-testid="toolrail-popover"]:visible').first();
+      await expect(popover).toBeVisible({ timeout: 5000 });
+
+      const scrollPane = popover.locator('[data-testid="toolrail-scroll"], [data-testid="icon-panel-scroll"]').first();
+      await expect(scrollPane).toBeVisible({ timeout: 5000 });
+
+      const metrics = await scrollPane.evaluate((el) => ({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+      expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+
+      const beforeWheel = await scrollPane.evaluate((el) => el.scrollTop);
+      await scrollPane.evaluate((el) => {
+        el.dispatchEvent(new WheelEvent("wheel", { deltaY: 900, bubbles: true, cancelable: true }));
+      });
+      await page.waitForTimeout(120);
+      const afterWheel = await scrollPane.evaluate((el) => el.scrollTop);
+      expect(afterWheel).toBeGreaterThan(beforeWheel);
+    }
+  });
+
+  test("icon menu shows emoji, sticker, and icon tabs", async ({ page }) => {
+    await ensureGroupMenuOpen(page, "icon");
+    const popover = page.locator('[data-testid="toolrail-popover"]:visible').first();
+    await expect(popover).toBeVisible({ timeout: 5000 });
+
+    await expect(popover.getByTestId("icon-panel")).toBeVisible();
+    await expect(popover.getByTestId("icon-panel-tab-emojis")).toBeVisible();
+    await expect(popover.getByTestId("icon-panel-tab-stickers")).toBeVisible();
+    await expect(popover.getByTestId("icon-panel-tab-icons")).toBeVisible();
+
+    const scrollPane = popover.getByTestId("icon-panel-scroll");
+    await popover.getByTestId("icon-panel-tab-emojis").click();
+    const metrics = await scrollPane.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+
+    const beforeWheel = await scrollPane.evaluate((el) => el.scrollTop);
+    await scrollPane.evaluate((el) => {
+      el.dispatchEvent(new WheelEvent("wheel", { deltaY: 900, bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(120);
+    const afterWheel = await scrollPane.evaluate((el) => el.scrollTop);
+    expect(afterWheel).toBeGreaterThan(beforeWheel);
+
+    await popover.getByTestId("icon-panel-tab-stickers").click();
+    await expect(popover.getByTestId("icon-panel-section-crypto")).toBeVisible();
+    await popover.getByTestId("icon-panel-item-crypto-wagmi").click();
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: sticker");
+
+    await ensureGroupMenuOpen(page, "icon");
+    const reopened = page.locator('[data-testid="toolrail-popover"]:visible').first();
+    await reopened.getByTestId("icon-panel-tab-icons").click();
+    await expect(reopened.getByTestId("icon-panel-section-symbols")).toBeVisible();
   });
 });

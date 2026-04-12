@@ -1,6 +1,7 @@
 import type { UTCTimestamp } from '@tradereplay/charts';
-import { buildToolOptions, getToolDefinition, type DrawPoint, type Drawing, type ToolVariant } from './toolRegistry';
-import type { ToolOptions } from './toolOptions';
+import { buildToolOptions, getToolDefinition, type DrawPoint, type Drawing, type ToolVariant } from './toolRegistry.ts';
+import type { ToolOptions } from './toolOptions.ts';
+import { interpolateDrawPoint } from './drawingGeometry.ts';
 
 export function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -72,15 +73,252 @@ export function updateDraftDrawing(draft: Drawing, point: DrawPoint): Drawing {
   }
 
   const anchors = [...draft.anchors];
+  if (anchors.length > 2) {
+    const first = anchors[0];
+    const lastIndex = anchors.length - 1;
+    for (let index = 1; index < lastIndex; index += 1) {
+      anchors[index] = interpolateDrawPoint(first, point, index / lastIndex);
+    }
+    anchors[lastIndex] = point;
+    return { ...draft, anchors };
+  }
+
   anchors[anchors.length - 1] = point;
   return { ...draft, anchors };
+}
+
+type NormalizedPoint = { x: number; y: number };
+
+function normalizePoint(point: DrawPoint, timeScale: number, priceScale: number): NormalizedPoint {
+  return {
+    x: Number(point.time) / timeScale,
+    y: point.price / priceScale,
+  };
+}
+
+function distance(a: NormalizedPoint, b: NormalizedPoint): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function pointToSegmentDistance(point: NormalizedPoint, start: NormalizedPoint, end: NormalizedPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const span = dx * dx + dy * dy;
+  if (span === 0) return distance(point, start);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / span));
+  return distance(point, { x: start.x + dx * t, y: start.y + dy * t });
+}
+
+function pointToRayDistance(point: NormalizedPoint, start: NormalizedPoint, through: NormalizedPoint): number {
+  const dx = through.x - start.x;
+  const dy = through.y - start.y;
+  const span = dx * dx + dy * dy;
+  if (span === 0) return distance(point, start);
+  const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / span;
+  if (t < 0) return distance(point, start) + Math.abs(t);
+  return distance(point, { x: start.x + dx * t, y: start.y + dy * t });
+}
+
+function pointToLineDistance(point: NormalizedPoint, start: NormalizedPoint, end: NormalizedPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const span = Math.hypot(dx, dy);
+  if (span === 0) return distance(point, start);
+  return Math.abs(((point.x - start.x) * dy - (point.y - start.y) * dx) / span);
+}
+
+function signedDistanceToLine(point: NormalizedPoint, start: NormalizedPoint, end: NormalizedPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const span = Math.hypot(dx, dy);
+  if (span === 0) return 0;
+  return ((point.x - start.x) * dy - (point.y - start.y) * dx) / span;
+}
+
+function scorePolyline(point: NormalizedPoint, anchors: NormalizedPoint[]): number {
+  if (anchors.length === 0) return Number.POSITIVE_INFINITY;
+  if (anchors.length === 1) return distance(point, anchors[0]);
+
+  let best = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < anchors.length - 1; index += 1) {
+    best = Math.min(best, pointToSegmentDistance(point, anchors[index], anchors[index + 1]));
+  }
+  return best;
+}
+
+function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
+  const timeScale = 172800;
+  const priceScale = Math.max(0.5, Math.abs(point.price) * 0.03);
+  const normalizedPoint = normalizePoint(point, timeScale, priceScale);
+  const anchors = drawing.anchors.map((anchor) => normalizePoint(anchor, timeScale, priceScale));
+
+  if (!anchors.length) return Number.POSITIVE_INFINITY;
+
+  const [a, b, c, d] = anchors;
+  const variant = drawing.variant;
+
+  if (variant === 'hline') {
+    return Math.abs(normalizedPoint.y - a.y);
+  }
+
+  if (variant === 'horizontalRay') {
+    const score = Math.abs(normalizedPoint.y - a.y);
+    return normalizedPoint.x < a.x ? score + (a.x - normalizedPoint.x) : score;
+  }
+
+  if (variant === 'vline') {
+    return Math.abs(normalizedPoint.x - a.x);
+  }
+
+  if (variant === 'crossLine') {
+    return Math.min(Math.abs(normalizedPoint.y - a.y), Math.abs(normalizedPoint.x - a.x));
+  }
+
+  if (variant === 'ray' && a && b) {
+    return pointToRayDistance(normalizedPoint, a, b);
+  }
+
+  if (drawing.options.rayMode && a && b) {
+    return pointToRayDistance(normalizedPoint, a, b);
+  }
+
+  if (drawing.options.extendLeft || drawing.options.extendRight) {
+    if (a && b) return pointToLineDistance(normalizedPoint, a, b);
+  }
+
+  if (variant === 'channel' && a && b) {
+    const span = Math.max(0.1, distance(a, b));
+    const offset = span * 0.24;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const magnitude = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / magnitude, y: dx / magnitude };
+    const upperStart = { x: a.x + normal.x * offset, y: a.y + normal.y * offset };
+    const upperEnd = { x: b.x + normal.x * offset, y: b.y + normal.y * offset };
+    const lowerStart = { x: a.x - normal.x * offset, y: a.y - normal.y * offset };
+    const lowerEnd = { x: b.x - normal.x * offset, y: b.y - normal.y * offset };
+    return Math.min(
+      pointToLineDistance(normalizedPoint, a, b),
+      pointToLineDistance(normalizedPoint, upperStart, upperEnd),
+      pointToLineDistance(normalizedPoint, lowerStart, lowerEnd),
+    );
+  }
+
+  if (variant === 'regressionTrend' && a && b) {
+    return pointToSegmentDistance(normalizedPoint, a, b);
+  }
+
+  if (variant === 'flatTopBottom' && a && b) {
+    const top = Math.min(a.y, b.y);
+    const bottom = Math.max(a.y, b.y);
+    if (normalizedPoint.y >= top && normalizedPoint.y <= bottom) return 0;
+    return Math.min(Math.abs(normalizedPoint.y - top), Math.abs(normalizedPoint.y - bottom));
+  }
+
+  if (variant === 'disjointChannel' && a && b && c && d) {
+    return Math.min(
+      pointToSegmentDistance(normalizedPoint, a, b),
+      pointToSegmentDistance(normalizedPoint, c, d),
+      pointToSegmentDistance(normalizedPoint, a, c),
+      pointToSegmentDistance(normalizedPoint, b, d),
+    );
+  }
+
+  if (variant === 'pitchfork' && a && b && c) {
+    const target = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+    const offsetUpper = signedDistanceToLine(b, a, target);
+    const offsetLower = signedDistanceToLine(c, a, target);
+    const dx = target.x - a.x;
+    const dy = target.y - a.y;
+    const magnitude = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / magnitude, y: dx / magnitude };
+    const upperStart = { x: a.x + normal.x * offsetUpper, y: a.y + normal.y * offsetUpper };
+    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
+    const lowerStart = { x: a.x + normal.x * offsetLower, y: a.y + normal.y * offsetLower };
+    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
+    return Math.min(
+      pointToRayDistance(normalizedPoint, a, target),
+      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
+      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
+    );
+  }
+
+  if (variant === 'schiffPitchfork' && a && b && c) {
+    const origin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const target = c;
+    const offsetUpper = signedDistanceToLine(a, origin, target);
+    const offsetLower = signedDistanceToLine(b, origin, target);
+    const dx = target.x - origin.x;
+    const dy = target.y - origin.y;
+    const magnitude = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / magnitude, y: dx / magnitude };
+    const upperStart = { x: origin.x + normal.x * offsetUpper, y: origin.y + normal.y * offsetUpper };
+    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
+    const lowerStart = { x: origin.x + normal.x * offsetLower, y: origin.y + normal.y * offsetLower };
+    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
+    return Math.min(
+      pointToRayDistance(normalizedPoint, origin, target),
+      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
+      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
+    );
+  }
+
+  if (variant === 'modifiedSchiffPitchfork' && a && b && c) {
+    const origin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const target = c;
+    const offsetUpper = signedDistanceToLine(a, origin, target) * 0.82;
+    const offsetLower = signedDistanceToLine(b, origin, target) * 0.82;
+    const dx = target.x - origin.x;
+    const dy = target.y - origin.y;
+    const magnitude = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / magnitude, y: dx / magnitude };
+    const upperStart = { x: origin.x + normal.x * offsetUpper, y: origin.y + normal.y * offsetUpper };
+    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
+    const lowerStart = { x: origin.x + normal.x * offsetLower, y: origin.y + normal.y * offsetLower };
+    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
+    return Math.min(
+      pointToRayDistance(normalizedPoint, origin, target),
+      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
+      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
+    );
+  }
+
+  if (variant === 'insidePitchfork' && a && b && c) {
+    const origin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const target = c;
+    const offsetUpper = signedDistanceToLine(a, origin, target) * 0.62;
+    const offsetLower = signedDistanceToLine(b, origin, target) * 0.62;
+    const dx = target.x - origin.x;
+    const dy = target.y - origin.y;
+    const magnitude = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / magnitude, y: dx / magnitude };
+    const upperStart = { x: origin.x + normal.x * offsetUpper, y: origin.y + normal.y * offsetUpper };
+    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
+    const lowerStart = { x: origin.x + normal.x * offsetLower, y: origin.y + normal.y * offsetLower };
+    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
+    return Math.min(
+      pointToRayDistance(normalizedPoint, origin, target),
+      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
+      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
+    );
+  }
+
+  return scorePolyline(normalizedPoint, anchors);
 }
 
 export function selectNearestDrawingId(drawings: Drawing[], point: DrawPoint): string | null {
   if (!drawings.length) return null;
   const pool = drawings.filter((d) => d.visible !== false).slice().reverse();
-  return pool.find((d) => {
-    const p = d.anchors[0];
-    return Math.abs(p.time - point.time) < 172800 && Math.abs(p.price - point.price) < Math.max(0.5, point.price * 0.03);
-  })?.id ?? pool[0]?.id ?? null;
+  let bestId: string | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const drawing of pool) {
+    const score = scoreLineLikeDrawing(drawing, point);
+    if (score < bestScore) {
+      bestScore = score;
+      bestId = drawing.id;
+    }
+  }
+
+  return bestScore <= 2.5 ? bestId : null;
 }

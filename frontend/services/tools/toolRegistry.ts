@@ -1,5 +1,5 @@
 import type { UTCTimestamp } from '@tradereplay/charts';
-import { baseOptionSchema, defaultToolOptions, mergeToolOptions, type OptionField, type ToolOptions } from './toolOptions';
+import { baseOptionSchema, defaultToolOptions, mergeToolOptions, type OptionField, type ToolOptions } from './toolOptions.ts';
 
 /** Rail-level categories — each gets a rail button + popover menu */
 export type ToolCategory = 'cursor' | 'lines' | 'fib' | 'patterns' | 'forecasting' | 'brush' | 'text' | 'icon' | 'system';
@@ -333,7 +333,7 @@ const categoryMeta: Array<{ id: ToolCategory; label: string; railIcon: string }>
   { id: 'forecasting', label: 'Forecasting', railIcon: 'TrendingUp' },
   { id: 'brush', label: 'Brush', railIcon: 'PencilLine' },
   { id: 'text', label: 'Text', railIcon: 'Type' },
-  { id: 'icon', label: 'Icon', railIcon: 'Sparkles' },
+  { id: 'icon', label: 'Icons', railIcon: 'Sparkles' },
 ];
 
 export type ToolGroupVariant = { id: ToolVariant; label: string; iconKey: string; implemented: boolean; subSection?: string };

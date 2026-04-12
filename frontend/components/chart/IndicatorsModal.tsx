@@ -56,7 +56,7 @@ export default function IndicatorsModal({
 }: IndicatorsModalProps) {
   const [activeSidebar, setActiveSidebar] = useState('technicals');
   const [search, setSearch] = useState('');
-  const [expandedSub, setExpandedSub] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeFundTab, setActiveFundTab] = useState<FundamentalsTab>('financialsTab');
   const [activeTechTab, setActiveTechTab] = useState<TechnicalsTab>('indicators');
 
@@ -111,6 +111,17 @@ export default function IndicatorsModal({
         <div
           data-testid="indicators-modal"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onWheelCapture={(e) => {
+            // Keep wheel interactions contained within the modal and forward to the
+            // right-pane scroller so mouse-wheel always works over list rows/buttons.
+            const target = e.target as HTMLElement;
+            const scroller = target.closest('[data-testid="indicators-content-scroll"]') as HTMLElement | null;
+            if (scroller && scroller.scrollHeight > scroller.clientHeight) {
+              scroller.scrollTop += e.deltaY;
+              e.preventDefault();
+            }
+            e.stopPropagation();
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) onOpenChange(false);
           }}
@@ -188,8 +199,10 @@ export default function IndicatorsModal({
 
               {/* Content */}
               <div className="relative min-h-0 min-w-0 flex-1">
-              <ScrollArea className="absolute inset-0">
-                <div className="p-4">
+                <div
+                  data-testid="indicators-content-scroll"
+                  className="absolute inset-0 overflow-y-auto p-4"
+                >
                   {activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly' || activeSidebar === 'purchased' ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <Lock size={28} className="mb-3 text-muted-foreground/60" />
@@ -286,22 +299,31 @@ export default function IndicatorsModal({
                         </div>
                       )}
 
-                      {filteredSections.map((section) => (
+                      {filteredSections.map((section) => {
+                        const isExpanded = search.trim() ? true : !collapsedSections.has(section.label);
+                        return (
                         <div key={section.label}>
                           <button
                             type="button"
-                            onClick={() => setExpandedSub(expandedSub === section.label ? null : section.label)}
+                            onClick={() => {
+                              if (search.trim()) return;
+                              setCollapsedSections((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(section.label)) next.delete(section.label);
+                                else next.add(section.label);
+                                return next;
+                              });
+                            }}
                             className="mb-2 flex w-full items-center gap-1.5 text-left"
                           >
                             <ChevronRight
                               size={14}
-                              className={`text-muted-foreground transition-transform ${expandedSub === section.label || !search.trim() ? '' : '-rotate-90'}`}
-                              style={{ transform: expandedSub === section.label || !search.trim() ? 'rotate(90deg)' : undefined }}
+                              className={`text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                             />
                             <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{section.label}</span>
                             <span className="text-[10px] text-muted-foreground/70">({section.items.length})</span>
                           </button>
-                          {(expandedSub === section.label || !search.trim() || search) && (
+                          {isExpanded && (
                             <div className="grid gap-0.5">
                               {section.items.map((item) => {
                                 const isEnabled = enabledSet.has(item.id);
@@ -342,11 +364,11 @@ export default function IndicatorsModal({
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              </ScrollArea>
               </div>
             </div>
           </div>

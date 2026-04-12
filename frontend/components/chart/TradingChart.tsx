@@ -6,6 +6,7 @@ import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
 import { nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
+import { getParallelChannelGeometry, getPitchforkGeometry, getRaySegment, getRegressionTrendGeometry, snapTrendAngleSegment, type CanvasPoint, type PitchforkVariant } from '@/services/tools/drawingGeometry';
 import { DrawingTimeIndex } from '@/services/tools/drawingTimeIndex';
 import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
@@ -17,6 +18,7 @@ import ToolOptionsPanel from '@/components/chart/ToolOptionsPanel';
 import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 import IndicatorsModal from '@/components/chart/IndicatorsModal';
 import ChartPromptModal, { type ChartPromptRequest } from '@/components/chart/ChartPromptModal';
+import type { IconPresetSelection } from '@/components/chart/IconToolPanel';
 
 interface TradingChartProps {
   data: CandleData[];
@@ -24,6 +26,12 @@ interface TradingChartProps {
   symbol: string;
   mode?: 'simulation' | 'live';
 }
+
+type TouchTooltipState = {
+  point: DrawPoint;
+  x: number;
+  y: number;
+};
 
 const TOP_INDICATOR_IDS = ['sma', 'ema', 'vwap', 'rsi', 'macd'] as const;
 
@@ -65,6 +73,15 @@ function formatExportTimestamp(date: Date): string {
   const hh = String(date.getHours()).padStart(2, '0');
   const mm = String(date.getMinutes()).padStart(2, '0');
   return `${y}${m}${d}-${hh}${mm}`;
+}
+
+function buildDotCursor(): string {
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none">',
+    '<circle cx="9" cy="9" r="3.5" fill="#00d1ff" stroke="#ffffff" stroke-width="1.25"/>',
+    '</svg>',
+  ].join('');
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 9 9, crosshair`;
 }
 
 export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
@@ -114,8 +131,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   /* ─ Prompt modal for text/emoji tools ─ */
   const [promptRequest, setPromptRequest] = useState<ChartPromptRequest | null>(null);
+  const [selectedIconPreset, setSelectedIconPreset] = useState<IconPresetSelection | null>(null);
+  const [touchTooltip, setTouchTooltip] = useState<TouchTooltipState | null>(null);
   const pendingTextPointRef = useRef<DrawPoint | null>(null);
   const pendingPointerEventRef = useRef<React.PointerEvent<HTMLCanvasElement> | null>(null);
+  const touchTooltipTimerRef = useRef<number | null>(null);
+  const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const {
     toolState,
@@ -161,6 +182,11 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     () => new Set(indicatorCatalog.map((indicator) => indicator.id)),
     [indicatorCatalog]
   );
+
+  useEffect(() => {
+    if (toolState.variant === 'emoji' || toolState.variant === 'sticker' || toolState.variant === 'iconTool') return;
+    setSelectedIconPreset(null);
+  }, [toolState.variant]);
 
   const addIndicator = useCallback((indicatorId: string) => {
     setEnabledIndicators((prev) => {
@@ -225,6 +251,11 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     [drawingsRef, selectedDrawingId, toolState.drawings]
   );
 
+  const handleCursorModeSelect = useCallback((mode: CursorMode) => {
+    setVariant('none', 'none');
+    setCursorMode(mode);
+  }, [setCursorMode, setVariant]);
+
   const translateAnchors = useCallback((anchors: DrawPoint[], from: DrawPoint, to: DrawPoint) => {
     const deltaTime = to.time - from.time;
     const deltaPrice = to.price - from.price;
@@ -239,6 +270,18 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const idx = Math.max(0, Math.min(visibleCount - 1, data.length - 1));
     return { time: toTimestamp(data[idx].time), price: data[idx].close };
   }, [data, visibleCount]);
+
+  const resolvePointerSnapMode = useCallback((): CrosshairSnapMode => {
+    if (toolState.variant === 'none') return crosshairSnapMode;
+    switch (toolState.options.snapMode) {
+      case 'off':
+        return 'free';
+      case 'candle':
+        return 'time';
+      default:
+        return 'ohlc';
+    }
+  }, [crosshairSnapMode, toolState.options.snapMode, toolState.variant]);
 
   const resolveLegendRow = useCallback((point: DrawPoint | null) => {
     if (!transformedData.ohlcRows.length) return null;
@@ -263,9 +306,9 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [chartRef, transformedData.times]);
 
   const updateHoverPoint = useCallback((clientX: number, clientY: number) => {
-    const point = pointerToDataPoint(clientX, clientY, crosshairSnapMode, false) ?? fallbackPoint();
+    const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), false) ?? fallbackPoint();
     setHoverPoint(point);
-  }, [crosshairSnapMode, fallbackPoint, pointerToDataPoint, transformedData.times]);
+  }, [fallbackPoint, pointerToDataPoint, resolvePointerSnapMode]);
 
   useEffect(() => {
     try {
@@ -284,7 +327,23 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [valuesTooltip]);
 
   useEffect(() => {
+    if (valuesTooltip) return;
+    if (touchTooltipTimerRef.current != null) {
+      window.clearTimeout(touchTooltipTimerRef.current);
+      touchTooltipTimerRef.current = null;
+    }
+    touchTooltipStartRef.current = null;
+    setTouchTooltip(null);
+  }, [valuesTooltip]);
+
+  useEffect(() => {
     setHoverPoint(null);
+    if (touchTooltipTimerRef.current != null) {
+      window.clearTimeout(touchTooltipTimerRef.current);
+      touchTooltipTimerRef.current = null;
+    }
+    touchTooltipStartRef.current = null;
+    setTouchTooltip(null);
   }, [symbol, transformedData]);
 
   useEffect(() => {
@@ -354,6 +413,26 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         return { x, y };
       };
 
+      const buildRegressionSample = (startPoint: DrawPoint, endPoint: DrawPoint): CanvasPoint[] => {
+        const startIndex = nearestCandleIndex(transformedData.times, startPoint.time);
+        const endIndex = nearestCandleIndex(transformedData.times, endPoint.time);
+        if (startIndex < 0 || endIndex < 0) return [];
+
+        const from = Math.max(0, Math.min(startIndex, endIndex));
+        const to = Math.min(transformedData.ohlcRows.length - 1, Math.max(startIndex, endIndex));
+        const sample: CanvasPoint[] = [];
+
+        for (let index = from; index <= to; index += 1) {
+          const row = transformedData.ohlcRows[index];
+          const x = chartRef.current?.timeScale().timeToCoordinate(row.time);
+          const y = series.priceToCoordinate(row.close);
+          if (x == null || y == null) continue;
+          sample.push({ x, y });
+        }
+
+        return sample;
+      };
+
       const moveState = dragMoveRef.current;
 
       const drawTool = (drawing: Drawing, draft = false) => {
@@ -375,6 +454,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
         /* ── Variant-specific rendering ─────────────────────── */
         const v = activeDrawing.variant;
+        const drawSegment = (segment: [CanvasPoint, CanvasPoint]) => {
+          ctx.beginPath();
+          ctx.moveTo(segment[0].x, segment[0].y);
+          ctx.lineTo(segment[1].x, segment[1].y);
+          ctx.stroke();
+        };
 
         if (v === 'hline' && points.length >= 1) {
           ctx.beginPath();
@@ -399,6 +484,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           ctx.moveTo(p.x, 0);
           ctx.lineTo(p.x, cssHeight);
           ctx.stroke();
+        } else if (v === 'ray' && points.length >= 2) {
+          drawSegment(getRaySegment(points[0], points[1], cssWidth, cssHeight));
         } else if (v === 'infoLine' && points.length >= 2) {
           const p1 = points[0];
           const p2 = points[1];
@@ -414,8 +501,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const info = `${dp >= 0 ? '+' : ''}${dp.toFixed(2)} (${pct}%) ${bars}b`;
           drawText(ctx, activeDrawing, (p1.x + p2.x) / 2 + 4, (p1.y + p2.y) / 2 - 8, info);
         } else if (v === 'trendAngle' && points.length >= 2) {
-          const p1 = points[0];
-          const p2 = points[1];
+          const [p1, p2] = snapTrendAngleSegment(points[0], points[1]);
           ctx.beginPath();
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
@@ -451,24 +537,27 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.fill();
           }
         } else if (v === 'regressionTrend' && points.length >= 2) {
-          const p1 = points[0];
-          const p2 = points[1];
-          const dy = p2.y - p1.y;
-          const offset = Math.abs(dy) * 0.25 || 20;
-          ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-          ctx.save();
-          ctx.globalAlpha = 0.4;
-          ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y - offset);
-          ctx.lineTo(p2.x, p2.y - offset);
-          ctx.moveTo(p1.x, p1.y + offset);
-          ctx.lineTo(p2.x, p2.y + offset);
-          ctx.stroke();
-          ctx.fillRect(Math.min(p1.x, p2.x), Math.min(p1.y - offset, p2.y - offset), Math.abs(p2.x - p1.x), Math.abs(dy) + offset * 2);
-          ctx.restore();
+          const geometry = getRegressionTrendGeometry(buildRegressionSample(activeDrawing.anchors[0], activeDrawing.anchors[1]));
+          if (geometry) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
+            ctx.beginPath();
+            ctx.moveTo(geometry.fill[0].x, geometry.fill[0].y);
+            for (let index = 1; index < geometry.fill.length; index += 1) {
+              ctx.lineTo(geometry.fill[index].x, geometry.fill[index].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            drawSegment(geometry.upper);
+            drawSegment(geometry.median);
+            drawSegment(geometry.lower);
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[1].x, points[1].y);
+            ctx.stroke();
+          }
         } else if (v === 'timeCycles' && points.length >= 2) {
           const interval = Math.abs(points[1].x - points[0].x);
           if (interval > 2) {
@@ -518,8 +607,26 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.lineTo(tx, ty);
           }
           ctx.stroke();
-
-        /* ── Family-based fallback rendering ────────────────── */
+        } else if ((v === 'pitchfork' || v === 'schiffPitchfork' || v === 'modifiedSchiffPitchfork' || v === 'insidePitchfork') && points.length >= 3) {
+          const geometry = getPitchforkGeometry([points[0], points[1], points[2]], v as PitchforkVariant, cssWidth, cssHeight);
+          drawSegment(geometry.median);
+          drawSegment(geometry.upper);
+          drawSegment(geometry.lower);
+        } else if (v === 'channel' && points.length >= 2) {
+          const geometry = getParallelChannelGeometry([points[0], points[1]], cssWidth, cssHeight);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
+          ctx.beginPath();
+          ctx.moveTo(geometry.fill[0].x, geometry.fill[0].y);
+          for (let index = 1; index < geometry.fill.length; index += 1) {
+            ctx.lineTo(geometry.fill[index].x, geometry.fill[index].y);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          drawSegment(geometry.upper);
+          drawSegment(geometry.center);
+          drawSegment(geometry.lower);
         } else if (def.family === 'text') {
           const text = activeDrawing.text || activeDrawing.variant;
           drawText(ctx, activeDrawing, points[0].x + 4, points[0].y - 4, text);
@@ -562,24 +669,29 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           }
         } else {
           ctx.beginPath();
-          ctx.moveTo(points[0].x, points[0].y);
-          for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
-          if (activeDrawing.options.extendLeft && points.length >= 2) {
-            const p1 = points[0];
-            const p2 = points[1];
-            const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
-            ctx.moveTo(0, p1.y - m * p1.x);
-            ctx.lineTo(p1.x, p1.y);
+          if (activeDrawing.options.rayMode && points.length >= 2) {
+            drawSegment(getRaySegment(points[0], points[1], cssWidth, cssHeight));
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
+            if (activeDrawing.options.extendLeft && points.length >= 2) {
+              const p1 = points[0];
+              const p2 = points[1];
+              const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
+              ctx.moveTo(0, p1.y - m * p1.x);
+              ctx.lineTo(p1.x, p1.y);
+            }
+            if (activeDrawing.options.extendRight && points.length >= 2) {
+              const p1 = points[points.length - 2];
+              const p2 = points[points.length - 1];
+              const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
+              const w = cssWidth;
+              ctx.moveTo(p2.x, p2.y);
+              ctx.lineTo(w, p2.y + m * (w - p2.x));
+            }
+            ctx.stroke();
           }
-          if (activeDrawing.options.extendRight && points.length >= 2) {
-            const p1 = points[points.length - 2];
-            const p2 = points[points.length - 1];
-            const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
-            const w = cssWidth;
-            ctx.moveTo(p2.x, p2.y);
-            ctx.lineTo(w, p2.y + m * (w - p2.x));
-          }
-          ctx.stroke();
         }
 
         if (selectedDrawingId === activeDrawing.id) {
@@ -606,7 +718,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
       getGlobalPerfTelemetry()?.record('overlay', performance.now() - overlayStart);
     });
-  }, [chartRef, drawingsRef, draftRef, getActiveSeries, getVisibleTimeRange, overlayRef, selectedDrawingId, translateAnchors]);
+  }, [chartRef, drawingsRef, draftRef, getActiveSeries, getVisibleTimeRange, overlayRef, selectedDrawingId, translateAnchors, transformedData]);
 
   resizeCallbackRef.current = renderOverlay;
 
@@ -771,9 +883,37 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     return 'center';
   }, []);
 
+  const clearTouchTooltip = useCallback(() => {
+    if (touchTooltipTimerRef.current != null) {
+      window.clearTimeout(touchTooltipTimerRef.current);
+      touchTooltipTimerRef.current = null;
+    }
+    touchTooltipStartRef.current = null;
+    setTouchTooltip(null);
+  }, []);
+
+  const scheduleTouchTooltip = useCallback((currentTarget: HTMLDivElement, clientX: number, clientY: number) => {
+    if (!valuesTooltip) return;
+    const bounds = currentTarget.getBoundingClientRect();
+    const localX = Math.min(bounds.width, Math.max(0, clientX - bounds.left));
+    const localY = Math.min(bounds.height, Math.max(0, clientY - bounds.top));
+
+    if (touchTooltipTimerRef.current != null) {
+      window.clearTimeout(touchTooltipTimerRef.current);
+    }
+
+    touchTooltipStartRef.current = { x: clientX, y: clientY };
+    touchTooltipTimerRef.current = window.setTimeout(() => {
+      const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), magnetMode) ?? fallbackPoint();
+      if (!point) return;
+      setTouchTooltip({ point, x: localX, y: localY });
+      touchTooltipTimerRef.current = null;
+    }, 450);
+  }, [fallbackPoint, magnetMode, pointerToDataPoint, resolvePointerSnapMode, valuesTooltip]);
+
   const onChartTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobile) return;
     if (event.touches.length >= 2) {
+      clearTouchTooltip();
       setTouchMode('pinch');
       applyTouchMode('pinch');
       touchStartRef.current = null;
@@ -785,12 +925,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const localX = touch.clientX - bounds.left;
     const zone = detectTouchZone(localX, bounds.width);
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, zone };
+    scheduleTouchTooltip(event.currentTarget, touch.clientX, touch.clientY);
     setTouchMode(zone === 'center' ? 'scroll' : 'idle');
     applyTouchMode(zone === 'center' ? 'scroll' : 'idle');
   };
 
   const onChartTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobile) return;
     if (event.touches.length >= 2) {
       if (touchMode !== 'pinch') {
         setTouchMode('pinch');
@@ -804,6 +944,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const touch = event.touches[0];
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
+
+    if (touchTooltipStartRef.current && Math.hypot(dx, dy) > 12) {
+      clearTouchTooltip();
+    }
 
     if (start.zone === 'center') {
       if (touchMode !== 'scroll') {
@@ -838,18 +982,18 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   };
 
   const onChartTouchEnd = () => {
-    if (!isMobile) return;
     touchStartRef.current = null;
+    clearTouchTooltip();
     setTouchMode('scroll');
     applyTouchMode('scroll');
   };
 
-  const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    event.currentTarget.focus({ preventScroll: true });
-    const point = pointerToDataPoint(event.clientX, event.clientY, crosshairSnapMode, magnetMode) || fallbackPoint();
+  const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    clearTouchTooltip();
+    const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
     if (!point) return;
 
-    if (cursorMode === 'eraser' && toolState.variant === 'none') {
+    if (cursorMode === 'eraser') {
       const visibleRange = getVisibleTimeRange();
       const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
       const candidates = visibleIds ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id)) : drawingsRef.current;
@@ -895,10 +1039,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (needsText) {
       pendingTextPointRef.current = point;
       const variant = toolState.variant as Exclude<typeof toolState.variant, 'none'>;
+      const iconPreset = selectedIconPreset && selectedIconPreset.variant === variant ? selectedIconPreset : null;
       setPromptRequest(
-        variant === 'emoji'
-          ? { title: 'Emoji', label: 'Enter emoji', defaultValue: '🚀', preview: true }
-          : { title: 'Text', label: 'Enter text', defaultValue: 'Label', placeholder: 'Label' },
+        iconPreset
+          ? { title: iconPreset.title, label: iconPreset.label, defaultValue: iconPreset.defaultValue, preview: iconPreset.preview ?? true }
+          : variant === 'emoji'
+            ? { title: 'Emoji', label: 'Enter emoji', defaultValue: '🚀', preview: true }
+            : variant === 'sticker'
+              ? { title: 'Sticker', label: 'Enter sticker text', defaultValue: 'WAGMI', preview: true }
+              : { title: 'Icon', label: 'Enter symbol', defaultValue: '★', preview: true },
       );
       return;
     }
@@ -913,10 +1062,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     overlayRef.current?.setPointerCapture(event.pointerId);
   };
 
-  const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
     updateHoverPoint(event.clientX, event.clientY);
     
-    const point = pointerToDataPoint(event.clientX, event.clientY, crosshairSnapMode, magnetMode) || fallbackPoint();
+    const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
     if (!point) return;
 
     if (dragMoveRef.current) {
@@ -942,15 +1091,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   const cursorCssByMode: Record<CursorMode, string> = {
     cross: 'crosshair',
-    dot: 'cell',
+    dot: buildDotCursor(),
     arrow: 'default',
-    demo: 'copy',
+    demo: 'pointer',
     eraser: 'not-allowed',
   };
   const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser';
   const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];
 
-  const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const onPointerUp = (event: React.PointerEvent<HTMLElement>) => {
     if (overlayRef.current?.hasPointerCapture(event.pointerId)) overlayRef.current.releasePointerCapture(event.pointerId);
     if (dragMoveRef.current) {
       const move = dragMoveRef.current;
@@ -982,8 +1131,9 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     renderOverlay();
   };
 
-  const currentLegendRow = resolveLegendRow(hoverPoint);
-  const currentLegendPoint = hoverPoint ?? (currentLegendRow ? { time: currentLegendRow.time, price: currentLegendRow.close } : null);
+  const currentLegendSourcePoint = touchTooltip?.point ?? hoverPoint ?? null;
+  const currentLegendRow = resolveLegendRow(currentLegendSourcePoint);
+  const currentLegendPoint = currentLegendSourcePoint ?? (currentLegendRow ? { time: currentLegendRow.time, price: currentLegendRow.close } : null);
   const legendChangePct = currentLegendRow
     ? currentLegendRow.open !== 0
       ? ((currentLegendRow.close - currentLegendRow.open) / currentLegendRow.open) * 100
@@ -1124,12 +1274,42 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
       <div className="flex min-h-0 flex-1">
         {/* Tool Rail — thin left icon bar */}
-        <ToolRail toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} cursorMode={cursorMode} setCursorMode={setCursorMode} valuesTooltip={valuesTooltip} setValuesTooltip={setValuesTooltip} isMobile={isMobile} magnetMode={magnetMode} onToggleMagnet={handleToggleMagnet} keepDrawing={keepDrawing} onToggleKeepDrawing={handleToggleKeepDrawing} lockAll={lockAll} onToggleLockAll={handleToggleLockAll} hideAll={hideAll} onToggleHideAll={handleToggleHideAll} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onMeasure={handleMeasure} onDelete={handleDelete} />
+        <ToolRail
+          toolState={toolState}
+          expandedCategory={expandedCategory}
+          setExpandedCategory={setExpandedCategory}
+          onVariant={(group, variant) => setVariant(variant, group)}
+          selectedIconPreset={selectedIconPreset}
+          onIconPresetSelect={setSelectedIconPreset}
+          cursorMode={cursorMode}
+          onCursorModeSelect={handleCursorModeSelect}
+          valuesTooltip={valuesTooltip}
+          setValuesTooltip={setValuesTooltip}
+          isMobile={isMobile}
+          magnetMode={magnetMode}
+          onToggleMagnet={handleToggleMagnet}
+          keepDrawing={keepDrawing}
+          onToggleKeepDrawing={handleToggleKeepDrawing}
+          lockAll={lockAll}
+          onToggleLockAll={handleToggleLockAll}
+          hideAll={hideAll}
+          onToggleHideAll={handleToggleHideAll}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onMeasure={handleMeasure}
+          onDelete={handleDelete}
+        />
 
         {/* Chart area — maximized */}
         <div className="flex min-w-0 flex-1 flex-col">
           <div
+            data-testid="chart-interaction-surface"
             className="relative min-h-0 flex-1 overflow-hidden"
+            onContextMenu={(event) => event.preventDefault()}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             onTouchStart={onChartTouchStart}
             onTouchMove={onChartTouchMove}
             onTouchEnd={onChartTouchEnd}
@@ -1140,8 +1320,29 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             }}
           >
             <div className="chart-wrapper h-full w-full touch-pan-y">
-              <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} overlayInteractive={overlayInteractive} overlayCursor={overlayCursor} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
+              <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} overlayInteractive={overlayInteractive} overlayCursor={overlayCursor} containerCursor={overlayCursor} />
             </div>
+
+            {valuesTooltip && touchTooltip && currentLegendRow ? (
+              <div
+                data-testid="values-tooltip"
+                className="pointer-events-none absolute z-40 rounded-xl border border-primary/25 bg-slate-950/90 px-3 py-2 text-[11px] text-foreground shadow-2xl shadow-black/50 backdrop-blur-md"
+                style={{
+                  left: `${Math.min(chartContainerRef.current?.clientWidth ?? 0, Math.max(0, touchTooltip.x + 12))}px`,
+                  top: `${Math.min(chartContainerRef.current?.clientHeight ?? 0, Math.max(0, touchTooltip.y - 12))}px`,
+                  transform: 'translateY(-100%)',
+                }}
+              >
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary/80">Long press values</div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums">
+                  <span>O {currentLegendRow.open.toFixed(2)}</span>
+                  <span>H {currentLegendRow.high.toFixed(2)}</span>
+                  <span>L {currentLegendRow.low.toFixed(2)}</span>
+                  <span>C {currentLegendRow.close.toFixed(2)}</span>
+                  <span className="col-span-2 text-muted-foreground">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', month: 'short', day: '2-digit', timeZone: 'UTC' }) : ''}</span>
+                </div>
+              </div>
+            ) : null}
 
             <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
 

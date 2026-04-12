@@ -1,7 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { clampOptionValue, defaultToolOptions, mergeToolOptions, type ToolOptions } from '@/services/tools/toolOptions';
-import type { DrawPoint, Drawing, ToolState, ToolVariant } from '@/services/tools/toolRegistry';
+import { buildToolOptions, type DrawPoint, type Drawing, type ToolState, type ToolVariant } from '@/services/tools/toolRegistry';
 import { createDrawing, isPointOnlyVariant, updateDraftDrawing } from '@/services/tools/toolEngine';
+
+function preserveVariantIndependentOptions(options: ToolOptions): Partial<ToolOptions> {
+  const { extendLeft, extendRight, rayMode, priceLabel, axisLabel, snapMode, ...rest } = options;
+  return rest;
+}
 
 function pushHistory(state: ToolState, drawings: Drawing[]): ToolState {
   const head = state.history.slice(0, state.historyIndex + 1);
@@ -34,6 +39,13 @@ export function useTools() {
       ...prev,
       activeTool: prev.variant === variant ? 'none' : activeTool,
       variant: nextVariant,
+      options: nextVariant === 'none'
+        ? prev.options
+        : (() => {
+            const nextOptions = clampOptionValue(mergeToolOptions(buildToolOptions(nextVariant), preserveVariantIndependentOptions(optionsRef.current)));
+            optionsRef.current = nextOptions;
+            return nextOptions;
+          })(),
     }));
   }, []);
 

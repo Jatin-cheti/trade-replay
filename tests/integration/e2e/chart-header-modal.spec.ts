@@ -217,6 +217,52 @@ test("indicators modal: technicals sub-tabs switch content", async ({ page }) =>
   await modal.getByTestId("indicators-modal-close").click();
 });
 
+test("indicators modal: fundamentals scroll and section collapse work", async ({ page }) => {
+  await registerAndLogin(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
+
+  await clickByTestId(page, "indicators-button");
+  const modal = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(modal).toBeVisible();
+
+  await modal.getByTestId("indicators-sidebar-financials").click();
+
+  // Collapse / expand Income Statement section must work in Financials tab
+  const incomeHeader = modal.getByRole("button", { name: /Income Statement/ }).first();
+  await expect(modal.getByTestId("indicator-catalog-fin_totalRevenue")).toBeVisible();
+  await incomeHeader.click();
+  await expect(modal.getByTestId("indicator-catalog-fin_totalRevenue")).toBeHidden();
+  await incomeHeader.click();
+  await expect(modal.getByTestId("indicator-catalog-fin_totalRevenue")).toBeVisible();
+
+  // Network tab list should be vertically scrollable to reach bottom entries
+  await modal.getByTestId("fund-tab-network").click();
+  const scrollPane = modal.getByTestId("indicators-content-scroll");
+  const metrics = await scrollPane.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+
+  // Mouse wheel should move the modal scroll position
+  const beforeWheel = await scrollPane.evaluate((el) => el.scrollTop);
+  await scrollPane.evaluate((el) => {
+    el.dispatchEvent(new WheelEvent("wheel", { deltaY: 900, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(120);
+  const afterWheel = await scrollPane.evaluate((el) => el.scrollTop);
+  expect(afterWheel).toBeGreaterThan(beforeWheel);
+
+  await scrollPane.evaluate((el) => {
+    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+  });
+  await expect(modal.getByTestId("indicator-catalog-fund_issuance")).toBeVisible();
+
+  await modal.getByTestId("indicators-modal-close").click();
+});
+
 /* ─── Add non-builtin indicator from patterns tab ────────────────────── */
 
 test("indicators modal: add candlestick pattern indicator", async ({ page }) => {
