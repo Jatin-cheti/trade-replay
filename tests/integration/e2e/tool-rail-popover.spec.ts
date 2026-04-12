@@ -116,6 +116,52 @@ async function readDrawingCount(page: Page): Promise<number> {
   return match ? Number(match[1]) : 0;
 }
 
+async function readDrawingAnchors(page: Page, index = 0): Promise<Array<{ time: number; price: number }>> {
+  return page.evaluate((targetIndex) => {
+    const debug = (window as unknown as { __chartDebug?: { getDrawings?: () => Array<{ anchors: Array<{ time: number; price: number }> }> } }).__chartDebug;
+    const drawings = debug?.getDrawings?.() ?? [];
+    const drawing = drawings[targetIndex];
+    return drawing?.anchors?.map((anchor) => ({ time: Number(anchor.time), price: Number(anchor.price) })) ?? [];
+  }, index);
+}
+
+async function drawAt(page: Page, start: { x: number; y: number }, end: { x: number; y: number }): Promise<void> {
+  await page.mouse.move(start.x, start.y);
+  await page.waitForTimeout(35);
+  await page.mouse.down();
+  await page.waitForTimeout(35);
+  await page.mouse.move(end.x, end.y, { steps: 6 });
+  await page.waitForTimeout(35);
+  await page.mouse.up();
+  await page.waitForTimeout(220);
+}
+
+async function drawPointTool(page: Page, xRatio = 0.52, yRatio = 0.45): Promise<void> {
+  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  if (!box) return;
+  await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
+  await page.waitForTimeout(180);
+}
+
+async function confirmPromptIfVisible(page: Page): Promise<void> {
+  const modal = page.locator('[data-testid="chart-prompt-modal"]:visible').first();
+  if (await modal.isVisible().catch(() => false)) {
+    await modal.getByTestId('chart-prompt-ok').click();
+    await expect(page.locator('[data-testid="chart-prompt-modal"]:visible')).toHaveCount(0);
+  }
+}
+
+async function placeCurrentTool(page: Page, pointOnly = false, region: 'left' | 'center' | 'right' = 'center'): Promise<void> {
+  if (pointOnly) {
+    await drawPointTool(page);
+  } else {
+    await draw2PointShape(page, region);
+  }
+  await confirmPromptIfVisible(page);
+}
+
 async function dispatchTouch(page: Page, type: 'touchstart' | 'touchmove' | 'touchend', x: number, y: number): Promise<void> {
   await page.evaluate(
     ({ type, x, y }) => {
@@ -423,6 +469,257 @@ test.describe("Tool Rail Popover", () => {
       await draw2PointShape(page, regions[index % regions.length]);
       await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
     }
+  });
+
+  test("every fibonacci and gann option draws and binds to the correct variant", async ({ page }) => {
+    const fibOptions: Array<{ id: string; badge: string }> = [
+      { id: 'fib-retracement', badge: 'tool: fibRetracement' },
+      { id: 'fib-extension', badge: 'tool: fibExtension' },
+      { id: 'fib-channel', badge: 'tool: fibChannel' },
+      { id: 'fib-time-zone', badge: 'tool: fibTimeZone' },
+      { id: 'fib-speed-resistance-fan', badge: 'tool: fibSpeedResistFan' },
+      { id: 'fib-trend-time', badge: 'tool: fibTrendTime' },
+      { id: 'fib-circles', badge: 'tool: fibCircles' },
+      { id: 'fib-spiral', badge: 'tool: fibSpiral' },
+      { id: 'fib-speed-resistance-arcs', badge: 'tool: fibSpeedResistArcs' },
+      { id: 'fib-wedge', badge: 'tool: fibWedge' },
+      { id: 'pitchfan', badge: 'tool: pitchfan' },
+      { id: 'gann-box', badge: 'tool: gannBox' },
+      { id: 'gann-square-fixed', badge: 'tool: gannSquareFixed' },
+      { id: 'gann-square', badge: 'tool: gannSquare' },
+      { id: 'gann-fan', badge: 'tool: gannFan' },
+    ];
+
+    const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+    for (const [index, option] of fibOptions.entries()) {
+      const before = await readDrawingCount(page);
+      await selectTool(page, 'fib', option.id, option.badge);
+      await placeCurrentTool(page, false, regions[index % regions.length]);
+      await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+    }
+  });
+
+  test("pattern panel variants draw with expected bindings", async ({ page }) => {
+    const patternOptions: Array<{ id: string; badge: string }> = [
+      { id: 'tool-xabcd', badge: 'tool: xabcd' },
+      { id: 'tool-cypherPattern', badge: 'tool: cypherPattern' },
+      { id: 'tool-headAndShoulders', badge: 'tool: headAndShoulders' },
+      { id: 'tool-abcdPattern', badge: 'tool: abcdPattern' },
+      { id: 'tool-trianglePattern', badge: 'tool: trianglePattern' },
+      { id: 'tool-threeDrives', badge: 'tool: threeDrives' },
+      { id: 'tool-elliottImpulse', badge: 'tool: elliottImpulse' },
+      { id: 'tool-elliottCorrection', badge: 'tool: elliottCorrection' },
+      { id: 'tool-elliottTriangle', badge: 'tool: elliottTriangle' },
+      { id: 'tool-elliottDoubleCombo', badge: 'tool: elliottDoubleCombo' },
+      { id: 'tool-elliottTripleCombo', badge: 'tool: elliottTripleCombo' },
+      { id: 'tool-cyclicLines', badge: 'tool: cyclicLines' },
+      { id: 'tool-timeCycles', badge: 'tool: timeCycles' },
+      { id: 'tool-sineLine', badge: 'tool: sineLine' },
+    ];
+
+    const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+    for (const [index, option] of patternOptions.entries()) {
+      const before = await readDrawingCount(page);
+      await selectTool(page, 'patterns', option.id, option.badge);
+      await placeCurrentTool(page, false, regions[index % regions.length]);
+      await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+    }
+  });
+
+  test("forecasting and volume tools draw and remain interactive", async ({ page }) => {
+    const options: Array<{ id: string; badge: string; pointOnly?: boolean }> = [
+      { id: 'tool-longPosition', badge: 'tool: longPosition' },
+      { id: 'tool-shortPosition', badge: 'tool: shortPosition' },
+      { id: 'tool-positionForecast', badge: 'tool: positionForecast' },
+      { id: 'tool-barPattern', badge: 'tool: barPattern' },
+      { id: 'tool-ghostFeed', badge: 'tool: ghostFeed' },
+      { id: 'tool-sector', badge: 'tool: sector' },
+      { id: 'tool-anchoredVwap', badge: 'tool: anchoredVwap', pointOnly: true },
+      { id: 'tool-fixedRangeVolumeProfile', badge: 'tool: fixedRangeVolumeProfile' },
+      { id: 'tool-anchoredVolumeProfile', badge: 'tool: anchoredVolumeProfile', pointOnly: true },
+      { id: 'tool-priceRange', badge: 'tool: priceRange' },
+      { id: 'tool-dateRange', badge: 'tool: dateRange' },
+      { id: 'tool-dateAndPriceRange', badge: 'tool: dateAndPriceRange' },
+    ];
+
+    const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+    for (const [index, option] of options.entries()) {
+      const before = await readDrawingCount(page);
+      await selectTool(page, 'forecasting', option.id, option.badge);
+      await placeCurrentTool(page, Boolean(option.pointOnly), regions[index % regions.length]);
+      await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+    }
+  });
+
+  test("brush panel variants draw correctly", async ({ page }) => {
+    const options: Array<{ id: string; badge: string; pointOnly?: boolean }> = [
+      { id: 'tool-brush', badge: 'tool: brush' },
+      { id: 'tool-highlighter', badge: 'tool: highlighter' },
+      { id: 'tool-arrowMarker', badge: 'tool: arrowMarker', pointOnly: true },
+      { id: 'tool-arrowTool', badge: 'tool: arrowTool' },
+      { id: 'tool-arrowMarkUp', badge: 'tool: arrowMarkUp', pointOnly: true },
+      { id: 'tool-arrowMarkDown', badge: 'tool: arrowMarkDown', pointOnly: true },
+      { id: 'tool-rectangle', badge: 'tool: rectangle' },
+      { id: 'tool-rotatedRectangle', badge: 'tool: rotatedRectangle' },
+      { id: 'tool-path', badge: 'tool: path' },
+      { id: 'tool-circle', badge: 'tool: circle' },
+      { id: 'tool-ellipse', badge: 'tool: ellipse' },
+      { id: 'tool-polyline', badge: 'tool: polyline' },
+      { id: 'tool-triangle', badge: 'tool: triangle' },
+      { id: 'tool-arc', badge: 'tool: arc' },
+      { id: 'tool-curveTool', badge: 'tool: curveTool' },
+      { id: 'tool-doubleCurve', badge: 'tool: doubleCurve' },
+    ];
+
+    const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+    for (const [index, option] of options.entries()) {
+      const before = await readDrawingCount(page);
+      await selectTool(page, 'brush', option.id, option.badge);
+      await placeCurrentTool(page, Boolean(option.pointOnly), regions[index % regions.length]);
+      await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+    }
+  });
+
+  test("text panel variants open prompt where needed and create objects", async ({ page }) => {
+    const options: Array<{ id: string; badge: string }> = [
+      { id: 'tool-plainText', badge: 'tool: plainText' },
+      { id: 'tool-anchoredText', badge: 'tool: anchoredText' },
+      { id: 'tool-note', badge: 'tool: note' },
+      { id: 'tool-priceNote', badge: 'tool: priceNote' },
+      { id: 'tool-pin', badge: 'tool: pin' },
+      { id: 'tool-table', badge: 'tool: table' },
+      { id: 'tool-callout', badge: 'tool: callout' },
+      { id: 'tool-comment', badge: 'tool: comment' },
+      { id: 'tool-priceLabel', badge: 'tool: priceLabel' },
+      { id: 'tool-signpost', badge: 'tool: signpost' },
+      { id: 'tool-flagMark', badge: 'tool: flagMark' },
+      { id: 'tool-image', badge: 'tool: image' },
+      { id: 'tool-post', badge: 'tool: post' },
+      { id: 'tool-idea', badge: 'tool: idea' },
+    ];
+
+    for (const option of options) {
+      const before = await readDrawingCount(page);
+      await selectTool(page, 'text', option.id, option.badge);
+      await placeCurrentTool(page, true);
+      await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+    }
+  });
+
+  test("icon tabs place emoji, sticker, and symbol drawings", async ({ page }) => {
+    const before = await readDrawingCount(page);
+
+    await ensureGroupMenuOpen(page, 'icon');
+    let popover = page.locator('[data-testid="toolrail-popover"]:visible').first();
+    await popover.getByTestId('icon-panel-tab-emojis').click();
+    await popover.getByTestId('icon-panel-item-smiles-0').click();
+    await placeCurrentTool(page, true);
+
+    await ensureGroupMenuOpen(page, 'icon');
+    popover = page.locator('[data-testid="toolrail-popover"]:visible').first();
+    await popover.getByTestId('icon-panel-tab-stickers').click();
+    await popover.getByTestId('icon-panel-item-crypto-hodl').click();
+    await placeCurrentTool(page, true);
+
+    await ensureGroupMenuOpen(page, 'icon');
+    popover = page.locator('[data-testid="toolrail-popover"]:visible').first();
+    await popover.getByTestId('icon-panel-tab-icons').click();
+    await popover.getByTestId('icon-panel-item-symbols-0').click();
+    await placeCurrentTool(page, true);
+
+    await expect.poll(async () => readDrawingCount(page)).toBeGreaterThanOrEqual(before + 3);
+  });
+
+  test("global rail options enforce keep-drawing, lock, hide, and delete semantics", async ({ page }) => {
+    await selectTool(page, 'lines', 'tool-trendline', 'tool: trend');
+    await draw2PointShape(page, 'left');
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('tool: none');
+
+    await clickVisible(page, 'rail-keep-drawing');
+    await selectTool(page, 'lines', 'tool-trendline', 'tool: trend');
+    await draw2PointShape(page, 'center');
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('tool: trend');
+
+    const anchorsBeforeLock = await readDrawingAnchors(page, 0);
+    await clickVisible(page, 'rail-lock-drawings');
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    await drawAt(
+      page,
+      { x: box.x + box.width * 0.48, y: box.y + box.height * 0.46 },
+      { x: box.x + box.width * 0.72, y: box.y + box.height * 0.32 },
+    );
+
+    const anchorsAfterLock = await readDrawingAnchors(page, 0);
+    expect(anchorsAfterLock).toEqual(anchorsBeforeLock);
+
+    await clickVisible(page, 'rail-hide-objects');
+    const hiddenState = await page.evaluate(() => {
+      const debug = (window as unknown as { __chartDebug?: { getDrawings?: () => Array<{ visible: boolean }> } }).__chartDebug;
+      const drawings = debug?.getDrawings?.() ?? [];
+      return drawings.every((drawing) => drawing.visible === false);
+    });
+    expect(hiddenState).toBeTruthy();
+
+    await clickVisible(page, 'rail-hide-objects');
+    await clickVisible(page, 'rail-lock-drawings');
+
+    await ensureGroupMenuOpen(page, 'cursor');
+    await clickByTestId(page, 'cursor-cross');
+
+    await page.mouse.click(box.x + box.width * 0.48, box.y + box.height * 0.46);
+    const beforeDelete = await readDrawingCount(page);
+    await clickVisible(page, 'rail-delete');
+    await expect.poll(async () => readDrawingCount(page)).toBeLessThan(beforeDelete);
+  });
+
+  test("right click selects drawing and opens contextual options", async ({ page }) => {
+    await selectTool(page, 'lines', 'tool-trendline', 'tool: trend');
+    await draw2PointShape(page, 'center');
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    await page.mouse.click(box.x + box.width * 0.53, box.y + box.height * 0.48, { button: 'right' });
+    await expect(page.locator('text=Tool Options')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('tool: trend');
+  });
+
+  test("heavy drawing scenarios remain responsive and cap history growth", async ({ page }) => {
+    await clickVisible(page, 'rail-keep-drawing');
+    await selectTool(page, 'lines', 'tool-trendline', 'tool: trend');
+
+    const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+    for (let i = 0; i < 32; i += 1) {
+      await draw2PointShape(page, regions[i % regions.length]);
+    }
+
+    const drawings = await readDrawingCount(page);
+    expect(drawings).toBeGreaterThanOrEqual(32);
+
+    const historyLength = await page.evaluate(() => {
+      const debug = (window as unknown as { __chartDebug?: { getHistoryLength?: () => number } }).__chartDebug;
+      return debug?.getHistoryLength?.() ?? 0;
+    });
+    expect(historyLength).toBeLessThanOrEqual(180);
+
+    await ensureGroupMenuOpen(page, 'cursor');
+    await clickByTestId(page, 'cursor-eraser');
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const beforeErase = await readDrawingCount(page);
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.45);
+    await expect.poll(async () => readDrawingCount(page)).toBeLessThan(beforeErase);
   });
 
   test("values tooltip long press follows the toggle", async ({ page }) => {

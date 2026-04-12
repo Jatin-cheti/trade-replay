@@ -35,6 +35,20 @@ type TouchTooltipState = {
 
 const TOP_INDICATOR_IDS = ['sma', 'ema', 'vwap', 'rsi', 'macd'] as const;
 
+const PATTERN_LABELS_BY_VARIANT: Partial<Record<ToolVariant, string[]>> = {
+  xabcd: ['X', 'A', 'B', 'C', 'D'],
+  cypherPattern: ['X', 'A', 'B', 'C', 'D'],
+  headAndShoulders: ['LS', 'H', 'N', 'H', 'RS'],
+  abcdPattern: ['A', 'B', 'C', 'D'],
+  trianglePattern: ['A', 'B', 'C'],
+  threeDrives: ['1', '2', '3', '4', '5', '6', '7'],
+  elliottImpulse: ['1', '2', '3', '4', '5'],
+  elliottCorrection: ['A', 'B', 'C'],
+  elliottTriangle: ['A', 'B', 'C', 'D', 'E'],
+  elliottDoubleCombo: ['W', 'X', 'Y'],
+  elliottTripleCombo: ['W', 'X', 'Y', 'X', 'Z'],
+};
+
 function makeIndicatorAcronym(name: string): string {
   return name
     .split(/[^A-Za-z0-9]+/)
@@ -44,18 +58,25 @@ function makeIndicatorAcronym(name: string): string {
 }
 
 function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y: number, text: string) {
+  ctx.save();
   const weight = drawing.options.bold ? '700' : '400';
   const italic = drawing.options.italic ? 'italic' : 'normal';
   ctx.font = `${italic} ${weight} ${drawing.options.textSize}px ${drawing.options.font}, sans-serif`;
+  ctx.textAlign = drawing.options.align;
   const pad = drawing.options.textPadding;
+  const metrics = ctx.measureText(text);
+  const leftX = drawing.options.align === 'center'
+    ? x - metrics.width / 2
+    : drawing.options.align === 'right'
+      ? x - metrics.width
+      : x;
 
   if (drawing.options.textBackground) {
-    const m = ctx.measureText(text);
     ctx.fillStyle = 'rgba(8, 18, 30, 0.75)';
-    ctx.fillRect(x - pad, y - drawing.options.textSize - pad, m.width + pad * 2, drawing.options.textSize + pad * 1.5);
+    ctx.fillRect(leftX - pad, y - drawing.options.textSize - pad, metrics.width + pad * 2, drawing.options.textSize + pad * 1.5);
     if (drawing.options.textBorder) {
       ctx.strokeStyle = `rgba(${rgbFromHex(drawing.options.color)}, 0.8)`;
-      ctx.strokeRect(x - pad, y - drawing.options.textSize - pad, m.width + pad * 2, drawing.options.textSize + pad * 1.5);
+      ctx.strokeRect(leftX - pad, y - drawing.options.textSize - pad, metrics.width + pad * 2, drawing.options.textSize + pad * 1.5);
     }
   }
 
@@ -64,6 +85,7 @@ function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y:
   ctx.lineWidth = 3;
   ctx.strokeText(text, x, y);
   ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
 function formatExportTimestamp(date: Date): string {
@@ -93,7 +115,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('chart-values-tooltip') === 'true';
   });
-  const [magnetMode, setMagnetMode] = useState(false);
+  const [magnetMode, setMagnetMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chart-magnet-mode') === 'true';
+  });
   const [crosshairSnapMode, setCrosshairSnapMode] = useState<CrosshairSnapMode>(() => {
     if (typeof window === 'undefined') return 'free';
     const stored = window.localStorage.getItem('chart-crosshair-snap-mode');
@@ -123,6 +148,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
   const dragMoveRef = useRef<{ drawingId: string; startPoint: DrawPoint; currentPoint: DrawPoint; originalAnchors: DrawPoint[] } | null>(null);
+  const dragAnchorMoveRef = useRef<{ drawingId: string; anchorIndex: number; currentPoint: DrawPoint; originalAnchors: DrawPoint[] } | null>(null);
   const [hoverPoint, setHoverPoint] = useState<DrawPoint | null>(null);
   const [touchMode, setTouchMode] = useState<'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch'>('idle');
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
@@ -151,6 +177,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     finalizeDraft,
     cancelDraft,
     updateDrawing,
+    updateAllDrawings,
     removeDrawing,
     clearDrawings,
     undo,
@@ -259,6 +286,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     draftPointerStartRef.current = null;
   }, []);
 
+  const exitDrawingModeIfNeeded = useCallback((variant: Exclude<ToolVariant, 'none'> | null) => {
+    if (keepDrawing || !variant) return;
+    const definition = getToolDefinition(variant);
+    setVariant(variant, definition?.category ?? 'lines');
+  }, [keepDrawing, setVariant]);
+
   const handleCursorModeSelect = useCallback((mode: CursorMode) => {
     clearPromptState();
     setVariant('none', 'none');
@@ -348,6 +381,14 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       // Ignore restricted storage environments.
     }
   }, [valuesTooltip]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('chart-magnet-mode', String(magnetMode));
+    } catch {
+      // Ignore restricted storage environments.
+    }
+  }, [magnetMode]);
 
   useEffect(() => {
     if (valuesTooltip) return;
@@ -457,11 +498,21 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       };
 
       const moveState = dragMoveRef.current;
+      const anchorMoveState = dragAnchorMoveRef.current;
 
       const drawTool = (drawing: Drawing, draft = false) => {
         const activeDrawing = moveState?.drawingId === drawing.id
           ? { ...drawing, anchors: translateAnchors(moveState.originalAnchors, moveState.startPoint, moveState.currentPoint) }
-          : drawing;
+          : anchorMoveState?.drawingId === drawing.id
+            ? {
+                ...drawing,
+                anchors: (() => {
+                  const nextAnchors = anchorMoveState.originalAnchors.map((anchor) => ({ ...anchor }));
+                  nextAnchors[anchorMoveState.anchorIndex] = anchorMoveState.currentPoint;
+                  return nextAnchors;
+                })(),
+              }
+            : drawing;
 
         if (!activeDrawing.visible || !activeDrawing.options.visible || !activeDrawing.anchors.length) return;
         const def = getToolDefinition(activeDrawing.variant);
@@ -650,6 +701,368 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           drawSegment(geometry.upper);
           drawSegment(geometry.center);
           drawSegment(geometry.lower);
+        } else if (v === 'cyclicLines' && points.length >= 2) {
+          const spacing = Math.abs(points[1].x - points[0].x);
+          if (spacing > 4) {
+            let cycle = 1;
+            ctx.beginPath();
+            for (let x = points[0].x; x <= cssWidth; x += spacing) {
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, cssHeight);
+              cycle += 1;
+            }
+            for (let x = points[0].x - spacing; x >= 0; x -= spacing) {
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, cssHeight);
+              cycle += 1;
+            }
+            ctx.stroke();
+            drawText(ctx, activeDrawing, points[0].x + 6, points[0].y - 6, `cycle ${Math.max(1, cycle - 1)}`);
+          }
+        } else if (v === 'fibSpeedResistFan' && points.length >= 2) {
+          const levels = def.behaviors?.fibLevels || [0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          const start = points[0];
+          const end = points[1];
+          ctx.beginPath();
+          for (const level of levels) {
+            const target = {
+              x: end.x,
+              y: start.y + (end.y - start.y) * level,
+            };
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(target.x, target.y);
+          }
+          ctx.stroke();
+        } else if (v === 'fibTimeZone' && points.length >= 2) {
+          const base = points[0];
+          const spacing = Math.abs(points[1].x - points[0].x);
+          if (spacing > 2) {
+            const sequence = [1, 2, 3, 5, 8, 13, 21];
+            ctx.beginPath();
+            for (const n of sequence) {
+              const x = base.x + spacing * n;
+              if (x > cssWidth) break;
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, cssHeight);
+            }
+            ctx.stroke();
+          }
+        } else if (v === 'fibTrendTime' && points.length >= 2) {
+          const start = points[0];
+          const end = points[1];
+          ctx.beginPath();
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(end.x, end.y);
+          ctx.stroke();
+          const spacing = Math.abs(end.x - start.x);
+          if (spacing > 2) {
+            const sequence = [1, 2, 3, 5, 8];
+            ctx.beginPath();
+            for (const n of sequence) {
+              const x = end.x + spacing * n;
+              if (x > cssWidth) break;
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, cssHeight);
+            }
+            ctx.stroke();
+          }
+        } else if (v === 'fibCircles' && points.length >= 2) {
+          const levels = def.behaviors?.fibLevels || [0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          const radiusBase = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+          for (const level of levels) {
+            const radius = Math.max(1, radiusBase * level);
+            ctx.beginPath();
+            ctx.arc(points[0].x, points[0].y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        } else if (v === 'fibSpiral' && points.length >= 2) {
+          const radiusBase = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+          const center = points[0];
+          ctx.beginPath();
+          for (let t = 0; t <= Math.PI * 5; t += 0.08) {
+            const growth = 0.14 + t / (Math.PI * 5);
+            const r = radiusBase * growth;
+            const x = center.x + Math.cos(t) * r;
+            const y = center.y + Math.sin(t) * r;
+            if (t === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        } else if (v === 'fibWedge' && points.length >= 2) {
+          const start = points[0];
+          const end = points[1];
+          const mirror = { x: end.x, y: start.y - (end.y - start.y) };
+          ctx.beginPath();
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(end.x, end.y);
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(mirror.x, mirror.y);
+          for (const level of [0.236, 0.382, 0.5, 0.618, 0.786]) {
+            const left = {
+              x: start.x + (end.x - start.x) * level,
+              y: start.y + (end.y - start.y) * level,
+            };
+            const right = {
+              x: start.x + (mirror.x - start.x) * level,
+              y: start.y + (mirror.y - start.y) * level,
+            };
+            ctx.moveTo(left.x, left.y);
+            ctx.lineTo(right.x, right.y);
+          }
+          ctx.stroke();
+        } else if (v === 'fibChannel' && points.length >= 2) {
+          const levels = def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          const start = points[0];
+          const end = points[1];
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const length = Math.hypot(dx, dy) || 1;
+          const normal = { x: -dy / length, y: dx / length };
+          const channelSpan = length * 0.35;
+          for (const level of levels) {
+            const offset = channelSpan * level;
+            drawSegment([
+              { x: start.x + normal.x * offset, y: start.y + normal.y * offset },
+              { x: end.x + normal.x * offset, y: end.y + normal.y * offset },
+            ]);
+          }
+        } else if (v === 'gannFan' && points.length >= 2) {
+          const start = points[0];
+          const end = points[1];
+          const spanX = end.x - start.x;
+          const spanY = end.y - start.y;
+          const ratios = [0.125, 0.25, 0.333, 0.5, 1, 2, 3, 4, 8];
+          ctx.beginPath();
+          for (const ratio of ratios) {
+            const target = {
+              x: start.x + spanX,
+              y: start.y + spanY * ratio,
+            };
+            const segment = getRaySegment(start, target, cssWidth, cssHeight);
+            ctx.moveTo(segment[0].x, segment[0].y);
+            ctx.lineTo(segment[1].x, segment[1].y);
+          }
+          ctx.stroke();
+        } else if ((v === 'gannBox' || v === 'gannSquare' || v === 'gannSquareFixed') && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          const x = Math.min(p1.x, p2.x);
+          const y = Math.min(p1.y, p2.y);
+          let w = Math.abs(p2.x - p1.x);
+          let h = Math.abs(p2.y - p1.y);
+          if (v !== 'gannBox') {
+            const size = Math.min(w, h);
+            w = size;
+            h = size;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
+          ctx.strokeRect(x, y, w, h);
+
+          ctx.beginPath();
+          for (let i = 1; i < 8; i += 1) {
+            const tx = x + (w * i) / 8;
+            const ty = y + (h * i) / 8;
+            ctx.moveTo(tx, y);
+            ctx.lineTo(tx, y + h);
+            ctx.moveTo(x, ty);
+            ctx.lineTo(x + w, ty);
+          }
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + w, y + h);
+          ctx.moveTo(x + w, y);
+          ctx.lineTo(x, y + h);
+          ctx.stroke();
+        } else if (v === 'anchoredVwap' && points.length >= 1) {
+          const startIndex = nearestCandleIndex(transformedData.times, activeDrawing.anchors[0].time);
+          if (startIndex >= 0) {
+            let cumulativePV = 0;
+            let cumulativeVolume = 0;
+            let started = false;
+            let lastX = points[0].x;
+            let lastY = points[0].y;
+            ctx.beginPath();
+            for (let i = startIndex; i < transformedData.ohlcRows.length; i += 1) {
+              const row = transformedData.ohlcRows[i];
+              const x = chartRef.current?.timeScale().timeToCoordinate(row.time);
+              if (x == null) continue;
+              const volume = Math.max(1, row.volume || 1);
+              const typical = (row.high + row.low + row.close) / 3;
+              cumulativePV += typical * volume;
+              cumulativeVolume += volume;
+              const vwap = cumulativePV / cumulativeVolume;
+              const y = series.priceToCoordinate(vwap);
+              if (y == null) continue;
+              if (!started) {
+                ctx.moveTo(x, y);
+                started = true;
+              } else {
+                ctx.lineTo(x, y);
+              }
+              lastX = x;
+              lastY = y;
+            }
+            if (started) {
+              ctx.stroke();
+              drawText(ctx, activeDrawing, lastX + 6, lastY - 8, 'VWAP');
+            }
+          }
+        } else if ((v === 'priceRange' || v === 'dateRange' || v === 'dateAndPriceRange' || v === 'measure') && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          const x = Math.min(p1.x, p2.x);
+          const y = Math.min(p1.y, p2.y);
+          const w = Math.abs(p2.x - p1.x);
+          const h = Math.abs(p2.y - p1.y);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
+          ctx.strokeRect(x, y, w, h);
+
+          const a1 = activeDrawing.anchors[0];
+          const a2 = activeDrawing.anchors[1];
+          const dp = a2.price - a1.price;
+          const pct = a1.price !== 0 ? ((dp / a1.price) * 100).toFixed(2) : '0.00';
+          const bars = Math.abs(Math.round((a2.time - a1.time) / 86400));
+          const info = v === 'dateRange' ? `${bars} bars` : `${dp >= 0 ? '+' : ''}${dp.toFixed(2)} (${pct}%) ${bars}b`;
+          drawText(ctx, activeDrawing, x + 4, y - 8, info);
+        } else if (v === 'fixedRangeVolumeProfile' && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          const left = Math.min(p1.x, p2.x);
+          const right = Math.max(p1.x, p2.x);
+          const top = Math.min(p1.y, p2.y);
+          const bottom = Math.max(p1.y, p2.y);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.1);
+          ctx.fillRect(left, top, right - left, bottom - top);
+          ctx.restore();
+          ctx.strokeRect(left, top, right - left, bottom - top);
+
+          const startIdx = nearestCandleIndex(transformedData.times, activeDrawing.anchors[0].time);
+          const endIdx = nearestCandleIndex(transformedData.times, activeDrawing.anchors[1].time);
+          if (startIdx >= 0 && endIdx >= 0) {
+            const from = Math.max(0, Math.min(startIdx, endIdx));
+            const to = Math.min(transformedData.ohlcRows.length - 1, Math.max(startIdx, endIdx));
+            const rows = transformedData.ohlcRows.slice(from, to + 1);
+            const maxVolume = Math.max(1, ...rows.map((row) => row.volume || 0));
+            const sampleCount = Math.min(20, rows.length);
+            for (let i = 0; i < sampleCount; i += 1) {
+              const row = rows[Math.floor((i / sampleCount) * rows.length)] || rows[rows.length - 1];
+              if (!row) continue;
+              const y = top + ((bottom - top) * i) / sampleCount;
+              const h = Math.max(2, (bottom - top) / sampleCount - 1);
+              const w = Math.max(2, ((right - left) * (row.volume || 0)) / maxVolume);
+              ctx.fillRect(right - w, y, w, h);
+            }
+          }
+        } else if (v === 'anchoredVolumeProfile' && points.length >= 1) {
+          const anchor = points[0];
+          const profileWidth = Math.max(36, cssWidth * 0.08);
+          const profileHeight = Math.max(120, cssHeight * 0.36);
+          const left = Math.min(cssWidth - profileWidth - 4, anchor.x + 16);
+          const top = Math.max(4, anchor.y - profileHeight / 2);
+          const bins = 14;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
+          ctx.fillRect(left, top, profileWidth, profileHeight);
+          ctx.restore();
+          ctx.strokeRect(left, top, profileWidth, profileHeight);
+          for (let i = 0; i < bins; i += 1) {
+            const ratio = Math.abs(Math.sin((i / bins) * Math.PI * 1.8));
+            const barW = Math.max(3, profileWidth * ratio);
+            const y = top + (profileHeight * i) / bins;
+            const h = Math.max(2, profileHeight / bins - 1);
+            ctx.fillRect(left + profileWidth - barW, y, barW, h);
+          }
+          drawText(ctx, activeDrawing, left, top - 8, 'Vol profile');
+        } else if ((v === 'longPosition' || v === 'shortPosition' || v === 'positionForecast') && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          const left = Math.min(p1.x, p2.x);
+          const right = Math.max(p1.x, p2.x);
+          const isShort = v === 'shortPosition';
+          const entryY = p1.y;
+          const targetY = isShort ? Math.max(p1.y, p2.y) : Math.min(p1.y, p2.y);
+          const stopY = isShort ? Math.min(p1.y, p2.y) : Math.max(p1.y, p2.y);
+
+          const reward = Math.abs(targetY - entryY);
+          const risk = Math.abs(stopY - entryY);
+          const rr = risk > 0 ? reward / risk : 0;
+
+          const takeTop = Math.min(entryY, targetY);
+          const takeHeight = Math.abs(targetY - entryY);
+          const riskTop = Math.min(entryY, stopY);
+          const riskHeight = Math.abs(stopY - entryY);
+
+          if (v !== 'positionForecast') {
+            ctx.save();
+            ctx.fillStyle = isShort ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.16)';
+            ctx.fillRect(left, takeTop, right - left, takeHeight);
+            ctx.fillStyle = isShort ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.24)';
+            ctx.fillRect(left, riskTop, right - left, riskHeight);
+            ctx.restore();
+          } else {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
+            ctx.fillRect(left, Math.min(targetY, stopY), right - left, Math.abs(stopY - targetY));
+            ctx.restore();
+          }
+
+          ctx.beginPath();
+          ctx.moveTo(left, entryY);
+          ctx.lineTo(right, entryY);
+          ctx.moveTo(left, targetY);
+          ctx.lineTo(right, targetY);
+          ctx.moveTo(left, stopY);
+          ctx.lineTo(right, stopY);
+          ctx.stroke();
+
+          const label = v === 'positionForecast' ? 'Forecast' : isShort ? 'Short' : 'Long';
+          drawText(ctx, activeDrawing, right + 6, entryY - 8, `${label} RR ${rr.toFixed(2)}x`);
+        } else if (v === 'barPattern' && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          const width = Math.abs(p2.x - p1.x);
+          const dir = p2.y >= p1.y ? 1 : -1;
+          for (let i = 0; i < 6; i += 1) {
+            const x = p1.x + (width * i) / 6;
+            const h = 8 + (i % 3) * 5;
+            ctx.strokeRect(x - 2, p1.y - (h * dir), 4, h * dir);
+          }
+        } else if (v === 'ghostFeed' && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          for (let t = 0; t <= 1.4; t += 0.04) {
+            const x = p1.x + dx * t;
+            const y = p1.y + dy * t + Math.sin(t * Math.PI * 6) * 7;
+            ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        } else if (def.family === 'pattern') {
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          for (let i = 1; i < points.length; i += 1) {
+            ctx.lineTo(points[i].x, points[i].y);
+          }
+          ctx.stroke();
+
+          const labels = PATTERN_LABELS_BY_VARIANT[v] || [];
+          for (let i = 0; i < Math.min(labels.length, points.length); i += 1) {
+            drawText(ctx, activeDrawing, points[i].x + 4, points[i].y - 6, labels[i]);
+          }
         } else if (def.family === 'text') {
           const text = activeDrawing.text || activeDrawing.variant;
           drawText(ctx, activeDrawing, points[0].x + 4, points[0].y - 4, text);
@@ -761,6 +1174,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       getDrawingsCount: () => drawingsRef.current.length,
       getLastRenderAt: () => lastRenderAtRef.current,
       getLastDrawCommitAt: () => lastDrawCommitAtRef.current,
+      getHistoryLength: () => toolState.history.length,
       getDrawings: () => drawingsRef.current,
       getMagnetMode: () => magnetMode,
       pointerToDataPoint: (clientX: number, clientY: number, snap: boolean) =>
@@ -770,7 +1184,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     return () => {
       delete (window as unknown as Record<string, unknown>).__chartDebug;
     };
-  }, [crosshairSnapMode, drawingsRef, magnetMode, pointerToDataPoint]);
+  }, [crosshairSnapMode, drawingsRef, magnetMode, pointerToDataPoint, toolState.history.length]);
 
   useEffect(() => {
     renderOverlay();
@@ -881,9 +1295,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      if (!drawingActiveRef.current && !dragMoveRef.current) return;
+      if (!drawingActiveRef.current && !dragMoveRef.current && !dragAnchorMoveRef.current && !dragAnchor) return;
       cancelDraft();
       dragMoveRef.current = null;
+      dragAnchorMoveRef.current = null;
       draftPointerStartRef.current = null;
       setDragAnchor(null);
       renderOverlay();
@@ -891,7 +1306,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
     window.addEventListener('keydown', onEscape);
     return () => window.removeEventListener('keydown', onEscape);
-  }, [cancelDraft, drawingActiveRef, renderOverlay]);
+  }, [cancelDraft, dragAnchor, drawingActiveRef, renderOverlay]);
 
   useEffect(() => {
     return () => {
@@ -1015,6 +1430,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     clearTouchTooltip();
     draftPointerStartRef.current = null;
+    dragAnchorMoveRef.current = null;
     const freePoint = pointerToDataPoint(event.clientX, event.clientY, 'free', false) || fallbackPoint();
 
     if (cursorMode === 'eraser' && toolState.variant === 'none') {
@@ -1052,6 +1468,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - freePoint.time) < 86400 && Math.abs(a.price - freePoint.price) < Math.max(0.2, freePoint.price * 0.02));
           if (idx >= 0) {
             setDragAnchor({ drawingId: selected, anchorIndex: idx });
+            dragAnchorMoveRef.current = {
+              drawingId: selected,
+              anchorIndex: idx,
+              currentPoint: freePoint,
+              originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })),
+            };
           } else {
             dragMoveRef.current = { drawingId: selected, startPoint: freePoint, currentPoint: freePoint, originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })) };
           }
@@ -1094,7 +1516,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (result.kind === 'finalized') {
       draftPointerStartRef.current = null;
       const d = drawingsRef.current[drawingsRef.current.length - 1];
-      if (d) setSelectedDrawingId(d.id);
+      if (d) {
+        setSelectedDrawingId(d.id);
+        exitDrawingModeIfNeeded(d.variant);
+      }
     }
     renderOverlay();
     if (event.currentTarget.setPointerCapture) {
@@ -1121,17 +1546,42 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     }
 
     if (dragAnchor) {
-      updateDrawing(dragAnchor.drawingId, (drawing) => {
-        const next = [...drawing.anchors];
-        next[dragAnchor.anchorIndex] = point;
-        return { ...drawing, anchors: next };
-      }, false);
+      const move = dragAnchorMoveRef.current;
+      if (move && move.drawingId === dragAnchor.drawingId && move.anchorIndex === dragAnchor.anchorIndex) {
+        dragAnchorMoveRef.current = { ...move, currentPoint: point };
+      }
       renderOverlay();
       return;
     }
 
     if (!drawingActiveRef.current) return;
     updateDraft(point);
+    renderOverlay();
+  };
+
+  const onChartContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const point = pointerToDataPoint(event.clientX, event.clientY, 'free', false) || fallbackPoint();
+    if (!point) return;
+
+    const visibleRange = getVisibleTimeRange();
+    const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
+    const candidates = visibleIds ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id)) : drawingsRef.current;
+    const selected = selectNearestDrawingId(candidates, point);
+    if (!selected) return;
+
+    setSelectedDrawingId(selected);
+    const drawing = drawingsRef.current.find((item) => item.id === selected);
+    if (!drawing) {
+      renderOverlay();
+      return;
+    }
+
+    const definition = getToolDefinition(drawing.variant);
+    handleVariantSelect(definition?.category ?? 'lines', drawing.variant);
+    setOptions({ ...drawing.options });
+    setOptionsOpen(true);
+    setExpandedCategory(null);
     renderOverlay();
   };
 
@@ -1159,13 +1609,26 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         }
       }
       dragMoveRef.current = null;
+      dragAnchorMoveRef.current = null;
       draftPointerStartRef.current = null;
       renderOverlay();
       return;
     }
 
     if (dragAnchor) {
-      updateDrawing(dragAnchor.drawingId, (drawing) => ({ ...drawing }));
+      const move = dragAnchorMoveRef.current;
+      if (move && move.drawingId === dragAnchor.drawingId && move.anchorIndex === dragAnchor.anchorIndex) {
+        updateDrawing(move.drawingId, (drawing) => {
+          const next = move.originalAnchors.map((anchor) => ({ ...anchor }));
+          next[move.anchorIndex] = move.currentPoint;
+          const changed = next.some((anchor, index) => {
+            const current = drawing.anchors[index];
+            return !current || current.time !== anchor.time || current.price !== anchor.price;
+          });
+          return changed ? { ...drawing, anchors: next } : drawing;
+        });
+      }
+      dragAnchorMoveRef.current = null;
       setDragAnchor(null);
       draftPointerStartRef.current = null;
       renderOverlay();
@@ -1187,8 +1650,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     if (toolState.variant === 'zoom' && committed?.anchors[1]) {
       zoomToRange(committed.anchors[0].time, committed.anchors[1].time);
       removeDrawing(committed.id);
+      exitDrawingModeIfNeeded(committed.variant);
     } else if (committed) {
       setSelectedDrawingId(committed.id);
+      exitDrawingModeIfNeeded(committed.variant);
     }
     renderOverlay();
   };
@@ -1260,11 +1725,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   /* ── Standalone rail tool callbacks ───────────────────────── */
   const handleToggleMagnet = useCallback(() => {
-    setMagnetMode((prev) => {
-      const next = !prev;
-      window.localStorage.setItem('chart-magnet-mode', String(next));
-      return next;
-    });
+    setMagnetMode((prev) => !prev);
   }, []);
 
   const handleToggleKeepDrawing = useCallback(() => {
@@ -1279,24 +1740,22 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     setLockAll((prev) => {
       const next = !prev;
       window.localStorage.setItem('chart-lock-all', String(next));
-      for (const d of drawingsRef.current) {
-        updateDrawing(d.id, (drawing) => ({ ...drawing, locked: next, options: { ...drawing.options, locked: next } }));
-      }
+      setOptions({ locked: next });
+      updateAllDrawings((drawings) => drawings.map((drawing) => ({ ...drawing, locked: next, options: { ...drawing.options, locked: next } })));
       return next;
     });
-  }, [drawingsRef, updateDrawing]);
+  }, [setOptions, updateAllDrawings]);
 
   const handleToggleHideAll = useCallback(() => {
     setHideAll((prev) => {
       const next = !prev;
       window.localStorage.setItem('chart-hide-all', String(next));
-      for (const d of drawingsRef.current) {
-        updateDrawing(d.id, (drawing) => ({ ...drawing, visible: !next, options: { ...drawing.options, visible: !next } }));
-      }
+      setOptions({ visible: !next });
+      updateAllDrawings((drawings) => drawings.map((drawing) => ({ ...drawing, visible: !next, options: { ...drawing.options, visible: !next } })));
       renderOverlay();
       return next;
     });
-  }, [drawingsRef, renderOverlay, updateDrawing]);
+  }, [renderOverlay, setOptions, updateAllDrawings]);
 
   const handleZoomIn = useCallback(() => {
     const chart = chartRef.current;
@@ -1367,7 +1826,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           <div
             data-testid="chart-interaction-surface"
             className="relative min-h-0 flex-1 overflow-hidden"
-            onContextMenu={(event) => event.preventDefault()}
+            onContextMenu={onChartContextMenu}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -1422,7 +1881,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
                   const result = startDraft(pt, val);
                   if (result.kind === 'finalized') {
                     const d = drawingsRef.current[drawingsRef.current.length - 1];
-                    if (d) setSelectedDrawingId(d.id);
+                    if (d) {
+                      setSelectedDrawingId(d.id);
+                      exitDrawingModeIfNeeded(d.variant);
+                    }
                   }
                   renderOverlay();
                 }

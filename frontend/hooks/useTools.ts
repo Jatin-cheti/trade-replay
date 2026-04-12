@@ -117,6 +117,10 @@ export function useTools() {
     mutateDrawings((prev) => prev.map((item) => (item.id === id ? updater(item) : item)), commitHistory);
   }, [mutateDrawings]);
 
+  const updateAllDrawings = useCallback((updater: (drawings: Drawing[]) => Drawing[], commitHistory = true) => {
+    mutateDrawings((prev) => updater(prev), commitHistory);
+  }, [mutateDrawings]);
+
   const removeDrawing = useCallback((id: string) => {
     mutateDrawings((prev) => prev.filter((item) => item.id !== id));
   }, [mutateDrawings]);
@@ -170,6 +174,7 @@ export function useTools() {
     finalizeDraft,
     cancelDraft,
     updateDrawing,
+    updateAllDrawings,
     removeDrawing,
     clearDrawings,
     undo,

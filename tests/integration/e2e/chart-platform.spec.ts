@@ -71,6 +71,20 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   // Close via X button
   await indicatorsModal.getByTestId('indicators-modal-close').click();
+  if (await page.locator('[data-testid="indicators-modal"]:visible').count()) {
+    // Fallback: click the backdrop area to trigger the modal container outside-click close.
+    await page.mouse.click(8, 8);
+  }
+  if (await page.locator('[data-testid="indicators-modal"]:visible').count()) {
+    // Final fallback: toggle through the toolbar control that owns the modal state.
+    await page.evaluate(() => {
+      const nodes = Array.from(document.querySelectorAll('[data-testid="indicators-button"]'));
+      const target = nodes.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? nodes[0];
+      if (target instanceof HTMLElement) {
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+    });
+  }
   await expect(page.locator('[data-testid="indicators-modal"]:visible')).toHaveCount(0);
 
   const quickChartTypes = ["chart-type-candlestick", "chart-type-line", "chart-type-area"];

@@ -127,6 +127,26 @@ function pointToLineDistance(point: NormalizedPoint, start: NormalizedPoint, end
   return Math.abs(((point.x - start.x) * dy - (point.y - start.y) * dx) / span);
 }
 
+function pointToRectDistance(point: NormalizedPoint, a: NormalizedPoint, b: NormalizedPoint): number {
+  const left = Math.min(a.x, b.x);
+  const right = Math.max(a.x, b.x);
+  const top = Math.min(a.y, b.y);
+  const bottom = Math.max(a.y, b.y);
+
+  if (point.x >= left && point.x <= right && point.y >= top && point.y <= bottom) return 0;
+
+  const dx = point.x < left ? left - point.x : point.x > right ? point.x - right : 0;
+  const dy = point.y < top ? top - point.y : point.y > bottom ? point.y - bottom : 0;
+  return Math.hypot(dx, dy);
+}
+
+function pointToCircleDistance(point: NormalizedPoint, center: NormalizedPoint, edge: NormalizedPoint): number {
+  const radius = Math.max(1e-6, distance(center, edge));
+  const dist = distance(point, center);
+  if (dist <= radius) return 0;
+  return dist - radius;
+}
+
 function signedDistanceToLine(point: NormalizedPoint, start: NormalizedPoint, end: NormalizedPoint): number {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -151,6 +171,7 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
   const priceScale = Math.max(0.5, Math.abs(point.price) * 0.03);
   const normalizedPoint = normalizePoint(point, timeScale, priceScale);
   const anchors = drawing.anchors.map((anchor) => normalizePoint(anchor, timeScale, priceScale));
+  const definition = getToolDefinition(drawing.variant);
 
   if (!anchors.length) return Number.POSITIVE_INFINITY;
 
@@ -301,6 +322,60 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
       pointToRayDistance(normalizedPoint, upperStart, upperEnd),
       pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
     );
+  }
+
+  if (variant === 'fibCircles' && a && b) {
+    return pointToCircleDistance(normalizedPoint, a, b);
+  }
+
+  if (variant === 'fibTimeZone' && a && b) {
+    const spacing = Math.abs(b.x - a.x);
+    if (spacing > 1e-6) {
+      const sequence = [1, 2, 3, 5, 8, 13];
+      let best = Number.POSITIVE_INFINITY;
+      for (const n of sequence) {
+        best = Math.min(best, Math.abs(normalizedPoint.x - (a.x + spacing * n)));
+      }
+      return best;
+    }
+  }
+
+  if (variant === 'fibTrendTime' && a && b) {
+    const base = pointToSegmentDistance(normalizedPoint, a, b);
+    const spacing = Math.abs(b.x - a.x);
+    if (spacing > 1e-6) {
+      const sequence = [1, 2, 3, 5, 8];
+      let bestVertical = Number.POSITIVE_INFINITY;
+      for (const n of sequence) {
+        bestVertical = Math.min(bestVertical, Math.abs(normalizedPoint.x - (b.x + spacing * n)));
+      }
+      return Math.min(base, bestVertical);
+    }
+    return base;
+  }
+
+  if ((variant === 'gannBox' || variant === 'gannSquare' || variant === 'gannSquareFixed' || variant === 'fixedRangeVolumeProfile') && a && b) {
+    return pointToRectDistance(normalizedPoint, a, b);
+  }
+
+  if (variant === 'anchoredVolumeProfile' && a) {
+    const approxB = { x: a.x + 0.22, y: a.y + 0.4 };
+    return pointToRectDistance(normalizedPoint, { x: a.x, y: a.y - 0.4 }, approxB);
+  }
+
+  if (variant === 'anchoredVwap' && anchors.length >= 1) {
+    return distance(normalizedPoint, anchors[0]);
+  }
+
+  if (definition?.family === 'text') {
+    return distance(normalizedPoint, anchors[0]);
+  }
+
+  if ((definition?.family === 'shape' || definition?.family === 'position' || definition?.family === 'measure') && a && b) {
+    if (definition.behaviors?.shapeKind === 'circle') {
+      return pointToCircleDistance(normalizedPoint, a, b);
+    }
+    return pointToRectDistance(normalizedPoint, a, b);
   }
 
   return scorePolyline(normalizedPoint, anchors);
