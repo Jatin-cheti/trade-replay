@@ -140,7 +140,6 @@ async function rebuildSearchIndex(reason: string): Promise<void> {
         volume: 1,
         liquidityScore: 1,
       })
-      .sort({ priorityScore: -1, searchFrequency: -1, popularity: -1 })
       .limit(INDEX_DOC_LIMIT)
       .lean<IndexedRow[]>();
 
