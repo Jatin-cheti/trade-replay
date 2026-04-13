@@ -6,9 +6,9 @@
         "expectedTopFullSymbols": [
           "NSE:RELIANCE",
           "BSE:RELIANCE",
-          "COINGECKO:REL",
-          "NASDAQ:RELL",
-          "SEC:RELL"
+          "NSE:RELCHEMQ",
+          "NSE:RELINFRA",
+          "NSE:RELIABLE"
         ],
         "rejectDerivativeInTop": 5
       },
@@ -26,11 +26,11 @@
       {
         "query": "btc",
         "expectedTopFullSymbols": [
-          "NYSE:BTC",
-          "COINGECKO:BTC",
+          "NASDAQ:BTCS",
+          "NYSE:BTCI",
           "CRYPTO:BTC",
-          "SEC:BTC",
-          "COINGECKO:BTC.B"
+          "NYSE:BTC",
+          "SEC:BTC"
         ],
         "rejectDerivativeInTop": 5
       }
