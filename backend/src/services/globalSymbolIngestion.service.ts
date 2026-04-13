@@ -91,6 +91,8 @@ async function upsertGlobalSymbols(rows: Array<GlobalSymbolCandidate & { fullSym
 
   const symbolOps = rows.map((row) => {
     const domain = candidateDomain(row);
+    const marketCap = typeof row.metadata?.marketCap === "number" ? row.metadata.marketCap : 0;
+    const volume = typeof row.metadata?.volume === "number" ? row.metadata.volume : 0;
     const update: { $setOnInsert: Record<string, unknown>; $set?: Record<string, unknown> } = {
       $setOnInsert: {
         symbol: row.symbol,
@@ -106,6 +108,9 @@ async function upsertGlobalSymbols(rows: Array<GlobalSymbolCandidate & { fullSym
         searchFrequency: 0,
         userUsage: 0,
         priorityScore: 0,
+        marketCap,
+        volume,
+        liquidityScore: 0,
         searchPrefixes: [],
         baseSymbol: "",
         source: row.source,

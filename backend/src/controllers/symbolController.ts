@@ -8,6 +8,7 @@ import { MissingLogoModel } from "../models/MissingLogo";
 
 const searchSchema = z.object({
   query: z.string().default(""),
+  q: z.string().optional(),
   type: z.string().optional(),
   country: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -38,8 +39,9 @@ export function createSymbolController() {
       try {
         const resolvedType = parsed.data.type ?? mapCategoryToSymbolType(parsed.data.category);
         const userId = (req as AuthenticatedRequest).user?.userId;
+        const effectiveQuery = parsed.data.q ?? parsed.data.query;
         const payload = await searchSymbols({
-          query: parsed.data.query,
+          query: effectiveQuery,
           type: resolvedType,
           country: parsed.data.country,
           limit: parsed.data.limit,

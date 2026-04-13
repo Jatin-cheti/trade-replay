@@ -8,6 +8,21 @@ import { FutureContractsView } from "@/components/simulation/FutureContractsView
 
 const FALLBACK_ICON = "/icons/exchange/default.svg";
 
+function formatCompactNumber(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "--";
+  if (value >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
+  return value.toFixed(0);
+}
+
+function formatSigned(value?: number, digits = 2): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)}`;
+}
+
 interface SymbolSearchModalProps {
   open: boolean;
   selectedSymbol: string;
@@ -258,6 +273,14 @@ export default function SymbolSearchModal({
 
           <div ref={listContainerRef} className="mt-3 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
             {rows.map((item) => (
+              (() => {
+                const isPositive = (item.changePercent ?? 0) >= 0;
+                const changeClass = isPositive ? "text-profit" : "text-loss";
+                const priceText = typeof item.price === "number" && Number.isFinite(item.price)
+                  ? item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                  : "--";
+
+                return (
               <button
                 key={`${item.category}-${item.ticker}-${item.exchange}`}
                 data-testid="symbol-result-row"
@@ -288,11 +311,22 @@ export default function SymbolSearchModal({
                   </div>
                 </div>
 
-                <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                  <AssetAvatar src={item.exchangeLogoUrl || item.exchangeIcon} label={item.exchange} className="h-4 w-4 rounded-sm object-cover" />
-                  <span className="font-medium text-foreground">{item.exchange}</span>
+                <div className="flex min-w-[190px] flex-col items-end gap-0.5 whitespace-nowrap text-xs text-muted-foreground">
+                  <div className="inline-flex items-center gap-1.5">
+                    <AssetAvatar src={item.exchangeLogoUrl || item.exchangeIcon} label={item.exchange} className="h-4 w-4 rounded-sm object-cover" />
+                    <span className="font-medium text-foreground">{item.exchange}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{priceText}</p>
+                  <p className={`text-[11px] font-semibold ${changeClass}`}>
+                    {formatSigned(item.changePercent)}% • P&L {formatSigned(item.pnl ?? item.change)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Vol {formatCompactNumber(item.volume)} • MC {formatCompactNumber(item.marketCap)} • LQ {(item.liquidityScore ?? 0).toFixed(1)}
+                  </p>
                 </div>
               </button>
+                );
+              })()
             ))}
 
             {!loading && rows.length === 0 ? (

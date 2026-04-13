@@ -69,6 +69,8 @@ async function upsertRows(rows: IngestRow[]): Promise<number> {
         source: row.source,
         iconUrl: row.iconUrl || "",
         companyDomain: normalizeDomain(row.companyDomain),
+        marketCap: typeof row.metadata?.marketCap === "number" ? row.metadata.marketCap : 0,
+        volume: typeof row.metadata?.volume === "number" ? row.metadata.volume : 0,
         metadata: row.metadata || {},
       };
     })
@@ -129,6 +131,9 @@ async function upsertRows(rows: IngestRow[]): Promise<number> {
             searchFrequency: 0,
             userUsage: 0,
             priorityScore: 0,
+            marketCap: row.marketCap,
+            volume: row.volume,
+            liquidityScore: 0,
             searchPrefixes: [],
             baseSymbol: row.symbol,
             source: row.source,

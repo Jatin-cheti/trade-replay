@@ -29,6 +29,13 @@ export interface AssetSearchItem {
   logoUrl: string;
   displayIconUrl?: string;
   isFallback?: boolean;
+  price?: number;
+  change?: number;
+  changePercent?: number;
+  pnl?: number;
+  volume?: number;
+  marketCap?: number;
+  liquidityScore?: number;
   source: string;
   futureCategory?: string;
   economyCategory?: string;

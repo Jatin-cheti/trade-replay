@@ -5,7 +5,7 @@ import { env } from "../config/env";
 
 export type SymbolType = "stock" | "crypto" | "forex" | "index";
 export const SUPPORTED_TYPES: SymbolType[] = ["stock", "crypto", "forex", "index"];
-export const CACHE_TTL_SECONDS = 60;
+export const CACHE_TTL_SECONDS = 10;
 export const SEARCH_PRECACHE_QUERIES = ["A", "S", "B", "N", "US", "IN", "BTC", "USD", "EUR", "NASDAQ", "NSE"];
 
 export type StableCursor = {

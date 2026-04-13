@@ -23,6 +23,7 @@ import { createAlertsRoutes } from "./routes/alertsRoutes";
 import { createDatafeedRoutes } from "./routes/datafeedRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
+import { createSymbolController } from "./controllers/symbolController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
 import { warmSymbolSearchCache } from "./services/symbol.service";
@@ -37,6 +38,7 @@ import { requestLogger } from "./middlewares/requestLogger";
 export function createApp() {
   const app = express();
   const httpServer = createServer(app);
+  const symbolController = createSymbolController();
   let lastCompletedCount = 0;
   let lastMetricsSampleAt = Date.now();
   app.set("trust proxy", 1);
@@ -299,6 +301,7 @@ export function createApp() {
   app.use("/api", apiLimiter);
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
+  app.get("/api/search", verifyToken, symbolController.search);
 
   app.use("/api/auth", authRoutes);
   app.use("/api/sim", createSimulationRoutes(engine));

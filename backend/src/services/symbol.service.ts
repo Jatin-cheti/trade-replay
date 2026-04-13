@@ -7,6 +7,7 @@ import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
 import { clusterScopedKey, stableHash } from "./redisKey.service";
 import { recordSymbolIconResult, recordSymbolSearchLatency } from "./metrics.service";
 import { intelligentSearch, trackRecentSymbol, type ScoredSymbol } from "./searchIntelligence.service";
+import { getLiveQuotes } from "./liveMarketService";
 
 import {
   type SymbolType,
@@ -38,6 +39,15 @@ export interface SymbolRegistryItem {
   s3Icon?: string;
   popularity: number;
   searchFrequency?: number;
+  userUsage?: number;
+  priorityScore?: number;
+  marketCap?: number;
+  volume?: number;
+  liquidityScore?: number;
+  price?: number;
+  change?: number;
+  changePercent?: number;
+  pnl?: number;
   isFallback?: boolean;
   realIconUrl?: string;
   fallbackIconUrl?: string;
@@ -56,6 +66,48 @@ export interface SymbolSearchResult {
 }
 
 type SymbolRegistryRow = SymbolRegistryItem & { _id: Types.ObjectId };
+
+function estimateMarketCap(item: SymbolRegistryItem): number {
+  if ((item.marketCap ?? 0) > 0) return item.marketCap as number;
+  return Math.max(0,
+    ((item.priorityScore ?? 0) * 5_000_000)
+    + ((item.searchFrequency ?? 0) * 250_000)
+    + (item.popularity * 100_000),
+  );
+}
+
+function computeLiquidityScore(item: SymbolRegistryItem, marketCap: number, volume: number): number {
+  if ((item.liquidityScore ?? 0) > 0) return item.liquidityScore as number;
+  const marketComponent = marketCap > 0 ? Math.log10(marketCap + 1) * 8 : 0;
+  const volumeComponent = volume > 0 ? Math.log10(volume + 1) * 12 : 0;
+  const behaviorComponent = ((item.searchFrequency ?? 0) * 0.5) + ((item.userUsage ?? 0) * 0.3);
+  return Number((marketComponent + volumeComponent + behaviorComponent).toFixed(3));
+}
+
+function enrichWithLiveQuotes(items: SymbolRegistryItem[]): SymbolRegistryItem[] {
+  if (!items.length) return items;
+
+  const quotePayload = getLiveQuotes({ symbols: items.map((item) => item.symbol) });
+
+  return items.map((item) => {
+    const symbolKey = item.symbol.toUpperCase();
+    const quote = quotePayload.quotes[symbolKey];
+    const volume = quote?.volume ?? item.volume ?? 0;
+    const marketCap = estimateMarketCap(item);
+    const liquidityScore = computeLiquidityScore(item, marketCap, volume);
+
+    return {
+      ...item,
+      marketCap,
+      volume,
+      liquidityScore,
+      price: quote?.price ?? item.price ?? 0,
+      change: quote?.change ?? item.change ?? 0,
+      changePercent: quote?.changePercent ?? item.changePercent ?? 0,
+      pnl: quote?.change ?? item.pnl ?? 0,
+    };
+  });
+}
 
 export async function searchSymbols(params: {
   query: string;
@@ -111,6 +163,11 @@ export async function searchSymbols(params: {
         s3Icon: item.s3Icon,
         popularity: item.popularity,
         searchFrequency: item.searchFrequency,
+        userUsage: item.userUsage,
+        priorityScore: item.priorityScore,
+        marketCap: item.marketCap,
+        volume: item.volume,
+        liquidityScore: item.liquidityScore,
         realIconUrl,
         fallbackIconUrl: fallbackIcon,
         isFallback,
@@ -118,8 +175,10 @@ export async function searchSymbols(params: {
       };
     });
 
+    const enrichedSmartItems = enrichWithLiveQuotes(smartItems);
+
     const smartResponse: SymbolSearchResult = {
-      items: smartItems,
+      items: enrichedSmartItems,
       total: smartResult.total,
       limit,
       offset: 0,
@@ -191,6 +250,11 @@ export async function searchSymbols(params: {
         s3Icon: 1,
         popularity: 1,
         searchFrequency: 1,
+        userUsage: 1,
+        priorityScore: 1,
+        marketCap: 1,
+        volume: 1,
+        liquidityScore: 1,
         createdAt: 1,
       })
       .sort({ createdAt: -1, _id: -1 })
@@ -211,7 +275,7 @@ export async function searchSymbols(params: {
         .select({
           symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1, type: 1,
           currency: 1, iconUrl: 1, companyDomain: 1, s3Icon: 1, popularity: 1,
-          searchFrequency: 1, priorityScore: 1, createdAt: 1,
+          searchFrequency: 1, userUsage: 1, priorityScore: 1, marketCap: 1, volume: 1, liquidityScore: 1, createdAt: 1,
         })
         .sort({ priorityScore: -1, createdAt: -1 })
         .limit(5)
@@ -252,6 +316,8 @@ export async function searchSymbols(params: {
       nextCursor,
     };
   });
+
+  response.items = enrichWithLiveQuotes(response.items);
 
   if (!params.skipLogoEnrichment && isRedisReady()) {
     enqueueSymbolLogoEnrichmentBatch(response.items.slice(0, 20));
@@ -405,6 +471,13 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
     displayIconUrl,
     isFallback,
     source: "symbol-registry",
+    price: symbol.price ?? 0,
+    change: symbol.change ?? 0,
+    changePercent: symbol.changePercent ?? 0,
+    pnl: symbol.pnl ?? symbol.change ?? 0,
+    volume: symbol.volume ?? 0,
+    marketCap: symbol.marketCap ?? 0,
+    liquidityScore: symbol.liquidityScore ?? 0,
   };
 }
 
@@ -422,6 +495,9 @@ const PRIORITY_SCORE_PIPELINE = [
               0,
             ],
           },
+          { $divide: [{ $ifNull: ["$marketCap", 0] }, 10000000000] },
+          { $divide: [{ $ifNull: ["$volume", 0] }, 1000000] },
+          { $multiply: [{ $ifNull: ["$liquidityScore", 0] }, 0.8] },
         ],
       },
     },

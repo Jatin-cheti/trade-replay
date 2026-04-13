@@ -52,6 +52,30 @@ const EXCHANGE_BOOST: Record<string, Record<string, number>> = {
   GLOBAL: { NASDAQ: 10, NYSE: 10, NSE: 5 },
 };
 
+const BLUECHIP_BOOST: Record<string, number> = {
+  RELIANCE: 85,
+  HDFCBANK: 82,
+  HDFC: 78,
+  ICICIBANK: 74,
+  SBIN: 72,
+  INFY: 70,
+  TCS: 70,
+  AAPL: 74,
+  MSFT: 74,
+  GOOG: 70,
+  GOOGL: 70,
+  AMZN: 68,
+  TSLA: 68,
+  NVDA: 68,
+  META: 64,
+};
+
+const EXCHANGE_PENALTY: Record<string, number> = {
+  OPT: -80,
+  DERIV: -70,
+  CFD: -60,
+};
+
 // --- recent symbols (Redis-backed) ---
 
 const RECENT_CAP = 20;
@@ -126,7 +150,11 @@ interface ScoredSymbol {
   s3Icon: string;
   popularity: number;
   searchFrequency: number;
+  userUsage: number;
   priorityScore: number;
+  marketCap: number;
+  volume: number;
+  liquidityScore: number;
   baseSymbol: string;
   _score: number;
   _matchType: "exact" | "prefix" | "fuzzy" | "name" | "sector";
@@ -139,28 +167,43 @@ export type { ScoredSymbol };
 function computeRelevanceScore(opts: {
   matchType: "exact" | "prefix" | "fuzzy" | "name" | "sector";
   fuzzyDistance?: number;
+  marketCap: number;
+  volume: number;
+  liquidityScore: number;
   priorityScore: number;
   exchangeBoost: number;
-  recencyBoost: number;
-  watchlistBoost: number;
+  exchangePenalty: number;
+  userHistoryBoost: number;
+  brandBoost: number;
 }): number {
   const matchWeights: Record<string, number> = {
-    exact: 100,
-    prefix: 50,
-    name: 20,
-    fuzzy: 30,
-    sector: 15,
+    exact: 220,
+    prefix: 120,
+    name: 45,
+    fuzzy: 35,
+    sector: 25,
   };
   const matchScore = matchWeights[opts.matchType] ?? 0;
-  const fuzzyPenalty = opts.fuzzyDistance ? opts.fuzzyDistance * 10 : 0;
+  const fuzzyPenalty = opts.fuzzyDistance ? opts.fuzzyDistance * 8 : 0;
+
+  const marketCapWeight = opts.marketCap > 0 ? Math.log10(opts.marketCap + 1) * 6 : 0;
+  const volumeWeight = opts.volume > 0 ? Math.log10(opts.volume + 1) * 4 : 0;
+  const liquidityWeight = opts.liquidityScore > 0 ? Math.min(120, opts.liquidityScore) * 0.8 : 0;
+  const fallbackPriorityWeight = (opts.marketCap <= 0 && opts.volume <= 0 && opts.liquidityScore <= 0)
+    ? opts.priorityScore * 0.35
+    : opts.priorityScore * 0.12;
 
   return (
     matchScore
     - fuzzyPenalty
-    + opts.priorityScore
+    + marketCapWeight
+    + volumeWeight
+    + liquidityWeight
+    + fallbackPriorityWeight
     + opts.exchangeBoost
-    + opts.recencyBoost
-    + opts.watchlistBoost
+    + opts.exchangePenalty
+    + opts.userHistoryBoost
+    + opts.brandBoost
   );
 }
 
@@ -202,7 +245,11 @@ const SELECT_FIELDS = {
   s3Icon: 1,
   popularity: 1,
   searchFrequency: 1,
+  userUsage: 1,
   priorityScore: 1,
+  marketCap: 1,
+  volume: 1,
+  liquidityScore: 1,
   baseSymbol: 1,
   createdAt: 1,
 };
@@ -221,7 +268,11 @@ type RawRow = {
   s3Icon: string;
   popularity: number;
   searchFrequency: number;
+  userUsage: number;
   priorityScore: number;
+  marketCap: number;
+  volume: number;
+  liquidityScore: number;
   baseSymbol: string;
   createdAt: Date;
 };
@@ -302,6 +353,10 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
         iconUrl: row.iconUrl || "",
         companyDomain: row.companyDomain || "",
         s3Icon: row.s3Icon || "",
+        userUsage: row.userUsage || 0,
+        marketCap: row.marketCap || 0,
+        volume: row.volume || 0,
+        liquidityScore: row.liquidityScore || 0,
         baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
         _score: 0,
         _matchType: matchType,
@@ -334,6 +389,10 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
               iconUrl: row.iconUrl || "",
               companyDomain: row.companyDomain || "",
               s3Icon: row.s3Icon || "",
+              userUsage: row.userUsage || 0,
+              marketCap: row.marketCap || 0,
+              volume: row.volume || 0,
+              liquidityScore: row.liquidityScore || 0,
               baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
               _score: 0,
               _matchType: "fuzzy",
@@ -373,6 +432,10 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
           iconUrl: row.iconUrl || "",
           companyDomain: row.companyDomain || "",
           s3Icon: row.s3Icon || "",
+          userUsage: row.userUsage || 0,
+          marketCap: row.marketCap || 0,
+          volume: row.volume || 0,
+          liquidityScore: row.liquidityScore || 0,
           baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
           _score: 0,
           _matchType: "sector",
@@ -388,16 +451,23 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     const recentIndex = recentSymbols.indexOf(item.fullSymbol);
     const recencyBoost = recentIndex >= 0 ? 40 / (1 + recentIndex) : 0;
     const watchlistBoost = watchlist.has(item.fullSymbol) ? 60 : 0;
+    const userHistoryBoost = recencyBoost + watchlistBoost;
     const exchangeBoost = exchangeBoosts[item.exchange] ?? 0;
+    const exchangePenalty = EXCHANGE_PENALTY[item.exchange] ?? 0;
+    const brandBoost = BLUECHIP_BOOST[item.symbol] ?? BLUECHIP_BOOST[item.baseSymbol] ?? 0;
     const fuzzyDist = item._matchType === "fuzzy" ? levenshtein.get(upperQuery, item.symbol) : 0;
 
     item._score = computeRelevanceScore({
       matchType: item._matchType,
       fuzzyDistance: fuzzyDist,
+      marketCap: item.marketCap || 0,
+      volume: item.volume || 0,
+      liquidityScore: item.liquidityScore || 0,
       priorityScore: item.priorityScore,
       exchangeBoost,
-      recencyBoost,
-      watchlistBoost,
+      exchangePenalty,
+      userHistoryBoost,
+      brandBoost,
     });
   }
 
