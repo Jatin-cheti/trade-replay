@@ -76,7 +76,10 @@ async function runCase(caseItem: SnapshotCase): Promise<void> {
 
 async function main(): Promise<void> {
   const snapshot = loadSnapshot();
-  const envKey = (process.env.APP_ENV || "").toLowerCase() === "production" ? "production" : "default";
+  const snapshotEnvOverride = (process.env.RANKING_SNAPSHOT_ENV || "").toLowerCase();
+  const isProductionLike = (process.env.APP_ENV || "").toLowerCase() === "production"
+    || (process.env.MONGO_URI || "").includes("mongodb+srv");
+  const envKey = snapshotEnvOverride || (isProductionLike ? "production" : "default");
   const cases = snapshot.casesByEnv?.[envKey] ?? snapshot.casesByEnv?.default;
 
   if (!Array.isArray(cases) || cases.length === 0) {
