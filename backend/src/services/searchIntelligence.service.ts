@@ -78,11 +78,11 @@ const EXCHANGE_PENALTY: Record<string, number> = {
 };
 
 const TOP_SYMBOLS_PRIORITY_LIST: Record<string, number> = {
-  RELIANCE: 16,
-  TCS: 14,
-  HDFCBANK: 16,
-  INFY: 13,
-  ICICIBANK: 13,
+  RELIANCE: 42,
+  TCS: 35,
+  HDFCBANK: 42,
+  INFY: 32,
+  ICICIBANK: 32,
 };
 
 const PERSONALIZATION_MAX_INFLUENCE = 0.12;
