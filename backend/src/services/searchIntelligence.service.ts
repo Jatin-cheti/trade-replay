@@ -148,6 +148,8 @@ interface ScoredSymbol {
   iconUrl: string;
   companyDomain: string;
   s3Icon: string;
+  source: string;
+  isSynthetic: boolean;
   popularity: number;
   searchFrequency: number;
   userUsage: number;
@@ -156,6 +158,8 @@ interface ScoredSymbol {
   volume: number;
   liquidityScore: number;
   baseSymbol: string;
+  _symbolClass: "stock" | "etf" | "crypto" | "forex" | "derivative" | "crypto_pair";
+  _isDerivative: boolean;
   _score: number;
   _matchType: "exact" | "prefix" | "fuzzy" | "name" | "sector";
   _id: Types.ObjectId;
@@ -173,8 +177,10 @@ function computeRelevanceScore(opts: {
   priorityScore: number;
   exchangeBoost: number;
   exchangePenalty: number;
+  derivativeMultiplier: number;
   userHistoryBoost: number;
   brandBoost: number;
+  baseSymbolBoost: number;
 }): number {
   const matchWeights: Record<string, number> = {
     exact: 220,
@@ -193,7 +199,7 @@ function computeRelevanceScore(opts: {
     ? opts.priorityScore * 0.35
     : opts.priorityScore * 0.12;
 
-  return (
+  const rawScore = (
     matchScore
     - fuzzyPenalty
     + marketCapWeight
@@ -204,7 +210,54 @@ function computeRelevanceScore(opts: {
     + opts.exchangePenalty
     + opts.userHistoryBoost
     + opts.brandBoost
+    + opts.baseSymbolBoost
   );
+
+  return rawScore * opts.derivativeMultiplier;
+}
+
+function classifySymbol(item: Pick<ScoredSymbol, "symbol" | "name" | "exchange" | "type" | "source" | "isSynthetic">): {
+  symbolClass: "stock" | "etf" | "crypto" | "forex" | "derivative" | "crypto_pair";
+  isDerivative: boolean;
+  isSynthetic: boolean;
+} {
+  const symbol = item.symbol.toUpperCase();
+  const exchange = item.exchange.toUpperCase();
+  const name = item.name.toUpperCase();
+  const source = item.source.toLowerCase();
+  const synthetic = Boolean(item.isSynthetic) || source === "synthetic-derivatives";
+
+  const derivativeLike =
+    synthetic
+    || exchange === "OPT"
+    || exchange === "DERIV"
+    || exchange === "CFD"
+    || symbol.includes("-PERP")
+    || symbol.includes("-FUT")
+    || /-F-\d{6}/.test(symbol)
+    || /-\d{6}-[CP]-/.test(symbol);
+
+  if (derivativeLike) {
+    return { symbolClass: "derivative", isDerivative: true, isSynthetic: synthetic };
+  }
+
+  if ((item.type || "").toLowerCase() === "crypto" && (symbol.includes("/") || name.includes("/"))) {
+    return { symbolClass: "crypto_pair", isDerivative: false, isSynthetic: synthetic };
+  }
+
+  if ((item.type || "").toLowerCase() === "crypto") {
+    return { symbolClass: "crypto", isDerivative: false, isSynthetic: synthetic };
+  }
+
+  if ((item.type || "").toLowerCase() === "forex") {
+    return { symbolClass: "forex", isDerivative: false, isSynthetic: synthetic };
+  }
+
+  if ((item.type || "").toLowerCase() === "stock" && /\bETF\b|\bTRUST\b|\bINDEX FUND\b/.test(name)) {
+    return { symbolClass: "etf", isDerivative: false, isSynthetic: synthetic };
+  }
+
+  return { symbolClass: "stock", isDerivative: false, isSynthetic: synthetic };
 }
 
 // --- main intelligent search ---
@@ -243,6 +296,8 @@ const SELECT_FIELDS = {
   iconUrl: 1,
   companyDomain: 1,
   s3Icon: 1,
+  source: 1,
+  isSynthetic: 1,
   popularity: 1,
   searchFrequency: 1,
   userUsage: 1,
@@ -266,6 +321,8 @@ type RawRow = {
   iconUrl: string;
   companyDomain: string;
   s3Icon: string;
+  source: string;
+  isSynthetic: boolean;
   popularity: number;
   searchFrequency: number;
   userUsage: number;
@@ -283,7 +340,7 @@ function escapeRegex(value: string): string {
 
 export async function intelligentSearch(params: IntelligentSearchParams): Promise<IntelligentSearchResult> {
   const query = params.query.trim();
-  const limit = Math.max(1, Math.min(100, params.limit ?? 50));
+  const limit = Math.max(1, Math.min(30, params.limit ?? 30));
   const upperQuery = query.toUpperCase();
 
   if (!query) {
@@ -301,7 +358,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
   const typeFilter: FilterQuery<SymbolDocument> = {};
   if (params.type) {
     const t = params.type.toLowerCase();
-    if (["stock", "crypto", "forex", "index"].includes(t)) typeFilter.type = t;
+    if (["stock", "etf", "crypto", "forex", "index", "derivative"].includes(t)) typeFilter.type = t;
   }
   if (params.country) typeFilter.country = params.country.toUpperCase();
 
@@ -353,11 +410,15 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
         iconUrl: row.iconUrl || "",
         companyDomain: row.companyDomain || "",
         s3Icon: row.s3Icon || "",
+        source: row.source || "",
+        isSynthetic: Boolean(row.isSynthetic),
         userUsage: row.userUsage || 0,
         marketCap: row.marketCap || 0,
         volume: row.volume || 0,
         liquidityScore: row.liquidityScore || 0,
         baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
+        _symbolClass: "stock",
+        _isDerivative: false,
         _score: 0,
         _matchType: matchType,
       });
@@ -389,11 +450,15 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
               iconUrl: row.iconUrl || "",
               companyDomain: row.companyDomain || "",
               s3Icon: row.s3Icon || "",
+              source: row.source || "",
+              isSynthetic: Boolean(row.isSynthetic),
               userUsage: row.userUsage || 0,
               marketCap: row.marketCap || 0,
               volume: row.volume || 0,
               liquidityScore: row.liquidityScore || 0,
               baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
+              _symbolClass: "stock",
+              _isDerivative: false,
               _score: 0,
               _matchType: "fuzzy",
             });
@@ -432,11 +497,15 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
           iconUrl: row.iconUrl || "",
           companyDomain: row.companyDomain || "",
           s3Icon: row.s3Icon || "",
+          source: row.source || "",
+          isSynthetic: Boolean(row.isSynthetic),
           userUsage: row.userUsage || 0,
           marketCap: row.marketCap || 0,
           volume: row.volume || 0,
           liquidityScore: row.liquidityScore || 0,
           baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
+          _symbolClass: "stock",
+          _isDerivative: false,
           _score: 0,
           _matchType: "sector",
         });
@@ -445,7 +514,43 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
   }
 
   // PHASE 6: Score everything
-  const allItems = Array.from(seen.values());
+  let allItems = Array.from(seen.values());
+
+  for (const item of allItems) {
+    const klass = classifySymbol(item);
+    item._symbolClass = klass.symbolClass;
+    item._isDerivative = klass.isDerivative;
+    item.isSynthetic = klass.isSynthetic;
+  }
+
+  if (query.length < 3) {
+    const strict = allItems.filter((item) => {
+      if (item._isDerivative || item.isSynthetic) return false;
+      if (item._symbolClass === "stock") return true;
+      if (item._symbolClass === "etf") {
+        return (item.liquidityScore || 0) >= 30 || (item.volume || 0) >= 100000;
+      }
+      return false;
+    });
+
+    if (strict.length > 0) {
+      allItems = strict;
+    } else {
+      allItems = allItems.filter((item) => !item._isDerivative);
+    }
+  }
+
+  // If a real/base listing exists for a base symbol, hide derivative variants for that base.
+  const basesWithRealListing = new Set(
+    allItems
+      .filter((item) => !item._isDerivative && !item.isSynthetic)
+      .map((item) => item.baseSymbol || item.symbol),
+  );
+  allItems = allItems.filter((item) => {
+    if (!item._isDerivative) return true;
+    const base = item.baseSymbol || item.symbol;
+    return !basesWithRealListing.has(base);
+  });
 
   for (const item of allItems) {
     const recentIndex = recentSymbols.indexOf(item.fullSymbol);
@@ -456,6 +561,8 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     const exchangePenalty = EXCHANGE_PENALTY[item.exchange] ?? 0;
     const brandBoost = BLUECHIP_BOOST[item.symbol] ?? BLUECHIP_BOOST[item.baseSymbol] ?? 0;
     const fuzzyDist = item._matchType === "fuzzy" ? levenshtein.get(upperQuery, item.symbol) : 0;
+    const derivativeMultiplier = item._isDerivative ? 0.2 : 1;
+    const baseSymbolBoost = item.symbol === item.baseSymbol ? 24 : 0;
 
     item._score = computeRelevanceScore({
       matchType: item._matchType,
@@ -466,13 +573,43 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
       priorityScore: item.priorityScore,
       exchangeBoost,
       exchangePenalty,
+      derivativeMultiplier,
       userHistoryBoost,
       brandBoost,
+      baseSymbolBoost,
     });
   }
 
-  // PHASE 7: Sort and cluster
+  // PHASE 7: Sort, group by base symbol, and keep base symbol first.
   allItems.sort((a, b) => b._score - a._score);
+
+  const groupedByBase = new Map<string, ScoredSymbol[]>();
+  for (const item of allItems) {
+    const base = item.baseSymbol || item.symbol;
+    const group = groupedByBase.get(base) ?? [];
+    group.push(item);
+    groupedByBase.set(base, group);
+  }
+
+  const orderedGroups = Array.from(groupedByBase.entries()).sort((left, right) => {
+    const leftTop = Math.max(...left[1].map((item) => item._score));
+    const rightTop = Math.max(...right[1].map((item) => item._score));
+    return rightTop - leftTop;
+  });
+
+  const flattened: ScoredSymbol[] = [];
+  for (const [, group] of orderedGroups) {
+    group.sort((a, b) => {
+      const aBase = a.symbol === a.baseSymbol ? 1 : 0;
+      const bBase = b.symbol === b.baseSymbol ? 1 : 0;
+      if (aBase !== bBase) return bBase - aBase;
+      if (a._isDerivative !== b._isDerivative) return Number(a._isDerivative) - Number(b._isDerivative);
+      return b._score - a._score;
+    });
+    flattened.push(...group);
+  }
+
+  allItems = flattened;
 
   const clusters: Record<string, ScoredSymbol[]> = {};
   for (const item of allItems) {

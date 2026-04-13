@@ -111,6 +111,7 @@ async function upsertGlobalSymbols(rows: Array<GlobalSymbolCandidate & { fullSym
         marketCap,
         volume,
         liquidityScore: 0,
+        isSynthetic: false,
         searchPrefixes: [],
         baseSymbol: "",
         source: row.source,

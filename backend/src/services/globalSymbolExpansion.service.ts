@@ -27,7 +27,7 @@ type IngestRow = {
   symbol: string;
   exchange: string;
   name: string;
-  type: "stock" | "crypto" | "forex" | "index";
+  type: "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
   country: string;
   currency: string;
   source: string;
@@ -71,6 +71,7 @@ async function upsertRows(rows: IngestRow[]): Promise<number> {
         companyDomain: normalizeDomain(row.companyDomain),
         marketCap: typeof row.metadata?.marketCap === "number" ? row.metadata.marketCap : 0,
         volume: typeof row.metadata?.volume === "number" ? row.metadata.volume : 0,
+        isSynthetic: row.source === "synthetic-derivatives",
         metadata: row.metadata || {},
       };
     })
@@ -134,6 +135,7 @@ async function upsertRows(rows: IngestRow[]): Promise<number> {
             marketCap: row.marketCap,
             volume: row.volume,
             liquidityScore: 0,
+            isSynthetic: Boolean(row.isSynthetic),
             searchPrefixes: [],
             baseSymbol: row.symbol,
             source: row.source,
@@ -303,7 +305,7 @@ async function expandSyntheticUniverse(config: Partial<ExpansionConfig> = {}): P
         symbol: `${root}-F-${code}`,
         exchange: "DERIV",
         name: `${base.name} Future ${code}`,
-        type: "stock",
+        type: "derivative",
         country: base.country,
         currency: base.currency,
         source: "synthetic-derivatives",
@@ -321,7 +323,7 @@ async function expandSyntheticUniverse(config: Partial<ExpansionConfig> = {}): P
             symbol: `${root}-${code}-${side}-${strike}`,
             exchange: "OPT",
             name: `${base.name} Option ${side} ${strike}% ${code}`,
-            type: "stock",
+            type: "derivative",
             country: base.country,
             currency: base.currency,
             source: "synthetic-derivatives",
@@ -337,7 +339,7 @@ async function expandSyntheticUniverse(config: Partial<ExpansionConfig> = {}): P
       symbol: root,
       exchange: "CFD",
       name: `${base.name} CFD`,
-      type: "stock",
+      type: "derivative",
       country: base.country,
       currency: base.currency,
       source: "synthetic-derivatives",

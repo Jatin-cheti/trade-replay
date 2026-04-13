@@ -37,6 +37,8 @@ export interface SymbolRegistryItem {
   iconUrl?: string;
   companyDomain?: string;
   s3Icon?: string;
+  source?: string;
+  isSynthetic?: boolean;
   popularity: number;
   searchFrequency?: number;
   userUsage?: number;
@@ -109,6 +111,49 @@ function enrichWithLiveQuotes(items: SymbolRegistryItem[]): SymbolRegistryItem[]
   });
 }
 
+function prioritizeMarketDataCompleteness(items: SymbolRegistryItem[]): SymbolRegistryItem[] {
+  const sorted = [...items];
+  sorted.sort((a, b) => {
+    const aHas = Number.isFinite(a.price ?? NaN) && Number.isFinite(a.change ?? NaN);
+    const bHas = Number.isFinite(b.price ?? NaN) && Number.isFinite(b.change ?? NaN);
+    if (aHas !== bHas) return Number(bHas) - Number(aHas);
+    return 0;
+  });
+  return sorted;
+}
+
+function toQueueCompatibleType(type: SymbolType): "stock" | "crypto" | "forex" | "index" {
+  if (type === "etf") return "stock";
+  if (type === "derivative") return "index";
+  return type;
+}
+
+function toQueueItems(items: SymbolRegistryItem[]): Array<{
+  symbol: string;
+  fullSymbol: string;
+  name: string;
+  exchange: string;
+  type: "stock" | "crypto" | "forex" | "index";
+  iconUrl?: string;
+  s3Icon?: string;
+  companyDomain?: string;
+  popularity?: number;
+  searchFrequency?: number;
+}> {
+  return items.map((item) => ({
+    symbol: item.symbol,
+    fullSymbol: item.fullSymbol,
+    name: item.name,
+    exchange: item.exchange,
+    type: toQueueCompatibleType(item.type),
+    iconUrl: item.iconUrl,
+    s3Icon: item.s3Icon,
+    companyDomain: item.companyDomain,
+    popularity: item.popularity,
+    searchFrequency: item.searchFrequency,
+  }));
+}
+
 export async function searchSymbols(params: {
   query: string;
   type?: string;
@@ -125,7 +170,7 @@ export async function searchSymbols(params: {
 }): Promise<SymbolSearchResult> {
   const startedAt = Date.now();
   const query = normalizeQuery(params.query);
-  const limit = Math.max(1, Math.min(100, params.limit ?? 50));
+  const limit = Math.max(1, Math.min(30, params.limit ?? 30));
   const offset = Math.max(0, params.offset ?? 0);
   const decodedCursor = decodeCursor(params.cursor);
   if (!decodedCursor.ok) {
@@ -135,59 +180,73 @@ export async function searchSymbols(params: {
 
   // --- INTELLIGENT SEARCH: first page uses prefix+fuzzy+clustering ---
   if (query && !cursor && !params.cursor) {
-    const smartResult = await intelligentSearch({
-      query,
-      type: params.type,
-      country: params.country,
-      limit,
-      userId: params.userId,
-      userCountry: params.userCountry,
-    });
+    const intelligentCacheKey = clusterScopedKey(
+      "search",
+      query.toLowerCase(),
+      `${params.type ?? "all"}:${params.country ?? "all"}:${params.userCountry ?? "GLOBAL"}:${params.userId ?? "anon"}:${limit}`,
+    );
 
-    const smartItems: SymbolRegistryItem[] = smartResult.items.map((item) => {
-      const staticIcon = resolveStaticIcon(item.symbol);
-      const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
-      const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
-      const isFallback = !realIconUrl;
-      const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
-      return {
-        symbol: item.symbol,
-        fullSymbol: item.fullSymbol,
-        name: item.name,
-        exchange: item.exchange,
-        country: item.country,
-        type: item.type as SymbolType,
-        currency: item.currency,
-        iconUrl: realIconUrl,
-        companyDomain: item.companyDomain,
-        s3Icon: item.s3Icon,
-        popularity: item.popularity,
-        searchFrequency: item.searchFrequency,
-        userUsage: item.userUsage,
-        priorityScore: item.priorityScore,
-        marketCap: item.marketCap,
-        volume: item.volume,
-        liquidityScore: item.liquidityScore,
-        realIconUrl,
-        fallbackIconUrl: fallbackIcon,
-        isFallback,
-        displayIconUrl,
-      };
-    });
+    const smartResponse = await getOrSetCachedJsonWithLock<SymbolSearchResult>(
+      intelligentCacheKey,
+      CACHE_TTL_SECONDS,
+      async () => {
+        const smartResult = await intelligentSearch({
+          query,
+          type: params.type,
+          country: params.country,
+          limit,
+          userId: params.userId,
+          userCountry: params.userCountry,
+        });
 
-    const enrichedSmartItems = enrichWithLiveQuotes(smartItems);
+        const smartItems: SymbolRegistryItem[] = smartResult.items.map((item) => {
+          const staticIcon = resolveStaticIcon(item.symbol);
+          const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
+          const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
+          const isFallback = !realIconUrl;
+          const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
+          return {
+            symbol: item.symbol,
+            fullSymbol: item.fullSymbol,
+            name: item.name,
+            exchange: item.exchange,
+            country: item.country,
+            type: item.type as SymbolType,
+            currency: item.currency,
+            iconUrl: realIconUrl,
+            companyDomain: item.companyDomain,
+            s3Icon: item.s3Icon,
+            source: item.source,
+            isSynthetic: item.isSynthetic,
+            popularity: item.popularity,
+            searchFrequency: item.searchFrequency,
+            userUsage: item.userUsage,
+            priorityScore: item.priorityScore,
+            marketCap: item.marketCap,
+            volume: item.volume,
+            liquidityScore: item.liquidityScore,
+            realIconUrl,
+            fallbackIconUrl: fallbackIcon,
+            isFallback,
+            displayIconUrl,
+          };
+        });
 
-    const smartResponse: SymbolSearchResult = {
-      items: enrichedSmartItems,
-      total: smartResult.total,
-      limit,
-      offset: 0,
-      hasMore: smartResult.hasMore,
-      nextCursor: null,
-    };
+        const enrichedSmartItems = prioritizeMarketDataCompleteness(enrichWithLiveQuotes(smartItems));
+
+        return {
+          items: enrichedSmartItems,
+          total: smartResult.total,
+          limit,
+          offset: 0,
+          hasMore: smartResult.hasMore,
+          nextCursor: null,
+        };
+      },
+    );
 
     if (!params.skipLogoEnrichment && isRedisReady()) {
-      enqueueSymbolLogoEnrichmentBatch(smartResponse.items.slice(0, 20));
+      enqueueSymbolLogoEnrichmentBatch(toQueueItems(smartResponse.items.slice(0, 20)));
     }
 
     if (smartResponse.items.length > 0 && !params.skipSearchFrequencyUpdate) {
@@ -248,6 +307,8 @@ export async function searchSymbols(params: {
         iconUrl: 1,
         companyDomain: 1,
         s3Icon: 1,
+        source: 1,
+        isSynthetic: 1,
         popularity: 1,
         searchFrequency: 1,
         userUsage: 1,
@@ -274,7 +335,7 @@ export async function searchSymbols(params: {
       })
         .select({
           symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1, type: 1,
-          currency: 1, iconUrl: 1, companyDomain: 1, s3Icon: 1, popularity: 1,
+          currency: 1, iconUrl: 1, companyDomain: 1, s3Icon: 1, source: 1, isSynthetic: 1, popularity: 1,
           searchFrequency: 1, userUsage: 1, priorityScore: 1, marketCap: 1, volume: 1, liquidityScore: 1, createdAt: 1,
         })
         .sort({ priorityScore: -1, createdAt: -1 })
@@ -317,10 +378,10 @@ export async function searchSymbols(params: {
     };
   });
 
-  response.items = enrichWithLiveQuotes(response.items);
+  response.items = prioritizeMarketDataCompleteness(enrichWithLiveQuotes(response.items));
 
   if (!params.skipLogoEnrichment && isRedisReady()) {
-    enqueueSymbolLogoEnrichmentBatch(response.items.slice(0, 20));
+    enqueueSymbolLogoEnrichmentBatch(toQueueItems(response.items.slice(0, 20)));
   }
 
   if (response.items.length > 0 && !params.skipSearchFrequencyUpdate) {
@@ -374,7 +435,7 @@ export async function warmSymbolSearchCache(): Promise<{ warmed: number; failed:
       try {
         await searchSymbols({
           query,
-          limit: 40,
+          limit: 30,
           skipLogoEnrichment: true,
           trackMetrics: false,
         });
@@ -420,24 +481,40 @@ export async function fetchSymbolFilters(type?: string): Promise<{
 export function mapCategoryToSymbolType(category?: string): SymbolType | undefined {
   if (!category) return undefined;
   const normalized = category.toLowerCase();
-  if (normalized === "stocks" || normalized === "funds" || normalized === "bonds" || normalized === "options") return "stock";
+  if (normalized === "stocks" || normalized === "bonds") return "stock";
+  if (normalized === "funds") return "etf";
+  if (normalized === "options" || normalized === "futures") return "derivative";
   if (normalized === "crypto") return "crypto";
   if (normalized === "forex") return "forex";
-  if (normalized === "indices" || normalized === "futures" || normalized === "economy") return "index";
+  if (normalized === "indices" || normalized === "economy") return "index";
   return undefined;
 }
 
 export function toAssetSearchItem(symbol: SymbolRegistryItem) {
-  const category = symbol.type === "stock"
+  const normalizedType = symbol.type === "derivative"
+    ? "derivative"
+    : symbol.type === "etf"
+      ? "etf"
+      : symbol.type;
+
+  const category = normalizedType === "stock"
     ? "stocks"
-    : symbol.type === "crypto"
+    : normalizedType === "etf"
+      ? "funds"
+      : normalizedType === "derivative"
+        ? "futures"
+        : normalizedType === "crypto"
       ? "crypto"
-      : symbol.type === "forex"
+      : normalizedType === "forex"
         ? "forex"
         : "indices";
 
   const market = category === "stocks"
     ? "Stocks"
+    : category === "funds"
+      ? "Funds"
+      : category === "futures"
+        ? "Futures"
     : category === "crypto"
       ? "Crypto"
       : category === "forex"

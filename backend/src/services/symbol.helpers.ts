@@ -3,8 +3,8 @@ import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { env } from "../config/env";
 
-export type SymbolType = "stock" | "crypto" | "forex" | "index";
-export const SUPPORTED_TYPES: SymbolType[] = ["stock", "crypto", "forex", "index"];
+export type SymbolType = "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
+export const SUPPORTED_TYPES: SymbolType[] = ["stock", "etf", "crypto", "forex", "index", "derivative"];
 export const CACHE_TTL_SECONDS = 10;
 export const SEARCH_PRECACHE_QUERIES = ["A", "S", "B", "N", "US", "IN", "BTC", "USD", "EUR", "NASDAQ", "NSE"];
 
@@ -67,9 +67,11 @@ export function fallbackSymbolIconUrl(exchange: string): string {
 
 export function toTypeLabel(type: string): string {
   if (type === "stock") return "Stock";
+  if (type === "etf") return "ETF";
   if (type === "crypto") return "Crypto";
   if (type === "forex") return "Forex";
   if (type === "index") return "Index";
+  if (type === "derivative") return "Derivative";
   return type;
 }
 
