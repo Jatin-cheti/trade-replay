@@ -1,37 +1,74 @@
 {
-  "cases": [
-    {
-      "query": "rel",
-      "expectedTopFullSymbols": [
-        "NSE:RELIANCE",
-        "BSE:RELIANCE",
-        "COINGECKO:REL",
-        "NASDAQ:RELL",
-        "SEC:RELL"
-      ],
-      "rejectDerivativeInTop": 5
-    },
-    {
-      "query": "hdfc",
-      "expectedTopFullSymbols": [
-        "NSE:HDFCBANK",
-        "BSE:HDFCBANK",
-        "NSE:HDFCAMC",
-        "NSE:HDFCLIFE",
-        "SEC:HDB"
-      ],
-      "rejectDerivativeInTop": 5
-    },
-    {
-      "query": "btc",
-      "expectedTopFullSymbols": [
-        "NYSE:BTC",
-        "COINGECKO:BTC",
-        "CRYPTO:BTC",
-        "SEC:BTC",
-        "COINGECKO:BTC.B"
-      ],
-      "rejectDerivativeInTop": 5
-    }
-  ]
+  "casesByEnv": {
+    "default": [
+      {
+        "query": "rel",
+        "expectedTopFullSymbols": [
+          "NSE:RELIANCE",
+          "BSE:RELIANCE",
+          "COINGECKO:REL",
+          "NASDAQ:RELL",
+          "SEC:RELL"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "hdfc",
+        "expectedTopFullSymbols": [
+          "NSE:HDFCBANK",
+          "BSE:HDFCBANK",
+          "NSE:HDFCAMC",
+          "NSE:HDFCLIFE",
+          "SEC:HDB"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "btc",
+        "expectedTopFullSymbols": [
+          "NYSE:BTC",
+          "COINGECKO:BTC",
+          "CRYPTO:BTC",
+          "SEC:BTC",
+          "COINGECKO:BTC.B"
+        ],
+        "rejectDerivativeInTop": 5
+      }
+    ],
+    "production": [
+      {
+        "query": "rel",
+        "expectedTopFullSymbols": [
+          "NSE:RELIABLE",
+          "NSE:RELCHEMQ",
+          "NSE:RELIGARE",
+          "NSE:RELTD",
+          "COINGECKO:REL"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "hdfc",
+        "expectedTopFullSymbols": [
+          "NSE:HDFCBANK",
+          "BSE:HDFCBANK",
+          "NSE:HDFCAMC",
+          "NSE:HDFCLIFE",
+          "NSE:HDBFS"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "btc",
+        "expectedTopFullSymbols": [
+          "CRYPTO:BTC",
+          "COINGECKO:BTC",
+          "NYSE:BTC",
+          "SEC:BTC",
+          "BINANCE:BTCUSDT"
+        ],
+        "rejectDerivativeInTop": 5
+      }
+    ]
+  }
 }

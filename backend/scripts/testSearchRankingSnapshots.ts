@@ -12,7 +12,7 @@ type SnapshotCase = {
 };
 
 type SnapshotFile = {
-  cases: SnapshotCase[];
+  casesByEnv: Record<string, SnapshotCase[]>;
 };
 
 function loadSnapshot(): SnapshotFile {
@@ -76,12 +76,15 @@ async function runCase(caseItem: SnapshotCase): Promise<void> {
 
 async function main(): Promise<void> {
   const snapshot = loadSnapshot();
-  if (!Array.isArray(snapshot.cases) || snapshot.cases.length === 0) {
-    throw new Error("searchRankingSnapshot.json has no cases");
+  const envKey = (process.env.APP_ENV || "").toLowerCase() === "production" ? "production" : "default";
+  const cases = snapshot.casesByEnv?.[envKey] ?? snapshot.casesByEnv?.default;
+
+  if (!Array.isArray(cases) || cases.length === 0) {
+    throw new Error(`searchRankingSnapshot.json has no cases for env '${envKey}'`);
   }
 
   await connectDB();
-  for (const caseItem of snapshot.cases) {
+  for (const caseItem of cases) {
     await runCase(caseItem);
   }
   await mongoose.connection.close();
