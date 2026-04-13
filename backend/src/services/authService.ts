@@ -52,18 +52,23 @@ export async function loginUser(input: { email: string; password: string }) {
 }
 
 export async function googleLogin(input: { idToken?: string; email?: string; name?: string; googleId?: string }) {
-  if (!env.GOOGLE_CLIENT_ID) {
-    throw new Error("GOOGLE_CLIENT_ID_NOT_CONFIGURED");
-  }
-
   if (!input.idToken) {
     throw new Error("MISSING_GOOGLE_ID_TOKEN");
   }
 
-  let { email, name, googleId } = input;
   const isLocalDev = CONFIG.appEnv === "local" || CONFIG.appEnv === "docker";
 
+  if (!env.GOOGLE_CLIENT_ID && !isLocalDev) {
+    logger.error("google_client_id_not_configured", { appEnv: CONFIG.appEnv });
+    throw new Error("GOOGLE_CLIENT_ID_NOT_CONFIGURED");
+  }
+
+  let { email, name, googleId } = input;
+
   try {
+    if (!env.GOOGLE_CLIENT_ID) {
+      throw new Error("GOOGLE_CLIENT_ID_EMPTY");
+    }
     const ticket = await googleClient.verifyIdToken({
       idToken: input.idToken,
       audience: env.GOOGLE_CLIENT_ID,
@@ -74,8 +79,18 @@ export async function googleLogin(input: { idToken?: string; email?: string; nam
     name = payload?.name;
   } catch (error) {
     if (!isLocalDev) {
+      logger.error("google_token_verification_failed", {
+        appEnv: CONFIG.appEnv,
+        reason: error instanceof Error ? error.message : String(error),
+        hasClientId: Boolean(env.GOOGLE_CLIENT_ID),
+      });
       throw error;
     }
+
+    logger.warn("google_token_verification_failed_using_fallback", {
+      appEnv: CONFIG.appEnv,
+      reason: error instanceof Error ? error.message : String(error),
+    });
 
     const parts = input.idToken.split(".");
     if (parts.length < 2) {
@@ -88,10 +103,6 @@ export async function googleLogin(input: { idToken?: string; email?: string; nam
       googleId = payload.sub;
       email = payload.email;
       name = payload.name;
-      logger.warn("google_id_token_local_decode_fallback", {
-        appEnv: CONFIG.appEnv,
-        reason: error instanceof Error ? error.message : String(error),
-      });
     } catch {
       throw new Error("INVALID_GOOGLE_TOKEN_PAYLOAD");
     }

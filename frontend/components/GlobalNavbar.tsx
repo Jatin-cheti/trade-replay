@@ -382,4 +382,6 @@ export default function GlobalNavbar() {
         logout={logout}
         navigate={navigate}
       />
+    </>
+  );
 }

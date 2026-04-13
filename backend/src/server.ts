@@ -30,6 +30,8 @@ async function bootstrap() {
     redis: CONFIG.redisUrl,
     kafka: CONFIG.kafkaBroker,
     mongo: process.env.MONGO_URI,
+    hasGoogleClientId: Boolean(env.GOOGLE_CLIENT_ID),
+    clientUrl: env.CLIENT_URL,
   });
   logger.info("redis_url_config", { url: env.REDIS_URL });
   logger.info("bootstrap_connect_mongodb");
