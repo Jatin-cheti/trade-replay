@@ -30,6 +30,7 @@
     "validate:logo-coverage": "tsx scripts/validateLogoCoverage.ts",
     "ingest:global:infinite": "tsx src/jobs/globalInfiniteExpansionLoop.ts",
     "global:infinite:loop": "tsx src/jobs/globalInfiniteExpansionLoop.ts",
+    "test:search-ranking-snapshots": "tsx scripts/testSearchRankingSnapshots.ts",
     "agent:global": "node src/agent/globalLogoAgent.cjs"
   },
   "dependencies": {

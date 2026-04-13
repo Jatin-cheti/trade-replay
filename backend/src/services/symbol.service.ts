@@ -183,7 +183,7 @@ export async function searchSymbols(params: {
     const intelligentCacheKey = clusterScopedKey(
       "search",
       query.toLowerCase(),
-      `${params.type ?? "all"}:${params.country ?? "all"}:${params.userCountry ?? "GLOBAL"}:${params.userId ?? "anon"}:${limit}`,
+      `${params.type ?? "all"}:${params.country ?? "all"}:${limit}`,
     );
 
     const smartResponse = await getOrSetCachedJsonWithLock<SymbolSearchResult>(

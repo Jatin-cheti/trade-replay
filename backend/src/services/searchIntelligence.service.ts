@@ -3,6 +3,7 @@ import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { redisClient, isRedisReady } from "../config/redis";
 import { clusterScopedKey } from "./redisKey.service";
+import { logger } from "../utils/logger";
 
 // --- prefix generation ---
 
@@ -75,6 +76,17 @@ const EXCHANGE_PENALTY: Record<string, number> = {
   DERIV: -70,
   CFD: -60,
 };
+
+const TOP_SYMBOLS_PRIORITY_LIST: Record<string, number> = {
+  RELIANCE: 16,
+  TCS: 14,
+  HDFCBANK: 16,
+  INFY: 13,
+  ICICIBANK: 13,
+};
+
+const PERSONALIZATION_MAX_INFLUENCE = 0.12;
+const PERSONALIZATION_ENABLED = false;
 
 // --- recent symbols (Redis-backed) ---
 
@@ -160,6 +172,8 @@ interface ScoredSymbol {
   baseSymbol: string;
   _symbolClass: "stock" | "etf" | "crypto" | "forex" | "derivative" | "crypto_pair";
   _isDerivative: boolean;
+  _baseScore: number;
+  _personalizationBoost: number;
   _score: number;
   _matchType: "exact" | "prefix" | "fuzzy" | "name" | "sector";
   _id: Types.ObjectId;
@@ -168,52 +182,88 @@ interface ScoredSymbol {
 
 export type { ScoredSymbol };
 
-function computeRelevanceScore(opts: {
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+function safeNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizedLogScore(value: number, maxLog: number): number {
+  const safe = Math.max(0, safeNumber(value));
+  if (safe <= 0) return 0;
+  return clamp01(Math.log10(safe + 1) / maxLog);
+}
+
+function deriveLogicalBaseSymbol(rawSymbol: string): string {
+  const symbol = rawSymbol.trim().toUpperCase();
+  if (!symbol) return symbol;
+  if (/-F-\d{6}$/.test(symbol)) return symbol.replace(/-F-\d{6}$/, "");
+  if (/-\d{6}-[CP]-/.test(symbol)) return symbol.replace(/-\d{6}-[CP]-.+$/, "");
+  if (/-PERP$/.test(symbol)) return symbol.replace(/-PERP$/, "");
+  if (/-FUT$/.test(symbol)) return symbol.replace(/-FUT$/, "");
+  return symbol;
+}
+
+function computeBaseScore(opts: {
   matchType: "exact" | "prefix" | "fuzzy" | "name" | "sector";
-  fuzzyDistance?: number;
+  fuzzyDistance: number;
   marketCap: number;
   volume: number;
   liquidityScore: number;
-  priorityScore: number;
   exchangeBoost: number;
   exchangePenalty: number;
-  derivativeMultiplier: number;
-  userHistoryBoost: number;
+  topPriorityBoost: number;
   brandBoost: number;
+  derivativeMultiplier: number;
   baseSymbolBoost: number;
 }): number {
   const matchWeights: Record<string, number> = {
-    exact: 220,
-    prefix: 120,
-    name: 45,
-    fuzzy: 35,
-    sector: 25,
+    exact: 1,
+    prefix: 0.78,
+    name: 0.38,
+    fuzzy: 0.3,
+    sector: 0.24,
   };
-  const matchScore = matchWeights[opts.matchType] ?? 0;
-  const fuzzyPenalty = opts.fuzzyDistance ? opts.fuzzyDistance * 8 : 0;
 
-  const marketCapWeight = opts.marketCap > 0 ? Math.log10(opts.marketCap + 1) * 6 : 0;
-  const volumeWeight = opts.volume > 0 ? Math.log10(opts.volume + 1) * 4 : 0;
-  const liquidityWeight = opts.liquidityScore > 0 ? Math.min(120, opts.liquidityScore) * 0.8 : 0;
-  const fallbackPriorityWeight = (opts.marketCap <= 0 && opts.volume <= 0 && opts.liquidityScore <= 0)
-    ? opts.priorityScore * 0.35
-    : opts.priorityScore * 0.12;
+  const matchNorm = matchWeights[opts.matchType] ?? 0;
+  const fuzzyPenaltyNorm = clamp01(opts.fuzzyDistance / 10) * 0.12;
+  const marketCapNorm = normalizedLogScore(opts.marketCap, 12);
+  const volumeNorm = normalizedLogScore(opts.volume, 9);
+  const liquidityNorm = clamp01(safeNumber(opts.liquidityScore) / 100);
+  const fallbackNorm = opts.marketCap > 0
+    ? 0
+    : Math.max(liquidityNorm, volumeNorm * 0.9);
+  const exchangeNorm = clamp01((safeNumber(opts.exchangeBoost) + safeNumber(opts.exchangePenalty) + 100) / 200);
+  const baseBoostNorm = clamp01(safeNumber(opts.baseSymbolBoost) / 30);
+  const brandNorm = clamp01(safeNumber(opts.brandBoost) / 100);
+  const topPriorityRaw = safeNumber(opts.topPriorityBoost);
 
-  const rawScore = (
-    matchScore
-    - fuzzyPenalty
-    + marketCapWeight
-    + volumeWeight
-    + liquidityWeight
-    + fallbackPriorityWeight
-    + opts.exchangeBoost
-    + opts.exchangePenalty
-    + opts.userHistoryBoost
-    + opts.brandBoost
-    + opts.baseSymbolBoost
+  const normalizedScore = (
+    (matchNorm * 0.48)
+    + (marketCapNorm * 0.2)
+    + (volumeNorm * 0.14)
+    + (liquidityNorm * 0.12)
+    + (fallbackNorm * 0.04)
+    + (exchangeNorm * 0.08)
+    + (baseBoostNorm * 0.05)
+    + (brandNorm * 0.06)
+    - fuzzyPenaltyNorm
   );
 
-  return rawScore * opts.derivativeMultiplier;
+  return Math.max(0, (normalizedScore * 100) + topPriorityRaw) * opts.derivativeMultiplier;
+}
+
+function computePersonalizationBoost(baseScore: number, recencyBoost: number, watchlistBoost: number): number {
+  if (!PERSONALIZATION_ENABLED) return 0;
+  const raw = Math.max(0, safeNumber(recencyBoost) + safeNumber(watchlistBoost));
+  if (raw <= 0) return 0;
+  const cap = Math.max(2, baseScore * PERSONALIZATION_MAX_INFLUENCE);
+  return Math.min(cap, raw * 0.18);
 }
 
 function classifySymbol(item: Pick<ScoredSymbol, "symbol" | "name" | "exchange" | "type" | "source" | "isSynthetic">): {
@@ -347,12 +397,11 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     return { items: [], clusters: {}, total: 0, hasMore: false, matchBreakdown: { exact: 0, prefix: 0, fuzzy: 0, name: 0, sector: 0 } };
   }
 
-  const [recentSymbols, watchlist] = await Promise.all([
-    params.userId ? getRecentSymbols(params.userId) : Promise.resolve([] as string[]),
-    params.userId ? getUserWatchlist(params.userId) : Promise.resolve(new Set<string>()),
-  ]);
+  const [recentSymbols, watchlist]: [string[], Set<string>] = (PERSONALIZATION_ENABLED && params.userId)
+    ? await Promise.all([getRecentSymbols(params.userId), getUserWatchlist(params.userId)])
+    : [[], new Set<string>()];
 
-  const countryCode = (params.userCountry || "GLOBAL").toUpperCase();
+  const countryCode = "GLOBAL";
   const exchangeBoosts = EXCHANGE_BOOST[countryCode] || EXCHANGE_BOOST.GLOBAL || {};
 
   const typeFilter: FilterQuery<SymbolDocument> = {};
@@ -416,9 +465,11 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
         marketCap: row.marketCap || 0,
         volume: row.volume || 0,
         liquidityScore: row.liquidityScore || 0,
-        baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
+        baseSymbol: deriveLogicalBaseSymbol(row.baseSymbol || extractBaseSymbol(row.symbol)),
         _symbolClass: "stock",
         _isDerivative: false,
+        _baseScore: 0,
+        _personalizationBoost: 0,
         _score: 0,
         _matchType: matchType,
       });
@@ -456,9 +507,11 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
               marketCap: row.marketCap || 0,
               volume: row.volume || 0,
               liquidityScore: row.liquidityScore || 0,
-              baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
+              baseSymbol: deriveLogicalBaseSymbol(row.baseSymbol || extractBaseSymbol(row.symbol)),
               _symbolClass: "stock",
               _isDerivative: false,
+              _baseScore: 0,
+              _personalizationBoost: 0,
               _score: 0,
               _matchType: "fuzzy",
             });
@@ -503,9 +556,11 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
           marketCap: row.marketCap || 0,
           volume: row.volume || 0,
           liquidityScore: row.liquidityScore || 0,
-          baseSymbol: row.baseSymbol || extractBaseSymbol(row.symbol),
+          baseSymbol: deriveLogicalBaseSymbol(row.baseSymbol || extractBaseSymbol(row.symbol)),
           _symbolClass: "stock",
           _isDerivative: false,
+          _baseScore: 0,
+          _personalizationBoost: 0,
           _score: 0,
           _matchType: "sector",
         });
@@ -556,32 +611,38 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     const recentIndex = recentSymbols.indexOf(item.fullSymbol);
     const recencyBoost = recentIndex >= 0 ? 40 / (1 + recentIndex) : 0;
     const watchlistBoost = watchlist.has(item.fullSymbol) ? 60 : 0;
-    const userHistoryBoost = recencyBoost + watchlistBoost;
     const exchangeBoost = exchangeBoosts[item.exchange] ?? 0;
     const exchangePenalty = EXCHANGE_PENALTY[item.exchange] ?? 0;
     const brandBoost = BLUECHIP_BOOST[item.symbol] ?? BLUECHIP_BOOST[item.baseSymbol] ?? 0;
+    const fixedTopBoost = TOP_SYMBOLS_PRIORITY_LIST[item.symbol] ?? TOP_SYMBOLS_PRIORITY_LIST[item.baseSymbol] ?? 0;
     const fuzzyDist = item._matchType === "fuzzy" ? levenshtein.get(upperQuery, item.symbol) : 0;
     const derivativeMultiplier = item._isDerivative ? 0.2 : 1;
     const baseSymbolBoost = item.symbol === item.baseSymbol ? 24 : 0;
 
-    item._score = computeRelevanceScore({
+    item._baseScore = computeBaseScore({
       matchType: item._matchType,
       fuzzyDistance: fuzzyDist,
-      marketCap: item.marketCap || 0,
-      volume: item.volume || 0,
-      liquidityScore: item.liquidityScore || 0,
-      priorityScore: item.priorityScore,
+      marketCap: safeNumber(item.marketCap),
+      volume: safeNumber(item.volume),
+      liquidityScore: safeNumber(item.liquidityScore),
       exchangeBoost,
       exchangePenalty,
-      derivativeMultiplier,
-      userHistoryBoost,
+      topPriorityBoost: fixedTopBoost,
       brandBoost,
+      derivativeMultiplier,
       baseSymbolBoost,
     });
+    item._personalizationBoost = computePersonalizationBoost(item._baseScore, recencyBoost, watchlistBoost);
+    item._score = item._baseScore + item._personalizationBoost;
   }
 
   // PHASE 7: Sort, group by base symbol, and keep base symbol first.
-  allItems.sort((a, b) => b._score - a._score);
+  allItems.sort((a, b) => {
+    if (b._score !== a._score) return b._score - a._score;
+    if (b._baseScore !== a._baseScore) return b._baseScore - a._baseScore;
+    if (a._isDerivative !== b._isDerivative) return Number(a._isDerivative) - Number(b._isDerivative);
+    return a.fullSymbol.localeCompare(b.fullSymbol);
+  });
 
   const groupedByBase = new Map<string, ScoredSymbol[]>();
   for (const item of allItems) {
@@ -604,7 +665,9 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
       const bBase = b.symbol === b.baseSymbol ? 1 : 0;
       if (aBase !== bBase) return bBase - aBase;
       if (a._isDerivative !== b._isDerivative) return Number(a._isDerivative) - Number(b._isDerivative);
-      return b._score - a._score;
+      if (b._score !== a._score) return b._score - a._score;
+      if (b._baseScore !== a._baseScore) return b._baseScore - a._baseScore;
+      return a.fullSymbol.localeCompare(b.fullSymbol);
     });
     flattened.push(...group);
   }
@@ -624,6 +687,26 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
   }
 
   const limited = allItems.slice(0, limit);
+
+  if (limited.length > 0 && query.length <= 6) {
+    logger.info("search_ranking_snapshot", {
+      query: upperQuery,
+      total: allItems.length,
+      top10: limited.slice(0, 10).map((item) => ({
+        symbol: item.symbol,
+        fullSymbol: item.fullSymbol,
+        matchType: item._matchType,
+        baseScore: Number(item._baseScore.toFixed(4)),
+        personalizationBoost: Number(item._personalizationBoost.toFixed(4)),
+        finalScore: Number(item._score.toFixed(4)),
+        marketCap: item.marketCap || 0,
+        volume: item.volume || 0,
+        liquidityScore: item.liquidityScore || 0,
+        isDerivative: item._isDerivative,
+        isSynthetic: item.isSynthetic,
+      })),
+    });
+  }
 
   return {
     items: limited,
