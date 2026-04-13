@@ -2,6 +2,7 @@ import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 import { inferDomainForSymbol } from "./domainInference.service";
 import { computePrefixesForSymbol } from "./searchIntelligence.service";
+import { markSearchIndexDirty } from "./searchIndex.service";
 
 export interface NormalizedSymbol {
   symbol: string;
@@ -400,6 +401,7 @@ export async function ingestGlobalSymbols(): Promise<{ upserted: number; totalSo
 
   if (operations.length > 0) {
     await SymbolModel.bulkWrite(operations, { ordered: false });
+    markSearchIndexDirty("ingest_global_symbols");
   }
 
   return {

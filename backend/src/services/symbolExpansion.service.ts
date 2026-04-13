@@ -18,6 +18,7 @@ import {
   deriveCurrency,
   normalizeSymbolType,
 } from "./symbolExpansion.helpers";
+import { markSearchIndexDirty } from "./searchIndex.service";
 
 export type { ExpansionResult, FullExpansionReport };
 
@@ -118,6 +119,9 @@ export async function syncGlobalMasterToSymbols(batchSize = 1000): Promise<{ syn
   if (ops.length > 0) {
     const result = await SymbolModel.bulkWrite(ops, { ordered: false });
     synced = result.upsertedCount;
+    if (synced > 0) {
+      markSearchIndexDirty("global_master_sync");
+    }
   }
 
   return { synced };

@@ -29,11 +29,16 @@ export async function invalidateSymbolCaches(symbolId: string): Promise<void> {
     + invalidateL1CacheByPattern(`symbol:${normalized}`);
   const l1Search = invalidateL1CacheByPattern("app:symbols:search:*")
     + invalidateL1CacheByPattern("symbols:search:*")
-    + invalidateL1CacheByPattern("symbol:*");
+    + invalidateL1CacheByPattern("symbol:*")
+    + invalidateL1CacheByPattern("search:*")
+    + invalidateL1CacheByPattern("search-candidates:*");
 
   const deletedById = await redisClient.del(`app:symbol:${normalized}`, `symbols:${normalized}`, `symbol:${normalized}`);
   const deletedSearch = await deleteByPattern("app:symbols:search:*");
-  const deletedLegacySearch = (await deleteByPattern("symbols:search:*")) + (await deleteByPattern("symbol:*"));
+  const deletedLegacySearch = (await deleteByPattern("symbols:search:*"))
+    + (await deleteByPattern("symbol:*"))
+    + (await deleteByPattern("search:*"))
+    + (await deleteByPattern("search-candidates:*"));
 
   logger.info("cache_invalidate_symbol", {
     symbolId: normalized,

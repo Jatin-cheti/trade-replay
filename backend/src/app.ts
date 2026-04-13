@@ -27,6 +27,7 @@ import { createSymbolController } from "./controllers/symbolController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
 import { warmSymbolSearchCache } from "./services/symbol.service";
+import { startSearchIndexService } from "./services/searchIndex.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
 import { getFullCoverageReport, runTailEliminationOnce, startTailOrchestrator, stopTailOrchestrator, isOrchestratorRunning } from "./services/tailOrchestrator.service";
 import { startScalingOrchestrator, stopScalingOrchestrator, isScalingOrchestratorRunning, getLiveScalingReport, runExpansionOnce, runSyncOnce, getScalingStatus } from "./services/scalingOrchestrator.service";
@@ -88,6 +89,12 @@ export function createApp() {
   app.use(compression());
   app.use(express.json());
   app.use(requestLogger);
+
+  void startSearchIndexService().catch((error) => {
+    logger.error("search_index_start_failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   void warmSymbolSearchCache().then(({ warmed, failed }) => {
     logger.info("symbol_search_precache_complete", { warmed, failed });

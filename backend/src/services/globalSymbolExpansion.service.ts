@@ -2,6 +2,7 @@ import { GlobalSymbolMaster } from "../models/GlobalSymbolMaster";
 import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 import { ingestGlobalSymbolsOnce } from "./globalSymbolIngestion.service";
+import { markSearchIndexDirty } from "./searchIndex.service";
 
 export type ExpansionCycleStats = {
   coreIngested: number;
@@ -152,6 +153,10 @@ async function upsertRows(rows: IngestRow[]): Promise<number> {
     ]);
 
     upserted += (masterResult.upsertedCount || 0) + (symbolResult.upsertedCount || 0);
+  }
+
+  if (upserted > 0) {
+    markSearchIndexDirty("global_symbol_expansion");
   }
 
   return upserted;

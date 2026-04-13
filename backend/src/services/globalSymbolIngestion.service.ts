@@ -7,6 +7,7 @@ import { nseProvider } from "./providers/nse.provider";
 import { openfigiProvider } from "./providers/openfigi.provider";
 import { secProvider } from "./providers/sec.provider";
 import { wikidataProvider } from "./providers/wikidata.provider";
+import { markSearchIndexDirty } from "./searchIndex.service";
 
 export type GlobalSymbolCandidate = {
   symbol: string;
@@ -151,6 +152,8 @@ async function upsertGlobalSymbols(rows: Array<GlobalSymbolCandidate & { fullSym
     // eslint-disable-next-line no-await-in-loop
     await SymbolModel.bulkWrite(batch, { ordered: false });
   }
+
+  markSearchIndexDirty("global_symbol_ingestion");
 }
 
 export async function ingestGlobalSymbolsOnce(): Promise<{ providers: number; symbols: number }> {

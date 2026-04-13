@@ -5,8 +5,8 @@ import { env } from "../config/env";
 
 export type SymbolType = "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
 export const SUPPORTED_TYPES: SymbolType[] = ["stock", "etf", "crypto", "forex", "index", "derivative"];
-export const CACHE_TTL_SECONDS = 10;
-export const SEARCH_PRECACHE_QUERIES = ["A", "S", "B", "N", "US", "IN", "BTC", "USD", "EUR", "NASDAQ", "NSE"];
+export const CACHE_TTL_SECONDS = 45;
+export const SEARCH_PRECACHE_QUERIES = ["re", "hdfc", "btc", "a", "t", "USD", "EUR", "NASDAQ", "NSE"];
 
 export type StableCursor = {
   createdAt: Date;

@@ -7,7 +7,9 @@ import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
 import { clusterScopedKey, stableHash } from "./redisKey.service";
 import { recordSymbolIconResult, recordSymbolSearchLatency } from "./metrics.service";
 import { intelligentSearch, trackRecentSymbol, type ScoredSymbol } from "./searchIntelligence.service";
-import { getLiveQuotes } from "./liveMarketService";
+import { lookupSymbolsFromIndex, type SearchIndexLookupResult } from "./searchIndex.service";
+import { overlayRealtimePrices } from "./priceCache.service";
+import { logger } from "../utils/logger";
 
 import {
   type SymbolType,
@@ -68,6 +70,7 @@ export interface SymbolSearchResult {
 }
 
 type SymbolRegistryRow = SymbolRegistryItem & { _id: Types.ObjectId };
+const FINAL_SEARCH_CACHE_TTL_SECONDS = 10;
 
 function estimateMarketCap(item: SymbolRegistryItem): number {
   if ((item.marketCap ?? 0) > 0) return item.marketCap as number;
@@ -86,15 +89,13 @@ function computeLiquidityScore(item: SymbolRegistryItem, marketCap: number, volu
   return Number((marketComponent + volumeComponent + behaviorComponent).toFixed(3));
 }
 
-function enrichWithLiveQuotes(items: SymbolRegistryItem[]): SymbolRegistryItem[] {
+async function enrichWithRealtimePrices(items: SymbolRegistryItem[]): Promise<SymbolRegistryItem[]> {
   if (!items.length) return items;
 
-  const quotePayload = getLiveQuotes({ symbols: items.map((item) => item.symbol) });
+  const withRealtime = await overlayRealtimePrices(items);
 
-  return items.map((item) => {
-    const symbolKey = item.symbol.toUpperCase();
-    const quote = quotePayload.quotes[symbolKey];
-    const volume = quote?.volume ?? item.volume ?? 0;
+  return withRealtime.map((item) => {
+    const volume = item.volume ?? 0;
     const marketCap = estimateMarketCap(item);
     const liquidityScore = computeLiquidityScore(item, marketCap, volume);
 
@@ -103,10 +104,10 @@ function enrichWithLiveQuotes(items: SymbolRegistryItem[]): SymbolRegistryItem[]
       marketCap,
       volume,
       liquidityScore,
-      price: quote?.price ?? item.price ?? 0,
-      change: quote?.change ?? item.change ?? 0,
-      changePercent: quote?.changePercent ?? item.changePercent ?? 0,
-      pnl: quote?.change ?? item.pnl ?? 0,
+      price: item.price ?? 0,
+      change: item.change ?? 0,
+      changePercent: item.changePercent ?? 0,
+      pnl: item.pnl ?? item.change ?? 0,
     };
   });
 }
@@ -177,69 +178,151 @@ export async function searchSymbols(params: {
     throw new Error("INVALID_CURSOR_TOKEN");
   }
   const cursor = await resolveCursorAnchor(decodedCursor.cursor);
+  let searchSource: "index" | "intelligent-db" | "cursor-db" = "index";
 
   // --- INTELLIGENT SEARCH: first page uses prefix+fuzzy+clustering ---
   if (query && !cursor && !params.cursor) {
-    const intelligentCacheKey = clusterScopedKey(
+    const finalCacheKey = clusterScopedKey(
       "search",
       query.toLowerCase(),
       `${params.type ?? "all"}:${params.country ?? "all"}:${limit}`,
     );
 
     const smartResponse = await getOrSetCachedJsonWithLock<SymbolSearchResult>(
-      intelligentCacheKey,
-      CACHE_TTL_SECONDS,
+      finalCacheKey,
+      FINAL_SEARCH_CACHE_TTL_SECONDS,
       async () => {
-        const smartResult = await intelligentSearch({
-          query,
-          type: params.type,
-          country: params.country,
-          limit,
-          userId: params.userId,
-          userCountry: params.userCountry,
-        });
+        let indexResult: SearchIndexLookupResult = { items: [], total: 0, hasMore: false, source: "prefix-index" };
+        try {
+          indexResult = await lookupSymbolsFromIndex({
+            query,
+            limit,
+            type: params.type,
+            country: params.country,
+          });
+        } catch (error) {
+          logger.warn("search_index_lookup_failed", {
+            query,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
 
-        const smartItems: SymbolRegistryItem[] = smartResult.items.map((item) => {
-          const staticIcon = resolveStaticIcon(item.symbol);
-          const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
-          const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
-          const isFallback = !realIconUrl;
-          const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
-          return {
-            symbol: item.symbol,
-            fullSymbol: item.fullSymbol,
-            name: item.name,
-            exchange: item.exchange,
-            country: item.country,
-            type: item.type as SymbolType,
-            currency: item.currency,
-            iconUrl: realIconUrl,
-            companyDomain: item.companyDomain,
-            s3Icon: item.s3Icon,
-            source: item.source,
-            isSynthetic: item.isSynthetic,
-            popularity: item.popularity,
-            searchFrequency: item.searchFrequency,
-            userUsage: item.userUsage,
-            priorityScore: item.priorityScore,
-            marketCap: item.marketCap,
-            volume: item.volume,
-            liquidityScore: item.liquidityScore,
-            realIconUrl,
-            fallbackIconUrl: fallbackIcon,
-            isFallback,
-            displayIconUrl,
-          };
-        });
+        let smartItems: SymbolRegistryItem[] = [];
+        let total = 0;
+        let hasMore = false;
 
-        const enrichedSmartItems = prioritizeMarketDataCompleteness(enrichWithLiveQuotes(smartItems));
+        if (indexResult.items.length > 0) {
+          searchSource = "index";
+          smartItems = indexResult.items.map((item) => {
+            const staticIcon = resolveStaticIcon(item.symbol);
+            const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
+            const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
+            const isFallback = !realIconUrl;
+            const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
+            return {
+              symbol: item.symbol,
+              fullSymbol: item.fullSymbol,
+              name: item.name,
+              exchange: item.exchange,
+              country: item.country,
+              type: item.type,
+              currency: item.currency,
+              iconUrl: realIconUrl,
+              companyDomain: item.companyDomain,
+              s3Icon: item.s3Icon,
+              source: item.source,
+              isSynthetic: item.isSynthetic,
+              popularity: item.popularity ?? 0,
+              searchFrequency: item.searchFrequency,
+              userUsage: item.userUsage,
+              priorityScore: item.priorityScore,
+              marketCap: item.marketCap,
+              volume: item.volume,
+              liquidityScore: item.liquidityScore,
+              realIconUrl,
+              fallbackIconUrl: fallbackIcon,
+              isFallback,
+              displayIconUrl,
+            };
+          });
+          total = indexResult.total;
+          hasMore = indexResult.hasMore;
+        } else {
+          searchSource = "intelligent-db";
+          const intelligentCacheKey = clusterScopedKey(
+            "search-candidates",
+            query.toLowerCase(),
+            `${params.type ?? "all"}:${params.country ?? "all"}:${limit}`,
+          );
+
+          const cachedCandidates = await getOrSetCachedJsonWithLock<{
+            items: ScoredSymbol[];
+            total: number;
+            hasMore: boolean;
+          }>(
+            intelligentCacheKey,
+            CACHE_TTL_SECONDS,
+            async () => {
+              const smartResult = await intelligentSearch({
+                query,
+                type: params.type,
+                country: params.country,
+                limit,
+                userId: params.userId,
+                userCountry: params.userCountry,
+              });
+              return {
+                items: smartResult.items,
+                total: smartResult.total,
+                hasMore: smartResult.hasMore,
+              };
+            },
+          );
+
+          smartItems = cachedCandidates.items.map((item) => {
+            const staticIcon = resolveStaticIcon(item.symbol);
+            const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
+            const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
+            const isFallback = !realIconUrl;
+            const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
+            return {
+              symbol: item.symbol,
+              fullSymbol: item.fullSymbol,
+              name: item.name,
+              exchange: item.exchange,
+              country: item.country,
+              type: item.type as SymbolType,
+              currency: item.currency,
+              iconUrl: realIconUrl,
+              companyDomain: item.companyDomain,
+              s3Icon: item.s3Icon,
+              source: item.source,
+              isSynthetic: item.isSynthetic,
+              popularity: item.popularity,
+              searchFrequency: item.searchFrequency,
+              userUsage: item.userUsage,
+              priorityScore: item.priorityScore,
+              marketCap: item.marketCap,
+              volume: item.volume,
+              liquidityScore: item.liquidityScore,
+              realIconUrl,
+              fallbackIconUrl: fallbackIcon,
+              isFallback,
+              displayIconUrl,
+            };
+          });
+          total = cachedCandidates.total;
+          hasMore = cachedCandidates.hasMore;
+        }
+
+        const enrichedSmartItems = prioritizeMarketDataCompleteness(await enrichWithRealtimePrices(smartItems));
 
         return {
           items: enrichedSmartItems,
-          total: smartResult.total,
+          total,
           limit,
           offset: 0,
-          hasMore: smartResult.hasMore,
+          hasMore,
           nextCursor: null,
         };
       },
@@ -261,10 +344,14 @@ export async function searchSymbols(params: {
     }
 
     if (params.trackMetrics !== false) {
+      const elapsedMs = Date.now() - startedAt;
       for (const item of smartResponse.items) {
         recordSymbolIconResult(Boolean(item.isFallback));
       }
-      recordSymbolSearchLatency(Date.now() - startedAt);
+      recordSymbolSearchLatency(elapsedMs);
+      if (elapsedMs > 50) {
+        logger.warn("symbol_search_latency_slow", { query, elapsedMs, source: searchSource });
+      }
     }
 
     return smartResponse;
@@ -378,7 +465,7 @@ export async function searchSymbols(params: {
     };
   });
 
-  response.items = prioritizeMarketDataCompleteness(enrichWithLiveQuotes(response.items));
+  response.items = prioritizeMarketDataCompleteness(await enrichWithRealtimePrices(response.items));
 
   if (!params.skipLogoEnrichment && isRedisReady()) {
     enqueueSymbolLogoEnrichmentBatch(toQueueItems(response.items.slice(0, 20)));
@@ -418,10 +505,14 @@ export async function searchSymbols(params: {
   }
 
   if (params.trackMetrics !== false) {
+    const elapsedMs = Date.now() - startedAt;
     for (const item of response.items) {
       recordSymbolIconResult(Boolean(item.isFallback));
     }
-    recordSymbolSearchLatency(Date.now() - startedAt);
+    recordSymbolSearchLatency(elapsedMs);
+    if (elapsedMs > 50) {
+      logger.warn("symbol_search_latency_slow", { query, elapsedMs, source: "cursor-db" });
+    }
   }
   return response;
 }
