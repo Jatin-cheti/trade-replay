@@ -264,9 +264,9 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     .limit(10)
     .lean<RawRow[]>();
 
-  // PHASE 2: Prefix match (O(1) via indexed searchPrefixes)
+  // PHASE 2: Prefix match via anchored symbol regex
   const prefixRows = await SymbolModel.find({
-    searchPrefixes: upperQuery,
+    symbol: { $regex: `^${escapeRegex(upperQuery)}` },
     ...typeFilter,
   })
     .select(SELECT_FIELDS)

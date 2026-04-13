@@ -19,7 +19,6 @@ const symbolSchema = new Schema(
     searchFrequency: { type: Number, required: true, default: 0 },
     userUsage: { type: Number, required: true, default: 0 },
     priorityScore: { type: Number, required: true, default: 0 },
-    searchPrefixes: { type: [String], default: [] },
     baseSymbol: { type: String, trim: true, uppercase: true, default: "" },
     source: { type: String, required: true, trim: true },
   },
@@ -37,15 +36,7 @@ symbolSchema.index(
   { name: "symbol_priority_score_idx" },
 );
 symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
-symbolSchema.index({ searchPrefixes: 1 }, { name: "symbol_prefix_idx" });
 symbolSchema.index({ baseSymbol: 1, priorityScore: -1 }, { name: "symbol_base_cluster_idx" });
-symbolSchema.index(
-  { symbol: "text", name: "text", fullSymbol: "text" },
-  {
-    weights: { symbol: 12, fullSymbol: 8, name: 4 },
-    name: "symbol_search_text_idx",
-  },
-);
 
 export type SymbolDocument = InferSchemaType<typeof symbolSchema> & {
   _id: mongoose.Types.ObjectId;

@@ -32,6 +32,10 @@ import { markResolved, markFailed, type MissingLogoWorkItem } from "./missingLog
 import { logger } from "../utils/logger";
 import { EXCHANGE_FAVICON, DEFAULT_EXCHANGE_ICON, ETF_ISSUER_DOMAINS, CRYPTO_BASE_MAP, levenshtein, tokenSimilarity, normalizeCompanyName, extractCryptoBase, isEtfLike, isForexLike, yieldToEventLoop } from "./tailElimination.helpers";
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface TailEliminationResult {
@@ -70,10 +74,18 @@ async function tryFuzzyMatch(item: MissingLogoWorkItem): Promise<{ logoUrl: stri
   const normalizedName = normalizeCompanyName(item.name);
   if (!normalizedName || normalizedName.length < 3) return null;
 
-  // Find resolved symbols with similar names using text search
+  const nameTokens = normalizedName
+    .split(/\s+/)
+    .filter((t) => t.length >= 3)
+    .slice(0, 3)
+    .map((t) => escapeRegex(t));
+
+  if (nameTokens.length === 0) return null;
+
+  // Find resolved symbols with similar names using token regex fallback.
   const candidates = await SymbolModel.find({
     iconUrl: { $exists: true, $ne: "" },
-    $text: { $search: normalizedName },
+    name: { $regex: nameTokens.join("|"), $options: "i" },
   })
     .select({ name: 1, iconUrl: 1, companyDomain: 1, symbol: 1 })
     .limit(10)
