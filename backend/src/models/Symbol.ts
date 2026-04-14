@@ -12,6 +12,8 @@ const symbolSchema = new Schema(
     iconUrl: { type: String, trim: true, default: "" },
     companyDomain: { type: String, trim: true, default: "" },
     logoValidatedAt: { type: Date },
+    logoStatus: { type: String, enum: ["pending", "mapped", "failed"], default: "pending" },
+    logoLastUpdated: { type: Date },
     logoAttempts: { type: Number, required: true, default: 0 },
     lastLogoAttemptAt: { type: Number },
     s3Icon: { type: String, trim: true, default: "" },
@@ -33,6 +35,7 @@ const symbolSchema = new Schema(
 symbolSchema.index({ fullSymbol: 1 }, { unique: true });
 symbolSchema.index({ exchange: 1, type: 1, country: 1 });
 symbolSchema.index({ logoAttempts: 1, lastLogoAttemptAt: 1 });
+symbolSchema.index({ logoStatus: 1, priorityScore: -1 }, { name: "symbol_logo_status_idx" });
 symbolSchema.index({ createdAt: -1, _id: -1 });
 symbolSchema.index({ type: 1, country: 1, createdAt: -1, _id: -1 });
 symbolSchema.index({ symbol: 1, type: 1, country: 1, createdAt: -1 });

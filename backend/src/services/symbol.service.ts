@@ -14,6 +14,7 @@ import {
   persistExternalSymbolsAsync,
   type ExternalSymbolCandidate,
 } from "./externalSymbolSearch.service";
+import { PortfolioModel } from "../models/Portfolio";
 import { logger } from "../utils/logger";
 
 import {
@@ -431,6 +432,35 @@ function hasStrongLocalMatch(items: SymbolRegistryItem[], query: string): boolea
   });
 }
 
+// Watchlist boost: cached user portfolio symbols for search ranking
+const watchlistCache = new Map<string, { symbols: Set<string>; loadedAt: number }>();
+const WATCHLIST_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getUserWatchlistSymbols(userId?: string): Promise<Set<string> | undefined> {
+  if (!userId) return undefined;
+  const cached = watchlistCache.get(userId);
+  if (cached && (Date.now() - cached.loadedAt) < WATCHLIST_CACHE_TTL_MS) {
+    return cached.symbols;
+  }
+  try {
+    const portfolio = await PortfolioModel.findOne({ userId })
+      .select({ holdings: 1 })
+      .lean<{ holdings?: Array<{ symbol: string }> }>();
+    const symbols = new Set(
+      (portfolio?.holdings ?? []).map((h) => h.symbol.toUpperCase()),
+    );
+    watchlistCache.set(userId, { symbols, loadedAt: Date.now() });
+    // Cap watchlist cache size
+    if (watchlistCache.size > 1000) {
+      const oldest = watchlistCache.keys().next().value as string;
+      watchlistCache.delete(oldest);
+    }
+    return symbols.size > 0 ? symbols : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function searchSymbols(params: {
   query: string;
   type?: string;
@@ -477,6 +507,7 @@ export async function searchSymbols(params: {
       finalCacheKey,
       FINAL_SEARCH_CACHE_TTL_SECONDS,
       async () => {
+        const watchlistSymbols = await getUserWatchlistSymbols(params.userId);
         let indexResult: SearchIndexLookupResult = { items: [], total: 0, hasMore: false, source: "prefix-index" };
         try {
           indexResult = await lookupSymbolsFromIndex({
@@ -485,6 +516,7 @@ export async function searchSymbols(params: {
             type: params.type,
             country: normalizedCountry,
             userCountry: normalizedUserCountry,
+            watchlistSymbols,
           });
         } catch (error) {
           logger.warn("search_index_lookup_failed", {

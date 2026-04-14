@@ -12,6 +12,10 @@
   LOGO_RESOLVE: "logo.resolve",
   LOGO_RETRY: "logo.retry",
   LOGO_COMPLETED: "logo.completed",
+  // ── Asset + Logo lifecycle events ──────────────────────────────────
+  ASSET_CREATED: "asset.created",
+  ASSET_UPDATED: "asset.updated",
+  LOGO_MAPPED: "logo.mapped",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
