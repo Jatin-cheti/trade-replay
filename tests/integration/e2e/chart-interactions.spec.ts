@@ -197,6 +197,7 @@ async function drawTrendLine(page: Page): Promise<Array<{ x: number; y: number }
     await page.mouse.move(ex, ey, { steps: 8 });
     await page.waitForTimeout(40);
     await page.mouse.up();
+    await page.waitForTimeout(320);
   };
 
   await drag(x1, y1, x2, y2);
@@ -208,18 +209,36 @@ async function drawTrendLine(page: Page): Promise<Array<{ x: number; y: number }
     ];
   }
 
-  // Retry once with alternate coordinates when first pointer sequence is dropped.
-  const rx1 = box.x + box.width * 0.28;
-  const ry1 = box.y + box.height * 0.28;
-  const rx2 = box.x + box.width * 0.58;
-  const ry2 = box.y + box.height * 0.52;
-  await drag(rx1, ry1, rx2, ry2);
+  // Retry up to 3 times with varied coordinates when pointer sequence is dropped.
+  const retries = [
+    [0.28, 0.28, 0.58, 0.52],
+    [0.22, 0.32, 0.54, 0.58],
+    [0.30, 0.24, 0.62, 0.50],
+  ] as const;
+  for (const [rx1r, ry1r, rx2r, ry2r] of retries) {
+    const rx1 = box.x + box.width * rx1r;
+    const ry1 = box.y + box.height * ry1r;
+    const rx2 = box.x + box.width * rx2r;
+    const ry2 = box.y + box.height * ry2r;
+    await drag(rx1, ry1, rx2, ry2);
+    if ((await readDrawingCount(page)) > before) {
+      return [
+        { x: (rx1 + rx2) / 2, y: (ry1 + ry2) / 2 },
+        { x: rx1, y: ry1 },
+        { x: rx2, y: ry2 },
+      ];
+    }
+  }
 
   await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+  const lrx1 = box.x + box.width * 0.28;
+  const lry1 = box.y + box.height * 0.28;
+  const lrx2 = box.x + box.width * 0.58;
+  const lry2 = box.y + box.height * 0.52;
   return [
-    { x: (rx1 + rx2) / 2, y: (ry1 + ry2) / 2 },
-    { x: rx1, y: ry1 },
-    { x: rx2, y: ry2 },
+    { x: (lrx1 + lrx2) / 2, y: (lry1 + lry2) / 2 },
+    { x: lrx1, y: lry1 },
+    { x: lrx2, y: lry2 },
   ];
 }
 

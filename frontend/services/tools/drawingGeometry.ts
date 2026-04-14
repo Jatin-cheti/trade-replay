@@ -261,3 +261,90 @@ export function snapTrendAngleSegment(start: CanvasPoint, end: CanvasPoint, angl
     },
   ];
 }
+
+/* ── Arrowhead geometry ─────────────────────────────────────────────────── */
+
+/**
+ * Returns a triangle (3 points) for an arrowhead at the `tip`.
+ * `from` → `tip` defines the direction. `headLength` and `headWidth` in px.
+ */
+export function getArrowheadPoints(
+  from: CanvasPoint,
+  tip: CanvasPoint,
+  headLength = 12,
+  headWidth = 7,
+): [CanvasPoint, CanvasPoint, CanvasPoint] {
+  const dir = subtract(tip, from);
+  const mag = length(dir);
+  if (mag < EPSILON) return [tip, tip, tip];
+  const unit = scale(dir, 1 / mag);
+  const perp = perpendicular(unit);
+  const base = subtract(tip, scale(unit, headLength));
+  return [
+    tip,
+    add(base, scale(perp, headWidth)),
+    add(base, scale(perp, -headWidth)),
+  ];
+}
+
+/* ── Catmull-Rom spline smoothing ───────────────────────────────────────── */
+
+/**
+ * Interpolates a smooth curve through `points` using centripetal Catmull-Rom.
+ * `segmentsPerSpan` controls the number of interpolated points per pair.
+ */
+export function catmullRomSmooth(
+  points: CanvasPoint[],
+  segmentsPerSpan = 8,
+  alpha = 0.5,
+): CanvasPoint[] {
+  if (points.length < 3) return points;
+
+  const result: CanvasPoint[] = [points[0]];
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[Math.min(points.length - 1, i + 1)];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    const d1 = Math.pow(distance(p0, p1), alpha);
+    const d2 = Math.pow(distance(p1, p2), alpha);
+    const d3 = Math.pow(distance(p2, p3), alpha);
+
+    const b1x = d1 > EPSILON ? (p2.x * d1 - p0.x * d2 + (2 * d1 + 3 * d1 * d2 / (d1 + EPSILON) + d2) * p1.x) / (3 * d1 * (1 + d2 / (d1 + EPSILON))) : p1.x;
+    const b1y = d1 > EPSILON ? (p2.y * d1 - p0.y * d2 + (2 * d1 + 3 * d1 * d2 / (d1 + EPSILON) + d2) * p1.y) / (3 * d1 * (1 + d2 / (d1 + EPSILON))) : p1.y;
+    const b2x = d3 > EPSILON ? (p1.x * d3 - p3.x * d2 + (2 * d3 + 3 * d3 * d2 / (d3 + EPSILON) + d2) * p2.x) / (3 * d3 * (1 + d2 / (d3 + EPSILON))) : p2.x;
+    const b2y = d3 > EPSILON ? (p1.y * d3 - p3.y * d2 + (2 * d3 + 3 * d3 * d2 / (d3 + EPSILON) + d2) * p2.y) / (3 * d3 * (1 + d2 / (d3 + EPSILON))) : p2.y;
+
+    for (let j = 1; j <= segmentsPerSpan; j += 1) {
+      const t = j / segmentsPerSpan;
+      const u = 1 - t;
+      result.push({
+        x: u * u * u * p1.x + 3 * u * u * t * b1x + 3 * u * t * t * b2x + t * t * t * p2.x,
+        y: u * u * u * p1.y + 3 * u * u * t * b1y + 3 * u * t * t * b2y + t * t * t * p2.y,
+      });
+    }
+  }
+
+  return result;
+}
+
+/* ── Angle arc helper ────────────────────────────────────────────────────── */
+
+/**
+ * Returns parameters for drawing an angle arc indicator between two segments.
+ */
+export function getAngleArc(
+  vertex: CanvasPoint,
+  end: CanvasPoint,
+  radius = 20,
+): { center: CanvasPoint; radius: number; startAngle: number; endAngle: number } {
+  const angle = Math.atan2(end.y - vertex.y, end.x - vertex.x);
+  return {
+    center: vertex,
+    radius,
+    startAngle: 0,
+    endAngle: angle,
+  };
+}

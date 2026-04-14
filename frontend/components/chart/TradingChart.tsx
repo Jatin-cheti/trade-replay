@@ -7,7 +7,7 @@ import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory, type ToolVariant } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
 import { isPointOnlyVariant, isWizardVariant, nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
-import { getParallelChannelGeometry, getPitchforkGeometry, getRaySegment, getRegressionTrendGeometry, snapTrendAngleSegment, type CanvasPoint, type PitchforkVariant } from '@/services/tools/drawingGeometry';
+import { catmullRomSmooth, getArrowheadPoints, getParallelChannelGeometry, getPitchforkGeometry, getRaySegment, getRegressionTrendGeometry, snapTrendAngleSegment, type CanvasPoint, type PitchforkVariant } from '@/services/tools/drawingGeometry';
 import { DrawingTimeIndex } from '@/services/tools/drawingTimeIndex';
 import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
@@ -723,10 +723,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
               drawCurve(Math.max(6, activeDrawing.options.thickness * 3));
             }
           } else {
+            // Apply Catmull-Rom smoothing for brush/highlighter when smoothness > 0.2
+            const renderPoints = (v === 'brush' || v === 'highlighter') && smoothness > 0.2
+              ? catmullRomSmooth(sampled, Math.max(4, Math.round(smoothness * 10)))
+              : sampled;
+
             ctx.beginPath();
-            ctx.moveTo(sampled[0].x, sampled[0].y);
-            for (let index = 1; index < sampled.length; index += 1) {
-              ctx.lineTo(sampled[index].x, sampled[index].y);
+            ctx.moveTo(renderPoints[0].x, renderPoints[0].y);
+            for (let index = 1; index < renderPoints.length; index += 1) {
+              ctx.lineTo(renderPoints[index].x, renderPoints[index].y);
             }
             ctx.stroke();
           }
@@ -734,6 +739,22 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           ctx.restore();
         } else if (v === 'ray' && points.length >= 2) {
           drawSegment(getRaySegment(points[0], points[1], cssWidth, cssHeight));
+        } else if (v === 'arrowTool' && points.length >= 2) {
+          // Arrow tool: line with arrowhead at the end
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          ctx.lineTo(points[1].x, points[1].y);
+          ctx.stroke();
+          // Draw arrowhead
+          const headSize = Math.max(8, activeDrawing.options.thickness * 4);
+          const [tip, left, right] = getArrowheadPoints(points[0], points[1], headSize, headSize * 0.6);
+          ctx.beginPath();
+          ctx.moveTo(tip.x, tip.y);
+          ctx.lineTo(left.x, left.y);
+          ctx.lineTo(right.x, right.y);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+          ctx.fill();
         } else if (v === 'infoLine' && points.length >= 2) {
           const p1 = points[0];
           const p2 = points[1];
@@ -754,6 +775,25 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
+          // Draw angle arc at vertex
+          const arcRadius = Math.min(24, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.2);
+          const startAngle = 0;
+          const endAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.3, activeDrawing.options.opacity * 0.5);
+          ctx.beginPath();
+          ctx.arc(p1.x, p1.y, arcRadius, Math.min(startAngle, endAngle), Math.max(startAngle, endAngle));
+          ctx.stroke();
+          ctx.restore();
+          // Horizontal reference line
+          ctx.save();
+          ctx.setLineDash([2, 3]);
+          ctx.globalAlpha = 0.3;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p1.x + arcRadius * 1.5, p1.y);
+          ctx.stroke();
+          ctx.restore();
           const angle = Math.atan2(-(p2.y - p1.y), p2.x - p1.x) * (180 / Math.PI);
           drawText(ctx, activeDrawing, p2.x + 6, p2.y - 8, `${angle.toFixed(1)}°`);
         } else if (v === 'flatTopBottom' && points.length >= 2) {
@@ -880,25 +920,51 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         } else if (v === 'cyclicLines' && points.length >= 2) {
           const spacing = Math.abs(points[1].x - points[0].x);
           if (spacing > 4) {
-            let cycle = 1;
+            let cycleNum = 1;
             ctx.beginPath();
+            const lineXs: number[] = [];
             for (let x = points[0].x; x <= cssWidth; x += spacing) {
               ctx.moveTo(x, 0);
               ctx.lineTo(x, cssHeight);
-              cycle += 1;
+              lineXs.push(x);
             }
             for (let x = points[0].x - spacing; x >= 0; x -= spacing) {
               ctx.moveTo(x, 0);
               ctx.lineTo(x, cssHeight);
-              cycle += 1;
+              lineXs.unshift(x);
             }
             ctx.stroke();
-            drawText(ctx, activeDrawing, points[0].x + 6, points[0].y - 6, `cycle ${Math.max(1, cycle - 1)}`);
+            // Number each cycle line at top
+            ctx.save();
+            ctx.font = `bold 9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+            ctx.textAlign = 'center';
+            for (const lx of lineXs) {
+              ctx.fillText(`${cycleNum}`, lx, 14);
+              cycleNum += 1;
+            }
+            ctx.restore();
           }
         } else if (v === 'fibSpeedResistFan' && points.length >= 2) {
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0.236, 0.382, 0.5, 0.618, 0.786, 1]);
           const start = points[0];
           const end = points[1];
+          // Zone fills between adjacent fan rays
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.03, activeDrawing.options.opacity * 0.05);
+          for (let li = 0; li < levels.length - 1; li += 1) {
+            const t1 = { x: end.x, y: start.y + (end.y - start.y) * levels[li] };
+            const t2 = { x: end.x, y: start.y + (end.y - start.y) * levels[li + 1] };
+            if (li % 2 === 0) {
+              ctx.beginPath();
+              ctx.moveTo(start.x, start.y);
+              ctx.lineTo(t1.x, t1.y);
+              ctx.lineTo(t2.x, t2.y);
+              ctx.closePath();
+              ctx.fill();
+            }
+          }
+          ctx.restore();
           ctx.beginPath();
           for (const level of levels) {
             const target = {
@@ -909,11 +975,34 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.lineTo(target.x, target.y);
           }
           ctx.stroke();
+          // Labels at end of each fan ray
+          if (activeDrawing.options.priceLabel) {
+            ctx.save();
+            ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+            for (const level of levels) {
+              const target = { x: end.x, y: start.y + (end.y - start.y) * level };
+              ctx.fillText(`${(level * 100).toFixed(1)}%`, target.x + 4, target.y - 2);
+            }
+            ctx.restore();
+          }
         } else if (v === 'fibTimeZone' && points.length >= 2) {
           const base = points[0];
           const spacing = Math.abs(points[1].x - points[0].x);
           if (spacing > 2) {
             const sequence = [1, 2, 3, 5, 8, 13, 21];
+            // Draw alternating zone fills between fib time lines
+            ctx.save();
+            ctx.globalAlpha = Math.max(0.03, activeDrawing.options.opacity * 0.05);
+            for (let si = 0; si < sequence.length - 1; si += 1) {
+              const x1 = base.x + spacing * sequence[si];
+              const x2 = base.x + spacing * sequence[si + 1];
+              if (x1 > cssWidth) break;
+              if (si % 2 === 0) {
+                ctx.fillRect(x1, 0, Math.min(x2, cssWidth) - x1, cssHeight);
+              }
+            }
+            ctx.restore();
             ctx.beginPath();
             for (const n of sequence) {
               const x = base.x + spacing * n;
@@ -922,6 +1011,19 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
               ctx.lineTo(x, cssHeight);
             }
             ctx.stroke();
+            // Labels at top
+            if (activeDrawing.options.priceLabel) {
+              ctx.save();
+              ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+              ctx.textAlign = 'center';
+              for (const n of sequence) {
+                const x = base.x + spacing * n;
+                if (x > cssWidth) break;
+                ctx.fillText(`${n}`, x, 14);
+              }
+              ctx.restore();
+            }
           }
         } else if (v === 'fibTrendTime' && points.length >= 2) {
           const start = points[0];
@@ -933,6 +1035,18 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const spacing = Math.abs(end.x - start.x);
           if (spacing > 2) {
             const sequence = [1, 2, 3, 5, 8];
+            // Zone fills
+            ctx.save();
+            ctx.globalAlpha = Math.max(0.03, activeDrawing.options.opacity * 0.05);
+            for (let si = 0; si < sequence.length - 1; si += 1) {
+              const x1 = end.x + spacing * sequence[si];
+              const x2 = end.x + spacing * sequence[si + 1];
+              if (x1 > cssWidth) break;
+              if (si % 2 === 0) {
+                ctx.fillRect(x1, 0, Math.min(x2, cssWidth) - x1, cssHeight);
+              }
+            }
+            ctx.restore();
             ctx.beginPath();
             for (const n of sequence) {
               const x = end.x + spacing * n;
@@ -941,6 +1055,18 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
               ctx.lineTo(x, cssHeight);
             }
             ctx.stroke();
+            // Labels at top
+            if (activeDrawing.options.priceLabel) {
+              ctx.save();
+              ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+              for (const n of sequence) {
+                const x = end.x + spacing * n;
+                if (x > cssWidth) break;
+                ctx.fillText(`${n}`, x + 3, 12);
+              }
+              ctx.restore();
+            }
           }
         } else if (v === 'fibCircles' && points.length >= 2) {
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0.236, 0.382, 0.5, 0.618, 0.786, 1]);
@@ -950,6 +1076,14 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.beginPath();
             ctx.arc(points[0].x, points[0].y, radius, 0, Math.PI * 2);
             ctx.stroke();
+            // Label at right edge of circle
+            if (activeDrawing.options.priceLabel) {
+              ctx.save();
+              ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.7)`;
+              ctx.fillText(fibLabelText(level, activeDrawing.anchors[0], activeDrawing.anchors[1]), points[0].x + radius + 3, points[0].y - 2);
+              ctx.restore();
+            }
           }
         } else if (v === 'fibSpiral' && points.length >= 2) {
           const radiusBase = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
@@ -993,15 +1127,42 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const end = points[1];
           const dx = end.x - start.x;
           const dy = end.y - start.y;
-          const length = Math.hypot(dx, dy) || 1;
-          const normal = { x: -dy / length, y: dx / length };
-          const channelSpan = length * 0.35;
+          const channelLength = Math.hypot(dx, dy) || 1;
+          const normal = { x: -dy / channelLength, y: dx / channelLength };
+          const channelSpan = channelLength * 0.35;
+          // Zone fills between adjacent channel lines
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.03, activeDrawing.options.opacity * 0.05);
+          for (let li = 0; li < levels.length - 1; li += 1) {
+            const o1 = channelSpan * levels[li];
+            const o2 = channelSpan * levels[li + 1];
+            if (li % 2 === 0) {
+              ctx.beginPath();
+              ctx.moveTo(start.x + normal.x * o1, start.y + normal.y * o1);
+              ctx.lineTo(end.x + normal.x * o1, end.y + normal.y * o1);
+              ctx.lineTo(end.x + normal.x * o2, end.y + normal.y * o2);
+              ctx.lineTo(start.x + normal.x * o2, start.y + normal.y * o2);
+              ctx.closePath();
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+          // Draw channel lines
           for (const level of levels) {
             const offset = channelSpan * level;
             drawSegment([
               { x: start.x + normal.x * offset, y: start.y + normal.y * offset },
               { x: end.x + normal.x * offset, y: end.y + normal.y * offset },
             ]);
+            // Label at end
+            if (activeDrawing.options.priceLabel) {
+              ctx.save();
+              ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+              ctx.fillText(fibLabelText(level, activeDrawing.anchors[0], activeDrawing.anchors[1]),
+                end.x + normal.x * offset + 4, end.y + normal.y * offset - 2);
+              ctx.restore();
+            }
           }
         } else if (v === 'gannFan' && points.length >= 2) {
           const start = points[0];
@@ -1009,8 +1170,10 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const spanX = end.x - start.x;
           const spanY = end.y - start.y;
           const ratios = [0.125, 0.25, 0.333, 0.5, 1, 2, 3, 4, 8];
+          const ratioLabels = ['1×8', '1×4', '1×3', '1×2', '1×1', '2×1', '3×1', '4×1', '8×1'];
           ctx.beginPath();
-          for (const ratio of ratios) {
+          for (let ri = 0; ri < ratios.length; ri += 1) {
+            const ratio = ratios[ri];
             const target = {
               x: start.x + spanX,
               y: start.y + spanY * ratio,
@@ -1020,6 +1183,22 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.lineTo(segment[1].x, segment[1].y);
           }
           ctx.stroke();
+          // Draw ratio labels at the end of each fan line
+          if (activeDrawing.options.priceLabel) {
+            for (let ri = 0; ri < ratios.length; ri += 1) {
+              const ratio = ratios[ri];
+              const target = {
+                x: start.x + spanX,
+                y: start.y + spanY * ratio,
+              };
+              const segment = getRaySegment(start, target, cssWidth, cssHeight);
+              ctx.save();
+              ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.7)`;
+              ctx.fillText(ratioLabels[ri], segment[1].x + 3, segment[1].y - 2);
+              ctx.restore();
+            }
+          }
         } else if ((v === 'gannBox' || v === 'gannSquare' || v === 'gannSquareFixed') && points.length >= 2) {
           const p1 = points[0];
           const p2 = points[1];
@@ -1053,6 +1232,17 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           ctx.moveTo(x + w, y);
           ctx.lineTo(x, y + h);
           ctx.stroke();
+          // Draw ratio labels on edges
+          if (activeDrawing.options.priceLabel) {
+            ctx.save();
+            ctx.font = `8px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.5)`;
+            for (let i = 1; i < 8; i += 1) {
+              const frac = `${i}/8`;
+              ctx.fillText(frac, x + (w * i) / 8 - 6, y - 3);
+            }
+            ctx.restore();
+          }
         } else if (v === 'anchoredVwap' && points.length >= 1) {
           const startIndex = nearestCandleIndex(transformedData.times, activeDrawing.anchors[0].time);
           if (startIndex >= 0) {
@@ -1240,25 +1430,71 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
               ? `RR ${rr.toFixed(2)}x · T ${rewardPx} / S ${riskPx}`
               : `RR ${rr.toFixed(2)}x`;
           drawText(ctx, activeDrawing, right + 6, entryY - 8, `${label} ${metric}`);
+
+          // Inline price labels on entry/target/stop lines (TradingView style)
+          ctx.save();
+          ctx.font = `bold 10px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+          ctx.textAlign = 'left';
+          const entryPrice = entry.price.toFixed(2);
+          const targetPrice = target.price.toFixed(2);
+          const stopPrice = stop.price.toFixed(2);
+          // Entry label
+          ctx.fillStyle = 'rgba(255,255,255,0.8)';
+          ctx.fillText(`Entry ${entryPrice}`, left + 4, entryY - 3);
+          // Target label
+          ctx.fillStyle = isShort ? 'rgba(239,68,68,0.9)' : 'rgba(34,197,94,0.9)';
+          ctx.fillText(`Target ${targetPrice}`, left + 4, targetY + (targetY < entryY ? -3 : 12));
+          // Stop label
+          ctx.fillStyle = isShort ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.9)';
+          ctx.fillText(`Stop ${stopPrice}`, left + 4, stopY + (stopY < entryY ? -3 : 12));
+          ctx.restore();
         } else if (v === 'barPattern' && points.length >= 2) {
           const p1 = points[0];
           const p2 = points[1];
+          // Draw baseline
           ctx.beginPath();
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
           const width = Math.abs(p2.x - p1.x);
-          const dir = p2.y >= p1.y ? 1 : -1;
-          for (let i = 0; i < 6; i += 1) {
-            const x = p1.x + (width * i) / 6;
-            const h = 8 + (i % 3) * 5;
-            ctx.strokeRect(x - 2, p1.y - (h * dir), 4, h * dir);
+          const midY = (p1.y + p2.y) / 2;
+          const range = Math.abs(p2.y - p1.y) || 30;
+          const barCount = Math.max(3, Math.round(width / 12));
+          const barW = Math.max(3, width / barCount * 0.6);
+          // Draw candlestick bars
+          for (let i = 0; i < barCount; i += 1) {
+            const x = p1.x + (width * (i + 0.5)) / barCount;
+            const noise = Math.sin(i * 1.7) * 0.3 + Math.cos(i * 2.3) * 0.2;
+            const open = midY + range * noise * 0.4;
+            const close = open + range * (Math.sin(i * 0.9) * 0.25);
+            const high = Math.min(open, close) - Math.abs(range * 0.1);
+            const low = Math.max(open, close) + Math.abs(range * 0.1);
+            const bullish = close < open;
+            ctx.save();
+            ctx.fillStyle = bullish ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
+            ctx.strokeStyle = bullish ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.9)';
+            ctx.lineWidth = 1;
+            // Wick
+            ctx.beginPath();
+            ctx.moveTo(x, high);
+            ctx.lineTo(x, low);
+            ctx.stroke();
+            // Body
+            const top = Math.min(open, close);
+            const bodyH = Math.max(1, Math.abs(close - open));
+            ctx.fillRect(x - barW / 2, top, barW, bodyH);
+            ctx.strokeRect(x - barW / 2, top, barW, bodyH);
+            ctx.restore();
           }
         } else if (v === 'ghostFeed' && points.length >= 2) {
           const p1 = points[0];
           const p2 = points[1];
           const dx = p2.x - p1.x;
           const dy = p2.y - p1.y;
+          // Draw dashed projection line for ghost effect
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.globalAlpha = Math.max(0.3, activeDrawing.options.opacity * 0.6);
           ctx.beginPath();
           ctx.moveTo(p1.x, p1.y);
           for (let t = 0; t <= 1.4; t += 0.04) {
@@ -1267,7 +1503,27 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.lineTo(x, y);
           }
           ctx.stroke();
+          ctx.setLineDash([]);
+          // Ghost label
+          ctx.font = `9px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+          ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.5)`;
+          ctx.fillText('Ghost', p1.x + dx * 1.4 + 4, p1.y + dy * 1.4);
+          ctx.restore();
         } else if (def.family === 'pattern') {
+          // Pattern fills (semi-transparent zone between legs)
+          if (points.length >= 3) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0.04, activeDrawing.options.opacity * 0.08);
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i += 1) {
+              ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+          // Draw polyline
           ctx.beginPath();
           ctx.moveTo(points[0].x, points[0].y);
           for (let i = 1; i < points.length; i += 1) {
@@ -1275,13 +1531,145 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           }
           ctx.stroke();
 
+          // Elliott wave dashed connectors (first to last)
+          const isElliott = v.startsWith('elliott');
+          if (isElliott && points.length >= 3) {
+            ctx.save();
+            ctx.setLineDash([4, 4]);
+            ctx.globalAlpha = 0.35;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // Point labels
           const labels = PATTERN_LABELS_BY_VARIANT[v] || [];
           for (let i = 0; i < Math.min(labels.length, points.length); i += 1) {
-            drawText(ctx, activeDrawing, points[i].x + 4, points[i].y - 6, labels[i]);
+            // Label with background circle like TradingView
+            ctx.save();
+            const lx = points[i].x;
+            const ly = points[i].y;
+            const isAbove = i > 0 ? points[i].y < points[i - 1].y : true;
+            const labelOffsetY = isAbove ? -12 : 16;
+            ctx.font = `bold ${Math.max(10, activeDrawing.options.textSize - 1)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+            const m = ctx.measureText(labels[i]);
+            const boxW = Math.max(18, m.width + 8);
+            const boxH = 16;
+            const boxX = lx - boxW / 2;
+            const boxY = ly + labelOffsetY - boxH / 2 - 2;
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.2)`;
+            ctx.beginPath();
+            ctx.roundRect(boxX, boxY, boxW, boxH, 4);
+            ctx.fill();
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+            ctx.textAlign = 'center';
+            ctx.fillText(labels[i], lx, ly + labelOffsetY);
+            ctx.restore();
           }
         } else if (def.family === 'text') {
           const text = activeDrawing.text || activeDrawing.variant;
-          drawText(ctx, activeDrawing, points[0].x + 4, points[0].y - 4, text);
+          const px = points[0].x + 4;
+          const py = points[0].y - 4;
+
+          // Variant-specific decorations
+          if (v === 'note' || v === 'comment') {
+            // Note/Comment marker dot
+            ctx.save();
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.4)`;
+            ctx.beginPath();
+            ctx.arc(points[0].x, points[0].y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          } else if (v === 'pin') {
+            // Pin handle line
+            ctx.save();
+            ctx.strokeStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.4)`;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[0].x, points[0].y - 20);
+            ctx.stroke();
+            ctx.restore();
+          } else if (v === 'callout') {
+            // Callout tail from anchor to text box
+            ctx.save();
+            ctx.strokeStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.5)`;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(px, py);
+            ctx.stroke();
+            ctx.restore();
+          } else if (v === 'priceLabel' || v === 'priceNote') {
+            // Arrow pointing to price level
+            ctx.save();
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x - 8, points[0].y);
+            ctx.lineTo(points[0].x, points[0].y - 4);
+            ctx.lineTo(points[0].x, points[0].y + 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          } else if (v === 'flagMark' || v === 'signpost') {
+            // Small flag pole
+            ctx.save();
+            ctx.strokeStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.6)`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[0].x, points[0].y - 24);
+            ctx.stroke();
+            // Flag shape
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.25)`;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y - 24);
+            ctx.lineTo(points[0].x + 14, points[0].y - 20);
+            ctx.lineTo(points[0].x, points[0].y - 16);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          } else if (v === 'arrowMarker') {
+            // Up arrow marker
+            ctx.save();
+            const sz = Math.max(8, activeDrawing.options.thickness * 3);
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y - sz);
+            ctx.lineTo(points[0].x - sz * 0.6, points[0].y);
+            ctx.lineTo(points[0].x + sz * 0.6, points[0].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          } else if (v === 'arrowMarkUp') {
+            ctx.save();
+            const sz = Math.max(8, activeDrawing.options.thickness * 3);
+            ctx.fillStyle = 'rgba(34,197,94,0.85)';
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y - sz);
+            ctx.lineTo(points[0].x - sz * 0.6, points[0].y);
+            ctx.lineTo(points[0].x + sz * 0.6, points[0].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          } else if (v === 'arrowMarkDown') {
+            ctx.save();
+            const sz = Math.max(8, activeDrawing.options.thickness * 3);
+            ctx.fillStyle = 'rgba(239,68,68,0.85)';
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y + sz);
+            ctx.lineTo(points[0].x - sz * 0.6, points[0].y);
+            ctx.lineTo(points[0].x + sz * 0.6, points[0].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // For arrow markers, skip text rendering
+          if (v !== 'arrowMarker' && v !== 'arrowMarkUp' && v !== 'arrowMarkDown') {
+            drawText(ctx, activeDrawing, px, py, text);
+          }
         } else if (v === 'ellipse' && points.length >= 2) {
           const p1 = points[0];
           const p2 = points[1];
@@ -1302,6 +1690,47 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const ry = Math.max(1, Math.abs(p2.y - p1.y) / 2);
           ctx.beginPath();
           ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, Math.PI * 2);
+          ctx.stroke();
+        } else if (v === 'rotatedRectangle' && points.length >= 2) {
+          // Rotated rectangle: the line from p1→p2 defines one edge, rect extends perpendicular
+          const p1 = points[0];
+          const p2 = points[1];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const edgeLen = Math.hypot(dx, dy);
+          const perpLen = edgeLen * 0.4;
+          const angle = Math.atan2(dy, dx);
+          const nx = -Math.sin(angle) * perpLen;
+          const ny = Math.cos(angle) * perpLen;
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.lineTo(p2.x + nx, p2.y + ny);
+          ctx.lineTo(p1.x + nx, p1.y + ny);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        } else if (v === 'sector' && points.length >= 2) {
+          // Sector (pie slice) from p1 to p2
+          const p1 = points[0];
+          const p2 = points[1];
+          const r = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+          const startAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          const sweep = Math.PI / 3; // 60° sector
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.15);
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.arc(p1.x, p1.y, r, startAngle - sweep / 2, startAngle + sweep / 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.arc(p1.x, p1.y, r, startAngle - sweep / 2, startAngle + sweep / 2);
+          ctx.closePath();
           ctx.stroke();
         } else if (def.family === 'shape') {
           const p1 = points[0];
@@ -1332,14 +1761,39 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           const p1 = points[0];
           const p2 = points[1] || p1;
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 1]);
+          const left = Math.min(p1.x, p2.x);
+          const right = Math.max(p1.x, p2.x);
+          const width = right - left;
+          // Draw zone fills between adjacent levels (TradingView style)
+          ctx.save();
+          const fillAlpha = Math.max(0.04, activeDrawing.options.opacity * 0.06);
+          for (let li = 0; li < levels.length - 1; li += 1) {
+            const y1 = p1.y + (p2.y - p1.y) * levels[li];
+            const y2 = p1.y + (p2.y - p1.y) * levels[li + 1];
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${fillAlpha * (li % 2 === 0 ? 1 : 0.6)})`;
+            ctx.fillRect(left, Math.min(y1, y2), width, Math.abs(y2 - y1));
+          }
+          ctx.restore();
+          // Draw level lines + labels
           for (const level of levels) {
             const y = p1.y + (p2.y - p1.y) * level;
             ctx.beginPath();
-            ctx.moveTo(Math.min(p1.x, p2.x), y);
-            ctx.lineTo(Math.max(p1.x, p2.x), y);
+            ctx.moveTo(left, y);
+            ctx.lineTo(right, y);
             ctx.stroke();
             if (activeDrawing.options.priceLabel) {
-              drawText(ctx, activeDrawing, Math.max(p1.x, p2.x) + 4, y + 2, fibLabelText(level, activeDrawing.anchors[0], activeDrawing.anchors[1] || activeDrawing.anchors[0]));
+              // Label with background
+              const label = fibLabelText(level, activeDrawing.anchors[0], activeDrawing.anchors[1] || activeDrawing.anchors[0]);
+              ctx.save();
+              ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              const metrics = ctx.measureText(label);
+              const labelX = right + 4;
+              const labelY = y + 3;
+              ctx.fillStyle = 'rgba(8, 18, 30, 0.7)';
+              ctx.fillRect(labelX - 2, labelY - 10, metrics.width + 6, 14);
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+              ctx.fillText(label, labelX, labelY);
+              ctx.restore();
             }
           }
         } else {

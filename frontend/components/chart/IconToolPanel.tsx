@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { cn } from '@/lib/utils';
 import type { ToolVariant } from '@/services/tools/toolRegistry';
+
+const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
 type IconTab = 'emoji' | 'sticker' | 'icon';
 
@@ -214,6 +216,7 @@ function renderTile(item: CatalogItem, tab: IconTab, selected: boolean, onSelect
 export default function IconToolPanel({ defaultTab, selectedPreset, onSelectPreset }: IconToolPanelProps) {
   const [activeTab, setActiveTab] = useState<IconTab>(defaultTab);
   const [activeSection, setActiveSection] = useState<string>(() => tabSections[defaultTab][0]?.id ?? '');
+  const [showFullPicker, setShowFullPicker] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const sections = tabSections[activeTab];
@@ -262,7 +265,48 @@ export default function IconToolPanel({ defaultTab, selectedPreset, onSelectPres
       </div>
 
       <div data-testid="icon-panel-scroll" className="min-h-0 flex-1 overflow-y-scroll px-2.5 py-2.5">
+        {activeTab === 'emoji' && showFullPicker ? (
+          <div data-testid="emoji-full-picker" className="flex flex-col gap-2">
+            <button
+              type="button"
+              data-testid="emoji-picker-back"
+              onClick={() => setShowFullPicker(false)}
+              className="mb-1 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              ← Quick access
+            </button>
+            <Suspense fallback={<div className="py-6 text-center text-xs text-muted-foreground">Loading…</div>}>
+              <EmojiPicker
+                width="100%"
+                height={320}
+                searchPlaceholder="Search emoji…"
+                skinTonesDisabled
+                lazyLoadEmojis
+                onEmojiClick={(emojiData) => {
+                  onSelectPreset({
+                    id: `picker-${emojiData.unified}`,
+                    variant: 'emoji',
+                    title: 'Emoji',
+                    label: emojiData.names?.[0] ?? 'emoji',
+                    defaultValue: emojiData.emoji,
+                    preview: true,
+                  });
+                }}
+              />
+            </Suspense>
+          </div>
+        ) : (
         <div className="space-y-3.5">
+          {activeTab === 'emoji' && (
+            <button
+              type="button"
+              data-testid="emoji-browse-all"
+              onClick={() => setShowFullPicker(true)}
+              className="mb-1 flex w-full items-center justify-center gap-1 rounded-lg border border-border/60 bg-background/80 px-3 py-2 text-xs font-medium text-foreground/80 transition hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+            >
+              🔎 Browse all emojis
+            </button>
+          )}
           {sections.map((section) => (
             <section
               key={section.id}
@@ -284,6 +328,7 @@ export default function IconToolPanel({ defaultTab, selectedPreset, onSelectPres
             </section>
           ))}
         </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 border-t border-border/70 bg-background/95 px-1.5 py-1.5 text-center">
