@@ -28,6 +28,8 @@ const cleanAssetSchema = new Schema(
     volume: { type: Number, default: 0 },
     liquidityScore: { type: Number, default: 0 },
     popularity: { type: Number, default: 0 },
+    logoStatus: { type: String, enum: ["pending", "mapped", "failed"], default: "pending" },
+    logoLastUpdated: { type: Date },
     isActive: { type: Boolean, required: true, default: true },
     verifiedAt: { type: Date, default: () => new Date() },
   },

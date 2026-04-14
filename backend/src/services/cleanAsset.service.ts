@@ -1,6 +1,8 @@
 import { SymbolModel } from "../models/Symbol";
 import { CleanAssetModel } from "../models/CleanAsset";
 import { logger } from "../utils/logger";
+import { produce } from "../kafka/producer";
+import { KAFKA_TOPICS } from "../kafka/topics";
 import type { AnyBulkWriteOperation } from "mongoose";
 
 /**
@@ -60,6 +62,7 @@ export async function buildCleanAssets(): Promise<{
   let processed = 0;
   let promoted = 0;
   let skipped = 0;
+  let batches = 0;
 
   logger.info("clean_assets_build_start");
 
@@ -71,7 +74,7 @@ export async function buildCleanAssets(): Promise<{
       symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1,
       type: 1, currency: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1,
       source: 1, priorityScore: 1, marketCap: 1, volume: 1,
-      liquidityScore: 1, popularity: 1,
+      liquidityScore: 1, popularity: 1, logoStatus: 1, logoLastUpdated: 1,
     })
     .sort({ priorityScore: -1 })
     .lean()
@@ -115,6 +118,8 @@ export async function buildCleanAssets(): Promise<{
             volume: doc.volume ?? 0,
             liquidityScore: doc.liquidityScore ?? 0,
             popularity: doc.popularity ?? 0,
+            logoStatus: doc.logoStatus || (hasLogo(doc) ? "mapped" : "pending"),
+            logoLastUpdated: doc.logoLastUpdated || (hasLogo(doc) ? new Date() : undefined),
             isActive: true,
             verifiedAt: new Date(),
           },
@@ -127,6 +132,15 @@ export async function buildCleanAssets(): Promise<{
     if (batch.length >= BATCH_SIZE) {
       const result = await CleanAssetModel.bulkWrite(batch, { ordered: false });
       promoted += result.upsertedCount + result.modifiedCount;
+
+      // Emit Kafka events for new/updated assets
+      if (result.upsertedCount > 0) {
+        produce(KAFKA_TOPICS.ASSET_CREATED, { count: result.upsertedCount, batch: batches + 1 });
+      }
+      if (result.modifiedCount > 0) {
+        produce(KAFKA_TOPICS.ASSET_UPDATED, { count: result.modifiedCount, batch: batches + 1 });
+      }
+      batches++;
       batch = [];
 
       // Yield to event loop every batch

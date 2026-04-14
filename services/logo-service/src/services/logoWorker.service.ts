@@ -4,7 +4,7 @@ import { env } from "../config/env";
 import { SymbolModel } from "../models/Symbol";
 import { resolveLogo } from "./logoResolver.service";
 import { uploadRemoteLogoToS3 } from "./s3.service";
-import { emitLogoEnriched } from "../config/kafka";
+import { emitLogoEnriched, emitLogoMapped } from "../config/kafka";
 
 type QueueSymbol = {
   symbol: string;
@@ -108,6 +108,10 @@ async function processJob(payload: QueueSymbol): Promise<void> {
 
   if (!resolvedLogo.logoUrl) {
     console.log(JSON.stringify({ message: "logo_fetch_unresolved", fullSymbol: claimed.fullSymbol }));
+    await SymbolModel.updateOne(
+      { fullSymbol: claimed.fullSymbol },
+      { $set: { logoStatus: "failed", logoLastUpdated: new Date() } },
+    );
     failed += 1;
     return;
   }
@@ -136,6 +140,8 @@ async function processJob(payload: QueueSymbol): Promise<void> {
         s3Icon: s3?.cdnUrl || "",
         companyDomain: resolvedLogo.domain || claimed.companyDomain || "",
         logoValidatedAt: new Date(),
+        logoStatus: "mapped",
+        logoLastUpdated: new Date(),
       },
     },
   );
@@ -146,6 +152,14 @@ async function processJob(payload: QueueSymbol): Promise<void> {
     logoUrl: finalIcon,
     source: s3 ? "cdn" : "remote",
     domain: resolvedLogo.domain || undefined,
+  });
+
+  await emitLogoMapped({
+    fullSymbol: claimed.fullSymbol,
+    symbol: claimed.symbol,
+    logoUrl: finalIcon,
+    s3Url: s3?.cdnUrl || "",
+    source: resolvedLogo.source,
   });
 
   resolved += 1;

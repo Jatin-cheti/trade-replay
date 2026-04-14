@@ -164,12 +164,19 @@ const BLUECHIP_BOOST: Record<string, number> = {
 // --- Geo-aware exchange boosts ---
 const GEO_EXCHANGE_BOOST: Record<string, Record<string, number>> = {
   IN: { NSE: 25, BSE: 15 },
-  US: { NASDAQ: 20, NYSE: 20, AMEX: 10 },
-  GB: { LSE: 20 },
-  JP: { TYO: 20 },
-  DE: { FRA: 15 },
+  US: { NASDAQ: 20, NYSE: 20, AMEX: 10, ARCA: 8 },
+  GB: { LSE: 20, LON: 20 },
+  JP: { TYO: 20, TSE: 18, JPX: 15 },
+  DE: { FRA: 15, XETRA: 18, ETR: 15 },
   AU: { ASX: 15 },
-  CA: { TSX: 15 },
+  CA: { TSX: 15, TSXV: 10 },
+  CN: { SSE: 20, SZSE: 18 },
+  HK: { HKEX: 20, HKG: 18 },
+  KR: { KOSDAQ: 15, KRX: 15, KOSE: 12 },
+  BR: { BOVESPA: 15, BVMF: 15, SAO: 12 },
+  FR: { EPA: 15, EURONEXT: 12 },
+  CH: { SWX: 15, SIX: 15 },
+  SG: { SGX: 15 },
   GLOBAL: { NSE: 5, NYSE: 5, NASDAQ: 5, CRYPTO: 3 },
 };
 
@@ -546,6 +553,7 @@ export async function lookupSymbolsFromIndex(params: {
   type?: string;
   country?: string;
   userCountry?: string;
+  watchlistSymbols?: Set<string>;
   disablePrecomputed?: boolean;
 }): Promise<SearchIndexLookupResult> {
   const normalizedQuery = normalizeToken(params.query);
@@ -588,6 +596,11 @@ export async function lookupSymbolsFromIndex(params: {
       const geoExchangeBoost = geoBoosts[exch] ?? 0;
       const countryMatch = item.country === geoKey ? 15 : 0;
       itemScore += geoExchangeBoost + countryMatch;
+    }
+
+    // Watchlist boost: symbols in user's watchlist get significant relevance bump
+    if (params.watchlistSymbols?.has(item.fullSymbol)) {
+      itemScore += 35;
     }
 
     scored.push({ item, score: itemScore });
