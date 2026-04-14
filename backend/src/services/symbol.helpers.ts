@@ -3,10 +3,38 @@ import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { env } from "../config/env";
 
-export type SymbolType = "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
-export const SUPPORTED_TYPES: SymbolType[] = ["stock", "etf", "crypto", "forex", "index", "derivative"];
+export type SymbolType = "stock" | "etf" | "crypto" | "forex" | "index" | "derivative" | "bond" | "economy";
+export const SUPPORTED_TYPES: SymbolType[] = ["stock", "etf", "crypto", "forex", "index", "derivative", "bond", "economy"];
 export const CACHE_TTL_SECONDS = 45;
 export const SEARCH_PRECACHE_QUERIES = ["re", "hdfc", "btc", "a", "t", "USD", "EUR", "NASDAQ", "NSE"];
+
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  INDIA: "IN",
+  INDIAN: "IN",
+  USA: "US",
+  UNITEDSTATES: "US",
+  UNITEDSTATESOFAMERICA: "US",
+  UK: "GB",
+  UNITEDKINGDOM: "GB",
+  ENGLAND: "GB",
+};
+
+const COUNTRY_CODE_ALIASES: Record<string, string[]> = {
+  IN: ["IN", "INDIA"],
+  US: ["US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"],
+  GB: ["GB", "UK", "UNITED KINGDOM", "ENGLAND"],
+  AE: ["AE", "UAE", "UNITED ARAB EMIRATES"],
+};
+
+const COUNTRY_CODE_EXCHANGES: Record<string, string[]> = {
+  IN: ["NSE", "BSE"],
+  US: ["NASDAQ", "NYSE", "AMEX"],
+  GB: ["LSE"],
+  JP: ["TYO"],
+  DE: ["FRA"],
+  CA: ["TSX"],
+  AU: ["ASX"],
+};
 
 export type StableCursor = {
   createdAt: Date;
@@ -34,28 +62,89 @@ export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function normalizeCountryToken(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z]/g, "");
+}
+
+export function canonicalCountryCode(value?: string): string | undefined {
+  if (!value) return undefined;
+  const token = normalizeCountryToken(value);
+  if (!token) return undefined;
+  if (token.length === 2) return token;
+  return COUNTRY_NAME_TO_CODE[token] ?? token;
+}
+
+export function buildCountryFilterInput(country?: string): { code: string; aliases: string[]; exchanges: string[] } | undefined {
+  const code = canonicalCountryCode(country);
+  if (!code) return undefined;
+
+  const aliases = Array.from(new Set([
+    code,
+    ...(COUNTRY_CODE_ALIASES[code] ?? []),
+  ])).map((entry) => entry.toUpperCase());
+
+  const exchanges = Array.from(new Set(COUNTRY_CODE_EXCHANGES[code] ?? [])).map((entry) => entry.toUpperCase());
+  return { code, aliases, exchanges };
+}
+
+export function matchesCountryFlexible(
+  symbolCountry: string | undefined,
+  symbolExchange: string | undefined,
+  requestedCountry?: string,
+): boolean {
+  if (!requestedCountry || requestedCountry.toLowerCase() === "all") return true;
+  const normalized = buildCountryFilterInput(requestedCountry);
+  if (!normalized) return true;
+
+  const country = String(symbolCountry || "").toUpperCase().trim();
+  const exchange = String(symbolExchange || "").toUpperCase().trim();
+
+  if (normalized.aliases.includes(country)) return true;
+  if (normalized.exchanges.includes(exchange)) return true;
+  return false;
+}
+
 export function buildFilter(params: { query: string; type?: string; country?: string }): FilterQuery<SymbolDocument> {
-  const filter: FilterQuery<SymbolDocument> = {};
+  const andConditions: FilterQuery<SymbolDocument>[] = [];
   const q = normalizeQuery(params.query);
 
   if (q) {
-    filter.$or = [
+    andConditions.push({
+      $or: [
       { symbol: { $regex: `^${escapeRegex(q)}`, $options: "i" } },
       { name: { $regex: escapeRegex(q), $options: "i" } },
       { fullSymbol: { $regex: escapeRegex(q), $options: "i" } },
-    ];
+      ],
+    });
   }
 
   if (params.type) {
     const type = coerceSymbolType(params.type);
     if (type) {
-      filter.type = type;
+      andConditions.push({ type });
     }
   }
 
-  if (params.country) {
-    filter.country = params.country.toUpperCase();
+  const countryFilter = buildCountryFilterInput(params.country);
+  if (countryFilter) {
+    const countryOrExchange: FilterQuery<SymbolDocument>[] = [
+      { country: { $in: countryFilter.aliases } },
+    ];
+    if (countryFilter.exchanges.length > 0) {
+      countryOrExchange.push({ exchange: { $in: countryFilter.exchanges } });
+    }
+    andConditions.push({ $or: countryOrExchange });
   }
+
+  if (andConditions.length === 0) {
+    return {};
+  }
+
+  if (andConditions.length === 1) {
+    return andConditions[0];
+  }
+
+  const filter: FilterQuery<SymbolDocument> = { $and: andConditions };
 
   return filter;
 }

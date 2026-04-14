@@ -66,6 +66,18 @@ const EnvSchema = z.object({
 
 EnvSchema.parse(process.env);
 
+// Production safety: reject weak/placeholder secrets
+if (appEnv === "production") {
+  const jwtSecret = process.env.JWT_SECRET ?? "";
+  if (jwtSecret.length < 32 || /^(change.me|test|dev|secret)$/i.test(jwtSecret)) {
+    throw new Error("FATAL: JWT_SECRET is too weak or a placeholder. Generate with: openssl rand -hex 32");
+  }
+  const cursorSecret = process.env.CURSOR_SIGNING_SECRET ?? "";
+  if (cursorSecret.length < 16 || /^(change.me|test|dev|secret)$/i.test(cursorSecret)) {
+    throw new Error("FATAL: CURSOR_SIGNING_SECRET is too weak or a placeholder.");
+  }
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {

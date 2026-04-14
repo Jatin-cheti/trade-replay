@@ -2,7 +2,7 @@
 
 type SymbolStatus = "active" | "delisted" | "unknown";
 
-type SymbolType = "stock" | "crypto" | "forex" | "index" | "etf" | "fund" | "commodity";
+type SymbolType = "stock" | "crypto" | "forex" | "index" | "etf" | "fund" | "commodity" | "derivative" | "bond" | "economy";
 
 const globalSymbolMasterSchema = new Schema(
   {

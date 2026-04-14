@@ -3,6 +3,7 @@ import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { redisClient, isRedisReady } from "../config/redis";
 import { clusterScopedKey } from "./redisKey.service";
+import { buildCountryFilterInput } from "./symbol.helpers";
 import { logger } from "../utils/logger";
 
 // --- prefix generation ---
@@ -390,7 +391,7 @@ function escapeRegex(value: string): string {
 
 export async function intelligentSearch(params: IntelligentSearchParams): Promise<IntelligentSearchResult> {
   const query = params.query.trim();
-  const limit = Math.max(1, Math.min(30, params.limit ?? 30));
+  const limit = Math.max(1, Math.min(100, params.limit ?? 50));
   const upperQuery = query.toUpperCase();
 
   if (!query) {
@@ -401,7 +402,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     ? await Promise.all([getRecentSymbols(params.userId), getUserWatchlist(params.userId)])
     : [[], new Set<string>()];
 
-  const countryCode = "GLOBAL";
+  const countryCode = params.userCountry?.toUpperCase() || "GLOBAL";
   const exchangeBoosts = EXCHANGE_BOOST[countryCode] || EXCHANGE_BOOST.GLOBAL || {};
 
   const typeFilter: FilterQuery<SymbolDocument> = {};
@@ -409,7 +410,16 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     const t = params.type.toLowerCase();
     if (["stock", "etf", "crypto", "forex", "index", "derivative"].includes(t)) typeFilter.type = t;
   }
-  if (params.country) typeFilter.country = params.country.toUpperCase();
+  const countryFilter = buildCountryFilterInput(params.country);
+  if (countryFilter) {
+    const countryOrExchange: FilterQuery<SymbolDocument>[] = [
+      { country: { $in: countryFilter.aliases } },
+    ];
+    if (countryFilter.exchanges.length > 0) {
+      countryOrExchange.push({ exchange: { $in: countryFilter.exchanges } });
+    }
+    typeFilter.$or = countryOrExchange;
+  }
 
   // PHASE 1: Exact match (O(1) via index)
   const exactRows = await SymbolModel.find({

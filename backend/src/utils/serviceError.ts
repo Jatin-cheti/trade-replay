@@ -12,6 +12,7 @@ const serviceCodeMap: Record<string, { statusCode: number; message: string }> = 
   MISSING_GOOGLE_EMAIL: { statusCode: 400, message: "Google email is required" },
   GOOGLE_CLIENT_ID_NOT_CONFIGURED: { statusCode: 503, message: "Google login is temporarily unavailable" },
   MISSING_GOOGLE_ID_TOKEN: { statusCode: 400, message: "Google ID token is required" },
+  GOOGLE_CLIENT_ID_EMPTY: { statusCode: 503, message: "Google login is temporarily unavailable" },
   INVALID_GOOGLE_TOKEN_FORMAT: { statusCode: 400, message: "Invalid Google token format" },
   INVALID_GOOGLE_TOKEN_PAYLOAD: { statusCode: 400, message: "Could not decode Google token" },
 };

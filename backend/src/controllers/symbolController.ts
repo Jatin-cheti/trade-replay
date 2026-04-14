@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError } from "../utils/appError";
 import { AuthenticatedRequest } from "../types/auth";
 import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../services/symbol.service";
+import { buildCountryFilterInput } from "../services/symbol.helpers";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
 
@@ -40,6 +41,20 @@ export function createSymbolController() {
         const resolvedType = parsed.data.type ?? mapCategoryToSymbolType(parsed.data.category);
         const userId = (req as AuthenticatedRequest).user?.userId;
         const effectiveQuery = parsed.data.q ?? parsed.data.query;
+
+        // Extract user country from proxy headers (Vercel, Cloudflare, nginx, or explicit)
+        const userCountryRaw = (
+          req.headers["x-user-country"]
+          || req.headers["x-vercel-ip-country"]
+          || req.headers["cf-ipcountry"]
+          || req.headers["x-country"]
+        ) as string | undefined;
+        const userCountry = buildCountryFilterInput(userCountryRaw)?.code ?? (
+          req.headers["x-vercel-ip-country"]
+          || req.headers["cf-ipcountry"]
+          || req.headers["x-country"]
+        ) as string | undefined;
+
         const payload = await searchSymbols({
           query: effectiveQuery,
           type: resolvedType,
@@ -48,6 +63,7 @@ export function createSymbolController() {
           offset: parsed.data.offset,
           cursor: parsed.data.cursor,
           userId,
+          userCountry,
         });
 
         res.json(payload);

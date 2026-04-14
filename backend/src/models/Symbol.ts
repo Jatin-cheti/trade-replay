@@ -7,7 +7,7 @@ const symbolSchema = new Schema(
     name: { type: String, required: true, trim: true },
     exchange: { type: String, required: true, trim: true, uppercase: true },
     country: { type: String, required: true, trim: true, uppercase: true },
-    type: { type: String, required: true, enum: ["stock", "etf", "crypto", "forex", "index", "derivative"] },
+    type: { type: String, required: true, enum: ["stock", "etf", "crypto", "forex", "index", "derivative", "bond", "economy"] },
     currency: { type: String, required: true, trim: true, uppercase: true },
     iconUrl: { type: String, trim: true, default: "" },
     companyDomain: { type: String, trim: true, default: "" },
@@ -24,6 +24,7 @@ const symbolSchema = new Schema(
     liquidityScore: { type: Number, required: true, default: 0 },
     isSynthetic: { type: Boolean, required: true, default: false },
     baseSymbol: { type: String, trim: true, uppercase: true, default: "" },
+    searchPrefixes: { type: [String], default: [] },
     source: { type: String, required: true, trim: true },
   },
   { timestamps: true },
@@ -41,6 +42,7 @@ symbolSchema.index(
 );
 symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
 symbolSchema.index({ baseSymbol: 1, priorityScore: -1 }, { name: "symbol_base_cluster_idx" });
+symbolSchema.index({ searchPrefixes: 1, priorityScore: -1 }, { name: "symbol_search_prefixes_idx" });
 
 export type SymbolDocument = InferSchemaType<typeof symbolSchema> & {
   _id: mongoose.Types.ObjectId;

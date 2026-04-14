@@ -1,6 +1,7 @@
 import { Queue } from "bullmq";
 import { isRedisReady, redisClient } from "../config/redis";
 import { redisConnectionOptions } from "../config/redis";
+import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 import { clusterScopedKey } from "./redisKey.service";
 
@@ -27,6 +28,7 @@ const MAX_QUEUE_SIZE = 2000;
 const BACKPRESSURE_QUEUE_THRESHOLD = 1000;
 const MAX_ENQUEUE_PER_MINUTE = 500;
 const ENQUEUE_DEDUPE_TTL_SECONDS = 10 * 60;
+const HOT_LOGO_SYMBOLS = ["RELIANCE", "HDFCBANK", "TCS", "INFY", "BTC", "ETH", "AAPL", "MSFT"];
 
 let queue: Queue<QueueSymbol> | null = null;
 let currentEnqueueMinute = 0;
@@ -236,6 +238,65 @@ export function enqueueSymbolLogoEnrichmentBatch(symbols: QueueSymbolInput[]): v
       error: error instanceof Error ? error.message : String(error),
     });
   });
+}
+
+export async function preloadHotSymbolLogos(): Promise<void> {
+  try {
+    const docs = await SymbolModel.find({ symbol: { $in: HOT_LOGO_SYMBOLS } })
+      .select({
+        symbol: 1,
+        fullSymbol: 1,
+        name: 1,
+        exchange: 1,
+        type: 1,
+        iconUrl: 1,
+        s3Icon: 1,
+        companyDomain: 1,
+        popularity: 1,
+        searchFrequency: 1,
+      })
+      .sort({ priorityScore: -1 })
+      .limit(80)
+      .lean<Array<{
+        symbol: string;
+        fullSymbol: string;
+        name: string;
+        exchange: string;
+        type: "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
+        iconUrl?: string;
+        s3Icon?: string;
+        companyDomain?: string;
+        popularity?: number;
+        searchFrequency?: number;
+      }>>();
+
+    if (docs.length === 0) return;
+
+    enqueueSymbolLogoEnrichmentBatch(
+      docs.map((doc) => ({
+        symbol: doc.symbol,
+        fullSymbol: doc.fullSymbol,
+        name: doc.name,
+        exchange: doc.exchange,
+        type: doc.type === "crypto"
+          ? "crypto"
+          : doc.type === "forex"
+            ? "forex"
+            : "stock",
+        iconUrl: doc.iconUrl,
+        s3Icon: doc.s3Icon,
+        companyDomain: doc.companyDomain,
+        popularity: doc.popularity,
+        searchFrequency: doc.searchFrequency,
+      })),
+    );
+
+    logger.info("logo_hot_symbols_preload_enqueued", { count: docs.length });
+  } catch (error) {
+    logger.warn("logo_hot_symbols_preload_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 export function logLogoQueueStats(): void {
   logger.info("logo_queue_enqueue_stats", {

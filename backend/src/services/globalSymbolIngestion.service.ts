@@ -8,6 +8,13 @@ import { openfigiProvider } from "./providers/openfigi.provider";
 import { secProvider } from "./providers/sec.provider";
 import { wikidataProvider } from "./providers/wikidata.provider";
 import { markSearchIndexDirty } from "./searchIndex.service";
+import {
+  startIngestion,
+  saveCheckpoint,
+  completeIngestion,
+  failIngestion,
+  shouldSkipIngestion,
+} from "./ingestionState.service";
 
 export type GlobalSymbolCandidate = {
   symbol: string;
@@ -157,20 +164,46 @@ async function upsertGlobalSymbols(rows: Array<GlobalSymbolCandidate & { fullSym
 }
 
 export async function ingestGlobalSymbolsOnce(): Promise<{ providers: number; symbols: number }> {
+  const INGESTION_KEY = "global-symbol-ingestion";
   let total = 0;
 
-  for (const provider of PROVIDERS) {
-    // eslint-disable-next-line no-await-in-loop
-    const raw = await provider.fetchSymbols();
-    const normalized = raw
-      .map(normalizeCandidate)
-      .filter((row) => row.symbol.length > 0 && row.name.length > 0);
-    // eslint-disable-next-line no-await-in-loop
-    await upsertGlobalSymbols(normalized);
-    total += normalized.length;
+  if (await shouldSkipIngestion(INGESTION_KEY)) {
+    logger.info("global_symbol_ingestion_skipped_recent");
+    return { providers: PROVIDERS.length, symbols: 0 };
   }
 
-  logger.info("global_symbol_ingestion_pass", { providers: PROVIDERS.length, symbols: total });
+  await startIngestion(INGESTION_KEY);
+
+  try {
+    for (let i = 0; i < PROVIDERS.length; i++) {
+      const provider = PROVIDERS[i];
+      // eslint-disable-next-line no-await-in-loop
+      const raw = await provider.fetchSymbols();
+      const normalized = raw
+        .map(normalizeCandidate)
+        .filter((row) => row.symbol.length > 0 && row.name.length > 0);
+      // eslint-disable-next-line no-await-in-loop
+      await upsertGlobalSymbols(normalized);
+      total += normalized.length;
+
+      // Checkpoint after each provider
+      // eslint-disable-next-line no-await-in-loop
+      await saveCheckpoint(INGESTION_KEY, {
+        lastCursor: provider.name,
+        lastOffset: i + 1,
+        batchIngested: normalized.length,
+        batchSkipped: raw.length - normalized.length,
+        metadata: { providerName: provider.name, providerIndex: i },
+      });
+    }
+
+    await completeIngestion(INGESTION_KEY);
+    logger.info("global_symbol_ingestion_pass", { providers: PROVIDERS.length, symbols: total });
+  } catch (error) {
+    await failIngestion(INGESTION_KEY, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+
   return { providers: PROVIDERS.length, symbols: total };
 }
 

@@ -28,7 +28,7 @@ type IngestRow = {
   symbol: string;
   exchange: string;
   name: string;
-  type: "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
+  type: "stock" | "etf" | "crypto" | "forex" | "index" | "derivative" | "bond" | "economy";
   country: string;
   currency: string;
   source: string;

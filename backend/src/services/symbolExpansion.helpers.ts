@@ -219,10 +219,14 @@ export function inferType(fmpType: string | undefined, name: string, exchange: s
   return "stock";
 }
 
-export function normalizeSymbolType(type: string): "stock" | "crypto" | "forex" | "index" {
+export function normalizeSymbolType(type: string): "stock" | "etf" | "crypto" | "forex" | "index" | "derivative" | "bond" | "economy" {
   const t = type.toLowerCase();
   if (t === "crypto") return "crypto";
   if (t === "forex") return "forex";
   if (t === "index") return "index";
+  if (t === "etf" || t === "fund") return "etf";
+  if (t === "derivative") return "derivative";
+  if (t === "bond") return "bond";
+  if (t === "economy") return "economy";
   return "stock";
 }

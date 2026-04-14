@@ -19,6 +19,93 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// --- Geo-detection: resolve user country and attach as header ---
+let detectedCountry: string | null = typeof window !== "undefined" ? window.localStorage.getItem("user_country") : null;
+const GEO_LOOKUP_TIMEOUT_MS = 3000;
+
+function setCountryHeader(country: string): void {
+  detectedCountry = country.toUpperCase();
+  api.defaults.headers.common["X-Country"] = detectedCountry;
+  api.defaults.headers.common["X-User-Country"] = detectedCountry;
+  if (typeof window !== "undefined") {
+    try { window.localStorage.setItem("user_country", detectedCountry); } catch { /* quota */ }
+  }
+}
+
+if (detectedCountry) {
+  api.defaults.headers.common["X-Country"] = detectedCountry;
+  api.defaults.headers.common["X-User-Country"] = detectedCountry;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function detectCountryFromGeolocation(): Promise<string | null> {
+  if (!("geolocation" in navigator)) return null;
+
+  try {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: false,
+        timeout: GEO_LOOKUP_TIMEOUT_MS,
+        maximumAge: 5 * 60 * 1000,
+      });
+    });
+
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+    const reverseUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`;
+    const response = await fetchWithTimeout(reverseUrl, GEO_LOOKUP_TIMEOUT_MS);
+    if (!response.ok) return null;
+
+    const payload = await response.json() as { countryCode?: string };
+    const code = String(payload.countryCode || "").trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+async function detectCountryFromIp(): Promise<string | null> {
+  try {
+    const response = await fetchWithTimeout("https://ipapi.co/country/", GEO_LOOKUP_TIMEOUT_MS);
+    if (!response.ok) return null;
+    const code = (await response.text()).trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+// Async geo-detect (non-blocking): geolocation first, IP fallback second.
+if (typeof window !== "undefined" && !detectedCountry) {
+  void (async () => {
+    const fromGeolocation = await detectCountryFromGeolocation();
+    if (fromGeolocation) {
+      setCountryHeader(fromGeolocation);
+      return;
+    }
+
+    const fromIp = await detectCountryFromIp();
+    if (fromIp) {
+      setCountryHeader(fromIp);
+      return;
+    }
+
+    // Deterministic fallback so ranking/filtering always has a country context.
+    setCountryHeader("IN");
+  })();
+}
+
+export { setCountryHeader };
+
 const bootstrapToken = typeof window !== "undefined" ? window.localStorage.getItem("sim_token") : null;
 if (bootstrapToken) {
   api.defaults.headers.common.Authorization = `Bearer ${bootstrapToken}`;

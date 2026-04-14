@@ -27,18 +27,24 @@ const STOCK_SECTORS = [
   "utilities",
 ] as const;
 
-function inferCategory(item: AssetSearchItem, requestedCategory?: string): KnownCategory {
-  if (requestedCategory && requestedCategory !== "all") {
-    return requestedCategory as KnownCategory;
-  }
-
+function inferCategory(item: AssetSearchItem): KnownCategory {
   const category = (item.category || "").toLowerCase();
   if (category === "stocks" || category === "funds" || category === "futures" || category === "forex" || category === "crypto" || category === "indices" || category === "bonds" || category === "economy" || category === "options") {
     return category;
   }
 
   const symbol = (item.symbol || item.ticker || "").toUpperCase();
+  const name = (item.name || "").toUpperCase();
   const exchange = (item.exchange || "").toUpperCase();
+  const instrumentType = (item.instrumentType || item.type || "").toLowerCase();
+
+  if (instrumentType === "derivative" || exchange === "OPT" || /-\d{6}-[CP]-/.test(symbol) || /\b(OPTION|CALL|PUT)\b/.test(name)) {
+    return "options";
+  }
+
+  if (instrumentType === "derivative" || symbol.includes("-FUT") || symbol.includes("-PERP") || /\b(FUTURE|FUTURES|PERP|PERPETUAL)\b/.test(name)) {
+    return "futures";
+  }
 
   if (exchange === "BINANCE" || exchange === "CRYPTO" || exchange === "GLOBAL" || symbol.includes("USDT") || symbol.startsWith("BTC")) {
     return "crypto";
@@ -46,6 +52,17 @@ function inferCategory(item: AssetSearchItem, requestedCategory?: string): Known
 
   if (exchange === "FOREX" || exchange === "FX" || symbol.endsWith("INR") || symbol.endsWith("USD")) {
     return "forex";
+  }
+
+  if (instrumentType === "etf") {
+    return "funds";
+  }
+
+  if (instrumentType === "index") {
+    if (/\b(GDP|INFLATION|CPI|PMI|UNEMPLOYMENT|INTEREST RATE|MANUFACTURING|CONSUMER)\b/.test(name)) {
+      return "economy";
+    }
+    return "indices";
   }
 
   return "stocks";
@@ -71,7 +88,20 @@ function inferFundType(item: AssetSearchItem): { value: string; label: string } 
 }
 
 function inferSector(item: AssetSearchItem): string {
-  if (item.sector && item.sector !== "") return item.sector;
+  if (item.sector && item.sector !== "") {
+    // Map legacy sector names to TradingView-standard values
+    const legacy: Record<string, string> = {
+      technology: "electronic_technology",
+      healthcare: "health_technology",
+      energy: "energy_minerals",
+      consumer_cyclical: "consumer_durables",
+      consumer_defensive: "consumer_non_durables",
+      industrials: "producer_manufacturing",
+      real_estate: "finance",
+      communication_services: "communications",
+    };
+    return legacy[item.sector] ?? item.sector;
+  }
   const seed = (item.symbol || item.ticker || item.name || "").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return STOCK_SECTORS[seed % STOCK_SECTORS.length];
 }
@@ -89,7 +119,7 @@ function categoryMarket(category: KnownCategory): AssetSearchItem["market"] {
 }
 
 export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: string): AssetSearchItem {
-  const category = inferCategory(item, requestedCategory);
+  const category = inferCategory(item);
   const normalized = {
     ...item,
     logoUrl: item.displayIconUrl || item.logoUrl || item.iconUrl,
@@ -99,15 +129,15 @@ export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: str
   const fundType = inferFundType(item);
 
   const typeValue = category === "stocks"
-    ? stockType.value
+    ? (item.type || stockType.value)
     : category === "funds"
-      ? fundType.value
+      ? (item.type || fundType.value)
       : item.type || "";
 
   const instrumentType = category === "stocks"
-    ? stockType.label
+    ? (item.instrumentType || stockType.label)
     : category === "funds"
-      ? fundType.label
+      ? (item.instrumentType || fundType.label)
       : item.instrumentType || item.type;
 
   return {

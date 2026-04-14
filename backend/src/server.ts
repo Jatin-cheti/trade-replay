@@ -8,6 +8,8 @@ import { logger } from "./utils/logger";
 import { bootstrapAlerts } from "./services/alertsEngine.service";
 import { SymbolModel } from "./models/Symbol";
 import { ingestGlobalSymbols } from "./services/ingestion.service";
+import { preloadHotSymbolLogos } from "./services/logoQueue.service";
+import { buildCleanAssets, getCleanAssetStats } from "./services/cleanAsset.service";
 
 type NodeErrorWithCode = Error & { code?: string };
 
@@ -39,6 +41,11 @@ async function bootstrap() {
   logger.info("bootstrap_connect_redis");
   await connectRedis();
   await ensureSymbolsIngested();
+  // Build clean assets layer in background (non-blocking)
+  void buildCleanAssets()
+    .then((r) => logger.info("clean_assets_ready", r))
+    .catch((e) => logger.error("clean_assets_build_error", { error: String(e) }));
+  void preloadHotSymbolLogos();
   await bootstrapKafkaProducerOnly();
   logger.info("bootstrap_alerts");
   await bootstrapAlerts();

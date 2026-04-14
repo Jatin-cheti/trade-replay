@@ -1,7 +1,7 @@
 import { SymbolModel } from "../models/Symbol";
 import { isRedisReady, redisClient } from "../config/redis";
 import { logger } from "../utils/logger";
-import { SEARCH_PRECACHE_QUERIES, type SymbolType } from "./symbol.helpers";
+import { SEARCH_PRECACHE_QUERIES, matchesCountryFlexible, type SymbolType } from "./symbol.helpers";
 import { recordMemoryUsage } from "./metrics.service";
 
 type IndexedRow = {
@@ -10,6 +10,7 @@ type IndexedRow = {
   name: string;
   exchange: string;
   country: string;
+  updatedAt?: Date;
   type: SymbolType;
   currency: string;
   iconUrl?: string;
@@ -17,6 +18,7 @@ type IndexedRow = {
   s3Icon?: string;
   source?: string;
   isSynthetic?: boolean;
+  baseSymbol?: string;
   popularity?: number;
   searchFrequency?: number;
   userUsage?: number;
@@ -44,10 +46,10 @@ type PrefixCacheEntry = {
   lastAccessedAt: number;
 };
 
-const MAX_RESULTS = 30;
+const MAX_RESULTS = envNumber("SEARCH_INDEX_MAX_RESULTS", 120);
 const MAX_SYMBOLS_PER_PREFIX = envNumber("MAX_SYMBOLS_PER_PREFIX", 50);
 const PREFIX_KEY_LENGTH = envNumber("SEARCH_INDEX_PREFIX_KEY_LENGTH", 3);
-const PREFIX_DB_FETCH_LIMIT = envNumber("SEARCH_INDEX_PREFIX_FETCH_LIMIT", 1200);
+const PREFIX_DB_FETCH_LIMIT = envNumber("SEARCH_INDEX_PREFIX_FETCH_LIMIT", 400);
 const PREFIX_CACHE_TTL_MS = envNumber("SEARCH_INDEX_PREFIX_CACHE_TTL_MS", 5 * 60 * 1000);
 const PREFIX_CACHE_MAX_ENTRIES = envNumber("SEARCH_INDEX_PREFIX_CACHE_MAX_ENTRIES", 180);
 const HOT_PREFIX_PREWARM_LIMIT = envNumber("SEARCH_INDEX_HOT_PREFIX_PREWARM_LIMIT", 12);
@@ -79,6 +81,17 @@ function safeNumber(value: unknown): number {
 
 function normalizeToken(raw: string): string {
   return String(raw || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeCompanyName(raw: string): string {
+  if (!raw) return "";
+  let cleaned = raw.toUpperCase();
+  cleaned = cleaned.replace(/\b(LIMITED|LTD\.?|INC\.?|CORP\.?|CORPORATION|CO\.?|PLC|HOLDINGS?)\b/g, " ");
+  cleaned = cleaned.replace(/\b(FUTURE|FUTURES|OPTION|OPTIONS|PERPETUAL|PERP|CALL|PUT)\b/g, " ");
+  cleaned = cleaned.replace(/\b\d{6}\b/g, " ");
+  cleaned = cleaned.replace(/[^A-Z0-9 ]/g, " ");
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  return cleaned;
 }
 
 function prefixFromQuery(query: string): string {
@@ -138,7 +151,113 @@ function clearPrefixCache(reason: string): void {
   recordCurrentMemory();
 }
 
-function staticScore(row: IndexedRow, normalizedSymbol: string): number {
+// --- Bluechip boost map (entity-level, not symbol-level) ---
+const BLUECHIP_BOOST: Record<string, number> = {
+  RELIANCE: 90, HDFCBANK: 85, TCS: 80, INFY: 78, ICICIBANK: 76,
+  SBIN: 74, HDFC: 72, KOTAKBANK: 70, ADANIENT: 68, BHARTIARTL: 66,
+  LT: 64, ITC: 62, HINDUNILVR: 60, BAJFINANCE: 58, MARUTI: 56,
+  AAPL: 88, MSFT: 86, GOOG: 82, GOOGL: 82, AMZN: 80, NVDA: 80,
+  TSLA: 76, META: 74, BRK: 72, JPM: 70, V: 68, JNJ: 66, UNH: 64,
+  BTC: 85, ETH: 78, SOL: 60, XRP: 58, BNB: 56,
+};
+
+// --- Geo-aware exchange boosts ---
+const GEO_EXCHANGE_BOOST: Record<string, Record<string, number>> = {
+  IN: { NSE: 25, BSE: 15 },
+  US: { NASDAQ: 20, NYSE: 20, AMEX: 10 },
+  GB: { LSE: 20 },
+  JP: { TYO: 20 },
+  DE: { FRA: 15 },
+  AU: { ASX: 15 },
+  CA: { TSX: 15 },
+  GLOBAL: { NSE: 5, NYSE: 5, NASDAQ: 5, CRYPTO: 3 },
+};
+
+// --- Derivative detection ---
+function isDerivativeLike(row: IndexedRow): boolean {
+  if (row.type === "derivative") return true;
+  if (row.isSynthetic) return true;
+  const sym = String(row.symbol || "").toUpperCase();
+  const exch = String(row.exchange || "").toUpperCase();
+  const src = String(row.source || "").toLowerCase();
+  return (
+    exch === "OPT" || exch === "DERIV" || exch === "CFD"
+    || sym.includes("-PERP") || sym.includes("-FUT")
+    || /-F-\d{6}/.test(sym) || /-\d{6}-[CP]-/.test(sym)
+    || src === "synthetic-derivatives"
+  );
+}
+
+// --- Company key derivation for entity grouping ---
+function deriveCompanyKey(row: IndexedRow): string {
+  const sym = String(row.symbol || "").toUpperCase();
+  // Strip derivative suffixes to get base
+  let base = sym;
+  if (row.baseSymbol) base = String(row.baseSymbol).toUpperCase();
+  else {
+    base = base.replace(/-F-\d{6}$/, "").replace(/-\d{6}-[CP]-.+$/, "")
+      .replace(/-PERP$/, "").replace(/-FUT$/, "");
+  }
+  // Strip exchange suffix (.NS, .BO, etc.)
+  const dotIndex = base.indexOf(".");
+  if (dotIndex > 0) base = base.slice(0, dotIndex);
+
+  const normalizedBase = normalizeToken(base);
+  if (normalizedBase) {
+    return normalizedBase;
+  }
+
+  const normalizedName = normalizeCompanyName(String(row.name || ""));
+  if (normalizedName) {
+    return normalizedName;
+  }
+
+  return sym;
+}
+
+function exchangePrimaryBoost(item: SearchIndexItem, userCountry?: string): number {
+  const exchange = item.exchange.toUpperCase();
+  const country = (userCountry || item.country || "").toUpperCase();
+
+  if (country === "IN") {
+    if (exchange === "NSE") return 40;
+    if (exchange === "BSE") return 28;
+  }
+  if (country === "US") {
+    if (exchange === "NASDAQ") return 34;
+    if (exchange === "NYSE") return 34;
+    if (exchange === "AMEX") return 18;
+  }
+  return 0;
+}
+
+function representativeRank(item: SearchIndexItem, score: number, userCountry?: string, query?: string): number {
+  const liquidity = safeNumber(item.liquidityScore);
+  const volume = safeNumber(item.volume);
+  const freshness = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
+  const companyKey = deriveCompanyKey(item);
+  const upperQuery = String(query || "").toUpperCase();
+  const canonicalCrypto = new Set(["BTC", "ETH", "SOL", "XRP", "BNB"]);
+  let queryEntityBoost = 0;
+
+  if (upperQuery && companyKey === upperQuery) {
+    queryEntityBoost += 120;
+    if (canonicalCrypto.has(upperQuery)) {
+      queryEntityBoost += item.type === "crypto" ? 220 : -30;
+    }
+  }
+
+  return (
+    score
+    + exchangePrimaryBoost(item, userCountry)
+    + queryEntityBoost
+    + Math.log10(liquidity + 1) * 4
+    + Math.log10(volume + 1) * 3
+    + (freshness / 1e14)
+  );
+}
+
+function staticScore(row: IndexedRow, normalizedSymbol: string, userCountry?: string): number {
   let score = 0;
   score += safeNumber(row.priorityScore) * 3.2;
   score += safeNumber(row.searchFrequency) * 1.8;
@@ -155,9 +274,24 @@ function staticScore(row: IndexedRow, normalizedSymbol: string): number {
   if (row.isSynthetic) score -= 28;
   if (normalizedSymbol.length <= 4) score += 5;
 
-  // Tiny exchange preference to break ties (NSE > BSE, NYSE > NASDAQ etc.)
+  // Bluechip boost — entity-level, very significant
+  const companyKey = deriveCompanyKey(row);
+  score += BLUECHIP_BOOST[companyKey] ?? 0;
+
+  // Geo-aware exchange boost
+  const geoKey = userCountry?.toUpperCase() || "GLOBAL";
+  const geoBoosts = GEO_EXCHANGE_BOOST[geoKey] || GEO_EXCHANGE_BOOST.GLOBAL || {};
+  const exch = String(row.exchange || "").toUpperCase();
+  score += geoBoosts[exch] ?? 0;
+
+  // Country match bonus — symbols from user's country get a boost
+  if (userCountry && String(row.country || "").toUpperCase() === userCountry.toUpperCase()) {
+    score += 15;
+  }
+
+  // Tiny exchange preference to break remaining ties
   const exPref: Record<string, number> = { NSE: 0.02, NYSE: 0.02, CRYPTO: 0.015, NASDAQ: 0.01, BSE: 0.01 };
-  score += exPref[String(row.exchange).toUpperCase()] ?? 0;
+  score += exPref[exch] ?? 0;
 
   return Number(score.toFixed(4));
 }
@@ -168,12 +302,19 @@ function queryBonus(item: SearchIndexItem, query: string): number {
   const normalizedSymbol = normalizeToken(item.symbol);
   const fullSymbol = item.fullSymbol.toUpperCase();
   const name = item.name.toUpperCase();
+  const companyKey = deriveCompanyKey(item);
+  const canonicalCrypto = new Set(["BTC", "ETH", "SOL", "XRP", "BNB"]);
 
   // Kept low so staticScore (popularity/marketCap/priority) dominates ranking.
   // A mega-cap prefix match must beat a micro-cap exact match.
-  if (normalizedSymbol === query) return 50;
-  if (fullSymbol === query || fullSymbol.endsWith(`:${query}`)) return 40;
-  if (normalizedSymbol.startsWith(query)) return 30 - Math.min(10, normalizedSymbol.length - query.length);
+  if (normalizedSymbol === query) {
+    let exactBonus = query.length <= 3 ? 85 : 260;
+    if ((BLUECHIP_BOOST[companyKey] ?? 0) >= 60) exactBonus += 80;
+    if (canonicalCrypto.has(query) && item.type === "crypto") exactBonus += 220;
+    return exactBonus;
+  }
+  if (fullSymbol === query || fullSymbol.endsWith(`:${query}`)) return 145;
+  if (normalizedSymbol.startsWith(query)) return 48 - Math.min(12, normalizedSymbol.length - query.length);
 
   const firstNameToken = normalizeToken(name.split(/\s+/)[0] || "");
   if (firstNameToken && firstNameToken.startsWith(query)) return 20;
@@ -185,11 +326,11 @@ function queryBonus(item: SearchIndexItem, query: string): number {
 
 function matchesFilter(item: SearchIndexItem, type?: string, country?: string): boolean {
   if (type && type !== "all" && item.type !== type) return false;
-  if (country && country !== "all" && item.country !== country.toUpperCase()) return false;
+  if (!matchesCountryFlexible(item.country, item.exchange, country)) return false;
   return true;
 }
 
-function toSearchIndexItem(row: IndexedRow): SearchIndexItem | null {
+function toSearchIndexItem(row: IndexedRow, userCountry?: string): SearchIndexItem | null {
   const symbol = normalizeToken(row.symbol);
   const fullSymbol = String(row.fullSymbol || "").toUpperCase();
 
@@ -201,6 +342,7 @@ function toSearchIndexItem(row: IndexedRow): SearchIndexItem | null {
     name: String(row.name || ""),
     exchange: String(row.exchange || "").toUpperCase(),
     country: String(row.country || "").toUpperCase(),
+    updatedAt: row.updatedAt,
     type: (row.type || "stock") as SymbolType,
     currency: String(row.currency || "USD").toUpperCase(),
     iconUrl: row.iconUrl || "",
@@ -208,6 +350,7 @@ function toSearchIndexItem(row: IndexedRow): SearchIndexItem | null {
     s3Icon: row.s3Icon || "",
     source: row.source || "",
     isSynthetic: Boolean(row.isSynthetic),
+    baseSymbol: row.baseSymbol || "",
     popularity: safeNumber(row.popularity),
     searchFrequency: safeNumber(row.searchFrequency),
     userUsage: safeNumber(row.userUsage),
@@ -215,44 +358,70 @@ function toSearchIndexItem(row: IndexedRow): SearchIndexItem | null {
     marketCap: safeNumber(row.marketCap),
     volume: safeNumber(row.volume),
     liquidityScore: safeNumber(row.liquidityScore),
-    staticScore: staticScore(row, symbol),
+    staticScore: staticScore(row, symbol, userCountry),
   };
 }
 
 async function buildPrefixItems(prefix: string): Promise<SearchIndexItem[]> {
   const escaped = escapeRegex(prefix);
 
-  const docs = await SymbolModel.find({
-    $or: [
-      { symbol: { $regex: `^${escaped}`, $options: "i" } },
-      { fullSymbol: { $regex: `:${escaped}`, $options: "i" } },
-      { name: { $regex: `\\b${escaped}`, $options: "i" } },
-    ],
-  })
-    .select({
-      symbol: 1,
-      fullSymbol: 1,
-      name: 1,
-      exchange: 1,
-      country: 1,
-      type: 1,
-      currency: 1,
-      iconUrl: 1,
-      companyDomain: 1,
-      s3Icon: 1,
-      source: 1,
-      isSynthetic: 1,
-      popularity: 1,
-      searchFrequency: 1,
-      userUsage: 1,
-      priorityScore: 1,
-      marketCap: 1,
-      volume: 1,
-      liquidityScore: 1,
-    })
+  const projection = {
+    symbol: 1,
+    fullSymbol: 1,
+    name: 1,
+    exchange: 1,
+    country: 1,
+    updatedAt: 1,
+    type: 1,
+    currency: 1,
+    iconUrl: 1,
+    companyDomain: 1,
+    s3Icon: 1,
+    source: 1,
+    isSynthetic: 1,
+    baseSymbol: 1,
+    popularity: 1,
+    searchFrequency: 1,
+    userUsage: 1,
+    priorityScore: 1,
+    marketCap: 1,
+    volume: 1,
+    liquidityScore: 1,
+  };
+
+  const docsByPrefix = await SymbolModel.find({ searchPrefixes: prefix })
+    .select(projection)
     .sort({ priorityScore: -1 })
     .limit(PREFIX_DB_FETCH_LIMIT)
     .lean<IndexedRow[]>();
+
+  let docs = docsByPrefix;
+
+  if (docs.length < Math.max(40, Math.floor(PREFIX_DB_FETCH_LIMIT / 4))) {
+    const existingFullSymbols = new Set(docs.map((item) => item.fullSymbol));
+    const remainder = Math.max(0, PREFIX_DB_FETCH_LIMIT - docs.length);
+    if (remainder > 0) {
+      const fallbackDocs = await SymbolModel.find({
+        $or: [
+          { symbol: { $regex: `^${escaped}` } },
+          { fullSymbol: { $regex: `:${escaped}` } },
+        ],
+      })
+    .select({
+      ...projection,
+    })
+    .sort({ priorityScore: -1 })
+        .limit(remainder)
+        .lean<IndexedRow[]>();
+
+      for (const doc of fallbackDocs) {
+        if (!existingFullSymbols.has(doc.fullSymbol)) {
+          docs.push(doc);
+          existingFullSymbols.add(doc.fullSymbol);
+        }
+      }
+    }
+  }
 
   const scored = new Map<string, { item: SearchIndexItem; score: number }>();
 
@@ -376,6 +545,7 @@ export async function lookupSymbolsFromIndex(params: {
   limit: number;
   type?: string;
   country?: string;
+  userCountry?: string;
   disablePrecomputed?: boolean;
 }): Promise<SearchIndexLookupResult> {
   const normalizedQuery = normalizeToken(params.query);
@@ -409,7 +579,18 @@ export async function lookupSymbolsFromIndex(params: {
     const bonus = queryBonus(item, normalizedQuery);
     if (bonus <= 0 && !normalizeToken(item.symbol).startsWith(normalizedQuery)) continue;
 
-    scored.push({ item, score: item.staticScore + bonus });
+    // Recompute staticScore with geo-boost if userCountry is available
+    let itemScore = item.staticScore + bonus;
+    if (params.userCountry) {
+      const geoKey = params.userCountry.toUpperCase();
+      const geoBoosts = GEO_EXCHANGE_BOOST[geoKey] || GEO_EXCHANGE_BOOST.GLOBAL || {};
+      const exch = item.exchange.toUpperCase();
+      const geoExchangeBoost = geoBoosts[exch] ?? 0;
+      const countryMatch = item.country === geoKey ? 15 : 0;
+      itemScore += geoExchangeBoost + countryMatch;
+    }
+
+    scored.push({ item, score: itemScore });
   }
 
   scored.sort((left, right) => {
@@ -417,12 +598,51 @@ export async function lookupSymbolsFromIndex(params: {
     return left.item.fullSymbol.localeCompare(right.item.fullSymbol);
   });
 
-  const items = scored.slice(0, cappedLimit).map((entryItem) => entryItem.item);
+  // --- Entity-first grouping: one entry per company, best symbol wins ---
+  const companyBest = new Map<string, { item: SearchIndexItem; score: number }>();
+  const basesWithRealListing = new Set<string>();
+
+  // First pass: identify bases that have a real (non-derivative) listing
+  for (const entry of scored) {
+    if (!isDerivativeLike(entry.item)) {
+      basesWithRealListing.add(deriveCompanyKey(entry.item));
+    }
+  }
+
+  // Second pass: pick best per company, suppress derivatives when base exists
+  for (const entry of scored) {
+    const companyKey = deriveCompanyKey(entry.item);
+    const isDeriv = isDerivativeLike(entry.item);
+
+    // If this is a derivative and a real listing exists for the same base, skip
+    if (isDeriv && basesWithRealListing.has(companyKey)) continue;
+
+    const existing = companyBest.get(companyKey);
+    if (!existing) {
+      companyBest.set(companyKey, entry);
+      continue;
+    }
+
+    const existingRank = representativeRank(existing.item, existing.score, params.userCountry, normalizedQuery);
+    const candidateRank = representativeRank(entry.item, entry.score, params.userCountry, normalizedQuery);
+    if (candidateRank > existingRank) {
+      companyBest.set(companyKey, entry);
+    }
+  }
+
+  // Sort company representatives by score
+  const grouped = Array.from(companyBest.values())
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.item.fullSymbol.localeCompare(right.item.fullSymbol);
+    });
+
+  const items = grouped.slice(0, cappedLimit).map((e) => e.item);
 
   return {
     items,
-    total: scored.length,
-    hasMore: scored.length > cappedLimit,
+    total: grouped.length,
+    hasMore: grouped.length > cappedLimit,
     source: "lazy-prefix-index",
   };
 }

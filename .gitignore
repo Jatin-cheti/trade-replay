@@ -8,10 +8,11 @@ backend/dist/
 frontend/dist/
 *.tsbuildinfo
 
-# Environment files (contain secrets)
+# Environment files (contain secrets — NEVER commit)
 .env
-.env.secrets
-.env.*.local
+.env.*
+!.env.example
+deploy/env/.env.secrets*
 
 # Logs
 *.log
@@ -35,5 +36,8 @@ debug-screenshots/
 
 # Misc
 tmp-*
+tmp/
 *.tgz
 .vercel
+
+FRIEND-SETUP/
