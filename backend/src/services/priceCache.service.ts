@@ -346,7 +346,7 @@ export async function overlayRealtimePrices<T extends {
 
   let fallbackQuotes: Record<string, PriceQuote> = {};
   if (missing.length > 0) {
-    const payload = getLiveQuotes({ symbols: missing });
+    const payload = await getLiveQuotes({ symbols: missing });
     fallbackQuotes = Object.fromEntries(
       Object.entries(payload.quotes).map(([symbol, quote]) => [
         normalizeSymbol(symbol),

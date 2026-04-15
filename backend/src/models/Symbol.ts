@@ -19,7 +19,10 @@ const symbolSchema = new Schema(
     s3Icon: { type: String, trim: true, default: "" },
     popularity: { type: Number, required: true, default: 0 },
     searchFrequency: { type: Number, required: true, default: 0 },
+    searchCount: { type: Number, required: true, default: 0 },
     userUsage: { type: Number, required: true, default: 0 },
+    lastAccessedAt: { type: Date },
+    isHot: { type: Boolean, required: true, default: false },
     priorityScore: { type: Number, required: true, default: 0 },
     marketCap: { type: Number, required: true, default: 0 },
     volume: { type: Number, required: true, default: 0 },
@@ -44,6 +47,7 @@ symbolSchema.index(
   { name: "symbol_priority_score_idx" },
 );
 symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
+symbolSchema.index({ isHot: 1, lastAccessedAt: -1 }, { name: "symbol_hot_lifecycle_idx" });
 symbolSchema.index({ baseSymbol: 1, priorityScore: -1 }, { name: "symbol_base_cluster_idx" });
 symbolSchema.index({ searchPrefixes: 1, priorityScore: -1 }, { name: "symbol_search_prefixes_idx" });
 
