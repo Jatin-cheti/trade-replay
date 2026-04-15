@@ -20,7 +20,7 @@ type ExpansionConfig = {
 
 const DEFAULTS: ExpansionConfig = {
   targetPerCycle: 300000,
-  maxUniverseSymbols: 3500000,
+  maxUniverseSymbols: 60000,
   baseLimit: 25000,
 };
 
@@ -284,6 +284,8 @@ function addMonths(base: Date, offset: number): Date {
 }
 
 async function expandSyntheticUniverse(config: Partial<ExpansionConfig> = {}): Promise<number> {
+  if (process.env.DISABLE_SYNTHETIC_EXPANSION === "true") return 0;
+
   const effective = { ...DEFAULTS, ...config };
   const total = await SymbolModel.estimatedDocumentCount();
   if (total >= effective.maxUniverseSymbols) return 0;
