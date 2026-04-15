@@ -1,6 +1,6 @@
 import { SymbolModel } from "../models/Symbol";
 import { isRedisReady, redisClient } from "../config/redis";
-import { getLiveQuotes } from "./liveMarketService";
+import { getAssetServiceQuotes } from "../clients/assetService.client";
 import { logger } from "../utils/logger";
 import { recordRedisLatency } from "./metrics.service";
 
@@ -346,7 +346,7 @@ export async function overlayRealtimePrices<T extends {
 
   let fallbackQuotes: Record<string, PriceQuote> = {};
   if (missing.length > 0) {
-    const payload = await getLiveQuotes({ symbols: missing });
+    const payload = await getAssetServiceQuotes(missing);
     fallbackQuotes = Object.fromEntries(
       Object.entries(payload.quotes).map(([symbol, quote]) => [
         normalizeSymbol(symbol),
