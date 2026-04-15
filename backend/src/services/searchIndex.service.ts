@@ -46,6 +46,118 @@ type PrefixCacheEntry = {
   lastAccessedAt: number;
 };
 
+// ── Symbol intent engine ────────────────────────────────────────────
+export type QueryIntent = "crypto" | "equity" | "forex" | "etf" | "index" | "general";
+
+const CRYPTO_SIGNAL_TOKENS = new Set([
+  "BTC", "ETH", "SOL", "XRP", "BNB", "ADA", "DOGE", "DOT", "AVAX", "MATIC",
+  "LINK", "ATOM", "UNI", "SHIB", "LTC", "NEAR", "APT", "ARB", "OP", "SUI",
+  "FIL", "AAVE", "MKR", "CRV", "SNX", "COMP", "SUSHI", "INJ", "TIA", "SEI",
+  "PEPE", "WIF", "BONK", "FLOKI", "MEME", "RENDER", "FET", "RNDR", "TAO",
+]);
+
+const ETF_SIGNAL_TOKENS = new Set([
+  "SPY", "QQQ", "IWM", "VTI", "VOO", "DIA", "GLD", "SLV", "TLT", "AGG",
+  "ARKK", "XLF", "XLK", "XLE", "XLV", "SCHD", "VNQ", "IEMG",
+]);
+
+const INDEX_SIGNAL_TOKENS = new Set([
+  "SPX", "NDX", "DJI", "IXIC", "VIX", "NIFTY", "SENSEX", "FTSE", "DAX", "N225",
+]);
+
+const FOREX_SIGNAL_TOKENS = new Set([
+  "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "USDINR",
+]);
+
+export function detectQueryIntent(query: string): QueryIntent {
+  const upper = query.toUpperCase().trim();
+  if (!upper) return "general";
+
+  // Explicit crypto markers
+  if (upper.includes("USDT") || upper.includes("USDC") || upper.includes("BUSD")) return "crypto";
+  if (upper.endsWith("USD") && upper.length >= 5 && !FOREX_SIGNAL_TOKENS.has(upper)) return "crypto";
+  if (upper.endsWith("PERP") || upper.endsWith("SWAP")) return "crypto";
+
+  // Known token sets
+  if (CRYPTO_SIGNAL_TOKENS.has(upper)) return "crypto";
+  if (ETF_SIGNAL_TOKENS.has(upper)) return "etf";
+  if (INDEX_SIGNAL_TOKENS.has(upper)) return "index";
+  if (FOREX_SIGNAL_TOKENS.has(upper)) return "forex";
+
+  return "general";
+}
+
+function intentBoost(item: SearchIndexItem, intent: QueryIntent): number {
+  if (intent === "general") return 0;
+
+  const type = item.type;
+  if (intent === "crypto") {
+    if (type === "crypto") return 200;
+    if (type === "etf") return -40;
+    if (type === "stock") return -80;
+  }
+  if (intent === "etf") {
+    if (type === "etf") return 120;
+    if (type === "crypto") return -30;
+  }
+  if (intent === "index") {
+    if (type === "index") return 120;
+    if (type === "stock") return -20;
+  }
+  if (intent === "forex") {
+    if (type === "forex") return 120;
+  }
+  if (intent === "equity") {
+    if (type === "stock") return 60;
+    if (type === "crypto") return -40;
+  }
+  return 0;
+}
+
+// ── CTR (click-through rate) scoring ────────────────────────────────
+const CTR_REDIS_PREFIX = "ctr:";
+const CTR_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
+export async function recordSearchClick(query: string, symbol: string): Promise<void> {
+  if (!isRedisReady() || !query || !symbol) return;
+  try {
+    const key = `${CTR_REDIS_PREFIX}${query.toLowerCase()}:${symbol.toUpperCase()}`;
+    await redisClient.incr(key);
+    await redisClient.expire(key, CTR_TTL_SECONDS);
+    // Also track recent searches per user (generic, no userId here)
+    const trendKey = `ctr:trending:${symbol.toUpperCase()}`;
+    await redisClient.incr(trendKey);
+    await redisClient.expire(trendKey, CTR_TTL_SECONDS);
+  } catch { /* fire-and-forget */ }
+}
+
+async function getCtrScore(query: string, symbol: string): Promise<number> {
+  if (!isRedisReady() || !query || !symbol) return 0;
+  try {
+    const key = `${CTR_REDIS_PREFIX}${query.toLowerCase()}:${symbol.toUpperCase()}`;
+    const val = await redisClient.get(key);
+    if (!val) return 0;
+    return Math.log(1 + Number(val)) * 15; // Scale CTR to meaningful boost
+  } catch { return 0; }
+}
+
+async function getCtrScoresBatch(query: string, symbols: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!isRedisReady() || !query || symbols.length === 0) return result;
+  try {
+    const lowerQuery = query.toLowerCase();
+    const keys = symbols.map((s) => `${CTR_REDIS_PREFIX}${lowerQuery}:${s.toUpperCase()}`);
+    const values = await redisClient.mget(...keys);
+    for (let i = 0; i < symbols.length; i++) {
+      const raw = values[i];
+      if (raw) {
+        result.set(symbols[i].toUpperCase(), Math.log(1 + Number(raw)) * 15);
+      }
+    }
+  } catch { /* ignore */ }
+  return result;
+}
+
 const MAX_RESULTS = envNumber("SEARCH_INDEX_MAX_RESULTS", 120);
 const MAX_SYMBOLS_PER_PREFIX = envNumber("MAX_SYMBOLS_PER_PREFIX", 50);
 const PREFIX_KEY_LENGTH = envNumber("SEARCH_INDEX_PREFIX_KEY_LENGTH", 3);
@@ -659,6 +771,11 @@ export async function lookupSymbolsFromIndex(params: {
   const entry = await loadPrefixEntry(prefix, "query_lookup");
   const scored: Array<{ item: SearchIndexItem; score: number }> = [];
 
+  // Detect intent and fetch CTR scores in parallel for all candidates
+  const intent = detectQueryIntent(normalizedQuery);
+  const candidateSymbols = entry.items.map((item) => item.symbol);
+  const ctrScores = await getCtrScoresBatch(normalizedQuery, candidateSymbols);
+
   for (const item of entry.items) {
     if (!matchesFilter(item, params.type, params.country)) continue;
 
@@ -680,6 +797,13 @@ export async function lookupSymbolsFromIndex(params: {
     if (params.watchlistSymbols?.has(item.fullSymbol)) {
       itemScore += 35;
     }
+
+    // Intent-aware boost: strongly prefer crypto when query signals crypto intent
+    itemScore += intentBoost(item, intent);
+
+    // CTR boost: symbols users actually click on for this query rank higher
+    const ctr = ctrScores.get(item.symbol.toUpperCase()) ?? 0;
+    itemScore += ctr;
 
     scored.push({ item, score: itemScore });
   }

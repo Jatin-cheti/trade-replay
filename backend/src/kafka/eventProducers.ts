@@ -14,6 +14,7 @@ import {
   LogoCompletedPayload,
   AssetCreatedPayload,
   AssetUpdatedPayload,
+  SearchClickPayload,
 } from "../kafka/topics";
 
 // --- Trade Events ---
@@ -82,4 +83,10 @@ export function produceAssetCreated(payload: AssetCreatedPayload): void {
 
 export function produceAssetUpdated(payload: AssetUpdatedPayload): void {
   produce(KAFKA_TOPICS.ASSET_UPDATED, payload, payload.fullSymbol);
+}
+
+// --- Search Behaviour Events ---
+
+export function produceSearchClick(payload: SearchClickPayload): void {
+  produce(KAFKA_TOPICS.SEARCH_CLICK, payload, payload.symbol);
 }
