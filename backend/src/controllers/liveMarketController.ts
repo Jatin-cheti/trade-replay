@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
-import { getLiveCandles, getLiveQuotes } from "../services/liveMarketService";
+import { getLiveCandles, getLiveQuotes, getLiveSnapshot, ingestLiveSnapshot } from "../services/liveMarketService";
 import { AppError } from "../utils/appError";
 
 const candlesSchema = z.object({
@@ -13,6 +13,32 @@ const quotesSchema = z.object({
   symbols: z.string().min(1),
 });
 
+const snapshotSchema = z.object({
+  symbols: z.array(z.string().min(1)).min(1),
+  candleSymbols: z.array(z.string().min(1)).optional(),
+  candleLimit: z.number().int().min(20).max(500).optional(),
+});
+
+const snapshotIngestSchema = z.object({
+  quotes: z.record(z.object({
+    price: z.number(),
+    change: z.number(),
+    changePercent: z.number(),
+    volume: z.number(),
+    timestamp: z.string(),
+    symbol: z.string().optional(),
+    source: z.string().optional(),
+  })).optional(),
+  candlesBySymbol: z.record(z.array(z.object({
+    time: z.string(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+    volume: z.number(),
+  }))).optional(),
+});
+
 export function createLiveMarketController() {
   return {
     candles: async (req: AuthenticatedRequest, res: Response) => {
@@ -21,7 +47,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_CANDLES_QUERY", "Invalid live candles query");
       }
 
-      const payload = getLiveCandles({
+      const payload = await getLiveCandles({
         symbol: parsed.data.symbol,
         limit: parsed.data.limit,
       });
@@ -44,7 +70,32 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_QUOTES_QUERY", "At least one symbol is required");
       }
 
-      res.json(getLiveQuotes({ symbols }));
+      res.json(await getLiveQuotes({ symbols }));
+    },
+
+    snapshot: async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = snapshotSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new AppError(400, "INVALID_LIVE_SNAPSHOT_PAYLOAD", "Invalid live snapshot payload");
+      }
+
+      const payload = await getLiveSnapshot({
+        symbols: parsed.data.symbols,
+        candleSymbols: parsed.data.candleSymbols,
+        candleLimit: parsed.data.candleLimit,
+      });
+
+      res.json(payload);
+    },
+
+    ingestSnapshot: async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = snapshotIngestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new AppError(400, "INVALID_LIVE_SNAPSHOT_INGEST_PAYLOAD", "Invalid live snapshot ingest payload");
+      }
+
+      const payload = await ingestLiveSnapshot(parsed.data);
+      res.json(payload);
     },
   };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CandleData } from "@/data/stockData";
-import { fetchLiveCandles, fetchLiveQuotes, type LiveQuote } from "@/services/live/liveMarketApi";
+import { fetchLiveSnapshot, type LiveQuote } from "@/services/live/liveMarketApi";
 
 type LiveMode = "symbol" | "portfolio";
 
@@ -155,64 +155,37 @@ export function useLiveMarketData(input: {
 
       try {
         const normalizedSymbol = normalizeSymbol(symbol);
-        const symbolPayload = await fetchLiveCandles({ symbol: normalizedSymbol, limit: 260 });
-
-        let partial: Partial<LiveMarketState> = {
-          symbolCandles: symbolPayload.candles,
-          symbolQuote: symbolPayload.quote,
-          isLoading: false,
-          error: null,
-        };
-
         const requestedQuoteSymbols = Array.from(new Set([
           normalizedSymbol,
           ...quoteSymbols.map((item) => normalizeSymbol(item)),
           ...holdings.map((holding) => normalizeSymbol(holding.symbol)),
         ].filter(Boolean)));
+        const requestedCandleSymbols = mode === "portfolio"
+          ? Array.from(new Set([
+            normalizedSymbol,
+            ...holdings.map((holding) => normalizeSymbol(holding.symbol)),
+          ].filter(Boolean)))
+          : [normalizedSymbol];
 
-        if (requestedQuoteSymbols.length > 0) {
-          const watchlistQuotesPayload = await fetchLiveQuotes({ symbols: requestedQuoteSymbols });
-          partial = {
-            ...partial,
-            quotesBySymbol: watchlistQuotesPayload.quotes,
-          };
-        }
+        const snapshot = await fetchLiveSnapshot({
+          symbols: requestedQuoteSymbols,
+          candleSymbols: requestedCandleSymbols,
+          candleLimit: mode === "portfolio" ? 220 : 260,
+        });
+
+        const symbolCandles = snapshot.candlesBySymbol[normalizedSymbol] ?? [];
+        let partial: Partial<LiveMarketState> = {
+          symbolCandles,
+          symbolQuote: snapshot.quotes[normalizedSymbol] ?? null,
+          quotesBySymbol: snapshot.quotes,
+          isLoading: false,
+          error: null,
+        };
 
         if (mode === "portfolio" && holdings.length > 0) {
-          const symbols = holdings.map((holding) => normalizeSymbol(holding.symbol));
-
-          const missing = symbols.filter((item) => !(item in portfolioCandleMapRef.current));
-          if (missing.length > 0) {
-            const candleLoads = await Promise.all(
-              missing.map(async (item) => {
-                const response = await fetchLiveCandles({ symbol: item, limit: 220 });
-                return { symbol: item, candles: response.candles };
-              }),
-            );
-
-            candleLoads.forEach((entry) => {
-              portfolioCandleMapRef.current[entry.symbol] = entry.candles;
-            });
+          for (const [snapshotSymbol, candles] of Object.entries(snapshot.candlesBySymbol)) {
+            portfolioCandleMapRef.current[snapshotSymbol] = candles;
           }
-
-          const quotesPayload = await fetchLiveQuotes({ symbols });
-
-          Object.entries(quotesPayload.quotes).forEach(([quoteSymbol, quote]) => {
-            const candles = portfolioCandleMapRef.current[quoteSymbol] ?? [];
-            if (candles.length === 0) return;
-
-            const last = candles[candles.length - 1];
-            const next = {
-              ...last,
-              time: quote.timestamp,
-              close: quote.price,
-              high: Math.max(last.high, quote.price),
-              low: Math.min(last.low, quote.price),
-              volume: quote.volume,
-            };
-
-            portfolioCandleMapRef.current[quoteSymbol] = [...candles.slice(0, -1), next];
-          });
 
           const portfolioCandles = buildPortfolioCandles(holdings, portfolioCandleMapRef.current);
           const last = portfolioCandles[portfolioCandles.length - 1];
