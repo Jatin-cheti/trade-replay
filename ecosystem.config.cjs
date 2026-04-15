@@ -99,7 +99,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
       },
-      max_memory_restart: "400M",
+      max_memory_restart: "750M",
       restart_delay: 10000,
       max_restarts: 20,
       autorestart: true,
