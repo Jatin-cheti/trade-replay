@@ -12,6 +12,7 @@ import { SymbolModel } from "../models/Symbol";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
 import { getLiveQuotes } from "../services/snapshotEngine.service";
+import { detectQueryIntent, recordSearchClick } from "../services/searchIndex.service";
 import { mapServiceError } from "../utils/serviceError";
 import { logger } from "../utils/logger";
 
@@ -735,15 +736,30 @@ export function createSimulationController(service: SimulationService) {
             ? andFilters[0]
             : { $and: andFilters };
 
-        // Phase 1: find exact symbol match at a real exchange (fast index lookup)
-        const realExchanges = ["NASDAQ", "NYSE", "NSE", "BSE", "LSE", "TSE", "HKEX", "SSE", "SZSE", "ASX", "TSX", "EURONEXT", "XETRA", "NYSEARCA"];
+        // Phase 1: find exact symbol match at the intent-appropriate exchange
+        const stockExchanges = ["NASDAQ", "NYSE", "NSE", "BSE", "LSE", "TSE", "HKEX", "SSE", "SZSE", "ASX", "TSX", "EURONEXT", "XETRA", "NYSEARCA"];
+        const cryptoExchanges = ["BINANCE", "COINBASE", "KRAKEN", "BYBIT", "OKX"];
+        const queryIntent = detectQueryIntent(requestedQuery.trim());
+        const pinnedExchanges = queryIntent === "crypto" ? cryptoExchanges : stockExchanges;
         let pinnedDoc: Record<string, unknown> | null = null;
         if (requestedQuery.trim() && offset === 0) {
-          pinnedDoc = await SymbolModel.findOne({
-            symbol: requestedQuery.trim().toUpperCase(),
-            exchange: { $in: realExchanges },
-            ...(symType ? { type: symType } : {}),
-          }).lean() as Record<string, unknown> | null;
+          // For crypto intent, search for the query as USDT pair first (BTC → BTCUSDT)
+          if (queryIntent === "crypto") {
+            const cryptoSymbol = requestedQuery.trim().toUpperCase();
+            pinnedDoc = await SymbolModel.findOne({
+              $or: [
+                { symbol: `${cryptoSymbol}USDT`, exchange: { $in: cryptoExchanges }, type: "crypto" },
+                { symbol: cryptoSymbol, exchange: { $in: cryptoExchanges }, type: "crypto" },
+              ],
+            }).sort({ priorityScore: -1 }).lean() as Record<string, unknown> | null;
+          }
+          if (!pinnedDoc) {
+            pinnedDoc = await SymbolModel.findOne({
+              symbol: requestedQuery.trim().toUpperCase(),
+              exchange: { $in: pinnedExchanges },
+              ...(symType ? { type: symType } : {}),
+            }).lean() as Record<string, unknown> | null;
+          }
         }
 
         // Phase 2: normal regex query
@@ -761,20 +777,32 @@ export function createSimulationController(service: SimulationService) {
         const mapped = allDocs.slice(0, requestedCount).map((doc) => toAssetSearchItem(doc as any));
 
         // Rank exact symbol matches first, then prefer real exchanges over SEC/COINGECKO
+        // Intent-aware: boost crypto results for crypto-intent queries (BTC, ETH, etc.)
         if (requestedQuery.trim()) {
           const upper = requestedQuery.trim().toUpperCase();
+          const intent = detectQueryIntent(upper);
           const realExchanges = new Set(["NASDAQ", "NYSE", "NSE", "BSE", "LSE", "TSE", "HKEX", "SSE", "SZSE", "ASX", "TSX", "EURONEXT", "XETRA"]);
+          const cryptoExchanges = new Set(["BINANCE", "COINBASE", "KRAKEN", "BYBIT", "OKX", "HUOBI"]);
           mapped.sort((a, b) => {
             const aSym = (a.symbol || a.ticker || "").toUpperCase();
             const bSym = (b.symbol || b.ticker || "").toUpperCase();
+
+            // Intent boost: when intent is crypto, boost crypto results significantly
+            const aIntentBoost = intent === "crypto" && a.type === "crypto" ? 100
+              : intent === "crypto" && a.type !== "crypto" ? -50 : 0;
+            const bIntentBoost = intent === "crypto" && b.type === "crypto" ? 100
+              : intent === "crypto" && b.type !== "crypto" ? -50 : 0;
+            if (aIntentBoost !== bIntentBoost) return bIntentBoost - aIntentBoost;
+
             // Exact symbol match first
             const aExact = aSym === upper ? 2 : 0;
             const bExact = bSym === upper ? 2 : 0;
             if (aExact !== bExact) return bExact - aExact;
-            // Among exact matches, prefer real exchanges
+            // Among exact matches, prefer real exchanges (or crypto exchanges for crypto intent)
             if (aExact && bExact) {
-              const aReal = realExchanges.has((a.exchange || "").toUpperCase()) ? 1 : 0;
-              const bReal = realExchanges.has((b.exchange || "").toUpperCase()) ? 1 : 0;
+              const preferredExchanges = intent === "crypto" ? cryptoExchanges : realExchanges;
+              const aReal = preferredExchanges.has((a.exchange || "").toUpperCase()) ? 1 : 0;
+              const bReal = preferredExchanges.has((b.exchange || "").toUpperCase()) ? 1 : 0;
               if (aReal !== bReal) return bReal - aReal;
             }
             return 0; // preserve DB sort order
@@ -1042,6 +1070,32 @@ export function createSimulationController(service: SimulationService) {
       });
 
       res.json(payload);
+    },
+
+    searchClick: async (req: AuthenticatedRequest, res: Response) => {
+      const { query: q, symbol, exchange, position } = req.body as {
+        query?: string;
+        symbol?: string;
+        exchange?: string;
+        position?: number;
+      };
+      if (!q || !symbol) {
+        res.status(400).json({ error: "query and symbol are required" });
+        return;
+      }
+      // Fire-and-forget: record click for CTR scoring + Kafka
+      void recordSearchClick(q, symbol);
+      try {
+        const { produceSearchClick } = await import("../kafka/eventProducers");
+        produceSearchClick({
+          query: q,
+          symbol,
+          exchange: exchange ?? "",
+          position: position ?? -1,
+          userId: req.user?.userId,
+        });
+      } catch { /* kafka optional */ }
+      res.json({ ok: true });
     },
   };
 }

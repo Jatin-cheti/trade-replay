@@ -17,6 +17,7 @@ export function createSimulationRoutes(engine: SimulationEngine) {
   router.post("/portfolio/import", csvUploadMiddleware, controller.importPortfolio);
   router.get("/assets/filters", controller.assetFilters);
   router.get("/assets", controller.assets);
+  router.post("/search/click", controller.searchClick);
   router.get("/state", controller.state);
 
   return router;

@@ -7,6 +7,7 @@ import { FilterDropdown, ModalPanel, ModalTriggerButton, SYMBOL_CATEGORIES } fro
 import { useSymbolSearch } from "@/components/simulation/useSymbolSearch";
 import { FutureContractsView } from "@/components/simulation/FutureContractsView";
 import { isSpreadExpression, parseQuery, extractSymbols } from "@/lib/spreadOperator";
+import { api } from "@/lib/api";
 
 const FALLBACK_ICON = "/icons/exchange/default.svg";
 
@@ -143,6 +144,17 @@ export default function SymbolSearchModal({
     if (parsed.type !== "spread") return null;
     return { parsed, symbols: extractSymbols(parsed) };
   }, [query]);
+
+  // Fire-and-forget click tracking for ML-lite CTR ranking
+  const trackSearchClick = (item: AssetSearchItem, position: number) => {
+    if (!query) return;
+    void api.post("/simulation/search/click", {
+      query,
+      symbol: item.ticker || item.symbol,
+      exchange: item.exchange,
+      position,
+    }).catch(() => { /* telemetry; never block UX */ });
+  };
 
   useEffect(() => {
     setExpandedGroups({});
@@ -423,7 +435,7 @@ export default function SymbolSearchModal({
           </div>
 
           <div ref={listContainerRef} className="mt-2 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
-            {groupedRows.map((group) => {
+            {groupedRows.map((group, groupIndex) => {
               const item = group.representative;
               const isPositive = (item.changePercent ?? 0) >= 0;
               const changeClass = isPositive ? "text-profit" : "text-loss";
@@ -450,6 +462,7 @@ export default function SymbolSearchModal({
                         return;
                       }
                       onSelect(item);
+                      trackSearchClick(item, groupIndex);
                       onOpenChange(false);
                     }}
                     className={`grid w-full grid-cols-[1fr_auto] items-center gap-4 px-3 py-2.5 text-left transition-colors hover:bg-secondary/45 ${
@@ -498,8 +511,9 @@ export default function SymbolSearchModal({
                           type="button"
                           onClick={() => {
                             onSelect(listing);
+                            trackSearchClick(listing, groupIndex);
                             onOpenChange(false);
-                          }}
+                          }}}
                           className="mt-1 grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-border/60 bg-secondary/25 px-2.5 py-2 text-left transition-colors hover:bg-secondary/45 first:mt-0"
                         >
                           <div className="min-w-0">
