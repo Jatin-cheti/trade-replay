@@ -8,8 +8,10 @@ import { mapCategoryToSymbolType, searchSymbols, toAssetSearchItem } from "../se
 import { buildCountryFilterInput, escapeRegex, matchesCountryFlexible } from "../services/symbol.helpers";
 import { isRedisReady, redisClient } from "../config/redis";
 import { CleanAssetModel } from "../models/CleanAsset";
+import { SymbolModel } from "../models/Symbol";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
+import { getLiveQuotes } from "../services/snapshotEngine.service";
 import { mapServiceError } from "../utils/serviceError";
 import { logger } from "../utils/logger";
 
@@ -98,6 +100,31 @@ function normalizeCompanyRoot(item: Pick<UiAsset, "symbol" | "ticker" | "name">)
 
 function pickExistingLogo(item: UiAsset): string {
   return String(item.displayIconUrl || item.logoUrl || item.iconUrl || "");
+}
+
+/** Enrich assets with live snapshot prices. O(n) via Map lookup. */
+async function enrichWithSnapshotPrices(assets: UiAsset[]): Promise<UiAsset[]> {
+  if (assets.length === 0) return assets;
+  const symbols = assets.map((a) => (a.symbol || a.ticker || "").toUpperCase()).filter(Boolean);
+  if (symbols.length === 0) return assets;
+  try {
+    const { quotes } = await getLiveQuotes({ symbols });
+    return assets.map((asset) => {
+      const key = (asset.symbol || asset.ticker || "").toUpperCase();
+      const quote = quotes[key];
+      if (!quote) return asset;
+      return {
+        ...asset,
+        price: quote.price ?? asset.price,
+        change: quote.change ?? asset.change,
+        changePercent: quote.changePercent ?? asset.changePercent,
+        pnl: quote.change ?? asset.pnl,
+        volume: quote.volume && quote.volume > 0 ? quote.volume : asset.volume,
+      };
+    });
+  } catch {
+    return assets;
+  }
 }
 
 async function applyLogoReuse(assets: UiAsset[]): Promise<UiAsset[]> {
@@ -396,7 +423,7 @@ export function createSimulationController(service: SimulationService) {
       const maxScanPages = hasPostFilters ? 6 : 3;
 
       const fetchFilteredWindow = async (countryForSearch?: string) => {
-        let scanCursor = cursor;
+        let scanCursor = cursor?.startsWith("off:") ? undefined : cursor;
         let totalHint = 0;
         let scannedRows = 0;
         let hasMore = false;
@@ -648,13 +675,79 @@ export function createSimulationController(service: SimulationService) {
         liquidityScore: 0,
       });
 
-      // Fast path: query searches hit clean_assets first for low-latency responses.
+      /** Query Symbol collection directly for categories that are sparse in clean_assets. */
+      const buildSymbolFallback = async (requestedCount: number, offset = 0): Promise<UiAsset[]> => {
+        const resolvedCat = requestedCategory || "all";
+        if (resolvedCat === "all" && !requestedQuery.trim()) return [];
+
+        const categoryTypeMap: Record<string, string> = {
+          stocks: "stock",
+          funds: "etf",
+          crypto: "crypto",
+          forex: "forex",
+          indices: "index",
+          bonds: "bond",
+          economy: "economy",
+          futures: "derivative",
+          options: "derivative",
+        };
+
+        const symType = categoryTypeMap[resolvedCat];
+
+        const andFilters: Array<Record<string, unknown>> = [];
+        if (symType) andFilters.push({ type: symType });
+
+        if (requestedCountry) {
+          const countryInput = buildCountryFilterInput(requestedCountry);
+          if (countryInput) {
+            const countryOrExchange: Array<Record<string, unknown>> = [
+              { country: { $in: countryInput.aliases } },
+            ];
+            if (countryInput.exchanges.length > 0) {
+              countryOrExchange.push({ exchange: { $in: countryInput.exchanges } });
+            }
+            andFilters.push({ $or: countryOrExchange });
+          }
+        }
+
+        if (requestedQuery.trim()) {
+          const escapedQuery = escapeRegex(requestedQuery.trim());
+          andFilters.push({
+            $or: [
+              { symbol: { $regex: `^${escapedQuery}`, $options: "i" } },
+              { name: { $regex: escapedQuery, $options: "i" } },
+            ],
+          });
+        }
+
+        const filter: Record<string, unknown> = andFilters.length === 0
+          ? {}
+          : andFilters.length === 1
+            ? andFilters[0]
+            : { $and: andFilters };
+
+        const docs = await SymbolModel.find(filter)
+          .sort({ priorityScore: -1, marketCap: -1, liquidityScore: -1, _id: -1 })
+          .skip(Math.max(0, offset))
+          .limit(requestedCount)
+          .lean();
+
+        return docs.map((doc) => toAssetSearchItem(doc as any));
+      };
+
+      // Fast path: query searches hit Symbol collection first, then clean_assets.
       if (requestedQuery.trim()) {
         const queryOffset = decodeCategoryOffset(cursor);
-        const cleanQueryBatch = await buildCleanAssetsFallback(safeLimit + 1, queryOffset);
+        let cleanQueryBatch = await buildSymbolFallback(safeLimit + 1, queryOffset);
+
+        // Fallback to CleanAsset when Symbol collection yields nothing
+        if (cleanQueryBatch.length === 0) {
+          cleanQueryBatch = await buildCleanAssetsFallback(safeLimit + 1, queryOffset);
+        }
+
         if (cleanQueryBatch.length > 0) {
           const hasMoreFromCleanQuery = cleanQueryBatch.length > safeLimit;
-          const paged = await applyLogoReuse(cleanQueryBatch.slice(0, safeLimit));
+          const paged = await enrichWithSnapshotPrices(await applyLogoReuse(cleanQueryBatch.slice(0, safeLimit)));
           const nextCleanQueryCursor = hasMoreFromCleanQuery ? `off:${queryOffset + safeLimit}` : null;
 
           res.json({
@@ -669,13 +762,47 @@ export function createSimulationController(service: SimulationService) {
         }
       }
 
-      // Fast path: category browsing (empty query) reads from clean_assets with lightweight cursor.
+      // Fast path: category browsing (empty query) reads from Symbol + CleanAsset with lightweight cursor.
       if (!requestedQuery.trim() && requestedCategory && requestedCategory !== "all") {
         const categoryOffset = decodeCategoryOffset(cursor);
+
+        // Use Symbol collection as the primary paginated source for all categories
+        const symbolBatch = await buildSymbolFallback(safeLimit + 1, categoryOffset);
+
+        if (symbolBatch.length > 0) {
+          const hasMore = symbolBatch.length > safeLimit;
+          const paged = await enrichWithSnapshotPrices(await applyLogoReuse(symbolBatch.slice(0, safeLimit)));
+          const nextCat = hasMore ? `off:${categoryOffset + safeLimit}` : null;
+
+          // Get a proper total count for this category
+          const categoryTypeMap: Record<string, string> = {
+            stocks: "stock", funds: "etf", crypto: "crypto", forex: "forex",
+            indices: "index", bonds: "bond", economy: "economy", futures: "derivative", options: "derivative",
+          };
+          const countType = categoryTypeMap[requestedCategory!];
+          const totalCount = countType
+            ? await SymbolModel.countDocuments({ type: countType }).catch(() => paged.length)
+            : paged.length;
+
+          const resolvedHasMore = hasMore || (categoryOffset + safeLimit < totalCount);
+          const resolvedNextCursor = resolvedHasMore ? `off:${categoryOffset + safeLimit}` : null;
+
+          res.json({
+            assets: paged,
+            total: Math.max(totalCount, categoryOffset + paged.length + (resolvedHasMore ? 1 : 0)),
+            page: 1,
+            limit: safeLimit,
+            hasMore: resolvedHasMore,
+            nextCursor: resolvedNextCursor,
+          });
+          return;
+        }
+
+        // CleanAsset fallback when Symbol collection has nothing for this category
         const cleanBatch = await buildCleanAssetsFallback(safeLimit + 1, categoryOffset);
         if (cleanBatch.length > 0) {
           const hasMoreFromClean = cleanBatch.length > safeLimit;
-          const paged = await applyLogoReuse(cleanBatch.slice(0, safeLimit));
+          const paged = await enrichWithSnapshotPrices(await applyLogoReuse(cleanBatch.slice(0, safeLimit)));
           const nextCategoryCursor = hasMoreFromClean ? `off:${categoryOffset + safeLimit}` : null;
 
           res.json({
@@ -707,7 +834,7 @@ export function createSimulationController(service: SimulationService) {
         }).catch(() => ({ assets: [] as Array<Record<string, unknown>> }));
 
         if (seedFallback.assets.length > 0) {
-          const mappedSeed = await applyLogoReuse(seedFallback.assets.map((item) => mapCatalogAssetToUi(item)));
+          const mappedSeed = await enrichWithSnapshotPrices(await applyLogoReuse(seedFallback.assets.map((item) => mapCatalogAssetToUi(item))));
           res.json({
             assets: mappedSeed,
             total: mappedSeed.length,
@@ -795,7 +922,7 @@ export function createSimulationController(service: SimulationService) {
         }
       }
 
-      assets = await applyLogoReuse(assets);
+      assets = await enrichWithSnapshotPrices(await applyLogoReuse(assets));
 
       const trimmedAssets = assets.slice(0, safeLimit);
       const resolvedHasMore = Boolean(actualHasMore && nextCursor);
