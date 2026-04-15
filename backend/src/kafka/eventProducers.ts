@@ -12,6 +12,8 @@ import {
   LogoResolvePayload,
   LogoRetryPayload,
   LogoCompletedPayload,
+  AssetCreatedPayload,
+  AssetUpdatedPayload,
 } from "../kafka/topics";
 
 // --- Trade Events ---
@@ -70,4 +72,14 @@ export function produceLogoRetry(payload: LogoRetryPayload): void {
 
 export function produceLogoCompleted(payload: LogoCompletedPayload): void {
   produce(KAFKA_TOPICS.LOGO_COMPLETED, payload, payload.fullSymbol);
+}
+
+// --- Asset Lifecycle Events ---
+
+export function produceAssetCreated(payload: AssetCreatedPayload): void {
+  produce(KAFKA_TOPICS.ASSET_CREATED, payload, payload.fullSymbol);
+}
+
+export function produceAssetUpdated(payload: AssetUpdatedPayload): void {
+  produce(KAFKA_TOPICS.ASSET_UPDATED, payload, payload.fullSymbol);
 }

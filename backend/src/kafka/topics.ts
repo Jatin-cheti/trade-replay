@@ -139,3 +139,21 @@ export interface LogoCompletedPayload {
   source: string;
   confidence: number;
 }
+
+// ── Asset lifecycle payloads ─────────────────────────────────────────
+
+export interface AssetCreatedPayload {
+  fullSymbol: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  type: string;
+  source: string;
+}
+
+export interface AssetUpdatedPayload {
+  fullSymbol: string;
+  symbol: string;
+  fields: string[];
+  source: string;
+}

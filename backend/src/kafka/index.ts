@@ -7,6 +7,7 @@ import { startPortfolioUpdater } from "./consumers/portfolioUpdater";
 import { startAnalyticsProcessor } from "./consumers/analyticsProcessor";
 import { startAlertsTickProcessor } from "./consumers/alertsTickProcessor";
 import { startMarketPriceCacheProcessor } from "./consumers/marketPriceCacheProcessor";
+import { startAssetIndexProcessor } from "./consumers/assetIndexProcessor";
 import { logger } from "../utils/logger";
 
 export async function bootstrapKafkaProducerOnly(): Promise<void> {
@@ -45,6 +46,7 @@ export async function bootstrapKafkaConsumersOnly(): Promise<void> {
     await startAnalyticsProcessor();
     await startMarketPriceCacheProcessor();
     await startAlertsTickProcessor();
+    await startAssetIndexProcessor();
     logger.info("kafka_consumers_bootstrap_complete");
   } catch (error) {
     logger.error("kafka_consumers_bootstrap_failed", {

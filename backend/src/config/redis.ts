@@ -160,4 +160,19 @@ export async function ensureRedisReady(): Promise<void> {
 
 export async function connectRedis(): Promise<void> {
   await ensureRedisReady();
+  await configureRedisMemoryPolicy();
+}
+
+async function configureRedisMemoryPolicy(): Promise<void> {
+  if (!isRedisReady()) return;
+  try {
+    const maxmem = process.env.REDIS_MAXMEMORY || "128mb";
+    const policy = process.env.REDIS_MAXMEMORY_POLICY || "allkeys-lru";
+    await redisClient.config("SET", "maxmemory", maxmem);
+    await redisClient.config("SET", "maxmemory-policy", policy);
+    logger.info("redis_memory_configured", { maxmemory: maxmem, policy });
+  } catch {
+    // CONFIG SET may be disabled on managed Redis — non-fatal
+    logger.warn("redis_memory_config_skipped", { reason: "config_set_not_allowed" });
+  }
 }
