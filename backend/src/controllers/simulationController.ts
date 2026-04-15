@@ -732,7 +732,19 @@ export function createSimulationController(service: SimulationService) {
           .limit(requestedCount)
           .lean();
 
-        return docs.map((doc) => toAssetSearchItem(doc as any));
+        const mapped = docs.map((doc) => toAssetSearchItem(doc as any));
+
+        // Pin exact symbol matches to the top so MSFT@NASDAQ beats MSFT.D@COINGECKO
+        if (requestedQuery.trim()) {
+          const upper = requestedQuery.trim().toUpperCase();
+          mapped.sort((a, b) => {
+            const aExact = (a.symbol || a.ticker || "").toUpperCase() === upper ? 1 : 0;
+            const bExact = (b.symbol || b.ticker || "").toUpperCase() === upper ? 1 : 0;
+            return bExact - aExact; // exact matches first, preserve rest order
+          });
+        }
+
+        return mapped;
       };
 
       // Fast path: query searches hit Symbol collection first, then clean_assets.
@@ -845,6 +857,43 @@ export function createSimulationController(service: SimulationService) {
           });
           return;
         }
+      }
+
+      // Fast path: "All" category + empty query ➜ Symbol collection with offset pagination
+      if (!requestedQuery.trim() && (!requestedCategory || requestedCategory === "all")) {
+        const categoryOffset = decodeCategoryOffset(cursor);
+        const allFilter: Record<string, unknown> = {};
+        if (requestedCountry) {
+          const countryInput = buildCountryFilterInput(requestedCountry);
+          if (countryInput) {
+            const countryOrExchange: Array<Record<string, unknown>> = [
+              { country: { $in: countryInput.aliases } },
+            ];
+            if (countryInput.exchanges.length > 0) {
+              countryOrExchange.push({ exchange: { $in: countryInput.exchanges } });
+            }
+            allFilter.$or = countryOrExchange;
+          }
+        }
+        const allDocs = await SymbolModel.find(allFilter)
+          .sort({ priorityScore: -1, marketCap: -1, liquidityScore: -1, _id: -1 })
+          .skip(categoryOffset)
+          .limit(safeLimit + 1)
+          .lean();
+        const allBatch = allDocs.map((doc) => toAssetSearchItem(doc as any));
+        const allHasMore = allBatch.length > safeLimit;
+        const allPaged = await enrichWithSnapshotPrices(await applyLogoReuse(allBatch.slice(0, safeLimit)));
+        const allTotalCount = await SymbolModel.estimatedDocumentCount().catch(() => allPaged.length);
+        const allResolvedHasMore = allHasMore || (categoryOffset + safeLimit < allTotalCount);
+        res.json({
+          assets: allPaged,
+          total: allTotalCount,
+          page: 1,
+          limit: safeLimit,
+          hasMore: allResolvedHasMore,
+          nextCursor: allResolvedHasMore ? `off:${categoryOffset + safeLimit}` : null,
+        });
+        return;
       }
 
       const primaryWindow = await fetchFilteredWindow(requestedCountry);
