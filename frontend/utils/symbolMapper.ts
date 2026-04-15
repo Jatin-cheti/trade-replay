@@ -38,11 +38,15 @@ function inferCategory(item: AssetSearchItem): KnownCategory {
   const exchange = (item.exchange || "").toUpperCase();
   const instrumentType = (item.instrumentType || item.type || "").toLowerCase();
 
-  if (instrumentType === "derivative" || exchange === "OPT" || /-\d{6}-[CP]-/.test(symbol) || /\b(OPTION|CALL|PUT)\b/.test(name)) {
+  if (exchange === "OPT" || /-\d{6}-[CP]-/.test(symbol) || /\b(OPTION|CALL|PUT)\b/.test(name)) {
     return "options";
   }
 
-  if (instrumentType === "derivative" || symbol.includes("-FUT") || symbol.includes("-PERP") || /\b(FUTURE|FUTURES|PERP|PERPETUAL)\b/.test(name)) {
+  if (symbol.includes("-FUT") || symbol.includes("-PERP") || /\b(FUTURE|FUTURES|PERP|PERPETUAL)\b/.test(name)) {
+    return "futures";
+  }
+
+  if (instrumentType === "derivative") {
     return "futures";
   }
 
@@ -119,7 +123,11 @@ function categoryMarket(category: KnownCategory): AssetSearchItem["market"] {
 }
 
 export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: string): AssetSearchItem {
-  const category = inferCategory(item);
+  const inferredCategory = inferCategory(item);
+  const shouldPinCategory = requestedCategory
+    && requestedCategory !== "all"
+    && (requestedCategory === "futures" || requestedCategory === "options" || requestedCategory === "bonds" || requestedCategory === "economy" || requestedCategory === "funds");
+  const category = shouldPinCategory ? (requestedCategory as KnownCategory) : inferredCategory;
   const normalized = {
     ...item,
     logoUrl: item.displayIconUrl || item.logoUrl || item.iconUrl,

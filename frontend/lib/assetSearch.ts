@@ -178,15 +178,6 @@ export async function searchAssets(params: {
 
   const mappedAssets = response.data.assets
     .map((item) => mapSymbolItemToUi(item, requestedCategory))
-    .filter((item) => {
-      if (requestedCategory && requestedCategory !== "all" && item.category !== requestedCategory) return false;
-      return true;
-    })
-    .filter((item) => {
-      if (params.type && params.type !== "all" && item.type !== params.type) return false;
-      if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
-      return true;
-    })
     .map((item) => {
       const key = iconCacheKey(item);
       const effectiveIcon = item.displayIconUrl || item.logoUrl || item.iconUrl || "";

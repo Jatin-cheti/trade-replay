@@ -5,6 +5,7 @@ import {
   type AssetCategory,
   type AssetSearchFilterOption,
   type AssetSearchItem,
+  type AssetSearchResponse,
   type AssetSortOption,
 } from "@/lib/assetSearch";
 import { SYMBOL_CATEGORIES } from "@/components/simulation/symbolSearchModalParts";
@@ -67,6 +68,7 @@ export function useSymbolSearch(
   const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
 
   const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number; nextCursor: string | null }>());
+  const prefetchedPageCache = useRef(new Map<string, AssetSearchResponse>());
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const paginationInFlightRef = useRef(false);
   const firstPageAbortRef = useRef<AbortController | null>(null);
@@ -211,7 +213,7 @@ export function useSymbolSearch(
 
     const timer = window.setTimeout(async () => {
       await loadFirstPage();
-    }, 300);
+    }, 200);
 
     return () => window.clearTimeout(timer);
   }, [open, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
@@ -231,8 +233,8 @@ export function useSymbolSearch(
     const onScroll = () => {
       if (loading || loadingMore || paginationInFlightRef.current || !hasMore || !nextCursor) return;
 
-      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom > 80) return;
+      const scrollRatio = (container.scrollTop + container.clientHeight) / Math.max(container.scrollHeight, 1);
+      if (scrollRatio < 0.8) return;
 
       paginationInFlightRef.current = true;
       setLoadingMore(true);
@@ -241,7 +243,9 @@ export function useSymbolSearch(
       paginationAbortRef.current = controller;
       void (async () => {
         try {
-          const response = await searchAssets({
+          const prefetchedKey = `${filterKey}:${nextCursor}`;
+          const prefetched = prefetchedPageCache.current.get(prefetchedKey);
+          const response = prefetched ?? await searchAssets({
             q: query.trim(),
             category: category === "all" ? undefined : category,
             country: country === "all" ? undefined : country,
@@ -259,6 +263,7 @@ export function useSymbolSearch(
             limit: 50,
             signal: controller.signal,
           });
+          prefetchedPageCache.current.delete(prefetchedKey);
 
           setRows((previous) => {
             const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
@@ -298,6 +303,38 @@ export function useSymbolSearch(
     setView("search");
     setSelectedFutureRoot(null);
   }, [open, selectedSymbol]);
+
+  useEffect(() => {
+    if (!open || loading || loadingMore || !hasMore || !nextCursor) return;
+    const cacheKey = `${filterKey}:${nextCursor}`;
+    if (prefetchedPageCache.current.has(cacheKey)) return;
+
+    const controller = new AbortController();
+    void searchAssets({
+      q: query.trim(),
+      category: category === "all" ? undefined : category,
+      country: country === "all" ? undefined : country,
+      type: type === "all" ? undefined : type,
+      sector: sector === "all" ? undefined : sector,
+      source: source === "all" ? undefined : source,
+      exchangeType: exchangeType === "all" ? undefined : exchangeType,
+      futureCategory: futureCategory === "all" ? undefined : futureCategory,
+      economyCategory: economyCategory === "all" ? undefined : economyCategory,
+      expiry: expiry === "all" ? undefined : expiry,
+      strike: strike === "all" ? undefined : strike,
+      underlyingAsset: underlyingAsset === "all" ? undefined : underlyingAsset,
+      sort,
+      cursor: nextCursor,
+      limit: 50,
+      signal: controller.signal,
+    }).then((response) => {
+      prefetchedPageCache.current.set(cacheKey, response);
+    }).catch(() => {
+      // Prefetch is best-effort.
+    });
+
+    return () => controller.abort();
+  }, [open, loading, loadingMore, hasMore, nextCursor, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
 
   const selectedCountryLabel = useMemo(() => {
     return countryOptions.find((optionItem) => optionItem.value === country)?.label || "All Countries";

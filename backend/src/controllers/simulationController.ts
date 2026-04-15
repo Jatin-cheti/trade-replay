@@ -5,7 +5,9 @@ import { AuthenticatedRequest } from "../types/auth";
 import { SimulationService } from "../services/simulationService";
 import { fetchAssetCatalogFilters, searchAssetCatalog } from "../services/assetCatalogService";
 import { mapCategoryToSymbolType, searchSymbols, toAssetSearchItem } from "../services/symbol.service";
-import { buildCountryFilterInput, matchesCountryFlexible } from "../services/symbol.helpers";
+import { buildCountryFilterInput, escapeRegex, matchesCountryFlexible } from "../services/symbol.helpers";
+import { isRedisReady, redisClient } from "../config/redis";
+import { CleanAssetModel } from "../models/CleanAsset";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
 import { mapServiceError } from "../utils/serviceError";
@@ -49,6 +51,112 @@ function normalizeCategory(value: unknown): string | undefined {
   if (normalized === "economic") return "economy";
   if (normalized === "option") return "options";
   return normalized;
+}
+
+type UiAsset = ReturnType<typeof toAssetSearchItem>;
+
+function isOptionContractLabel(symbol: string, name: string): boolean {
+  const sym = symbol.toUpperCase();
+  const label = name.toUpperCase();
+  return /-\d{6}-[CP]-/.test(sym)
+    || /(^|[-_.])(CE|PE)([-_.]|$)/.test(sym)
+    || /\b(OPTION|OPTIONS|CALL|PUT)\b/.test(label);
+}
+
+function isFutureContractLabel(symbol: string, name: string): boolean {
+  const sym = symbol.toUpperCase();
+  const label = name.toUpperCase();
+  return sym.includes("-FUT")
+    || sym.includes("-PERP")
+    || /-F-\d{6}$/.test(sym)
+    || /\b(FUTURE|FUTURES|PERPETUAL|PERP)\b/.test(label);
+}
+
+function normalizeCompanyRoot(item: Pick<UiAsset, "symbol" | "ticker" | "name">): string {
+  const ticker = String(item.symbol || item.ticker || "").toUpperCase();
+  const strippedTicker = ticker
+    .replace(/-F-\d{6}$/g, "")
+    .replace(/-\d{6}-[CP]-.+$/g, "")
+    .replace(/-PERP$/g, "")
+    .replace(/-FUT$/g, "")
+    .replace(/\..+$/g, "")
+    .replace(/[^A-Z0-9]/g, "");
+
+  if (strippedTicker) {
+    return strippedTicker;
+  }
+
+  const name = String(item.name || "")
+    .toUpperCase()
+    .replace(/\b(LIMITED|LTD\.?|INC\.?|CORP\.?|CORPORATION|CO\.?|PLC|HOLDINGS?)\b/g, " ")
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name) return "";
+  return name.split(" ")[0] || "";
+}
+
+function pickExistingLogo(item: UiAsset): string {
+  return String(item.displayIconUrl || item.logoUrl || item.iconUrl || "");
+}
+
+async function applyLogoReuse(assets: UiAsset[]): Promise<UiAsset[]> {
+  if (assets.length === 0) return assets;
+
+  const baseToLogo = new Map<string, string>();
+  const unresolvedBases = new Set<string>();
+
+  for (const asset of assets) {
+    const base = normalizeCompanyRoot(asset);
+    if (!base) continue;
+    const logo = pickExistingLogo(asset);
+    if (logo) {
+      baseToLogo.set(base, logo);
+    } else {
+      unresolvedBases.add(base);
+    }
+  }
+
+  if (isRedisReady() && unresolvedBases.size > 0) {
+    const unresolvedList = Array.from(unresolvedBases);
+    const redisKeys = unresolvedList.map((base) => `logo-reuse:${base}`);
+    const cached = await redisClient.mget(redisKeys).catch(() => [] as Array<string | null>);
+    unresolvedList.forEach((base, index) => {
+      const cachedLogo = cached[index];
+      if (cachedLogo) {
+        baseToLogo.set(base, cachedLogo);
+      }
+    });
+  }
+
+  const patched = assets.map((asset) => {
+    const existing = pickExistingLogo(asset);
+    if (existing) return asset;
+
+    const base = normalizeCompanyRoot(asset);
+    if (!base) return asset;
+    const reused = baseToLogo.get(base);
+    if (!reused) return asset;
+
+    return {
+      ...asset,
+      logoUrl: reused,
+      displayIconUrl: reused,
+      iconUrl: asset.iconUrl || reused,
+      isFallback: false,
+      source: `${asset.source || "symbol-registry"}+logo-reuse`,
+    };
+  });
+
+  if (isRedisReady() && baseToLogo.size > 0) {
+    const pipeline = redisClient.pipeline();
+    for (const [base, logo] of baseToLogo.entries()) {
+      pipeline.setex(`logo-reuse:${base}`, 3600, logo);
+    }
+    void pipeline.exec().catch(() => {});
+  }
+
+  return patched;
 }
 
 function matchesAssetFilters(asset: ReturnType<typeof toAssetSearchItem>, filters: {
@@ -234,6 +342,7 @@ export function createSimulationController(service: SimulationService) {
       const limit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 50;
       const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
       const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+      const requestedQuery = typeof req.query.q === "string" ? req.query.q : "";
 
       const category = typeof req.query.category === "string"
         ? req.query.category
@@ -265,27 +374,324 @@ export function createSimulationController(service: SimulationService) {
       const queryType = mapCategoryToSymbolType(category);
 
       const userId = req.user?.userId;
-      let payload;
-      try {
-        payload = await searchSymbols({
-          query: typeof req.query.q === "string" ? req.query.q : "",
-          type: queryType,
-          country: requestedCountry,
-          limit: safeLimit,
-          cursor,
-          userId,
-          userCountry,
-        });
-      } catch (error) {
-        if (error instanceof Error && error.message === "INVALID_CURSOR_TOKEN") {
-          throw new AppError(400, "INVALID_CURSOR_TOKEN", "Cursor token is invalid");
+      const assetFilters = {
+        category: requestedCategory,
+        country: requestedCountry,
+        type: requestedType,
+        sector: requestedSector,
+        source: requestedSource,
+        exchangeType: requestedExchangeType,
+        futureCategory: requestedFutureCategory,
+        economyCategory: requestedEconomyCategory,
+        expiry: requestedExpiry,
+        strike: requestedStrike,
+        underlyingAsset: requestedUnderlyingAsset,
+      };
+
+      // ── Over-fetch factor: when post-filters are active we need more candidates ──
+      const hasPostFilters = !!(requestedCategory || requestedType || requestedSector ||
+        requestedSource || requestedExchangeType || requestedFutureCategory ||
+        requestedEconomyCategory || requestedExpiry || requestedStrike || requestedUnderlyingAsset);
+      const fetchLimit = hasPostFilters ? Math.min(100, safeLimit * 3) : safeLimit;
+      const maxScanPages = hasPostFilters ? 6 : 3;
+
+      const fetchFilteredWindow = async (countryForSearch?: string) => {
+        let scanCursor = cursor;
+        let totalHint = 0;
+        let scannedRows = 0;
+        let hasMore = false;
+        let nextCursor: string | null = null;
+        const deduped = new Map<string, UiAsset>();
+
+        for (let page = 0; page < maxScanPages; page += 1) {
+          let payload;
+          try {
+            payload = await searchSymbols({
+              query: requestedQuery,
+              type: queryType,
+              country: countryForSearch,
+              limit: fetchLimit,
+              cursor: scanCursor,
+              userId,
+              userCountry,
+              forceCursorMode: true,
+            });
+          } catch (error) {
+            if (error instanceof Error && error.message === "INVALID_CURSOR_TOKEN") {
+              throw new AppError(400, "INVALID_CURSOR_TOKEN", "Cursor token is invalid");
+            }
+            throw error;
+          }
+
+          if (payload.total > 0) {
+            totalHint = Math.max(totalHint, payload.total);
+          }
+
+          scannedRows += payload.items.length;
+          const filteredBatch = payload.items
+            .map((item) => toAssetSearchItem(item))
+            .filter((asset) => matchesAssetFilters(asset, assetFilters));
+
+          for (const asset of filteredBatch) {
+            const key = `${asset.category}|${asset.exchange}|${asset.symbol}`;
+            if (!deduped.has(key)) {
+              deduped.set(key, asset);
+            }
+          }
+
+          hasMore = Boolean(payload.hasMore && payload.nextCursor);
+          nextCursor = hasMore ? payload.nextCursor ?? null : null;
+
+          if (deduped.size >= safeLimit) {
+            break;
+          }
+          if (!payload.hasMore || !payload.nextCursor) {
+            break;
+          }
+
+          scanCursor = payload.nextCursor;
         }
-        throw error;
+
+        return {
+          assets: Array.from(deduped.values()),
+          totalHint,
+          scannedRows,
+          hasMore,
+          nextCursor,
+        };
+      };
+
+      const buildCleanAssetsFallback = async (requestedCount: number, offset = 0): Promise<UiAsset[]> => {
+        const resolvedRequestedCategory = requestedCategory || "all";
+        if (resolvedRequestedCategory === "all" && !requestedQuery.trim()) return [];
+
+        const categoryTypeMap: Record<string, string> = {
+          stocks: "stock",
+          funds: "etf",
+          crypto: "crypto",
+          forex: "forex",
+          indices: "index",
+          bonds: "bond",
+          economy: "economy",
+          futures: "derivative",
+          options: "derivative",
+        };
+
+        const cleanType = categoryTypeMap[resolvedRequestedCategory];
+
+        const andFilters: Array<Record<string, unknown>> = [{ isActive: true }];
+
+        if (cleanType) {
+          andFilters.push({ type: cleanType });
+        }
+
+        if (requestedCountry) {
+          const countryInput = buildCountryFilterInput(requestedCountry);
+          if (countryInput) {
+            const countryOrExchange: Array<Record<string, unknown>> = [
+              { country: { $in: countryInput.aliases } },
+            ];
+            if (countryInput.exchanges.length > 0) {
+              countryOrExchange.push({ exchange: { $in: countryInput.exchanges } });
+            }
+            andFilters.push({ $or: countryOrExchange });
+          }
+        }
+
+        if (requestedQuery.trim()) {
+          const escapedQuery = escapeRegex(requestedQuery.trim());
+          andFilters.push({
+            $or: [
+              { symbol: { $regex: `^${escapedQuery}`, $options: "i" } },
+              { name: { $regex: escapedQuery, $options: "i" } },
+              { fullSymbol: { $regex: escapedQuery, $options: "i" } },
+            ],
+          });
+        }
+
+        if (resolvedRequestedCategory === "options") {
+          andFilters.push({
+            $or: [
+              { symbol: { $regex: "-\\d{6}-[CP]-", $options: "i" } },
+              { symbol: { $regex: "(^|[-_.])(CE|PE)([-_.]|$)", $options: "i" } },
+              { name: { $regex: "\\b(option|options|call|put)\\b", $options: "i" } },
+            ],
+          });
+        }
+
+        if (resolvedRequestedCategory === "futures") {
+          andFilters.push({
+            $or: [
+              { symbol: { $regex: "-F-\\d{6}$", $options: "i" } },
+              { symbol: { $regex: "-FUT", $options: "i" } },
+              { symbol: { $regex: "-PERP", $options: "i" } },
+              { name: { $regex: "\\b(future|futures|perpetual|perp)\\b", $options: "i" } },
+            ],
+          });
+        }
+
+        const cleanFilter: Record<string, unknown> = andFilters.length === 1
+          ? andFilters[0]
+          : { $and: andFilters };
+
+        const docs = await CleanAssetModel.find(cleanFilter)
+          .sort({ priorityScore: -1, marketCap: -1, liquidityScore: -1, _id: -1 })
+          .skip(Math.max(0, offset))
+          .limit(requestedCount)
+          .lean();
+
+        const categoryFromType = (typeValue: string): UiAsset["category"] => {
+          if (typeValue === "stock") return "stocks";
+          if (typeValue === "etf") return "funds";
+          if (typeValue === "crypto") return "crypto";
+          if (typeValue === "forex") return "forex";
+          if (typeValue === "index") return "indices";
+          if (typeValue === "bond") return "bonds";
+          if (typeValue === "economy") return "economy";
+          return "futures";
+        };
+
+        return docs.map((doc) => {
+          const symbol = String(doc.symbol || "");
+          const name = String(doc.name || "");
+          const fromOptionsPattern = isOptionContractLabel(symbol, name);
+          const fromFuturesPattern = isFutureContractLabel(symbol, name);
+
+          const resolvedCategory = resolvedRequestedCategory === "all"
+            ? categoryFromType(String(doc.type || "stock"))
+            : resolvedRequestedCategory === "options"
+              ? (fromOptionsPattern ? "options" : "options")
+              : resolvedRequestedCategory === "futures"
+                ? (fromFuturesPattern ? "futures" : "futures")
+                : resolvedRequestedCategory;
+
+          const logoUrl = String(doc.s3Icon || doc.iconUrl || "");
+
+          return {
+            ticker: symbol,
+            symbol,
+            name,
+            exchange: String(doc.exchange || ""),
+            region: String(doc.country || ""),
+            instrumentType: String(doc.type || ""),
+            type: String(doc.type || ""),
+            category: resolvedCategory,
+            assetType: resolvedCategory,
+            market: (resolvedCategory.charAt(0).toUpperCase() + resolvedCategory.slice(1)) as UiAsset["market"],
+            country: String(doc.country || ""),
+            sector: String((doc as Record<string, unknown>).sector || ""),
+            exchangeType: "",
+            icon: logoUrl,
+            exchangeIcon: "",
+            exchangeLogoUrl: "",
+            iconUrl: String(doc.iconUrl || ""),
+            logoUrl,
+            displayIconUrl: logoUrl,
+            isFallback: !doc.iconUrl && !doc.s3Icon,
+            source: String(doc.source || "clean-assets"),
+            futureCategory: undefined,
+            economyCategory: undefined,
+            expiry: undefined,
+            strike: undefined,
+            underlyingAsset: undefined,
+            contracts: undefined,
+            price: 0,
+            change: 0,
+            changePercent: 0,
+            pnl: 0,
+            volume: doc.volume ?? 0,
+            marketCap: doc.marketCap ?? 0,
+            liquidityScore: doc.liquidityScore ?? 0,
+          } as UiAsset;
+        });
+      };
+
+      const decodeCategoryOffset = (rawCursor?: string): number => {
+        if (!rawCursor || !rawCursor.startsWith("off:")) return 0;
+        const parsed = Number.parseInt(rawCursor.slice(4), 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+      };
+
+      const mapCatalogAssetToUi = (item: Record<string, unknown> | any): UiAsset => ({
+        ticker: String(item.ticker || ""),
+        symbol: String(item.symbol || item.ticker || ""),
+        name: String(item.name || ""),
+        exchange: String(item.exchange || ""),
+        region: String(item.country || item.region || ""),
+        instrumentType: String(item.instrumentType || item.type || "stock") as UiAsset["instrumentType"],
+        type: String(item.type || "stock") as UiAsset["type"],
+        category: String(item.category || requestedCategory || "stocks") as UiAsset["category"],
+        assetType: String(item.assetType || item.category || requestedCategory || "stocks") as UiAsset["assetType"],
+        market: String(item.market || "Stocks") as UiAsset["market"],
+        country: String(item.country || ""),
+        sector: String(item.sector || ""),
+        exchangeType: String(item.exchangeType || ""),
+        icon: String(item.icon || ""),
+        exchangeIcon: String(item.exchangeIcon || ""),
+        exchangeLogoUrl: String(item.exchangeLogoUrl || ""),
+        iconUrl: String(item.iconUrl || ""),
+        logoUrl: String(item.logoUrl || item.iconUrl || ""),
+        displayIconUrl: String(item.logoUrl || item.iconUrl || ""),
+        isFallback: false,
+        source: String(item.source || "catalog-seed"),
+        futureCategory: item.futureCategory as string | undefined,
+        economyCategory: item.economyCategory as string | undefined,
+        expiry: item.expiry as string | undefined,
+        strike: item.strike as string | undefined,
+        underlyingAsset: item.underlyingAsset as string | undefined,
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        pnl: 0,
+        volume: 0,
+        marketCap: 0,
+        liquidityScore: 0,
+      });
+
+      // Fast path: query searches hit clean_assets first for low-latency responses.
+      if (requestedQuery.trim()) {
+        const queryOffset = decodeCategoryOffset(cursor);
+        const cleanQueryBatch = await buildCleanAssetsFallback(safeLimit + 1, queryOffset);
+        if (cleanQueryBatch.length > 0) {
+          const hasMoreFromCleanQuery = cleanQueryBatch.length > safeLimit;
+          const paged = await applyLogoReuse(cleanQueryBatch.slice(0, safeLimit));
+          const nextCleanQueryCursor = hasMoreFromCleanQuery ? `off:${queryOffset + safeLimit}` : null;
+
+          res.json({
+            assets: paged,
+            total: queryOffset + paged.length + (hasMoreFromCleanQuery ? 1 : 0),
+            page: 1,
+            limit: safeLimit,
+            hasMore: hasMoreFromCleanQuery,
+            nextCursor: nextCleanQueryCursor,
+          });
+          return;
+        }
       }
 
-      let assets = payload.items
-        .map((item) => toAssetSearchItem(item))
-        .filter((asset) => matchesAssetFilters(asset, {
+      // Fast path: category browsing (empty query) reads from clean_assets with lightweight cursor.
+      if (!requestedQuery.trim() && requestedCategory && requestedCategory !== "all") {
+        const categoryOffset = decodeCategoryOffset(cursor);
+        const cleanBatch = await buildCleanAssetsFallback(safeLimit + 1, categoryOffset);
+        if (cleanBatch.length > 0) {
+          const hasMoreFromClean = cleanBatch.length > safeLimit;
+          const paged = await applyLogoReuse(cleanBatch.slice(0, safeLimit));
+          const nextCategoryCursor = hasMoreFromClean ? `off:${categoryOffset + safeLimit}` : null;
+
+          res.json({
+            assets: paged,
+            total: categoryOffset + paged.length + (hasMoreFromClean ? 1 : 0),
+            page: 1,
+            limit: safeLimit,
+            hasMore: hasMoreFromClean,
+            nextCursor: nextCategoryCursor,
+          });
+          return;
+        }
+
+        // Secondary fallback for sparse categories in clean_assets.
+        const seedFallback = await searchAssetCatalog({
+          q: requestedQuery,
           category: requestedCategory,
           country: requestedCountry,
           type: requestedType,
@@ -297,47 +703,44 @@ export function createSimulationController(service: SimulationService) {
           expiry: requestedExpiry,
           strike: requestedStrike,
           underlyingAsset: requestedUnderlyingAsset,
-        }));
+          limit: safeLimit,
+        }).catch(() => ({ assets: [] as Array<Record<string, unknown>> }));
 
-      let total = payload.total;
-
-      if (requestedCountry && assets.length < Math.min(50, safeLimit)) {
-        const relaxedPayload = await searchSymbols({
-          query: typeof req.query.q === "string" ? req.query.q : "",
-          type: queryType,
-          country: undefined,
-          limit: Math.max(100, safeLimit),
-          cursor,
-          userId,
-          userCountry: userCountry || requestedCountry,
-        });
-
-        const relaxedAssets = relaxedPayload.items
-          .map((item) => toAssetSearchItem(item))
-          .filter((asset) => matchesAssetFilters(asset, {
-            category: requestedCategory,
-            country: requestedCountry,
-            type: requestedType,
-            sector: requestedSector,
-            source: requestedSource,
-            exchangeType: requestedExchangeType,
-            futureCategory: requestedFutureCategory,
-            economyCategory: requestedEconomyCategory,
-            expiry: requestedExpiry,
-            strike: requestedStrike,
-            underlyingAsset: requestedUnderlyingAsset,
-          }));
-
-        if (relaxedAssets.length > assets.length) {
-          assets = relaxedAssets.slice(0, safeLimit);
-          total = Math.max(relaxedPayload.total, relaxedAssets.length);
+        if (seedFallback.assets.length > 0) {
+          const mappedSeed = await applyLogoReuse(seedFallback.assets.map((item) => mapCatalogAssetToUi(item)));
+          res.json({
+            assets: mappedSeed,
+            total: mappedSeed.length,
+            page: 1,
+            limit: safeLimit,
+            hasMore: false,
+            nextCursor: null,
+          });
+          return;
         }
       }
 
-      const requestedQuery = typeof req.query.q === "string" ? req.query.q : "";
+      const primaryWindow = await fetchFilteredWindow(requestedCountry);
+      let assets = primaryWindow.assets;
+      let nextCursor = primaryWindow.nextCursor;
+      let actualHasMore = primaryWindow.hasMore;
+      let totalHint = primaryWindow.totalHint;
+      let scannedRows = primaryWindow.scannedRows;
+
+      if (requestedCountry && !cursor && assets.length < Math.min(50, safeLimit)) {
+        const relaxedWindow = await fetchFilteredWindow(undefined);
+        if (relaxedWindow.assets.length > assets.length) {
+          assets = relaxedWindow.assets;
+          nextCursor = relaxedWindow.nextCursor;
+          actualHasMore = relaxedWindow.hasMore;
+          totalHint = Math.max(totalHint, relaxedWindow.totalHint);
+          scannedRows = relaxedWindow.scannedRows;
+        }
+      }
+
       assets = prioritizeDefaultBluechips(assets, requestedCategory, requestedCountry, requestedQuery);
 
-      // Fallback to seed catalog when DB returns empty for a specific category
+      // Fallback chain for empty categories: DB -> seed catalog -> clean_assets injection
       if (assets.length === 0 && requestedCategory && requestedCategory !== "all") {
         try {
           const catalogFallback = await searchAssetCatalog({
@@ -355,67 +758,68 @@ export function createSimulationController(service: SimulationService) {
             underlyingAsset: requestedUnderlyingAsset,
             limit: safeLimit,
           });
+
           if (catalogFallback.assets.length > 0) {
-            const catalogMapped = catalogFallback.assets.map((item) => ({
-              ticker: item.ticker || "",
-              symbol: item.symbol || item.ticker || "",
-              name: item.name || "",
-              exchange: item.exchange || "",
-              region: item.country || item.region || "",
-              instrumentType: item.instrumentType || "",
-              type: item.type || "",
-              category: item.category || requestedCategory,
-              assetType: item.assetType || item.category || requestedCategory,
-              market: item.market || "",
-              country: item.country || "",
-              sector: item.sector || "",
-              exchangeType: item.exchangeType || "",
-              icon: item.icon || "",
-              exchangeIcon: item.exchangeIcon || "",
-              exchangeLogoUrl: item.exchangeLogoUrl || "",
-              iconUrl: item.iconUrl || "",
-              logoUrl: item.logoUrl || item.iconUrl || "",
-              displayIconUrl: item.logoUrl || item.iconUrl || "",
-              isFallback: false,
-              source: item.source || "catalog-seed",
-              futureCategory: item.futureCategory,
-              economyCategory: item.economyCategory,
-              expiry: item.expiry,
-              strike: item.strike,
-              underlyingAsset: item.underlyingAsset,
-              contracts: item.contracts,
-              price: 0,
-              change: 0,
-              changePercent: 0,
-              pnl: 0,
-              volume: 0,
-              marketCap: 0,
-              liquidityScore: 0,
-            })) as typeof assets;
-            assets = catalogMapped;
-            total = catalogFallback.total;
+            assets = catalogFallback.assets.map((item) => mapCatalogAssetToUi(item));
+            actualHasMore = false;
+            nextCursor = null;
+            totalHint = assets.length;
           }
         } catch {
-          // Catalog fallback is best-effort
+          // Seed fallback is best-effort
         }
       }
+
+      if (assets.length === 0 && requestedCategory && requestedCategory !== "all") {
+        const cleanFallback = await buildCleanAssetsFallback(safeLimit);
+        if (cleanFallback.length > 0) {
+          assets = cleanFallback;
+          actualHasMore = false;
+          nextCursor = null;
+          totalHint = cleanFallback.length;
+        }
+      }
+
+      if (assets.length > 0 && assets.length < Math.min(5, safeLimit) && requestedCategory && requestedCategory !== "all") {
+        const extraClean = await buildCleanAssetsFallback(safeLimit * 2);
+        if (extraClean.length > 0) {
+          const deduped = new Map<string, UiAsset>();
+          for (const asset of [...assets, ...extraClean]) {
+            const key = `${asset.category}|${asset.exchange}|${asset.symbol}`;
+            if (!deduped.has(key)) {
+              deduped.set(key, asset);
+            }
+          }
+          assets = Array.from(deduped.values());
+          totalHint = Math.max(totalHint, assets.length);
+        }
+      }
+
+      assets = await applyLogoReuse(assets);
+
+      const trimmedAssets = assets.slice(0, safeLimit);
+      const resolvedHasMore = Boolean(actualHasMore && nextCursor);
+      const resolvedTotal = totalHint > 0
+        ? Math.max(trimmedAssets.length, totalHint)
+        : (resolvedHasMore ? trimmedAssets.length + 1 : trimmedAssets.length);
 
       logger.info("search_debug_assets", {
         countryReceived: requestedCountry || "(none)",
         userCountry: userCountry || "(none)",
         query: requestedQuery,
         category: requestedCategory || "(none)",
-        symbolsBeforeFilter: payload.items.length,
-        symbolsAfterFilter: assets.length,
+        symbolsBeforeFilter: scannedRows,
+        symbolsAfterFilter: trimmedAssets.length,
+        hasMore: resolvedHasMore,
       });
 
       res.json({
-        assets,
-        total,
+        assets: trimmedAssets,
+        total: resolvedTotal,
         page: 1,
         limit: safeLimit,
-        hasMore: payload.hasMore,
-        nextCursor: payload.nextCursor,
+        hasMore: resolvedHasMore,
+        nextCursor: resolvedHasMore ? nextCursor : null,
       });
     },
 

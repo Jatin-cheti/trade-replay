@@ -470,6 +470,7 @@ export async function searchSymbols(params: {
   cursor?: string;
   userId?: string;
   userCountry?: string;
+  forceCursorMode?: boolean;
   skipLogoEnrichment?: boolean;
   disablePrefetch?: boolean;
   skipSearchFrequencyUpdate?: boolean;
@@ -496,7 +497,7 @@ export async function searchSymbols(params: {
     = "index";
 
   // --- INTELLIGENT SEARCH: first page uses prefix+fuzzy+clustering ---
-  if (query && !cursor && !params.cursor) {
+  if (query && !cursor && !params.cursor && !params.forceCursorMode) {
     const finalCacheKey = clusterScopedKey(
       "search",
       query.toLowerCase(),
@@ -710,7 +711,7 @@ export async function searchSymbols(params: {
   }
   // --- END INTELLIGENT SEARCH ---
 
-  if (!query && !cursor && !params.cursor) {
+  if (!query && !cursor && !params.cursor && !params.forceCursorMode) {
     const discoveryCacheKey = clusterScopedKey(
       "search-discovery",
       `${params.type ?? "all"}:${normalizedCountry ?? "all"}:${normalizedUserCountry ?? "GLOBAL"}:${limit}`,

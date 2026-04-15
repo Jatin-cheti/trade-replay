@@ -46,6 +46,8 @@ cleanAssetSchema.index({ type: 1, priorityScore: -1 });
 cleanAssetSchema.index({ country: 1, type: 1 });
 // Search by name/symbol
 cleanAssetSchema.index({ symbol: 1, name: 1 });
+// Search + ranking
+cleanAssetSchema.index({ symbol: 1, name: 1, priorityScore: -1 });
 // Priority ordering
 cleanAssetSchema.index({ priorityScore: -1 });
 

@@ -109,6 +109,7 @@ export default function SymbolSearchModal({
     rows,
     loading,
     loadingMore,
+    hasMore,
     total,
     activeFilters,
     countryOptions,
@@ -523,7 +524,13 @@ export default function SymbolSearchModal({
             {loading ? <p className="px-3 py-4 text-center text-xs text-muted-foreground">Loading symbols...</p> : null}
             {!loading && rows.length > 0 ? (
               <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
-                Showing {rows.length} of {total}
+                {groupedRows.length !== rows.length
+                  ? `Showing ${groupedRows.length} companies from ${rows.length}${hasMore ? "+" : ""} listings`
+                  : hasMore
+                    ? `Showing ${rows.length}+`
+                    : total > rows.length
+                    ? `Showing ${rows.length} of ${total}`
+                    : `Showing ${rows.length}${hasMore ? "+" : ""}`}
               </p>
             ) : null}
             {loadingMore ? <p className="px-3 py-3 text-center text-xs text-muted-foreground">Loading more...</p> : null}
