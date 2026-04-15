@@ -527,13 +527,17 @@ export function createSimulationController(service: SimulationService) {
 
         if (requestedQuery.trim()) {
           const escapedQuery = escapeRegex(requestedQuery.trim());
-          andFilters.push({
-            $or: [
-              { symbol: { $regex: `^${escapedQuery}`, $options: "i" } },
-              { name: { $regex: escapedQuery, $options: "i" } },
-              { fullSymbol: { $regex: escapedQuery, $options: "i" } },
-            ],
-          });
+          if (requestedQuery.trim().length <= 2) {
+            andFilters.push({ symbol: { $regex: `^${escapedQuery}`, $options: "i" } });
+          } else {
+            andFilters.push({
+              $or: [
+                { symbol: { $regex: `^${escapedQuery}`, $options: "i" } },
+                { name: { $regex: escapedQuery, $options: "i" } },
+                { fullSymbol: { $regex: escapedQuery, $options: "i" } },
+              ],
+            });
+          }
         }
 
         if (resolvedRequestedCategory === "options") {
@@ -712,12 +716,17 @@ export function createSimulationController(service: SimulationService) {
 
         if (requestedQuery.trim()) {
           const escapedQuery = escapeRegex(requestedQuery.trim());
-          andFilters.push({
-            $or: [
-              { symbol: { $regex: `^${escapedQuery}`, $options: "i" } },
-              { name: { $regex: escapedQuery, $options: "i" } },
-            ],
-          });
+          // Short queries (≤2 chars): only match by symbol prefix to avoid name noise
+          if (requestedQuery.trim().length <= 2) {
+            andFilters.push({ symbol: { $regex: `^${escapedQuery}`, $options: "i" } });
+          } else {
+            andFilters.push({
+              $or: [
+                { symbol: { $regex: `^${escapedQuery}`, $options: "i" } },
+                { name: { $regex: escapedQuery, $options: "i" } },
+              ],
+            });
+          }
         }
 
         const filter: Record<string, unknown> = andFilters.length === 0
@@ -734,13 +743,24 @@ export function createSimulationController(service: SimulationService) {
 
         const mapped = docs.map((doc) => toAssetSearchItem(doc as any));
 
-        // Pin exact symbol matches to the top so MSFT@NASDAQ beats MSFT.D@COINGECKO
+        // Rank exact symbol matches first, then prefer real exchanges over SEC/COINGECKO
         if (requestedQuery.trim()) {
           const upper = requestedQuery.trim().toUpperCase();
+          const realExchanges = new Set(["NASDAQ", "NYSE", "NSE", "BSE", "LSE", "TSE", "HKEX", "SSE", "SZSE", "ASX", "TSX", "EURONEXT", "XETRA"]);
           mapped.sort((a, b) => {
-            const aExact = (a.symbol || a.ticker || "").toUpperCase() === upper ? 1 : 0;
-            const bExact = (b.symbol || b.ticker || "").toUpperCase() === upper ? 1 : 0;
-            return bExact - aExact; // exact matches first, preserve rest order
+            const aSym = (a.symbol || a.ticker || "").toUpperCase();
+            const bSym = (b.symbol || b.ticker || "").toUpperCase();
+            // Exact symbol match first
+            const aExact = aSym === upper ? 2 : 0;
+            const bExact = bSym === upper ? 2 : 0;
+            if (aExact !== bExact) return bExact - aExact;
+            // Among exact matches, prefer real exchanges
+            if (aExact && bExact) {
+              const aReal = realExchanges.has((a.exchange || "").toUpperCase()) ? 1 : 0;
+              const bReal = realExchanges.has((b.exchange || "").toUpperCase()) ? 1 : 0;
+              if (aReal !== bReal) return bReal - aReal;
+            }
+            return 0; // preserve DB sort order
           });
         }
 
