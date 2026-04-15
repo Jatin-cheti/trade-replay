@@ -11,8 +11,11 @@
  */
 
 import mongoose from "mongoose";
+import express from "express";
+import { createServer } from "node:http";
 import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
+import { env } from "./config/env";
 import { bootstrapKafkaProducerOnly, shutdownKafka } from "./kafka";
 import { logger } from "./utils/logger";
 import { runInfiniteGlobalExpansionLoop } from "./services/globalSymbolExpansion.service";
@@ -21,7 +24,9 @@ import { processLogoBatchWithConcurrency } from "./services/logoProcessing.servi
 import { computeFallbackRatio } from "./services/logoValidation.service";
 import { buildCleanAssets, getCleanAssetStats } from "./services/cleanAsset.service";
 import { ingestGlobalSymbols } from "./services/ingestion.service";
-import { startLiveSnapshotEngine } from "./services/liveMarketService";
+import { startLiveSnapshotEngine } from "./services/snapshotEngine.service";
+import { createAssetServiceInternalRoutes } from "./routes/assetServiceInternalRoutes";
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { SymbolModel } from "./models/Symbol";
 
 // ─── Env config ──────────────────────────────────────────
@@ -42,6 +47,23 @@ const GOLD_LAYER_INTERVAL_MS = readPositiveIntEnv("GOLD_LAYER_INTERVAL_MS", 600_
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function startInternalApiServer(): void {
+  const app = express();
+  const httpServer = createServer(app);
+
+  app.use(express.json({ limit: "1mb" }));
+  app.use("/asset-service/internal", createAssetServiceInternalRoutes());
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+
+  httpServer.listen(env.ASSET_SERVICE_INTERNAL_PORT, "127.0.0.1", () => {
+    logger.info("asset_svc_internal_api_listening", {
+      port: env.ASSET_SERVICE_INTERNAL_PORT,
+      url: env.ASSET_SERVICE_URL,
+    });
+  });
 }
 
 // ─── Gold-layer rebuild loop ─────────────────────────────
@@ -133,6 +155,7 @@ async function main(): Promise<void> {
   await connectRedis();
   await bootstrapKafkaProducerOnly();
   await ensureBaseSymbols();
+  startInternalApiServer();
   startLiveSnapshotEngine();
 
   // Run all loops concurrently

@@ -12,6 +12,7 @@
     "start:kafka": "tsx src/kafkaService.ts",
     "start:asset-service": "tsx src/assetService.ts",
     "dev:asset-service": "tsx watch src/assetService.ts",
+    "benchmark:snapshots": "tsx scripts/benchmarkSnapshots.ts",
     "build": "tsc -p tsconfig.build.json",
     "seed": "tsx src/seeders/seed.ts",
     "seed:domain-dataset": "tsx scripts/seedDomainDataset.ts",

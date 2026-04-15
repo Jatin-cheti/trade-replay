@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import type { CandleData } from "@/data/stockData";
 import { fetchLiveSnapshot, type LiveQuote } from "@/services/live/liveMarketApi";
 
@@ -30,6 +30,8 @@ const initialState: LiveMarketState = {
   isLoading: true,
   error: null,
 };
+
+const QUOTE_HYDRATION_CHUNK_SIZE = 24;
 
 function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();
@@ -117,6 +119,10 @@ export function useLiveMarketData(input: {
     [quoteSymbols],
   );
 
+  const nextFrame = () => new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+
   const flushQueued = () => {
     if (frameRef.current != null) return;
 
@@ -126,7 +132,9 @@ export function useLiveMarketData(input: {
       if (!queued) return;
 
       queuedRef.current = null;
-      setState((prev) => ({ ...prev, ...queued }));
+      startTransition(() => {
+        setState((prev) => ({ ...prev, ...queued }));
+      });
     });
   };
 
@@ -174,6 +182,31 @@ export function useLiveMarketData(input: {
         });
 
         const symbolCandles = snapshot.candlesBySymbol[normalizedSymbol] ?? [];
+        const progressiveQuotes: Record<string, LiveQuote> = {};
+        const quoteEntries = Object.entries(snapshot.quotes);
+
+        for (let index = 0; index < quoteEntries.length; index += QUOTE_HYDRATION_CHUNK_SIZE) {
+          const chunk = quoteEntries.slice(index, index + QUOTE_HYDRATION_CHUNK_SIZE);
+          chunk.forEach(([quoteSymbol, quote]) => {
+            progressiveQuotes[quoteSymbol] = quote;
+          });
+
+          if (!cancelled) {
+            queuedRef.current = {
+              ...(queuedRef.current ?? {}),
+              quotesBySymbol: { ...progressiveQuotes },
+              symbolQuote: snapshot.quotes[normalizedSymbol] ?? null,
+              isLoading: false,
+              error: null,
+            };
+            flushQueued();
+          }
+
+          if (index + QUOTE_HYDRATION_CHUNK_SIZE < quoteEntries.length) {
+            await nextFrame();
+          }
+        }
+
         let partial: Partial<LiveMarketState> = {
           symbolCandles,
           symbolQuote: snapshot.quotes[normalizedSymbol] ?? null,

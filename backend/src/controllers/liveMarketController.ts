@@ -1,7 +1,12 @@
 import { Response } from "express";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
-import { getLiveCandles, getLiveQuotes, getLiveSnapshot, ingestLiveSnapshot } from "../services/liveMarketService";
+import {
+  getAssetServiceCandles,
+  getAssetServiceQuotes,
+  getSnapshots,
+  ingestAssetServiceSnapshots,
+} from "../clients/assetService.client";
 import { AppError } from "../utils/appError";
 
 const candlesSchema = z.object({
@@ -47,7 +52,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_CANDLES_QUERY", "Invalid live candles query");
       }
 
-      const payload = await getLiveCandles({
+      const payload = await getAssetServiceCandles({
         symbol: parsed.data.symbol,
         limit: parsed.data.limit,
       });
@@ -70,7 +75,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_QUOTES_QUERY", "At least one symbol is required");
       }
 
-      res.json(await getLiveQuotes({ symbols }));
+      res.json(await getAssetServiceQuotes(symbols));
     },
 
     snapshot: async (req: AuthenticatedRequest, res: Response) => {
@@ -79,7 +84,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_SNAPSHOT_PAYLOAD", "Invalid live snapshot payload");
       }
 
-      const payload = await getLiveSnapshot({
+      const payload = await getSnapshots({
         symbols: parsed.data.symbols,
         candleSymbols: parsed.data.candleSymbols,
         candleLimit: parsed.data.candleLimit,
@@ -94,7 +99,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_SNAPSHOT_INGEST_PAYLOAD", "Invalid live snapshot ingest payload");
       }
 
-      const payload = await ingestLiveSnapshot(parsed.data);
+      const payload = await ingestAssetServiceSnapshots(parsed.data);
       res.json(payload);
     },
   };
