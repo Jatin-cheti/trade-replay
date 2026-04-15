@@ -21,6 +21,7 @@ import { processLogoBatchWithConcurrency } from "./services/logoProcessing.servi
 import { computeFallbackRatio } from "./services/logoValidation.service";
 import { buildCleanAssets, getCleanAssetStats } from "./services/cleanAsset.service";
 import { ingestGlobalSymbols } from "./services/ingestion.service";
+import { startLiveSnapshotEngine } from "./services/liveMarketService";
 import { SymbolModel } from "./models/Symbol";
 
 // ─── Env config ──────────────────────────────────────────
@@ -132,6 +133,7 @@ async function main(): Promise<void> {
   await connectRedis();
   await bootstrapKafkaProducerOnly();
   await ensureBaseSymbols();
+  startLiveSnapshotEngine();
 
   // Run all loops concurrently
   await Promise.all([

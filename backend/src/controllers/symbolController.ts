@@ -6,6 +6,7 @@ import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../s
 import { buildCountryFilterInput } from "../services/symbol.helpers";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
+import { SymbolModel } from "../models/Symbol";
 
 const searchSchema = z.object({
   query: z.string().default(""),
@@ -65,6 +66,21 @@ export function createSymbolController() {
           userId,
           userCountry,
         });
+
+        const accessedSymbols = payload.items
+          .map((item) => String(item.symbol || "").trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 100);
+
+        if (accessedSymbols.length > 0) {
+          void SymbolModel.updateMany(
+            { symbol: { $in: accessedSymbols } },
+            {
+              $inc: { searchFrequency: 1, searchCount: 1 },
+              $set: { lastAccessedAt: new Date(), isHot: true },
+            },
+          );
+        }
 
         res.json(payload);
       } catch (error) {
