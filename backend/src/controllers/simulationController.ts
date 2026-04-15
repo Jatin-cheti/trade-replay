@@ -12,7 +12,7 @@ import { SymbolModel } from "../models/Symbol";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
 import { getLiveQuotes } from "../services/snapshotEngine.service";
-import { detectQueryIntent, recordSearchClick } from "../services/searchIndex.service";
+import { detectQueryIntent, recordSearchClick, recordSearchImpressions } from "../services/searchIndex.service";
 import { mapServiceError } from "../utils/serviceError";
 import { logger } from "../utils/logger";
 
@@ -1083,11 +1083,14 @@ export function createSimulationController(service: SimulationService) {
         res.status(400).json({ error: "query and symbol are required" });
         return;
       }
-      // Fire-and-forget: record click for CTR scoring + Kafka
-      void recordSearchClick(q, symbol);
+      // Fire-and-forget: record click with user dedup for CTR scoring + Kafka
+      void recordSearchClick(q, symbol, req.user?.userId);
       try {
+        const crypto = await import("node:crypto");
         const { produceSearchClick } = await import("../kafka/eventProducers");
         produceSearchClick({
+          eventId: crypto.randomUUID(),
+          timestamp: Date.now(),
           query: q,
           symbol,
           exchange: exchange ?? "",
@@ -1095,6 +1098,20 @@ export function createSimulationController(service: SimulationService) {
           userId: req.user?.userId,
         });
       } catch { /* kafka optional */ }
+      res.json({ ok: true });
+    },
+
+    searchImpression: async (req: AuthenticatedRequest, res: Response) => {
+      const { query: q, symbols } = req.body as {
+        query?: string;
+        symbols?: string[];
+      };
+      if (!q || !Array.isArray(symbols) || symbols.length === 0) {
+        res.status(400).json({ error: "query and symbols[] are required" });
+        return;
+      }
+      // Fire-and-forget: record impressions for CTR denominator
+      void recordSearchImpressions(q, symbols);
       res.json({ ok: true });
     },
   };

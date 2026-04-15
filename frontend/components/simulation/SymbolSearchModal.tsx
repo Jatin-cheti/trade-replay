@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, Globe, Search, X } from "lucide-react";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -155,6 +155,17 @@ export default function SymbolSearchModal({
       position,
     }).catch(() => { /* telemetry; never block UX */ });
   };
+
+  // Fire-and-forget impression tracking for proper CTR = clicks/impressions
+  const lastImpressionKey = useRef("");
+  useEffect(() => {
+    if (!query || rows.length === 0) return;
+    const symbols = rows.slice(0, 50).map((r) => r.ticker || r.symbol);
+    const key = `${query}:${symbols.join(",")}`;
+    if (key === lastImpressionKey.current) return; // deduplicate
+    lastImpressionKey.current = key;
+    void api.post("/simulation/search/impression", { query, symbols }).catch(() => {});
+  }, [query, rows]);
 
   useEffect(() => {
     setExpandedGroups({});

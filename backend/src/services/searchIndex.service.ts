@@ -115,43 +115,121 @@ function intentBoost(item: SearchIndexItem, intent: QueryIntent): number {
 }
 
 // ── CTR (click-through rate) scoring ────────────────────────────────
-const CTR_REDIS_PREFIX = "ctr:";
+// Redis HASH layout:
+//   ctr:c:{query} → { SYMBOL: clickCount, ... }   (clicks)
+//   ctr:i:{query} → { SYMBOL: impressionCount, ... } (impressions)
+//   ctr:t:{query} → timestamp of first event (for decay)
+//   ctr:u:{userId}:{query} → { SYMBOL: 1, ... }   (per-user dedup, short TTL)
+const CTR_CLICK_PREFIX = "ctr:c:";
+const CTR_IMP_PREFIX = "ctr:i:";
+const CTR_TIME_PREFIX = "ctr:t:";
+const CTR_USER_PREFIX = "ctr:u:";
 const CTR_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const CTR_USER_DEDUP_TTL = 3600; // 1 hour — same user/query/symbol counted once per hour
+const CTR_DECAY_LAMBDA = 0.1; // decay half-life ~7 days
+const CTR_WEIGHT = 25; // max effective CTR boost
+const CTR_SMOOTHING_ALPHA = 0.3; // EMA: 30% new, 70% old
+const CTR_COLD_START_BOOST = 3; // small exploration boost for symbols with < 5 impressions
+const CTR_MIN_IMPRESSIONS = 3; // minimum impressions before CTR is trusted
 
-export async function recordSearchClick(query: string, symbol: string): Promise<void> {
+// Anti-abuse: max clicks per user per query per hour
+const CTR_MAX_CLICKS_PER_USER = 5;
+
+export async function recordSearchClick(query: string, symbol: string, userId?: string): Promise<void> {
   if (!isRedisReady() || !query || !symbol) return;
   try {
-    const key = `${CTR_REDIS_PREFIX}${query.toLowerCase()}:${symbol.toUpperCase()}`;
-    await redisClient.incr(key);
-    await redisClient.expire(key, CTR_TTL_SECONDS);
-    // Also track recent searches per user (generic, no userId here)
-    const trendKey = `ctr:trending:${symbol.toUpperCase()}`;
-    await redisClient.incr(trendKey);
-    await redisClient.expire(trendKey, CTR_TTL_SECONDS);
+    const lq = query.toLowerCase();
+    const sym = symbol.toUpperCase();
+    const clickKey = `${CTR_CLICK_PREFIX}${lq}`;
+
+    // Anti-abuse: per-user dedup
+    if (userId) {
+      const userKey = `${CTR_USER_PREFIX}${userId}:${lq}`;
+      const already = await redisClient.hget(userKey, sym);
+      if (already && Number(already) >= CTR_MAX_CLICKS_PER_USER) return; // spam threshold
+      await redisClient.hincrby(userKey, sym, 1);
+      await redisClient.expire(userKey, CTR_USER_DEDUP_TTL);
+    }
+
+    await redisClient.hincrby(clickKey, sym, 1);
+    await redisClient.expire(clickKey, CTR_TTL_SECONDS);
+
+    // Track first-event timestamp for decay
+    const timeKey = `${CTR_TIME_PREFIX}${lq}`;
+    const existing = await redisClient.get(timeKey);
+    if (!existing) {
+      await redisClient.setex(timeKey, CTR_TTL_SECONDS, String(Date.now()));
+    }
+
+    // Trending (global, not per-query)
+    await redisClient.hincrby("ctr:trending", sym, 1);
+    await redisClient.expire("ctr:trending", CTR_TTL_SECONDS);
   } catch { /* fire-and-forget */ }
 }
 
-async function getCtrScore(query: string, symbol: string): Promise<number> {
-  if (!isRedisReady() || !query || !symbol) return 0;
+export async function recordSearchImpressions(query: string, symbols: string[]): Promise<void> {
+  if (!isRedisReady() || !query || symbols.length === 0) return;
   try {
-    const key = `${CTR_REDIS_PREFIX}${query.toLowerCase()}:${symbol.toUpperCase()}`;
-    const val = await redisClient.get(key);
-    if (!val) return 0;
-    return Math.log(1 + Number(val)) * 15; // Scale CTR to meaningful boost
-  } catch { return 0; }
+    const lq = query.toLowerCase();
+    const impKey = `${CTR_IMP_PREFIX}${lq}`;
+    const pipeline = redisClient.multi();
+    for (const sym of symbols.slice(0, 50)) { // cap at 50 to limit Redis ops
+      pipeline.hincrby(impKey, sym.toUpperCase(), 1);
+    }
+    pipeline.expire(impKey, CTR_TTL_SECONDS);
+
+    // Track first-event timestamp
+    const timeKey = `${CTR_TIME_PREFIX}${lq}`;
+    const existing = await redisClient.get(timeKey);
+    if (!existing) {
+      pipeline.setex(timeKey, CTR_TTL_SECONDS, String(Date.now()));
+    }
+
+    await pipeline.exec();
+  } catch { /* fire-and-forget */ }
 }
 
 async function getCtrScoresBatch(query: string, symbols: string[]): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   if (!isRedisReady() || !query || symbols.length === 0) return result;
   try {
-    const lowerQuery = query.toLowerCase();
-    const keys = symbols.map((s) => `${CTR_REDIS_PREFIX}${lowerQuery}:${s.toUpperCase()}`);
-    const values = await redisClient.mget(...keys);
-    for (let i = 0; i < symbols.length; i++) {
-      const raw = values[i];
-      if (raw) {
-        result.set(symbols[i].toUpperCase(), Math.log(1 + Number(raw)) * 15);
+    const lq = query.toLowerCase();
+    const clickKey = `${CTR_CLICK_PREFIX}${lq}`;
+    const impKey = `${CTR_IMP_PREFIX}${lq}`;
+    const timeKey = `${CTR_TIME_PREFIX}${lq}`;
+
+    // Batch fetch clicks, impressions, and timestamp
+    const [clickHash, impHash, timeStr] = await Promise.all([
+      redisClient.hgetall(clickKey),
+      redisClient.hgetall(impKey),
+      redisClient.get(timeKey),
+    ]);
+
+    // Compute age-based decay
+    const ageMs = timeStr ? Date.now() - Number(timeStr) : 0;
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    const decay = Math.exp(-CTR_DECAY_LAMBDA * ageDays);
+
+    for (const sym of symbols) {
+      const upper = sym.toUpperCase();
+      const clicks = Number(clickHash[upper] || 0);
+      const impressions = Number(impHash[upper] || 0);
+
+      let ctrScore: number;
+      if (impressions < CTR_MIN_IMPRESSIONS) {
+        // Cold start: give a small exploration boost so new symbols can surface
+        ctrScore = CTR_COLD_START_BOOST;
+      } else {
+        // True CTR = clicks / impressions, with smoothing
+        const rawCTR = clicks / impressions;
+        // Apply EMA smoothing: blend with prior (0.5 base CTR)
+        const smoothedCTR = CTR_SMOOTHING_ALPHA * rawCTR + (1 - CTR_SMOOTHING_ALPHA) * 0.05;
+        // Scale to meaningful boost, apply decay
+        ctrScore = smoothedCTR * CTR_WEIGHT * decay;
+      }
+
+      if (ctrScore > 0) {
+        result.set(upper, ctrScore);
       }
     }
   } catch { /* ignore */ }
