@@ -163,6 +163,8 @@ export interface AssetUpdatedPayload {
 // ── Search behaviour payloads ────────────────────────────────────────
 
 export interface SearchClickPayload {
+  eventId: string;
+  timestamp: number;
   query: string;
   symbol: string;
   exchange: string;
