@@ -7,6 +7,7 @@ import {
   getSnapshots,
   ingestAssetServiceSnapshots,
 } from "../clients/assetService.client";
+import { getLiveSnapshot } from "../services/snapshotEngine.service";
 import { AppError } from "../utils/appError";
 
 const candlesSchema = z.object({
@@ -114,7 +115,7 @@ export function createLiveMarketController() {
       }
 
       try {
-        const payload = await getSnapshots({
+        const payload = await getLiveSnapshot({
           symbols,
           candleSymbols,
           candleLimit: parsed.data.candleLimit,
@@ -122,8 +123,8 @@ export function createLiveMarketController() {
         res.json(payload);
       } catch (error) {
         const statusCode = error instanceof AppError ? error.statusCode : 503;
-        const errorCode = error instanceof AppError ? error.errorCode : "ASSET_SERVICE_SNAPSHOT_FAILED";
-        const message = error instanceof Error ? error.message : "Asset service snapshot unavailable";
+        const errorCode = error instanceof AppError ? error.errorCode : "SNAPSHOT_FAILED";
+        const message = error instanceof Error ? error.message : "Snapshot unavailable";
         res.status(statusCode).json({ success: false, message, errorCode });
       }
     },
@@ -136,16 +137,16 @@ export function createLiveMarketController() {
       }
 
       try {
-        const payload = await getSnapshots({
+        const payload = await getLiveSnapshot({
           symbols: parsed.data.symbols,
-          candleSymbols: parsed.data.candleSymbols,
+          candleSymbols: parsed.data.candleSymbols ?? [],
           candleLimit: parsed.data.candleLimit,
         });
         res.json(payload);
       } catch (error) {
         const statusCode = error instanceof AppError ? error.statusCode : 503;
-        const errorCode = error instanceof AppError ? error.errorCode : "ASSET_SERVICE_SNAPSHOT_FAILED";
-        const message = error instanceof Error ? error.message : "Asset service snapshot unavailable";
+        const errorCode = error instanceof AppError ? error.errorCode : "SNAPSHOT_FAILED";
+        const message = error instanceof Error ? error.message : "Snapshot unavailable";
         res.status(statusCode).json({ success: false, message, errorCode });
       }
     },
