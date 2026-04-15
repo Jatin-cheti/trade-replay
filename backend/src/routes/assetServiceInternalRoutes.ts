@@ -18,6 +18,7 @@ export function createAssetServiceInternalRoutes() {
   const controller = createAssetServiceInternalController();
 
   router.get("/health", controller.health);
+  router.get("/health/snapshot", controller.snapshotHealth);
   router.use(verifyInternalServiceToken);
   router.post("/candles", controller.candles);
   router.post("/quotes", controller.quotes);

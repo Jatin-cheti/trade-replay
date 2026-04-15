@@ -103,8 +103,6 @@ export function useLiveMarketData(input: {
   const { mode, symbol, holdings, quoteSymbols = [], pollMs = 2500 } = input;
 
   const [state, setState] = useState<LiveMarketState>(initialState);
-  const frameRef = useRef<number | null>(null);
-  const queuedRef = useRef<Partial<LiveMarketState> | null>(null);
   const inFlightRef = useRef(false);
   const portfolioCandleMapRef = useRef<Record<string, CandleData[]>>({});
   const initializedPortfolioSymbolsRef = useRef<string>("");
@@ -120,31 +118,13 @@ export function useLiveMarketData(input: {
   );
 
   const nextFrame = () => new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve());
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      window.requestAnimationFrame(() => resolve());
+      return;
+    }
+
+    window.setTimeout(() => resolve(), 16);
   });
-
-  const flushQueued = () => {
-    if (frameRef.current != null) return;
-
-    frameRef.current = window.requestAnimationFrame(() => {
-      frameRef.current = null;
-      const queued = queuedRef.current;
-      if (!queued) return;
-
-      queuedRef.current = null;
-      startTransition(() => {
-        setState((prev) => ({ ...prev, ...queued }));
-      });
-    });
-  };
-
-  useEffect(() => {
-    return () => {
-      if (frameRef.current != null) {
-        window.cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const currentSymbolsKey = holdings.map((holding) => normalizeSymbol(holding.symbol)).sort().join(",");
@@ -192,14 +172,15 @@ export function useLiveMarketData(input: {
           });
 
           if (!cancelled) {
-            queuedRef.current = {
-              ...(queuedRef.current ?? {}),
-              quotesBySymbol: { ...progressiveQuotes },
-              symbolQuote: snapshot.quotes[normalizedSymbol] ?? null,
-              isLoading: false,
-              error: null,
-            };
-            flushQueued();
+            startTransition(() => {
+              setState((prev) => ({
+                ...prev,
+                quotesBySymbol: { ...progressiveQuotes },
+                symbolQuote: snapshot.quotes[normalizedSymbol] ?? null,
+                isLoading: false,
+                error: null,
+              }));
+            });
           }
 
           if (index + QUOTE_HYDRATION_CHUNK_SIZE < quoteEntries.length) {
@@ -234,17 +215,19 @@ export function useLiveMarketData(input: {
         }
 
         if (!cancelled) {
-          queuedRef.current = { ...(queuedRef.current ?? {}), ...partial };
-          flushQueued();
+          startTransition(() => {
+            setState((prev) => ({ ...prev, ...partial }));
+          });
         }
       } catch (error) {
         if (!cancelled) {
-          queuedRef.current = {
-            ...(queuedRef.current ?? {}),
-            isLoading: false,
-            error: error instanceof Error ? error.message : "Live market data unavailable",
-          };
-          flushQueued();
+          startTransition(() => {
+            setState((prev) => ({
+              ...prev,
+              isLoading: false,
+              error: error instanceof Error ? error.message : "Live market data unavailable",
+            }));
+          });
         }
       } finally {
         inFlightRef.current = false;

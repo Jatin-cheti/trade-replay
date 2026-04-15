@@ -100,6 +100,19 @@ function pricescaleForSymbol(currency: string): number {
   return 100; // 2 decimal places
 }
 
+function isBlockedLogoUrl(url?: string): boolean {
+  const value = String(url || "").trim().toLowerCase();
+  if (!value) return false;
+  return value.includes("medic-data.s3.eu-north-1.amazonaws.com")
+    || value.includes("dl142w45levth.cloudfront.net");
+}
+
+function resolveSymbolLogo(iconUrl?: string, s3Icon?: string): string {
+  if (iconUrl && !isBlockedLogoUrl(iconUrl)) return iconUrl;
+  if (s3Icon && !isBlockedLogoUrl(s3Icon)) return s3Icon;
+  return iconUrl && !iconUrl.includes("medic-data.s3.eu-north-1.amazonaws.com") ? iconUrl : "";
+}
+
 async function resolveSymbol(symbolName: string): Promise<UdfSymbolInfo | null> {
   const upper = symbolName.trim().toUpperCase();
   // Handles both "NSE:RELIANCE" and "RELIANCE"
@@ -121,7 +134,7 @@ async function resolveSymbol(symbolName: string): Promise<UdfSymbolInfo | null> 
 
   if (!doc) return null;
 
-  const icon = doc.iconUrl || doc.s3Icon || "";
+  const icon = resolveSymbolLogo(doc.iconUrl, doc.s3Icon);
 
   return {
     symbol: doc.fullSymbol,

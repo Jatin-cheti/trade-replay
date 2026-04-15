@@ -361,9 +361,29 @@ function toSymbolTypeFromExternal(type: ExternalSymbolCandidate["type"]): Symbol
   return "index";
 }
 
+function isBlockedLogoUrl(url?: string): boolean {
+  const value = String(url || "").trim().toLowerCase();
+  if (!value) return false;
+  return value.includes("medic-data.s3.eu-north-1.amazonaws.com")
+    || value.includes("dl142w45levth.cloudfront.net");
+}
+
+function resolvePreferredLogoUrl(input: { iconUrl?: string; s3Icon?: string; staticIcon?: string }): string {
+  const preferredIconUrl = String(input.iconUrl || "").trim();
+  const staticIcon = String(input.staticIcon || "").trim();
+  const s3Icon = String(input.s3Icon || "").trim();
+
+  if (preferredIconUrl && !isBlockedLogoUrl(preferredIconUrl)) return preferredIconUrl;
+  if (staticIcon && !isBlockedLogoUrl(staticIcon)) return staticIcon;
+  if (s3Icon && !isBlockedLogoUrl(s3Icon)) return s3Icon;
+  if (preferredIconUrl && !preferredIconUrl.startsWith("https://medic-data.s3.")) return preferredIconUrl;
+  if (staticIcon) return staticIcon;
+  return "";
+}
+
 function toRegistryItemFromExternal(candidate: ExternalSymbolCandidate): SymbolRegistryItem {
   const staticIcon = resolveStaticIcon(candidate.symbol);
-  const realIconUrl = candidate.iconUrl || staticIcon || "";
+  const realIconUrl = resolvePreferredLogoUrl({ iconUrl: candidate.iconUrl, staticIcon });
   const fallbackIcon = fallbackSymbolIconUrl(candidate.exchange);
   const isFallback = !realIconUrl;
   const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -534,7 +554,7 @@ export async function searchSymbols(params: {
           searchSource = "index";
           smartItems = indexResult.items.map((item) => {
             const staticIcon = resolveStaticIcon(item.symbol);
-            const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
+            const realIconUrl = resolvePreferredLogoUrl({ iconUrl: item.iconUrl, s3Icon: item.s3Icon, staticIcon });
             const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
             const isFallback = !realIconUrl;
             const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -600,7 +620,7 @@ export async function searchSymbols(params: {
 
           smartItems = cachedCandidates.items.map((item) => {
             const staticIcon = resolveStaticIcon(item.symbol);
-            const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
+            const realIconUrl = resolvePreferredLogoUrl({ iconUrl: item.iconUrl, s3Icon: item.s3Icon, staticIcon });
             const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
             const isFallback = !realIconUrl;
             const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -804,7 +824,7 @@ export async function searchSymbols(params: {
         const pagedRows = grouped.slice(0, limit);
         const items: SymbolRegistryItem[] = pagedRows.map((row) => {
           const staticIcon = resolveStaticIcon(row.symbol);
-          const realIconUrl = row.iconUrl || row.s3Icon || staticIcon || "";
+          const realIconUrl = resolvePreferredLogoUrl({ iconUrl: row.iconUrl, s3Icon: row.s3Icon, staticIcon });
           const fallbackIcon = fallbackSymbolIconUrl(row.exchange);
           const isFallback = !realIconUrl;
           const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -1001,7 +1021,7 @@ export async function searchSymbols(params: {
       : null;
     const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => {
       const staticIcon = resolveStaticIcon(rest.symbol);
-      const realIconUrl = rest.iconUrl || rest.s3Icon || staticIcon || "";
+      const realIconUrl = resolvePreferredLogoUrl({ iconUrl: rest.iconUrl, s3Icon: rest.s3Icon, staticIcon });
       const fallbackIcon = fallbackSymbolIconUrl(rest.exchange);
       const isFallback = !realIconUrl;
       const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;

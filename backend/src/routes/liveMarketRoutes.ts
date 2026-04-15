@@ -6,6 +6,9 @@ export function createLiveMarketRoutes() {
   const router = Router();
   const controller = createLiveMarketController();
 
+  router.get("/snapshot/public", controller.publicSnapshotGet);
+  router.post("/snapshot/public", controller.publicSnapshotPost);
+
   router.use(verifyToken);
   router.get("/candles", controller.candles);
   router.get("/quotes", controller.quotes);

@@ -37,19 +37,29 @@ const MAX_BUFFER = 400;
 const SNAPSHOT_QUOTE_TTL_SECONDS = 60;
 const SNAPSHOT_CANDLES_TTL_SECONDS = 60 * 30;
 const SNAPSHOT_BATCH_TTL_SECONDS = 2;
+const SNAPSHOT_BATCH_MEMORY_TTL_MS = 2_000;
 const ENGINE_REFRESH_MS = 500;
 const ENGINE_BATCH_SIZE = 100;
+const ENGINE_REFRESH_SLICE_SIZE = 180;
 const HOT_SYMBOLS_LIMIT = 10_000;
 const COLD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_UNIVERSE = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "BTCUSDT"];
 
 const stateBySymbol = new Map<string, LiveSymbolState>();
 const accessedSymbols = new Set<string>();
+const batchMemoryCache = new Map<string, { expiresAt: number; payload: AssetSnapshotResponse }>();
 
 let engineStarted = false;
 let engineTimer: NodeJS.Timeout | null = null;
 let cleanupTimer: NodeJS.Timeout | null = null;
 let seededHotUniverse = false;
+let hotUniverseCursor = 0;
+let snapshotBatchHits = 0;
+let snapshotBatchMisses = 0;
+let engineLoopSamples = 0;
+let engineLoopAvgMs = 0;
+let engineLoopMaxMs = 0;
+const snapshotLatencyWindow: number[] = [];
 
 function waitForYield(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
@@ -344,24 +354,40 @@ async function getOrSeedCandles(symbols: string[], limit: number, interval = "1m
 }
 
 async function readBatchSnapshot(key: string): Promise<AssetSnapshotResponse | null> {
+  const memoryRow = batchMemoryCache.get(key);
+  if (memoryRow && memoryRow.expiresAt > Date.now()) {
+    snapshotBatchHits += 1;
+    recordCacheResult("asset_snapshot_batch", true);
+    return memoryRow.payload;
+  }
+  if (memoryRow) {
+    batchMemoryCache.delete(key);
+  }
+
   if (!isRedisReady()) return null;
 
   try {
     const raw = await redisClient.get(key);
     if (!raw) {
+      snapshotBatchMisses += 1;
       recordCacheResult("asset_snapshot_batch", false);
       return null;
     }
 
+    snapshotBatchHits += 1;
     recordCacheResult("asset_snapshot_batch", true);
-    return JSON.parse(raw) as AssetSnapshotResponse;
+    const payload = JSON.parse(raw) as AssetSnapshotResponse;
+    batchMemoryCache.set(key, { expiresAt: Date.now() + SNAPSHOT_BATCH_MEMORY_TTL_MS, payload });
+    return payload;
   } catch {
+    snapshotBatchMisses += 1;
     recordCacheResult("asset_snapshot_batch", false);
     return null;
   }
 }
 
 async function writeBatchSnapshot(key: string, payload: AssetSnapshotResponse): Promise<void> {
+  batchMemoryCache.set(key, { expiresAt: Date.now() + SNAPSHOT_BATCH_MEMORY_TTL_MS, payload });
   if (!isRedisReady()) return;
 
   try {
@@ -412,9 +438,18 @@ async function activeUniverse(): Promise<string[]> {
 }
 
 async function runSnapshotTick(): Promise<void> {
+  const startedAt = Date.now();
   const symbols = await activeUniverse();
   if (symbols.length > 0) {
-    await persistSnapshots(symbols);
+    const batchSize = Math.min(ENGINE_REFRESH_SLICE_SIZE, symbols.length);
+    const safeCursor = hotUniverseCursor >= symbols.length ? 0 : hotUniverseCursor;
+    const nextBatch = symbols.slice(safeCursor, safeCursor + batchSize);
+    const refreshBatch = nextBatch.length === batchSize
+      ? nextBatch
+      : [...nextBatch, ...symbols.slice(0, batchSize - nextBatch.length)];
+
+    hotUniverseCursor = (safeCursor + batchSize) % symbols.length;
+    await persistSnapshots(refreshBatch);
   }
 
   const cutoff = Date.now() - COLD_WINDOW_MS;
@@ -423,6 +458,11 @@ async function runSnapshotTick(): Promise<void> {
       stateBySymbol.delete(symbol);
     }
   }
+
+  const elapsedMs = Date.now() - startedAt;
+  engineLoopSamples += 1;
+  engineLoopAvgMs = ((engineLoopAvgMs * (engineLoopSamples - 1)) + elapsedMs) / engineLoopSamples;
+  engineLoopMaxMs = Math.max(engineLoopMaxMs, elapsedMs);
 }
 
 async function runHotColdCleanup(): Promise<void> {
@@ -507,6 +547,7 @@ export async function getLiveQuotes(input: { symbols: string[] }): Promise<Asset
 }
 
 export async function getLiveSnapshot(input: AssetSnapshotRequest): Promise<AssetSnapshotResponse> {
+  const startedAt = Date.now();
   const symbols = uniqueSnapshotSymbols(input.symbols);
   const candleSymbols = uniqueSnapshotSymbols(input.candleSymbols ?? []);
   const candleLimit = Math.max(20, Math.min(500, input.candleLimit ?? 240));
@@ -515,8 +556,12 @@ export async function getLiveSnapshot(input: AssetSnapshotRequest): Promise<Asse
   const cached = await readBatchSnapshot(batchKey);
   if (cached) {
     markSymbolsAccessed([...symbols, ...candleSymbols]);
+    snapshotLatencyWindow.push(Date.now() - startedAt);
+    if (snapshotLatencyWindow.length > 300) snapshotLatencyWindow.shift();
     return cached;
   }
+
+  snapshotBatchMisses += 1;
 
   markSymbolsAccessed([...symbols, ...candleSymbols]);
   const [quotes, candlesBySymbol] = await Promise.all([
@@ -532,6 +577,8 @@ export async function getLiveSnapshot(input: AssetSnapshotRequest): Promise<Asse
   };
 
   await writeBatchSnapshot(batchKey, payload);
+  snapshotLatencyWindow.push(Date.now() - startedAt);
+  if (snapshotLatencyWindow.length > 300) snapshotLatencyWindow.shift();
   return payload;
 }
 
@@ -617,4 +664,27 @@ export function getSnapshotBatchKeyForDebug(input: AssetSnapshotRequest): string
   const normalizedLimit = Math.max(20, Math.min(500, input.candleLimit ?? 240));
   const raw = JSON.stringify({ symbols: normalizedSymbols, candleSymbols: normalizedCandleSymbols, limit: normalizedLimit });
   return createHash("sha1").update(raw).digest("hex");
+}
+
+export function getSnapshotEngineHealth(): {
+  batchHitRatio: number;
+  p95LatencyMs: number;
+  engineLoopAvgMs: number;
+  engineLoopMaxMs: number;
+  cacheEntries: number;
+} {
+  const totalBatchReads = snapshotBatchHits + snapshotBatchMisses;
+  const sortedLatency = [...snapshotLatencyWindow].sort((left, right) => left - right);
+  const p95Index = sortedLatency.length > 0
+    ? Math.min(sortedLatency.length - 1, Math.floor(sortedLatency.length * 0.95))
+    : 0;
+  const p95LatencyMs = sortedLatency.length > 0 ? sortedLatency[p95Index] ?? 0 : 0;
+
+  return {
+    batchHitRatio: totalBatchReads > 0 ? Number(((snapshotBatchHits / totalBatchReads) * 100).toFixed(2)) : 0,
+    p95LatencyMs: Number(p95LatencyMs.toFixed(2)),
+    engineLoopAvgMs: Number(engineLoopAvgMs.toFixed(2)),
+    engineLoopMaxMs: Number(engineLoopMaxMs.toFixed(2)),
+    cacheEntries: batchMemoryCache.size,
+  };
 }
