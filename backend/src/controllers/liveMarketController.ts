@@ -2,12 +2,9 @@ import { Response } from "express";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
 import {
-  getAssetServiceCandles,
-  getAssetServiceQuotes,
-  getSnapshots,
   ingestAssetServiceSnapshots,
 } from "../clients/assetService.client";
-import { getLiveSnapshot } from "../services/snapshotEngine.service";
+import { getLiveSnapshot, getLiveQuotes, getLiveCandles } from "../services/snapshotEngine.service";
 import { AppError } from "../utils/appError";
 
 const candlesSchema = z.object({
@@ -59,7 +56,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_CANDLES_QUERY", "Invalid live candles query");
       }
 
-      const payload = await getAssetServiceCandles({
+      const payload = await getLiveCandles({
         symbol: parsed.data.symbol,
         limit: parsed.data.limit,
       });
@@ -82,7 +79,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_QUOTES_QUERY", "At least one symbol is required");
       }
 
-      res.json(await getAssetServiceQuotes(symbols));
+      res.json(await getLiveQuotes({ symbols }));
     },
 
     snapshot: async (req: AuthenticatedRequest, res: Response) => {
@@ -91,7 +88,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_SNAPSHOT_PAYLOAD", "Invalid live snapshot payload");
       }
 
-      const payload = await getSnapshots({
+      const payload = await getLiveSnapshot({
         symbols: parsed.data.symbols,
         candleSymbols: parsed.data.candleSymbols,
         candleLimit: parsed.data.candleLimit,
