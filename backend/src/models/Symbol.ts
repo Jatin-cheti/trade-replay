@@ -37,8 +37,6 @@ const symbolSchema = new Schema(
 
 symbolSchema.index({ fullSymbol: 1 }, { unique: true });
 symbolSchema.index({ exchange: 1, type: 1, country: 1 });
-symbolSchema.index({ logoAttempts: 1, lastLogoAttemptAt: 1 });
-symbolSchema.index({ logoStatus: 1, priorityScore: -1 }, { name: "symbol_logo_status_idx" });
 symbolSchema.index({ createdAt: -1, _id: -1 });
 symbolSchema.index({ type: 1, country: 1, createdAt: -1, _id: -1 });
 symbolSchema.index({ symbol: 1, type: 1, country: 1, createdAt: -1 });
@@ -46,7 +44,6 @@ symbolSchema.index(
   { priorityScore: -1, createdAt: -1 },
   { name: "symbol_priority_score_idx" },
 );
-symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
 symbolSchema.index({ isHot: 1, lastAccessedAt: -1 }, { name: "symbol_hot_lifecycle_idx" });
 symbolSchema.index({ baseSymbol: 1, priorityScore: -1 }, { name: "symbol_base_cluster_idx" });
 symbolSchema.index({ searchPrefixes: 1, priorityScore: -1 }, { name: "symbol_search_prefixes_idx" });
