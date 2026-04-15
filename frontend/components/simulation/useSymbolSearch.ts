@@ -137,8 +137,13 @@ export function useSymbolSearch(
     setSelectedFutureRoot(null);
   }, [category]);
 
+  const effectiveQuery = useMemo(() => {
+    const normalized = query.trim();
+    return normalized.length < 2 ? "" : normalized;
+  }, [query]);
+
   const filterKey = useMemo(() => JSON.stringify({
-    q: query.trim(),
+    q: effectiveQuery,
     category,
     country,
     type,
@@ -151,7 +156,7 @@ export function useSymbolSearch(
     strike,
     underlyingAsset,
     sort,
-  }), [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
+  }), [effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
 
   useEffect(() => {
     if (!open) return;
@@ -173,7 +178,7 @@ export function useSymbolSearch(
       firstPageAbortRef.current = controller;
       try {
         const response = await searchAssets({
-          q: query.trim(),
+          q: effectiveQuery,
           category: category === "all" ? undefined : category,
           country: country === "all" ? undefined : country,
           type: type === "all" ? undefined : type,
@@ -216,7 +221,7 @@ export function useSymbolSearch(
     }, 200);
 
     return () => window.clearTimeout(timer);
-  }, [open, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
+  }, [open, filterKey, effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
 
   useEffect(() => {
     return () => {
@@ -246,7 +251,7 @@ export function useSymbolSearch(
           const prefetchedKey = `${filterKey}:${nextCursor}`;
           const prefetched = prefetchedPageCache.current.get(prefetchedKey);
           const response = prefetched ?? await searchAssets({
-            q: query.trim(),
+            q: effectiveQuery,
             category: category === "all" ? undefined : category,
             country: country === "all" ? undefined : country,
             type: type === "all" ? undefined : type,
@@ -295,7 +300,7 @@ export function useSymbolSearch(
 
     container.addEventListener("scroll", onScroll);
     return () => container.removeEventListener("scroll", onScroll);
-  }, [open, loading, loadingMore, hasMore, nextCursor, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort, filterKey]);
+  }, [open, loading, loadingMore, hasMore, nextCursor, effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort, filterKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -311,7 +316,7 @@ export function useSymbolSearch(
 
     const controller = new AbortController();
     void searchAssets({
-      q: query.trim(),
+      q: effectiveQuery,
       category: category === "all" ? undefined : category,
       country: country === "all" ? undefined : country,
       type: type === "all" ? undefined : type,
@@ -334,7 +339,7 @@ export function useSymbolSearch(
     });
 
     return () => controller.abort();
-  }, [open, loading, loadingMore, hasMore, nextCursor, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
+  }, [open, loading, loadingMore, hasMore, nextCursor, filterKey, effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
 
   const selectedCountryLabel = useMemo(() => {
     return countryOptions.find((optionItem) => optionItem.value === country)?.label || "All Countries";
