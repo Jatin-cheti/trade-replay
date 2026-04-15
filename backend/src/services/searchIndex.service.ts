@@ -61,6 +61,11 @@ const PREFIX_CACHE_SWEEP_MS = envNumber("SEARCH_INDEX_PREFIX_CACHE_SWEEP_MS", 60
 
 const PRECOMPUTE_QUERIES = Array.from(new Set(SEARCH_PRECACHE_QUERIES.map((query) => query.toLowerCase())));
 
+const REDIS_PREFIX_KEY = "sidx:pfx:"; // search index prefix ZSET
+const REDIS_SYMBOL_KEY = "sidx:sym:"; // search index symbol HASH
+const REDIS_PREFIX_TTL = envNumber("SEARCH_REDIS_PREFIX_TTL", 600); // 10 min
+const REDIS_SYMBOL_TTL = envNumber("SEARCH_REDIS_SYMBOL_TTL", 900); // 15 min
+
 const prefixCache = new Map<string, PrefixCacheEntry>();
 const loadingPrefixes = new Map<string, Promise<PrefixCacheEntry>>();
 
@@ -147,6 +152,19 @@ function prunePrefixCache(): void {
 
 function clearPrefixCache(reason: string): void {
   prefixCache.clear();
+  // Also flush Redis prefix keys on invalidation
+  if (isRedisReady()) {
+    void (async () => {
+      try {
+        let cursor = "0";
+        do {
+          const [next, keys] = await redisClient.scan(Number(cursor), "MATCH", `${REDIS_PREFIX_KEY}*`, "COUNT", 200);
+          cursor = next;
+          if (keys.length > 0) await redisClient.del(...keys);
+        } while (cursor !== "0");
+      } catch { /* best effort */ }
+    })();
+  }
   logger.info("search_index_prefix_cache_cleared", { reason });
   recordCurrentMemory();
 }
@@ -458,6 +476,56 @@ async function buildPrefixItems(prefix: string): Promise<SearchIndexItem[]> {
   return ranked;
 }
 
+/** Persist prefix items to Redis ZSETs + symbol HASHes for O(1) cold-start. */
+async function persistPrefixToRedis(prefix: string, items: SearchIndexItem[]): Promise<void> {
+  if (!isRedisReady() || items.length === 0) return;
+  const pipeline = redisClient.pipeline();
+  const prefixKey = `${REDIS_PREFIX_KEY}${prefix}`;
+
+  // ZSET: score → fullSymbol
+  const members: Array<string | number> = [];
+  for (const item of items) {
+    members.push(item.staticScore, item.fullSymbol);
+  }
+  pipeline.del(prefixKey);
+  pipeline.zadd(prefixKey, ...members);
+  pipeline.expire(prefixKey, REDIS_PREFIX_TTL);
+
+  // HASH per symbol: compact JSON
+  for (const item of items) {
+    const symKey = `${REDIS_SYMBOL_KEY}${item.fullSymbol}`;
+    pipeline.set(symKey, JSON.stringify(item), "EX", REDIS_SYMBOL_TTL);
+  }
+
+  await pipeline.exec();
+}
+
+/** Read prefix items from Redis ZSET + hydrate from symbol HASHes. */
+async function readPrefixFromRedis(prefix: string): Promise<SearchIndexItem[] | null> {
+  if (!isRedisReady()) return null;
+  const prefixKey = `${REDIS_PREFIX_KEY}${prefix}`;
+
+  try {
+    const members = await redisClient.zrevrangebyscore(prefixKey, "+inf", "-inf", "LIMIT", 0, MAX_SYMBOLS_PER_PREFIX);
+    if (!members || members.length === 0) return null;
+
+    const symKeys = members.map((fs) => `${REDIS_SYMBOL_KEY}${fs}`);
+    const rows = await redisClient.mget(...symKeys);
+    const items: SearchIndexItem[] = [];
+
+    for (const raw of rows) {
+      if (!raw) continue;
+      try {
+        items.push(JSON.parse(raw) as SearchIndexItem);
+      } catch { /* skip malformed */ }
+    }
+
+    return items.length > 0 ? items : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadPrefixEntry(prefix: string, reason: string): Promise<PrefixCacheEntry> {
   const cached = prefixCache.get(prefix);
   if (cached && (Date.now() - cached.builtAt) <= PREFIX_CACHE_TTL_MS) {
@@ -471,7 +539,17 @@ async function loadPrefixEntry(prefix: string, reason: string): Promise<PrefixCa
 
   const promise = (async () => {
     try {
-      const items = await buildPrefixItems(prefix);
+      // L2: Try Redis ZSET before hitting MongoDB
+      const redisItems = await readPrefixFromRedis(prefix);
+      let items: SearchIndexItem[];
+      if (redisItems && redisItems.length > 0) {
+        items = redisItems;
+      } else {
+        items = await buildPrefixItems(prefix);
+        // Persist to Redis L2 for next cold start
+        void persistPrefixToRedis(prefix, items).catch(() => {});
+      }
+
       const entry: PrefixCacheEntry = {
         prefix,
         items,
