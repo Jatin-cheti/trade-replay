@@ -24,6 +24,12 @@ const snapshotSchema = z.object({
   candleLimit: z.number().int().min(20).max(500).optional(),
 });
 
+const publicSnapshotQuerySchema = z.object({
+  symbols: z.string().min(1),
+  candleSymbols: z.string().optional(),
+  candleLimit: z.coerce.number().int().min(20).max(500).optional(),
+});
+
 const snapshotIngestSchema = z.object({
   quotes: z.record(z.object({
     price: z.number(),
@@ -82,6 +88,42 @@ export function createLiveMarketController() {
       const parsed = snapshotSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new AppError(400, "INVALID_LIVE_SNAPSHOT_PAYLOAD", "Invalid live snapshot payload");
+      }
+
+      const payload = await getSnapshots({
+        symbols: parsed.data.symbols,
+        candleSymbols: parsed.data.candleSymbols,
+        candleLimit: parsed.data.candleLimit,
+      });
+
+      res.json(payload);
+    },
+
+    publicSnapshotGet: async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = publicSnapshotQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        throw new AppError(400, "INVALID_PUBLIC_LIVE_SNAPSHOT_QUERY", "Invalid public live snapshot query");
+      }
+
+      const symbols = parsed.data.symbols.split(",").map((symbol) => symbol.trim()).filter(Boolean);
+      const candleSymbols = (parsed.data.candleSymbols || "").split(",").map((symbol) => symbol.trim()).filter(Boolean);
+      if (symbols.length === 0) {
+        throw new AppError(400, "INVALID_PUBLIC_LIVE_SNAPSHOT_QUERY", "At least one symbol is required");
+      }
+
+      const payload = await getSnapshots({
+        symbols,
+        candleSymbols,
+        candleLimit: parsed.data.candleLimit,
+      });
+
+      res.json(payload);
+    },
+
+    publicSnapshotPost: async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = snapshotSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new AppError(400, "INVALID_PUBLIC_LIVE_SNAPSHOT_PAYLOAD", "Invalid public live snapshot payload");
       }
 
       const payload = await getSnapshots({

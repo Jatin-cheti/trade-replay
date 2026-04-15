@@ -56,12 +56,14 @@ async function main() {
   }, null, 2));
 
   try {
-    const metrics = await axios.get(`${backendUrl}/api/metrics`, { timeout: 4000 });
-    const snapshotBatchHitRate = metrics.data?.cacheHitRate?.asset_snapshot_batch?.hitRate ?? null;
-    const quoteHitRate = metrics.data?.cacheHitRate?.asset_snapshot_quote?.hitRate ?? null;
-    const candleHitRate = metrics.data?.cacheHitRate?.asset_snapshot_candles?.hitRate ?? null;
+    const metrics = await axios.get(`${assetServiceUrl}/asset-service/internal/health/snapshot`, {
+      timeout: 4000,
+      headers: {
+        "x-internal-service-token": internalToken,
+      },
+    });
     console.log("CACHE METRICS");
-    console.log(JSON.stringify({ snapshotBatchHitRate, quoteHitRate, candleHitRate }, null, 2));
+    console.log(JSON.stringify(metrics.data, null, 2));
   } catch (error) {
     console.log("CACHE METRICS");
     console.log(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2));
@@ -95,6 +97,7 @@ async function main() {
     avgMs: average(searchDurations),
     p50Ms: percentile(searchDurations, 0.5),
     p95Ms: percentile(searchDurations, 0.95),
+    p99Ms: percentile(searchDurations, 0.99),
     targetUnder50Ms: percentile(searchDurations, 0.95) < 50,
   }, null, 2));
 }

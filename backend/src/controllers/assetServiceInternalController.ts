@@ -5,6 +5,7 @@ import {
   getLiveCandles,
   getLiveQuotes,
   getLiveSnapshot,
+  getSnapshotEngineHealth,
   ingestLiveSnapshot,
 } from "../services/snapshotEngine.service";
 
@@ -49,6 +50,10 @@ export function createAssetServiceInternalController() {
   return {
     health: async (_req: InternalRequest, res: Response) => {
       res.json({ ok: true, service: "asset-service" });
+    },
+
+    snapshotHealth: async (_req: InternalRequest, res: Response) => {
+      res.json({ ok: true, ...getSnapshotEngineHealth() });
     },
 
     candles: async (req: InternalRequest, res: Response) => {

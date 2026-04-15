@@ -56,10 +56,12 @@ export async function fetchLiveSnapshot(params: {
   candleSymbols?: string[];
   candleLimit?: number;
 }): Promise<LiveSnapshotResponse> {
-  const response = await api.post<LiveSnapshotResponse>("/live/snapshot", {
+  const response = await api.post<LiveSnapshotResponse>("/live/snapshot/public", {
     symbols: params.symbols,
     candleSymbols: params.candleSymbols ?? [],
     candleLimit: params.candleLimit ?? 240,
+  }, {
+    suppressGlobalLoading: true,
   });
 
   return response.data;
