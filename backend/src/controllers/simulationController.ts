@@ -735,13 +735,30 @@ export function createSimulationController(service: SimulationService) {
             ? andFilters[0]
             : { $and: andFilters };
 
+        // Phase 1: find exact symbol match at a real exchange (fast index lookup)
+        const realExchanges = ["NASDAQ", "NYSE", "NSE", "BSE", "LSE", "TSE", "HKEX", "SSE", "SZSE", "ASX", "TSX", "EURONEXT", "XETRA", "NYSEARCA"];
+        let pinnedDoc: Record<string, unknown> | null = null;
+        if (requestedQuery.trim() && offset === 0) {
+          pinnedDoc = await SymbolModel.findOne({
+            symbol: requestedQuery.trim().toUpperCase(),
+            exchange: { $in: realExchanges },
+            ...(symType ? { type: symType } : {}),
+          }).lean() as Record<string, unknown> | null;
+        }
+
+        // Phase 2: normal regex query
         const docs = await SymbolModel.find(filter)
           .sort({ priorityScore: -1, marketCap: -1, liquidityScore: -1, _id: -1 })
           .skip(Math.max(0, offset))
           .limit(requestedCount)
           .lean();
 
-        const mapped = docs.map((doc) => toAssetSearchItem(doc as any));
+        // Merge: pinned first, then rest (deduped)
+        const pinnedId = pinnedDoc ? String(pinnedDoc._id) : null;
+        const allDocs = pinnedDoc
+          ? [pinnedDoc, ...docs.filter((d) => String(d._id) !== pinnedId)]
+          : [...docs];
+        const mapped = allDocs.slice(0, requestedCount).map((doc) => toAssetSearchItem(doc as any));
 
         // Rank exact symbol matches first, then prefer real exchanges over SEC/COINGECKO
         if (requestedQuery.trim()) {
