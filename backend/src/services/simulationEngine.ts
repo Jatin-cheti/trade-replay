@@ -1,4 +1,4 @@
-import { Server } from "socket.io";
+﻿import { Server } from "socket.io";
 import { CandleData, ScenarioId } from "../types/shared";
 import { SimulationSessionState } from "../types/service";
 import { logger } from "../utils/logger";
@@ -135,6 +135,8 @@ export class SimulationEngine {
   private flushPendingEvents(): void {
     this.pendingCandleUpdates.forEach((payload, userId) => {
       this.io.to(userId).emit("candle:update", payload);
+
+
     });
 
     this.pendingPortfolioUpdates.forEach((payload, userId) => {

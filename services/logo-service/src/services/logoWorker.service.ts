@@ -4,7 +4,7 @@ import { env } from "../config/env";
 import { SymbolModel } from "../models/Symbol";
 import { resolveLogo } from "./logoResolver.service";
 import { uploadRemoteLogoToS3 } from "./s3.service";
-import { emitLogoEnriched } from "../config/kafka";
+import { emitLogoEnriched, emitLogoMapped } from "../config/kafka";
 
 type QueueSymbol = {
   symbol: string;
@@ -50,25 +50,11 @@ type ClaimedSymbol = {
 
 async function claimAttempt(fullSymbol: string): Promise<ClaimedSymbol | null> {
   const now = Date.now();
-  const cooldownCutoff = now - ATTEMPT_COOLDOWN_MS;
 
   const claimed = await SymbolModel.findOneAndUpdate(
     {
       fullSymbol,
-      $and: [
-        {
-          $or: [{ iconUrl: { $exists: false } }, { iconUrl: "" }],
-        },
-        {
-          $or: [{ s3Icon: { $exists: false } }, { s3Icon: "" }],
-        },
-        {
-          $or: [{ logoAttempts: { $exists: false } }, { logoAttempts: { $lt: MAX_ATTEMPTS } }],
-        },
-        {
-          $or: [{ lastLogoAttemptAt: { $exists: false } }, { lastLogoAttemptAt: { $lt: cooldownCutoff } }],
-        },
-      ],
+      $or: [{ iconUrl: { $exists: false } }, { iconUrl: "" }],
     },
     {
       $inc: { logoAttempts: 1 },
@@ -104,18 +90,6 @@ async function processJob(payload: QueueSymbol): Promise<void> {
     throw new Error("REDIS_NOT_READY");
   }
 
-  const dedupe = await redisClient.set(
-    `app:dedupe:logo-worker:${payload.fullSymbol}`,
-    "1",
-    "EX",
-    60,
-    "NX",
-  );
-  if (dedupe !== "OK") {
-    skipped += 1;
-    return;
-  }
-
   const claimed = await claimAttempt(payload.fullSymbol.toUpperCase());
   if (!claimed) {
     skipped += 1;
@@ -134,6 +108,10 @@ async function processJob(payload: QueueSymbol): Promise<void> {
 
   if (!resolvedLogo.logoUrl) {
     console.log(JSON.stringify({ message: "logo_fetch_unresolved", fullSymbol: claimed.fullSymbol }));
+    await SymbolModel.updateOne(
+      { fullSymbol: claimed.fullSymbol },
+      { $set: { logoStatus: "failed", logoLastUpdated: new Date() } },
+    );
     failed += 1;
     return;
   }
@@ -162,6 +140,8 @@ async function processJob(payload: QueueSymbol): Promise<void> {
         s3Icon: s3?.cdnUrl || "",
         companyDomain: resolvedLogo.domain || claimed.companyDomain || "",
         logoValidatedAt: new Date(),
+        logoStatus: "mapped",
+        logoLastUpdated: new Date(),
       },
     },
   );
@@ -172,6 +152,14 @@ async function processJob(payload: QueueSymbol): Promise<void> {
     logoUrl: finalIcon,
     source: s3 ? "cdn" : "remote",
     domain: resolvedLogo.domain || undefined,
+  });
+
+  await emitLogoMapped({
+    fullSymbol: claimed.fullSymbol,
+    symbol: claimed.symbol,
+    logoUrl: finalIcon,
+    s3Url: s3?.cdnUrl || "",
+    source: resolvedLogo.source,
   });
 
   resolved += 1;

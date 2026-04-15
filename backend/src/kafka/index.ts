@@ -5,6 +5,8 @@ import { disconnectAllConsumers } from "./consumer";
 import { startTradeProcessor } from "./consumers/tradeProcessor";
 import { startPortfolioUpdater } from "./consumers/portfolioUpdater";
 import { startAnalyticsProcessor } from "./consumers/analyticsProcessor";
+import { startAlertsTickProcessor } from "./consumers/alertsTickProcessor";
+import { startMarketPriceCacheProcessor } from "./consumers/marketPriceCacheProcessor";
 import { logger } from "../utils/logger";
 import { env } from "../config/env";
 import net from "node:net";
@@ -158,6 +160,8 @@ export async function bootstrapKafkaConsumersOnly(): Promise<void> {
     await startTradeProcessor();
     await startPortfolioUpdater();
     await startAnalyticsProcessor();
+    await startMarketPriceCacheProcessor();
+    await startAlertsTickProcessor();
     logger.info("kafka_consumers_bootstrap_complete");
   } catch (error) {
     logger.error("kafka_consumers_bootstrap_failed", {

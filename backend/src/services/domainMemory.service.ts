@@ -20,6 +20,7 @@ export async function getKnownDomain(symbol: string): Promise<string | null> {
 
   const record = await DomainMemoryModel.findOne({
     $or: [{ symbol: normalized }, { symbol: base }, { baseSymbol: base }],
+    verified: true,
   })
     .sort({ confidence: -1 })
     .select({ symbol: 1, baseSymbol: 1, domain: 1 })
@@ -38,6 +39,7 @@ export async function rememberResolvedDomain(input: {
   domain: string;
   confidence: number;
   source: string;
+  companyName: string;
 }): Promise<void> {
   const normalized = normalizeSymbol(input.symbol);
   const base = extractBaseSymbol(normalized);
@@ -47,6 +49,9 @@ export async function rememberResolvedDomain(input: {
     domain,
     confidence: Math.max(0, Math.min(1, input.confidence)),
     source: input.source.trim().toLowerCase() || "resolver",
+    companyName: input.companyName.trim(),
+    verified: true,
+    verifiedAt: new Date(),
   };
 
   await Promise.all([
@@ -76,7 +81,7 @@ export async function rememberResolvedDomain(input: {
   domainCache.set(base, domain);
 
   await Promise.all([
-    saveToDomainDataset(normalized, domain),
-    saveToDomainDataset(base, domain),
+    saveToDomainDataset(normalized, domain, input.confidence),
+    saveToDomainDataset(base, domain, input.confidence),
   ]);
 }

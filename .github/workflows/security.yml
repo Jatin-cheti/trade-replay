@@ -1,0 +1,68 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint-check:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend deps
+        run: cd backend && npm ci
+
+      - name: TypeScript check (backend)
+        run: cd backend && npx tsc --noEmit
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: TypeScript check (frontend)
+        run: cd frontend && npx tsc --noEmit
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+        env:
+          VITE_API_URL: https://api.tradereplay.me/api
+          VITE_GOOGLE_CLIENT_ID: placeholder
+
+  env-file-guard:
+    name: No Env Files Committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for tracked env files
+        run: |
+          TRACKED=$(git ls-files -- '*.env' '.env.*' '**/.env.*' | grep -v '.env.example' | grep -v '.env.ci' || true)
+          if [ -n "$TRACKED" ]; then
+            echo "::error::Environment files are tracked by git: $TRACKED"
+            exit 1
+          fi
+          echo "No env files tracked — OK"

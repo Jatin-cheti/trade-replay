@@ -11,6 +11,7 @@ import { InitPayload, TradeInput } from "../types/service";
 import { cacheSession, getCachedSession } from "./sessionCacheService";
 import { producePortfolioUpdate, produceTradeExecute, produceTradeResult } from "../kafka/eventProducers";
 import { invalidateSymbolCaches } from "./cacheInvalidation.service";
+import { incrementUserUsage } from "./symbol.service";
 
 function mapTrades(rows: Awaited<ReturnType<typeof listTrades>>) {
   return rows.map((trade: Awaited<ReturnType<typeof listTrades>>[number]) => ({
@@ -55,6 +56,8 @@ export class SimulationService {
 
     const market = await loadCandlesForSimulation(payload);
     if (!market.candles.length) throw new Error("NO_CANDLES");
+
+    void incrementUserUsage([payload.symbol]).catch(() => {});
 
     const session = this.engine.upsertSession({
       userId,

@@ -6,10 +6,6 @@ import "./index.css";
 
 const googleClientId = frontendEnv.GOOGLE_CLIENT_ID;
 
-if (!googleClientId) {
-  console.warn("Google OAuth client_id is missing. Set VITE_GOOGLE_CLIENT_ID in your .env file.");
-}
-
 createRoot(document.getElementById("root")!).render(
 	<GoogleOAuthProvider clientId={googleClientId}>
 		<App />

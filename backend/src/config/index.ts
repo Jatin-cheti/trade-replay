@@ -111,6 +111,8 @@ const EnvSchema = z.object({
   ALPHA_VANTAGE_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   FMP_API_KEY: z.string().optional(),
+  COINGECKO_API_KEY: z.string().optional(),
+  OPENFIGI_API_KEY: z.string().optional(),
   AWS_REGION: z.string().min(1).optional(),
   AWS_S3_BUCKET: z.string().min(1).optional(),
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
@@ -145,6 +147,18 @@ const EnvSchema = z.object({
 });
 
 EnvSchema.parse(process.env);
+
+// Production safety: reject weak/placeholder secrets
+if (appEnv === "production") {
+  const jwtSecret = process.env.JWT_SECRET ?? "";
+  if (jwtSecret.length < 32 || /^(change.me|test|dev|secret)$/i.test(jwtSecret)) {
+    throw new Error("FATAL: JWT_SECRET is too weak or a placeholder. Generate with: openssl rand -hex 32");
+  }
+  const cursorSecret = process.env.CURSOR_SIGNING_SECRET ?? "";
+  if (cursorSecret.length < 16 || /^(change.me|test|dev|secret)$/i.test(cursorSecret)) {
+    throw new Error("FATAL: CURSOR_SIGNING_SECRET is too weak or a placeholder.");
+  }
+}
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -258,6 +272,8 @@ export const CONFIG = {
   alphaVantageKey: optionalEnv("ALPHA_VANTAGE_KEY"),
   googleClientId: optionalEnv("GOOGLE_CLIENT_ID"),
   fmpApiKey: optionalEnv("FMP_API_KEY"),
+  coingeckoApiKey: optionalEnv("COINGECKO_API_KEY"),
+  openfigiApiKey: optionalEnv("OPENFIGI_API_KEY"),
   awsRegion: awsConfig.awsRegion,
   awsS3Bucket: awsConfig.awsS3Bucket,
   awsAccessKeyId: awsConfig.awsAccessKeyId,
@@ -299,3 +315,6 @@ export const CONFIG = {
   e2e: optionalEnv("E2E") === "1",
   usdToInr: numberEnv("USD_TO_INR"),
 };
+
+
+

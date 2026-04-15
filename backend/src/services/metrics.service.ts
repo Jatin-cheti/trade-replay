@@ -22,6 +22,24 @@ const symbolSearchLatency = {
   p50Window: [] as number[],
 };
 
+const redisLatency = {
+  samples: 0,
+  avgMs: 0,
+  maxMs: 0,
+};
+
+const kafkaLag = {
+  samples: 0,
+  avgMs: 0,
+  maxMs: 0,
+};
+
+const memoryUsage = {
+  heapUsedMb: 0,
+  rssMb: 0,
+  samples: 0,
+};
+
 function ensureLatencyBucket(key: string): LatencyBucket {
   if (!apiLatency[key]) {
     apiLatency[key] = { count: 0, totalMs: 0, maxMs: 0 };
@@ -80,6 +98,28 @@ export function recordSymbolSearchLatency(durationMs: number): void {
   }
 }
 
+export function recordRedisLatency(durationMs: number): void {
+  const ms = Math.max(0, durationMs);
+  const nextSamples = redisLatency.samples + 1;
+  redisLatency.avgMs = ((redisLatency.avgMs * redisLatency.samples) + ms) / nextSamples;
+  redisLatency.maxMs = Math.max(redisLatency.maxMs, ms);
+  redisLatency.samples = nextSamples;
+}
+
+export function recordKafkaLag(lagMsValue: number): void {
+  const ms = Math.max(0, lagMsValue);
+  const nextSamples = kafkaLag.samples + 1;
+  kafkaLag.avgMs = ((kafkaLag.avgMs * kafkaLag.samples) + ms) / nextSamples;
+  kafkaLag.maxMs = Math.max(kafkaLag.maxMs, ms);
+  kafkaLag.samples = nextSamples;
+}
+
+export function recordMemoryUsage(heapUsedMbValue: number, rssMbValue: number): void {
+  memoryUsage.heapUsedMb = Number(heapUsedMbValue.toFixed(2));
+  memoryUsage.rssMb = Number(rssMbValue.toFixed(2));
+  memoryUsage.samples += 1;
+}
+
 export function getMetricsSnapshot(): {
   apiLatency: Record<string, { count: number; avgMs: number; maxMs: number }>;
   cacheHitRate: Record<string, { hits: number; misses: number; hitRate: number }>;
@@ -94,6 +134,21 @@ export function getMetricsSnapshot(): {
     samples: number;
     avgLatencyMs: number;
     p50LatencyMs: number;
+  };
+  redisLatency: {
+    samples: number;
+    avgMs: number;
+    maxMs: number;
+  };
+  kafkaLag: {
+    samples: number;
+    avgMs: number;
+    maxMs: number;
+  };
+  memory: {
+    heapUsedMb: number;
+    rssMb: number;
+    samples: number;
   };
 } {
   const latency = Object.fromEntries(
@@ -144,6 +199,21 @@ export function getMetricsSnapshot(): {
         ? Number((symbolSearchLatency.totalMs / symbolSearchLatency.samples).toFixed(2))
         : 0,
       p50LatencyMs: Number(p50LatencyMs.toFixed(2)),
+    },
+    redisLatency: {
+      samples: redisLatency.samples,
+      avgMs: Number(redisLatency.avgMs.toFixed(2)),
+      maxMs: Number(redisLatency.maxMs.toFixed(2)),
+    },
+    kafkaLag: {
+      samples: kafkaLag.samples,
+      avgMs: Number(kafkaLag.avgMs.toFixed(2)),
+      maxMs: Number(kafkaLag.maxMs.toFixed(2)),
+    },
+    memory: {
+      heapUsedMb: memoryUsage.heapUsedMb,
+      rssMb: memoryUsage.rssMb,
+      samples: memoryUsage.samples,
     },
   };
 }

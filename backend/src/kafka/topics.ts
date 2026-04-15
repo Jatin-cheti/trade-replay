@@ -1,4 +1,4 @@
-export const KAFKA_TOPICS = {
+﻿export const KAFKA_TOPICS = {
   TRADES_EXECUTE: "trades.execute",
   TRADES_RESULT: "trades.result",
   PORTFOLIO_UPDATE: "portfolio.update",
@@ -6,6 +6,17 @@ export const KAFKA_TOPICS = {
   USER_ACTIVITY: "user.activity",
   SYMBOL_LOGO_ENRICHED: "symbol.logo.enriched",
   CHART_CANDLE_UPDATED: "chart.candle.updated",
+  MARKET_TICK: "market.tick",
+  ALERT_FIRED: "alert.fired",
+  // ── Scaling pipeline topics ────────────────────────────────────────
+  SYMBOL_INGEST: "symbol.ingest",
+  LOGO_RESOLVE: "logo.resolve",
+  LOGO_RETRY: "logo.retry",
+  LOGO_COMPLETED: "logo.completed",
+  // ── Asset + Logo lifecycle events ──────────────────────────────────
+  ASSET_CREATED: "asset.created",
+  ASSET_UPDATED: "asset.updated",
+  LOGO_MAPPED: "logo.mapped",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
@@ -84,4 +95,59 @@ export interface ChartCandleUpdatedPayload {
   low: number;
   close: number;
   volume: number;
+}
+
+export interface MarketTickPayload {
+  symbol: string;
+  price: number;
+  timestamp: number;
+}
+
+export interface AlertFiredPayload {
+  alertId: string;
+  userId: string;
+  symbol: string;
+  triggeredPrice: number;
+  timestamp: number;
+}
+
+// ── Scaling pipeline payloads ────────────────────────────────────────
+
+export interface SymbolIngestPayload {
+  fullSymbol: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  country: string;
+  type: string;
+  source: string;
+}
+
+export interface LogoResolvePayload {
+  fullSymbol: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  country: string;
+  type: string;
+  strategy: string;
+  retryCount: number;
+}
+
+export interface LogoRetryPayload {
+  fullSymbol: string;
+  symbol: string;
+  retryCount: number;
+  lastError: string;
+  nextStrategy: string;
+  delayMs: number;
+}
+
+export interface LogoCompletedPayload {
+  fullSymbol: string;
+  symbol: string;
+  logoUrl: string;
+  domain: string;
+  source: string;
+  confidence: number;
 }

@@ -7,16 +7,26 @@ const symbolSchema = new Schema(
     name: { type: String, required: true, trim: true },
     exchange: { type: String, required: true, trim: true, uppercase: true },
     country: { type: String, required: true, trim: true, uppercase: true },
-    type: { type: String, required: true, enum: ["stock", "crypto", "forex", "index"] },
+    type: { type: String, required: true, enum: ["stock", "etf", "crypto", "forex", "index", "derivative", "bond", "economy"] },
     currency: { type: String, required: true, trim: true, uppercase: true },
     iconUrl: { type: String, trim: true, default: "" },
     companyDomain: { type: String, trim: true, default: "" },
     logoValidatedAt: { type: Date },
+    logoStatus: { type: String, enum: ["pending", "mapped", "failed"], default: "pending" },
+    logoLastUpdated: { type: Date },
     logoAttempts: { type: Number, required: true, default: 0 },
     lastLogoAttemptAt: { type: Number },
     s3Icon: { type: String, trim: true, default: "" },
     popularity: { type: Number, required: true, default: 0 },
     searchFrequency: { type: Number, required: true, default: 0 },
+    userUsage: { type: Number, required: true, default: 0 },
+    priorityScore: { type: Number, required: true, default: 0 },
+    marketCap: { type: Number, required: true, default: 0 },
+    volume: { type: Number, required: true, default: 0 },
+    liquidityScore: { type: Number, required: true, default: 0 },
+    isSynthetic: { type: Boolean, required: true, default: false },
+    baseSymbol: { type: String, trim: true, uppercase: true, default: "" },
+    searchPrefixes: { type: [String], default: [] },
     source: { type: String, required: true, trim: true },
   },
   { timestamps: true },
@@ -25,24 +35,17 @@ const symbolSchema = new Schema(
 symbolSchema.index({ fullSymbol: 1 }, { unique: true });
 symbolSchema.index({ exchange: 1, type: 1, country: 1 });
 symbolSchema.index({ logoAttempts: 1, lastLogoAttemptAt: 1 });
+symbolSchema.index({ logoStatus: 1, priorityScore: -1 }, { name: "symbol_logo_status_idx" });
 symbolSchema.index({ createdAt: -1, _id: -1 });
 symbolSchema.index({ type: 1, country: 1, createdAt: -1, _id: -1 });
 symbolSchema.index({ symbol: 1, type: 1, country: 1, createdAt: -1 });
 symbolSchema.index(
-  { popularity: -1, createdAt: -1 },
-  {
-    partialFilterExpression: { popularity: { $gt: 0 } },
-    name: "symbol_popularity_active_idx",
-  },
+  { priorityScore: -1, createdAt: -1 },
+  { name: "symbol_priority_score_idx" },
 );
 symbolSchema.index({ searchFrequency: -1, createdAt: -1 }, { name: "symbol_search_frequency_idx" });
-symbolSchema.index(
-  { symbol: "text", name: "text", fullSymbol: "text" },
-  {
-    weights: { symbol: 12, fullSymbol: 8, name: 4 },
-    name: "symbol_search_text_idx",
-  },
-);
+symbolSchema.index({ baseSymbol: 1, priorityScore: -1 }, { name: "symbol_base_cluster_idx" });
+symbolSchema.index({ searchPrefixes: 1, priorityScore: -1 }, { name: "symbol_search_prefixes_idx" });
 
 export type SymbolDocument = InferSchemaType<typeof symbolSchema> & {
   _id: mongoose.Types.ObjectId;

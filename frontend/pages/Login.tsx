@@ -71,6 +71,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
 
   const handleGoogleLogin = async (credential?: string) => {
     if (!credential) return;
+    console.log("[AUTH] Google credential received, length:", credential.length, "prefix:", credential.slice(0, 20));
     setIsGoogleLoading(true);
     const result = await googleLogin(credential);
     setIsGoogleLoading(false);
@@ -191,13 +192,16 @@ export default function Login({ mode = 'login' }: LoginProps) {
               <div data-testid="google-auth-frame-wrap" className="w-full max-w-full overflow-hidden rounded-lg [&>div]:!w-full [&_iframe]:!block [&_iframe]:!h-[52px] [&_iframe]:!max-w-full [&_iframe]:!w-full [&_iframe]:!rounded-lg [&_div[role=button]]:!flex [&_div[role=button]]:!h-[52px] [&_div[role=button]]:!w-full [&_div[role=button]]:!max-w-full [&_div[role=button]]:!items-center [&_div[role=button]]:!justify-center [&_div[role=button]]:!gap-3 [&_div[role=button]]:!overflow-hidden [&_div[role=button]]:!px-4 [&_div[role=button]]:!py-3 [&_div[role=button]]:!rounded-lg [&_div[role=button]]:!text-[0.95rem] [&_div[role=button]]:!font-medium [&_div[role=button]]:!tracking-wide">
                 <GoogleLogin
                   onSuccess={(credentialResponse) => { void handleGoogleLogin(credentialResponse.credential); }}
-                  onError={() => undefined}
+                  onError={() => {
+                    console.error("[AUTH] Google OAuth button reported error (client-side). Check: authorized JavaScript origins include this domain in Google Cloud Console.");
+                    toast.error('Google sign-in failed. Please try again or use email/password.');
+                  }}
                   theme="outline"
                   text="continue_with"
                   shape="rectangular"
                   size="large"
                   logo_alignment="left"
-                  width="100%"
+                  width="320"
                 />
               </div>
             </div>

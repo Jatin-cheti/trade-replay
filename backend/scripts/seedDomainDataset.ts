@@ -81,7 +81,7 @@ async function seedTopByCountry(dataset: Record<string, string>, country: "IN" |
     exchange: { $in: exchanges },
     companyDomain: { $exists: true, $ne: "" },
   })
-    .sort({ popularity: -1 })
+    .sort({ priorityScore: -1 })
     .limit(limit)
     .select({ symbol: 1, companyDomain: 1 })
     .lean<Array<{ symbol: string; companyDomain: string }>>();

@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -22,32 +22,82 @@ import { createPortfolioRoutes } from "./routes/portfolioRoutes";
 import { createTradeRoutes } from "./routes/tradeRoutes";
 import { createSymbolRoutes } from "./routes/symbolRoutes";
 import { createChartRoutes } from "./routes/chartRoutes";
+import { createAlertsRoutes } from "./routes/alertsRoutes";
+import { createDatafeedRoutes } from "./routes/datafeedRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
+import { createSymbolController } from "./controllers/symbolController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue, isLogoQueueEnabled } from "./services/logoQueue.service";
 import { getLogoServiceHealthStatus } from "./services/logoServiceMode.service";
 import { getChartServiceHealthStatus } from "./services/chartCompute.service";
 import { warmSymbolSearchCache } from "./services/symbol.service";
+import { startSearchIndexService } from "./services/searchIndex.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
+import { getFullCoverageReport, runTailEliminationOnce, startTailOrchestrator, stopTailOrchestrator, isOrchestratorRunning } from "./services/tailOrchestrator.service";
+import { startScalingOrchestrator, stopScalingOrchestrator, isScalingOrchestratorRunning, getLiveScalingReport, runExpansionOnce, runSyncOnce, getScalingStatus } from "./services/scalingOrchestrator.service";
+import { getExpansionStats } from "./services/symbolExpansion.service";
+import { getShardStats } from "./services/redisShard.service";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
 
 export function createApp() {
   const app = express();
   const httpServer = createServer(app);
+  const symbolController = createSymbolController();
   let lastCompletedCount = 0;
   let lastMetricsSampleAt = Date.now();
+  let limiterDebugLogCount = 0;
+
+  const shouldSkipRateLimit = (req: express.Request): boolean => {
+    const originalUrl = req.originalUrl || req.url || "";
+    const path = req.path || "";
+    const hasAuthHeader = Boolean(req.headers.authorization);
+    const skip =
+      originalUrl.includes("/health")
+      || originalUrl.includes("/metrics")
+      || path.includes("/health")
+      || path.includes("/metrics")
+      || path.startsWith("/api/auth/")
+      || path.startsWith("/auth/")
+      || hasAuthHeader;
+
+    if (
+      limiterDebugLogCount < 120
+      && (originalUrl.includes("/api/metrics") || originalUrl.includes("/api/simulation/assets"))
+    ) {
+      limiterDebugLogCount += 1;
+      logger.info("rate_limit_skip_evaluated", {
+        originalUrl,
+        baseUrl: req.baseUrl,
+        path,
+        hasAuthHeader,
+        skip,
+      });
+    }
+
+    return skip;
+  };
+
   app.set("trust proxy", 1);
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: Math.max(100, env.API_RATE_LIMIT_MAX),
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === "/health"
-      || req.path === "/api/health"
-      || req.path.startsWith("/api/auth/")
-      || Boolean(req.headers.authorization),
+    skip: shouldSkipRateLimit,
+    handler: (req, res, _next, options) => {
+      logger.warn("rate_limit_blocked", {
+        originalUrl: req.originalUrl,
+        baseUrl: req.baseUrl,
+        path: req.path,
+        ip: req.ip,
+      });
+      const message = typeof options.message === "string"
+        ? options.message
+        : "Too many requests, please try again later.";
+      res.status(options.statusCode).send(message);
+    },
   });
 
   const allowedOrigins = Array.from(new Set([env.CLIENT_URL, ...env.CLIENT_URLS]));
@@ -105,6 +155,12 @@ export function createApp() {
   app.use(compression());
   app.use(express.json());
   app.use(requestLogger);
+
+  void startSearchIndexService().catch((error) => {
+    logger.error("search_index_start_failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   void warmSymbolSearchCache().then(({ warmed, failed }) => {
     logger.info("symbol_search_precache_complete", { warmed, failed });
@@ -181,6 +237,76 @@ export function createApp() {
         reason: logoQueueEnabled ? null : "queue_disabled_for_non_local_logo_mode_or_redis_fallback",
       },
     });
+  });
+
+  // ── Logo coverage & tail elimination endpoints ───────────────────────
+  app.get("/api/logo-coverage", async (_req, res) => {
+    const report = await getFullCoverageReport();
+    res.json(report);
+  });
+
+  app.post("/api/logo-tail-elimination", async (_req, res) => {
+    const result = await runTailEliminationOnce();
+    res.json(result);
+  });
+
+  app.post("/api/logo-orchestrator/start", (_req, res) => {
+    if (isOrchestratorRunning()) {
+      res.json({ status: "already_running" });
+      return;
+    }
+    void startTailOrchestrator();
+    res.json({ status: "started" });
+  });
+
+  app.post("/api/logo-orchestrator/stop", (_req, res) => {
+    stopTailOrchestrator();
+    res.json({ status: "stopped" });
+  });
+
+  // ── Scaling orchestrator endpoints ─────────────────────────────────────
+  app.post("/api/scaling/start", (_req, res) => {
+    if (isScalingOrchestratorRunning()) {
+      res.json({ status: "already_running" });
+      return;
+    }
+    void startScalingOrchestrator();
+    res.json({ status: "started" });
+  });
+
+  app.post("/api/scaling/stop", (_req, res) => {
+    stopScalingOrchestrator();
+    res.json({ status: "stopped" });
+  });
+
+  app.get("/api/scaling/report", async (_req, res) => {
+    const report = await getLiveScalingReport();
+    res.json(report);
+  });
+
+  app.get("/api/scaling/status", async (_req, res) => {
+    const status = await getScalingStatus();
+    res.json(status);
+  });
+
+  app.post("/api/scaling/expand", async (_req, res) => {
+    const report = await runExpansionOnce();
+    res.json(report);
+  });
+
+  app.post("/api/scaling/sync", async (_req, res) => {
+    const result = await runSyncOnce();
+    res.json(result);
+  });
+
+  app.get("/api/scaling/expansion-stats", async (_req, res) => {
+    const stats = await getExpansionStats();
+    res.json(stats);
+  });
+
+  app.get("/api/scaling/shard-stats", async (_req, res) => {
+    const stats = await getShardStats("app:logo");
+    res.json(stats);
   });
 
   app.get("/api/metrics", async (_req, res) => {
@@ -308,9 +434,16 @@ export function createApp() {
     res.send(`${lines.join("\n")}\n`);
   });
 
-  app.use("/api", apiLimiter);
+  app.use("/api", (req, res, next) => {
+    // Keep observability endpoints fully available under load.
+    if (req.path === "/metrics" || req.path === "/health") {
+      return next();
+    }
+    return apiLimiter(req, res, next);
+  });
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
+  app.get("/api/search", verifyToken, symbolController.search);
 
   app.use("/api/auth", authRoutes);
   app.use("/api/sim", createSimulationRoutes(engine));
@@ -320,6 +453,8 @@ export function createApp() {
   app.use("/api/trade", createTradeRoutes(engine));
   app.use("/api/symbols", createSymbolRoutes());
   app.use("/api/chart", createChartRoutes());
+  app.use("/api/alerts", createAlertsRoutes());
+  app.use("/api/datafeed", createDatafeedRoutes());
   app.use(notFoundHandler);
   app.use(errorHandler);
 

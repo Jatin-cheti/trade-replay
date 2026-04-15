@@ -1,17 +1,78 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Globe, Search, X } from "lucide-react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ChevronDown, ChevronRight, Globe, Search, X } from "lucide-react";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  fetchAssetSearchFilters,
-  searchAssets,
-  type AssetCategory,
-  type AssetSearchFilterOption,
-  type AssetSearchItem,
-} from "@/lib/assetSearch";
+import type { AssetCategory, AssetSearchItem, AssetSortOption } from "@/lib/assetSearch";
 import { FilterDropdown, ModalPanel, ModalTriggerButton, SYMBOL_CATEGORIES } from "@/components/simulation/symbolSearchModalParts";
+import { useSymbolSearch } from "@/components/simulation/useSymbolSearch";
+import { FutureContractsView } from "@/components/simulation/FutureContractsView";
+import { isSpreadExpression, parseQuery, extractSymbols } from "@/lib/spreadOperator";
 
 const FALLBACK_ICON = "/icons/exchange/default.svg";
+
+const SORT_OPTIONS: Array<{ value: AssetSortOption; label: string }> = [
+  { value: "relevance", label: "Relevance" },
+  { value: "name", label: "Name" },
+  { value: "symbol", label: "Symbol" },
+  { value: "volume", label: "Volume" },
+  { value: "marketCap", label: "Market Cap" },
+];
+
+function formatCompactNumber(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "--";
+  if (value >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
+  return value.toFixed(0);
+}
+
+function formatSigned(value?: number, digits = 2): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)}`;
+}
+
+function normalizeCompanyKey(item: AssetSearchItem): string {
+  const ticker = (item.ticker || item.symbol || "").toUpperCase();
+  const baseTicker = ticker
+    .replace(/-F-\d{6}$/g, "")
+    .replace(/-\d{6}-[CP]-.+$/g, "")
+    .replace(/-PERP$/g, "")
+    .replace(/-FUT$/g, "");
+  const dotIndex = baseTicker.indexOf(".");
+  const normalizedBase = (dotIndex > 0 ? baseTicker.slice(0, dotIndex) : baseTicker).replace(/[^A-Z0-9]/g, "");
+  if (normalizedBase) return normalizedBase;
+
+  return String(item.name || "")
+    .toUpperCase()
+    .replace(/\b(LIMITED|LTD\.?|INC\.?|CORP\.?|CORPORATION|CO\.?|PLC|HOLDINGS?)\b/g, " ")
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function exchangePriority(item: AssetSearchItem, country: string): number {
+  const exchange = String(item.exchange || "").toUpperCase();
+  const effectiveCountry = (country || item.country || "").toUpperCase();
+
+  if (effectiveCountry === "IN") {
+    if (exchange === "NSE") return 40;
+    if (exchange === "BSE") return 28;
+  }
+  if (effectiveCountry === "US") {
+    if (exchange === "NASDAQ") return 34;
+    if (exchange === "NYSE") return 34;
+    if (exchange === "AMEX") return 18;
+  }
+  return 0;
+}
+
+function listingScore(item: AssetSearchItem, country: string): number {
+  const liquidity = Number(item.liquidityScore || 0);
+  const volume = Number(item.volume || 0);
+  return exchangePriority(item, country) + Math.log10(liquidity + 1) * 4 + Math.log10(volume + 1) * 3;
+}
 
 interface SymbolSearchModalProps {
   open: boolean;
@@ -28,322 +89,102 @@ export default function SymbolSearchModal({
   onSelect,
   initialCategory = "all",
 }: SymbolSearchModalProps) {
-  const [view, setView] = useState<"search" | "sources" | "countries" | "futureContracts">("search");
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<(typeof SYMBOL_CATEGORIES)[number]["id"]>(initialCategory);
-  const [country, setCountry] = useState("all");
-  const [type, setType] = useState("all");
-  const [sector, setSector] = useState("all");
-  const [source, setSource] = useState("all");
-  const [exchangeType, setExchangeType] = useState("all");
-  const [futureCategory, setFutureCategory] = useState("all");
-  const [economyCategory, setEconomyCategory] = useState("all");
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
-  const [rows, setRows] = useState<AssetSearchItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [total, setTotal] = useState(0);
+  const {
+    view, setView,
+    query, setQuery,
+    category, setCategory,
+    country, setCountry,
+    type, setType,
+    sector, setSector,
+    source, setSource,
+    exchangeType, setExchangeType,
+    futureCategory, setFutureCategory,
+    economyCategory, setEconomyCategory,
+    expiry, setExpiry,
+    strike, setStrike,
+    underlyingAsset, setUnderlyingAsset,
+    sort, setSort,
+    rows,
+    loading,
+    loadingMore,
+    total,
+    activeFilters,
+    countryOptions,
+    typeOptions,
+    sectorOptions,
+    sourceOptions,
+    exchangeTypeOptions,
+    futureCategoryOptions,
+    economyCategoryOptions,
+    expiryOptions,
+    strikeOptions,
+    underlyingAssetOptions,
+    sourceUiType,
+    selectedFutureRoot, setSelectedFutureRoot,
+    selectedCountryLabel,
+    selectedTypeLabel,
+    selectedSectorLabel,
+    selectedSourceLabel,
+    selectedExchangeTypeLabel,
+    selectedFutureCategoryLabel,
+    selectedEconomyCategoryLabel,
+    selectedExpiryLabel,
+    selectedStrikeLabel,
+    selectedUnderlyingAssetLabel,
+    listContainerRef,
+  } = useSymbolSearch(open, selectedSymbol, initialCategory);
 
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
-  const [countryOptions, setCountryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [typeOptions, setTypeOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [sectorOptions, setSectorOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [sourceOptions, setSourceOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [exchangeTypeOptions, setExchangeTypeOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [futureCategoryOptions, setFutureCategoryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [economyCategoryOptions, setEconomyCategoryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [sourceUiType, setSourceUiType] = useState<"modal" | "dropdown">("modal");
-
-  const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
-
-  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number; nextCursor: string | null }>());
-  const listContainerRef = useRef<HTMLDivElement | null>(null);
-  const paginationInFlightRef = useRef(false);
+  const spreadInfo = useMemo(() => {
+    if (!query || !isSpreadExpression(query)) return null;
+    const parsed = parseQuery(query);
+    if (parsed.type !== "spread") return null;
+    return { parsed, symbols: extractSymbols(parsed) };
+  }, [query]);
 
   useEffect(() => {
-    if (!open) return;
-    setCategory(initialCategory);
-  }, [initialCategory, open]);
+    setExpandedGroups({});
+  }, [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset]);
 
-  useEffect(() => {
-    if (!open) return;
+  const groupedRows = useMemo(() => {
+    const order: string[] = [];
+    const buckets = new Map<string, AssetSearchItem[]>();
 
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetchAssetSearchFilters({ category: category === "all" ? undefined : category });
-        if (cancelled) return;
-
-        setActiveFilters(response.activeFilters ?? []);
-        setCountryOptions(response.countries ?? []);
-        setTypeOptions(response.types ?? []);
-        setSectorOptions(response.sectors ?? []);
-        setSourceOptions(response.sources ?? []);
-        setExchangeTypeOptions(response.exchangeTypes ?? []);
-        setFutureCategoryOptions(response.futureCategories ?? []);
-        setEconomyCategoryOptions(response.economyCategories ?? []);
-        setSourceUiType(response.sourceUiType ?? "modal");
-      } catch {
-        if (cancelled) return;
-        setActiveFilters([]);
-        setCountryOptions([]);
-        setTypeOptions([]);
-        setSectorOptions([]);
-        setSourceOptions([]);
-        setExchangeTypeOptions([]);
-        setFutureCategoryOptions([]);
-        setEconomyCategoryOptions([]);
-        setSourceUiType("modal");
+    for (const item of rows) {
+      const key = normalizeCompanyKey(item);
+      if (!buckets.has(key)) {
+        buckets.set(key, []);
+        order.push(key);
       }
-    })();
+      buckets.get(key)?.push(item);
+    }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [category, open]);
-
-  useEffect(() => {
-    setCountry("all");
-    setType("all");
-    setSector("all");
-    setSource("all");
-    setExchangeType("all");
-    setFutureCategory("all");
-    setEconomyCategory("all");
-    setView("search");
-    setSelectedFutureRoot(null);
-  }, [category]);
-
-  const filterKey = useMemo(() => JSON.stringify({
-    q: query.trim(),
-    category,
-    country,
-    type,
-    sector,
-    source,
-    exchangeType,
-    futureCategory,
-    economyCategory,
-  }), [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const loadFirstPage = async () => {
-      const cached = resultCache.current.get(filterKey);
-      if (cached) {
-        setRows(cached.rows);
-        setHasMore(cached.hasMore);
-        setTotal(cached.total);
-        setNextCursor(cached.nextCursor);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const response = await searchAssets({
-          q: query.trim(),
-          category: category === "all" ? undefined : category,
-          country: country === "all" ? undefined : country,
-          type: type === "all" ? undefined : type,
-          sector: sector === "all" ? undefined : sector,
-          source: source === "all" ? undefined : source,
-          exchangeType: exchangeType === "all" ? undefined : exchangeType,
-          futureCategory: futureCategory === "all" ? undefined : futureCategory,
-          economyCategory: economyCategory === "all" ? undefined : economyCategory,
-          limit: 50,
-        });
-
-        setRows(response.assets);
-        setHasMore(response.hasMore);
-        setTotal(response.total);
-        setNextCursor(response.nextCursor ?? null);
-        resultCache.current.set(filterKey, {
-          rows: response.assets,
-          hasMore: response.hasMore,
-          total: response.total,
-          nextCursor: response.nextCursor ?? null,
-        });
-      } catch {
-        setRows([]);
-        setHasMore(false);
-        setTotal(0);
-        setNextCursor(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const timer = window.setTimeout(async () => {
-      await loadFirstPage();
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }, [open, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
-
-  useEffect(() => {
-    if (!open) return;
-    const container = listContainerRef.current;
-    if (!container) return;
-
-    const onScroll = () => {
-      if (loading || loadingMore || paginationInFlightRef.current || !hasMore || !nextCursor) return;
-
-      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom > 80) return;
-
-      paginationInFlightRef.current = true;
-      setLoadingMore(true);
-      void (async () => {
-        try {
-          const response = await searchAssets({
-            q: query.trim(),
-            category: category === "all" ? undefined : category,
-            country: country === "all" ? undefined : country,
-            type: type === "all" ? undefined : type,
-            sector: sector === "all" ? undefined : sector,
-            source: source === "all" ? undefined : source,
-            exchangeType: exchangeType === "all" ? undefined : exchangeType,
-            futureCategory: futureCategory === "all" ? undefined : futureCategory,
-            economyCategory: economyCategory === "all" ? undefined : economyCategory,
-            cursor: nextCursor,
-            limit: 50,
-          });
-
-          setRows((previous) => {
-            const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
-            response.assets.forEach((item) => {
-              mergedMap.set(`${item.category}|${item.ticker}|${item.exchange}`, item);
-            });
-            const merged = Array.from(mergedMap.values());
-            resultCache.current.set(filterKey, {
-              rows: merged,
-              hasMore: response.hasMore,
-              total: response.total,
-              nextCursor: response.nextCursor ?? null,
-            });
-            return merged;
-          });
-
-          setHasMore(response.hasMore);
-          setTotal(response.total);
-          setNextCursor(response.nextCursor ?? null);
-        } catch {
-          // Keep existing list on pagination failures.
-        } finally {
-          paginationInFlightRef.current = false;
-          setLoadingMore(false);
-        }
-      })();
-    };
-
-    container.addEventListener("scroll", onScroll);
-    return () => container.removeEventListener("scroll", onScroll);
-  }, [open, loading, loadingMore, hasMore, nextCursor, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, filterKey]);
-
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setView("search");
-    setSelectedFutureRoot(null);
-  }, [open, selectedSymbol]);
-
-  const selectedCountryLabel = useMemo(() => {
-    return countryOptions.find((optionItem) => optionItem.value === country)?.label || "All Countries";
-  }, [country, countryOptions]);
-
-  const selectedTypeLabel = useMemo(() => {
-    return typeOptions.find((optionItem) => optionItem.value === type)?.label || "All Types";
-  }, [type, typeOptions]);
-
-  const selectedSectorLabel = useMemo(() => {
-    return sectorOptions.find((optionItem) => optionItem.value === sector)?.label || "All Sectors";
-  }, [sector, sectorOptions]);
-
-  const selectedSourceLabel = useMemo(() => {
-    return sourceOptions.find((optionItem) => optionItem.value === source)?.label || "All Sources";
-  }, [source, sourceOptions]);
-
-  const selectedExchangeTypeLabel = useMemo(() => {
-    return exchangeTypeOptions.find((optionItem) => optionItem.value === exchangeType)?.label || "All";
-  }, [exchangeType, exchangeTypeOptions]);
-
-  const selectedFutureCategoryLabel = useMemo(() => {
-    return futureCategoryOptions.find((optionItem) => optionItem.value === futureCategory)?.label || "All Categories";
-  }, [futureCategory, futureCategoryOptions]);
-
-  const selectedEconomyCategoryLabel = useMemo(() => {
-    return economyCategoryOptions.find((optionItem) => optionItem.value === economyCategory)?.label || "All Categories";
-  }, [economyCategory, economyCategoryOptions]);
+    return order.map((key) => {
+      const listings = buckets.get(key) || [];
+      const representative = [...listings].sort((left, right) => listingScore(right, country) - listingScore(left, country))[0] || listings[0];
+      const alternatives = listings.filter((listing) => listing.exchange !== representative.exchange || listing.ticker !== representative.ticker);
+      return {
+        key,
+        representative,
+        alternatives,
+      };
+    }).filter((group) => Boolean(group.representative));
+  }, [rows, country]);
 
   if (view === "futureContracts" && selectedFutureRoot) {
-    const contracts = selectedFutureRoot.contracts ?? [];
-
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent data-testid="symbol-search-modal" className="w-[min(960px,94vw)] max-w-none gap-0 border-border/80 bg-background/95 p-0 backdrop-blur-xl">
-          <DialogHeader className="flex flex-row items-center gap-3 border-b border-border/60 px-5 pt-5 pb-4">
-            <button
-              type="button"
-              onClick={() => {
-                setView("search");
-                setSelectedFutureRoot(null);
-              }}
-              className="rounded-full p-1 transition-colors hover:bg-secondary/60"
-              aria-label="Back"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <DialogTitle className="font-display text-xl">{selectedFutureRoot.ticker} Contracts</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 px-5 py-4">
-            <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/20 px-3 py-2.5">
-              <AssetAvatar src={selectedFutureRoot.iconUrl || FALLBACK_ICON} label={selectedFutureRoot.name} className="h-8 w-8 rounded-full object-cover" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{selectedFutureRoot.ticker}</p>
-                <p className="truncate text-xs text-muted-foreground">{selectedFutureRoot.name}</p>
-              </div>
-            </div>
-
-            <div className="max-h-[52vh] overflow-y-auto rounded-xl border border-border/70">
-              {contracts.map((contract) => (
-                <button
-                  key={`${contract.ticker}-${contract.exchange}`}
-                  data-testid="symbol-contract-row"
-                  data-symbol={contract.ticker}
-                  type="button"
-                  onClick={() => {
-                    onSelect(contract);
-                    onOpenChange(false);
-                  }}
-                  className={`grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-secondary/45 ${
-                    contract.ticker === selectedSymbol ? "bg-secondary/65" : "bg-secondary/20"
-                  }`}
-                >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <AssetAvatar src={contract.iconUrl || FALLBACK_ICON} label={contract.name} className="h-7 w-7 rounded-full object-cover" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{contract.ticker}</p>
-                      <p className="truncate text-xs text-muted-foreground">{contract.name}</p>
-                    </div>
-                  </div>
-
-                  <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <AssetAvatar src={contract.exchangeLogoUrl || contract.exchangeIcon} label={contract.exchange} className="h-4 w-4 rounded-sm object-cover" />
-                    <span className="font-medium text-foreground">{contract.exchange}</span>
-                  </div>
-                </button>
-              ))}
-              {contracts.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-center text-muted-foreground">No contracts available</p>
-              ) : null}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FutureContractsView
+        open={open}
+        onOpenChange={onOpenChange}
+        selectedSymbol={selectedSymbol}
+        selectedFutureRoot={selectedFutureRoot}
+        onBack={() => {
+          setView("search");
+          setSelectedFutureRoot(null);
+        }}
+        onSelect={onSelect}
+      />
     );
   }
 
@@ -413,7 +254,7 @@ export default function SymbolSearchModal({
                 data-testid="symbol-search-input"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Symbol or name"
+                placeholder="Symbol or name (e.g. AAPL, BTC or AAPL/MSFT spread)"
                 className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
               {query ? (
@@ -423,6 +264,16 @@ export default function SymbolSearchModal({
               ) : null}
             </div>
           </div>
+
+          {spreadInfo ? (
+            <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+              <span className="font-semibold text-primary">Spread detected:</span>{" "}
+              <span className="text-foreground">{spreadInfo.parsed.displayLabel}</span>
+              <span className="ml-2 text-muted-foreground">
+                ({spreadInfo.symbols.length} legs: {spreadInfo.symbols.join(` ${spreadInfo.parsed.operator} `)})
+              </span>
+            </div>
+          ) : null}
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {SYMBOL_CATEGORIES.map((categoryItem) => (
@@ -450,7 +301,7 @@ export default function SymbolSearchModal({
           </div>
 
           {activeFilters.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               {activeFilters.includes("source") && sourceUiType === "modal" ? (
                 <ModalTriggerButton
                   testId="symbol-filter-source-modal"
@@ -526,47 +377,145 @@ export default function SymbolSearchModal({
                   onChange={setEconomyCategory}
                 />
               ) : null}
+
+              {activeFilters.includes("expiry") ? (
+                <FilterDropdown
+                  testId="symbol-filter-expiry"
+                  triggerLabel={selectedExpiryLabel}
+                  value={expiry}
+                  options={expiryOptions}
+                  onChange={setExpiry}
+                />
+              ) : null}
+
+              {activeFilters.includes("underlyingAsset") ? (
+                <FilterDropdown
+                  testId="symbol-filter-underlying-asset"
+                  triggerLabel={selectedUnderlyingAssetLabel}
+                  value={underlyingAsset}
+                  options={underlyingAssetOptions}
+                  onChange={setUnderlyingAsset}
+                />
+              ) : null}
+
+              {activeFilters.includes("strike") ? (
+                <FilterDropdown
+                  testId="symbol-filter-strike"
+                  triggerLabel={selectedStrikeLabel}
+                  value={strike}
+                  options={strikeOptions}
+                  onChange={setStrike}
+                />
+              ) : null}
             </div>
           )}
 
-          <div ref={listContainerRef} className="mt-3 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
-            {rows.map((item) => (
-              <button
-                key={`${item.category}-${item.ticker}-${item.exchange}`}
-                data-testid="symbol-result-row"
-                data-symbol={item.ticker}
-                type="button"
-                onClick={() => {
-                  if (item.category === "futures" && (item.contracts?.length ?? 0) > 0) {
-                    setSelectedFutureRoot(item);
-                    setView("futureContracts");
-                    return;
-                  }
-                  onSelect(item);
-                  onOpenChange(false);
-                }}
-                className={`grid w-full grid-cols-[1fr_auto] items-center gap-4 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-secondary/45 ${
-                  item.ticker === selectedSymbol ? "bg-secondary/65" : "bg-secondary/20"
-                }`}
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                    <AssetAvatar src={item.iconUrl || FALLBACK_ICON} label={item.name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+          <div className="mt-3 flex items-center justify-between">
+            <div />
+            <FilterDropdown
+              testId="symbol-sort"
+              triggerLabel={`Sort: ${SORT_OPTIONS.find((opt) => opt.value === sort)?.label ?? "Relevance"}`}
+              value={sort}
+              options={SORT_OPTIONS}
+              onChange={(nextValue) => setSort(nextValue as AssetSortOption)}
+            />
+          </div>
 
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{item.ticker}</p>
-                    <p className="truncate text-sm text-muted-foreground">{item.name}</p>
-                    <p className="truncate text-[11px] text-muted-foreground">
-                      {item.market} {item.instrumentType ? `• ${item.instrumentType}` : ""}
-                    </p>
-                  </div>
-                </div>
+          <div ref={listContainerRef} className="mt-2 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
+            {groupedRows.map((group) => {
+              const item = group.representative;
+              const isPositive = (item.changePercent ?? 0) >= 0;
+              const changeClass = isPositive ? "text-profit" : "text-loss";
+              const priceText = typeof item.price === "number" && Number.isFinite(item.price)
+                ? item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                : "--";
+              const hasAlternatives = group.alternatives.length > 0;
+              const expanded = Boolean(expandedGroups[group.key]);
 
-                <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                  <AssetAvatar src={item.exchangeLogoUrl || item.exchangeIcon} label={item.exchange} className="h-4 w-4 rounded-sm object-cover" />
-                  <span className="font-medium text-foreground">{item.exchange}</span>
+              return (
+                <div key={group.key} className="border-b border-border/60">
+                  <button
+                    data-testid="symbol-result-row"
+                    data-symbol={item.ticker}
+                    type="button"
+                    onClick={() => {
+                      if (hasAlternatives) {
+                        setExpandedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }));
+                        return;
+                      }
+                      if (item.category === "futures" && (item.contracts?.length ?? 0) > 0) {
+                        setSelectedFutureRoot(item);
+                        setView("futureContracts");
+                        return;
+                      }
+                      onSelect(item);
+                      onOpenChange(false);
+                    }}
+                    className={`grid w-full grid-cols-[1fr_auto] items-center gap-4 px-3 py-2.5 text-left transition-colors hover:bg-secondary/45 ${
+                      item.ticker === selectedSymbol ? "bg-secondary/65" : "bg-secondary/20"
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <AssetAvatar src={item.displayIconUrl || item.logoUrl || item.iconUrl || FALLBACK_ICON} label={item.name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{item.ticker}</p>
+                        <p className="truncate text-sm text-muted-foreground">{item.name}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {item.market} {item.instrumentType ? `• ${item.instrumentType}` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex min-w-[210px] flex-col items-end gap-0.5 whitespace-nowrap text-xs text-muted-foreground">
+                      <div className="inline-flex items-center gap-1.5">
+                        <AssetAvatar src={item.exchangeLogoUrl || item.exchangeIcon} label={item.exchange} className="h-4 w-4 rounded-sm object-cover" />
+                        <span className="font-medium text-foreground">{item.exchange}</span>
+                        {hasAlternatives ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-secondary/45 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                            +{group.alternatives.length} listings
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">{priceText}</p>
+                      <p className={`text-[11px] font-semibold ${changeClass}`}>
+                        {formatSigned(item.changePercent)}% • P&L {formatSigned(item.pnl ?? item.change)}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Vol {formatCompactNumber(item.volume)} • MC {formatCompactNumber(item.marketCap)} • LQ {(item.liquidityScore ?? 0).toFixed(1)}
+                      </p>
+                    </div>
+                  </button>
+
+                  {hasAlternatives && expanded ? (
+                    <div className="border-t border-border/50 bg-secondary/15 px-2 py-1.5">
+                      {group.alternatives.map((listing) => (
+                        <button
+                          key={`${group.key}-${listing.exchange}-${listing.ticker}`}
+                          data-testid="symbol-listing-row"
+                          type="button"
+                          onClick={() => {
+                            onSelect(listing);
+                            onOpenChange(false);
+                          }}
+                          className="mt-1 grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-border/60 bg-secondary/25 px-2.5 py-2 text-left transition-colors hover:bg-secondary/45 first:mt-0"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-foreground">{listing.ticker}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{listing.name}</p>
+                          </div>
+                          <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <AssetAvatar src={listing.exchangeLogoUrl || listing.exchangeIcon} label={listing.exchange} className="h-3.5 w-3.5 rounded-sm object-cover" />
+                            <span>{listing.exchange}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-              </button>
-            ))}
+              );
+            })}
 
             {!loading && rows.length === 0 ? (
               <p className="px-3 py-5 text-center text-sm text-muted-foreground">No symbols found</p>

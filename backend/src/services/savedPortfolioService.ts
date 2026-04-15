@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { SavedPortfolioModel } from "../models/SavedPortfolio";
 import { Holding } from "../types/shared";
+import { incrementUserUsage } from "./symbol.service";
 
 function normalizeHoldings(input: Holding[]): Holding[] {
   return input
@@ -83,6 +84,8 @@ export async function createSavedPortfolio(input: {
     holdings,
   });
 
+  void incrementUserUsage(holdings.map((h) => h.symbol)).catch(() => {});
+
   return mapSavedPortfolio({
     _id: created._id,
     name: created.name,
@@ -149,6 +152,8 @@ export async function updateSavedPortfolio(input: {
   if (!updated) {
     throw new Error("PORTFOLIO_NOT_FOUND");
   }
+
+  void incrementUserUsage(holdings.map((h) => h.symbol)).catch(() => {});
 
   return mapSavedPortfolio({
     _id: updated._id,

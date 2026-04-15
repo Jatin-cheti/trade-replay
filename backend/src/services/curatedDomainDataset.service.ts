@@ -63,44 +63,20 @@ async function writeDatasetAtomic(dataset: DomainDataset): Promise<void> {
 
 export async function getCuratedDomain(input: { symbol?: string; fullSymbol?: string }): Promise<string | null> {
   const dataset = loadDomainDatasetSync();
-  console.log("DATASET SIZE:", Object.keys(dataset).length);
 
   const symbol = input.symbol || input.fullSymbol || "";
   const key = normalizeSymbol(symbol);
 
-  if (key === "TCS") {
-    console.log("LOOKUP TEST:", dataset.TCS ?? null);
-  }
-
   if (!key) return null;
 
   let domain = dataset[key] || null;
-  if (!domain) {
-    const match = Object.keys(dataset).find((candidate) => candidate.startsWith(key) || key.startsWith(candidate));
-    if (match) {
-      domain = dataset[match] || null;
-    }
-  }
-
-  console.log({
-    original: symbol,
-    normalized: key,
-    datasetHit: Boolean(domain),
-    domain,
-  });
-
-  if (!domain) {
-    console.log({
-      symbol,
-      normalized: key,
-      possibleMatches: findClosestKeys(key, dataset),
-    });
-  }
 
   return domain;
 }
 
-export async function saveToDomainDataset(symbol: string, domain: string): Promise<void> {
+export async function saveToDomainDataset(symbol: string, domain: string, confidence = 0): Promise<void> {
+  // Only persist high-confidence resolutions to avoid ticker-collision pollution
+  if (confidence > 0 && confidence < 0.9) return;
   const normalized = normalizeSymbol(symbol);
   const normalizedDomain = normalizeDomain(domain);
   if (!normalized || !normalizedDomain) return;

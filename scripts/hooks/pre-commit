@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Pre-commit hook: block commits containing potential secrets
+# Install: cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -euo pipefail
+
+# Patterns that indicate real secrets (not template placeholders)
+PATTERNS=(
+  'AKIA[A-Z0-9]{16}'                          # AWS Access Key
+  '[0-9a-zA-Z/+]{40}'                         # AWS Secret (40-char base64)
+  'sk-[a-zA-Z0-9]{48}'                        # OpenAI key
+  'sk_live_[a-zA-Z0-9]+'                      # Stripe live key
+  'mongodb\+srv://[^<][^:]+:[^<][^@]+@'       # Real MongoDB URI with password
+  'redis://[^<][^:]+:[^<][^@]+@'              # Real Redis URI with password
+)
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+FOUND=0
+
+for file in $STAGED; do
+  # Skip binary files and the hook itself
+  if [[ "$file" == *.png ]] || [[ "$file" == *.jpg ]] || [[ "$file" == *.ico ]] || [[ "$file" == *pre-commit ]]; then
+    continue
+  fi
+
+  for pattern in "${PATTERNS[@]}"; do
+    if git diff --cached -- "$file" | grep -qEi "$pattern"; then
+      echo "🚨 BLOCKED: Potential secret detected in $file (pattern: $pattern)"
+      FOUND=1
+    fi
+  done
+
+  # Block any .env file from being committed (except .env.example)
+  if [[ "$file" == *.env* ]] && [[ "$file" != *.env.example ]] && [[ "$file" != */.env.ci ]]; then
+    echo "🚨 BLOCKED: Environment file staged for commit: $file"
+    FOUND=1
+  fi
+done
+
+if [[ $FOUND -eq 1 ]]; then
+  echo ""
+  echo "Commit blocked. Remove secrets before committing."
+  echo "To bypass (DANGEROUS): git commit --no-verify"
+  exit 1
+fi

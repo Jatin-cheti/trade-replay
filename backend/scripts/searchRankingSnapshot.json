@@ -1,0 +1,74 @@
+{
+  "casesByEnv": {
+    "default": [
+      {
+        "query": "rel",
+        "expectedTopFullSymbols": [
+          "NSE:RELIANCE",
+          "BSE:RELIANCE",
+          "NSE:RELCHEMQ",
+          "NSE:RELINFRA",
+          "NSE:RELIABLE"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "hdfc",
+        "expectedTopFullSymbols": [
+          "NSE:HDFCBANK",
+          "BSE:HDFCBANK",
+          "NSE:HDFCAMC",
+          "NSE:HDFCLIFE",
+          "SEC:HDB"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "btc",
+        "expectedTopFullSymbols": [
+          "NASDAQ:BTCS",
+          "NYSE:BTCI",
+          "CRYPTO:BTC",
+          "NYSE:BTC",
+          "SEC:BTC"
+        ],
+        "rejectDerivativeInTop": 5
+      }
+    ],
+    "production": [
+      {
+        "query": "rel",
+        "expectedTopFullSymbols": [
+          "NSE:RELIABLE",
+          "NSE:RELCHEMQ",
+          "NSE:RELIGARE",
+          "NSE:RELTD",
+          "COINGECKO:REL"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "hdfc",
+        "expectedTopFullSymbols": [
+          "NSE:HDFCBANK",
+          "BSE:HDFCBANK",
+          "NSE:HDFCAMC",
+          "NSE:HDFCLIFE",
+          "NSE:HDBFS"
+        ],
+        "rejectDerivativeInTop": 5
+      },
+      {
+        "query": "btc",
+        "expectedTopFullSymbols": [
+          "CRYPTO:BTC",
+          "COINGECKO:BTC",
+          "NYSE:BTC",
+          "SEC:BTC",
+          "BINANCE:BTCUSDT"
+        ],
+        "rejectDerivativeInTop": 5
+      }
+    ]
+  }
+}

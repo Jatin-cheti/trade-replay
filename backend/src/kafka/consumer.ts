@@ -11,6 +11,8 @@ interface ConsumerConfig {
   topics: KafkaTopic[];
   handler: MessageHandler;
   batchSize?: number;
+  maxBatchSize?: number;
+  maxProcessingTimeMs?: number;
 }
 
 const consumers: Consumer[] = [];
@@ -59,8 +61,28 @@ export async function createConsumer(config: ConsumerConfig): Promise<Consumer |
     eachBatchAutoResolve: true,
     eachBatch: async (batchPayload: EachBatchPayload) => {
       const { batch, resolveOffset, heartbeat } = batchPayload;
+      const batchStartedAt = Date.now();
+      let processedInBatch = 0;
 
       for (const message of batch.messages) {
+        if (config.maxBatchSize && processedInBatch >= config.maxBatchSize) {
+          logger.warn("kafka_batch_size_guard", {
+            groupId: config.groupId,
+            topic: batch.topic,
+            maxBatchSize: config.maxBatchSize,
+          });
+          break;
+        }
+
+        if (config.maxProcessingTimeMs && (Date.now() - batchStartedAt) >= config.maxProcessingTimeMs) {
+          logger.warn("kafka_batch_time_guard", {
+            groupId: config.groupId,
+            topic: batch.topic,
+            maxProcessingTimeMs: config.maxProcessingTimeMs,
+          });
+          break;
+        }
+
         if (!message.value) continue;
 
         try {
@@ -82,6 +104,7 @@ export async function createConsumer(config: ConsumerConfig): Promise<Consumer |
           await config.handler(event);
           resolveOffset(message.offset);
           await heartbeat();
+          processedInBatch += 1;
         } catch (error) {
           logger.error("kafka_consume_error", {
             topic: batch.topic,

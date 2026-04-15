@@ -109,13 +109,15 @@ export default function LiveMarket() {
       if (cancelled) return;
 
       setWatchlistAssetMetaBySymbol((prev) => {
+        let changed = false;
         const next = { ...prev };
         result.forEach((entry) => {
           if (entry.asset) {
             next[entry.symbol] = entry.asset;
+            changed = true;
           }
         });
-        return next;
+        return changed ? next : prev;
       });
     };
 

@@ -40,6 +40,9 @@ interface AssetSearchInput {
   exchangeType?: string;
   futureCategory?: string;
   economyCategory?: string;
+  expiry?: string;
+  strike?: string;
+  underlyingAsset?: string;
   page?: number;
   limit?: number;
 }
@@ -130,16 +133,27 @@ type NormalizedFilterState = {
   exchangeType: string | undefined;
   futureCategory: string | undefined;
   economyCategory: string | undefined;
+  expiry: string | undefined;
+  strike: string | undefined;
+  underlyingAsset: string | undefined;
 };
 
 function matchesFilters(item: AssetCatalogItem, input: NormalizedFilterState): boolean {
   if (input.country && item.country.toLowerCase() !== input.country) return false;
   if (input.type && item.type.toLowerCase() !== input.type) return false;
   if (input.sector && item.sector.toLowerCase() !== input.sector) return false;
-  if (input.source && item.source.toLowerCase() !== input.source) return false;
+  // Source filter matches either source field or country code (for indices with country-based sources)
+  if (input.source) {
+    const itemSource = item.source.toLowerCase();
+    const itemCountry = item.country.toLowerCase();
+    if (itemSource !== input.source && itemCountry !== input.source) return false;
+  }
   if (input.exchangeType && item.exchangeType.toLowerCase() !== input.exchangeType) return false;
   if (input.futureCategory && (item.futureCategory ?? "").toLowerCase() !== input.futureCategory) return false;
   if (input.economyCategory && (item.economyCategory ?? "").toLowerCase() !== input.economyCategory) return false;
+  if (input.expiry && (item.expiry ?? "").toLowerCase() !== input.expiry) return false;
+  if (input.strike && (item.strike ?? "").toLowerCase() !== input.strike) return false;
+  if (input.underlyingAsset && (item.underlyingAsset ?? "").toLowerCase() !== input.underlyingAsset) return false;
   return true;
 }
 
@@ -163,6 +177,9 @@ export async function searchAssetCatalog(input: AssetSearchInput): Promise<Asset
   const exchangeType = normalizeOptional(input.exchangeType);
   const futureCategory = normalizeOptional(input.futureCategory);
   const economyCategory = normalizeOptional(input.economyCategory);
+  const expiry = normalizeOptional(input.expiry);
+  const strike = normalizeOptional(input.strike);
+  const underlyingAsset = normalizeOptional(input.underlyingAsset);
   const query = (input.q ?? "").trim();
 
   const page = Math.max(1, toNumber(input.page, 1));
@@ -189,6 +206,9 @@ export async function searchAssetCatalog(input: AssetSearchInput): Promise<Asset
       exchangeType,
       futureCategory,
       economyCategory,
+      expiry,
+      strike,
+      underlyingAsset,
     }))
     .map((asset) => ({ asset, score: itemSearchScore(asset, query) }))
     .filter((row) => row.score >= 0)
@@ -220,6 +240,9 @@ function emptyFilters(sourceUiType: "modal" | "dropdown" = "modal"): AssetSearch
     exchangeTypes: [],
     futureCategories: [],
     economyCategories: [],
+    expiries: [],
+    strikes: [],
+    underlyingAssets: [],
     sourceUiType,
   };
 }
@@ -306,7 +329,36 @@ export async function fetchAssetCatalogFilters(input?: { category?: string }): P
     }
 
     case "options": {
-      return emptyFilters("modal");
+      return {
+        ...emptyFilters("modal"),
+        activeFilters: ["country", "type", "expiry", "underlyingAsset"],
+        countries: GLOBAL_COUNTRY_OPTIONS,
+        types: [
+          { value: "all", label: "All Types" },
+          { value: "call", label: "Call" },
+          { value: "put", label: "Put" },
+        ],
+        expiries: [
+          { value: "all", label: "All Expiries" },
+          { value: "weekly", label: "Weekly" },
+          { value: "monthly", label: "Monthly" },
+          { value: "quarterly", label: "Quarterly" },
+        ],
+        underlyingAssets: [
+          { value: "all", label: "All Underlying" },
+          { value: "AAPL", label: "Apple Inc." },
+          { value: "MSFT", label: "Microsoft Corp." },
+          { value: "TSLA", label: "Tesla Inc." },
+          { value: "AMZN", label: "Amazon.com" },
+          { value: "GOOGL", label: "Alphabet Inc." },
+          { value: "META", label: "Meta Platforms" },
+          { value: "NVDA", label: "NVIDIA Corp." },
+          { value: "SPY", label: "SPDR S&P 500 ETF" },
+          { value: "QQQ", label: "Invesco QQQ Trust" },
+          { value: "NIFTY", label: "NIFTY 50" },
+          { value: "BANKNIFTY", label: "Bank NIFTY" },
+        ],
+      };
     }
 
     default: {

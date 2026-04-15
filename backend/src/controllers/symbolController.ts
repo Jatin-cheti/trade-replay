@@ -1,13 +1,16 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "../utils/appError";
+import { AuthenticatedRequest } from "../types/auth";
 import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../services/symbol.service";
+import { buildCountryFilterInput } from "../services/symbol.helpers";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
 import { reportMissingLogoToRemote } from "../services/logoServiceMode.service";
 
 const searchSchema = z.object({
   query: z.string().default(""),
+  q: z.string().optional(),
   type: z.string().optional(),
   country: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -37,13 +40,31 @@ export function createSymbolController() {
 
       try {
         const resolvedType = parsed.data.type ?? mapCategoryToSymbolType(parsed.data.category);
+        const userId = (req as AuthenticatedRequest).user?.userId;
+        const effectiveQuery = parsed.data.q ?? parsed.data.query;
+
+        // Extract user country from proxy headers (Vercel, Cloudflare, nginx, or explicit)
+        const userCountryRaw = (
+          req.headers["x-user-country"]
+          || req.headers["x-vercel-ip-country"]
+          || req.headers["cf-ipcountry"]
+          || req.headers["x-country"]
+        ) as string | undefined;
+        const userCountry = buildCountryFilterInput(userCountryRaw)?.code ?? (
+          req.headers["x-vercel-ip-country"]
+          || req.headers["cf-ipcountry"]
+          || req.headers["x-country"]
+        ) as string | undefined;
+
         const payload = await searchSymbols({
-          query: parsed.data.query,
+          query: effectiveQuery,
           type: resolvedType,
           country: parsed.data.country,
           limit: parsed.data.limit,
           offset: parsed.data.offset,
           cursor: parsed.data.cursor,
+          userId,
+          userCountry,
         });
 
         res.json(payload);

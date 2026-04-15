@@ -4,9 +4,11 @@ import { mapSymbolItemToUi } from "@/utils/symbolMapper";
 
 const reportedMissingLogoSymbols = new Set<string>();
 const iconCache = new Map<string, string>();
+const ICON_CACHE_MAX_ENTRIES = 500;
 
 export type AssetMarketType = "Stocks" | "Funds" | "Futures" | "Forex" | "Crypto" | "Indices" | "Bonds" | "Economy" | "Options";
 export type AssetCategory = "stocks" | "funds" | "futures" | "forex" | "crypto" | "indices" | "bonds" | "economy" | "options";
+export type AssetSortOption = "relevance" | "name" | "symbol" | "volume" | "marketCap";
 
 export interface AssetSearchItem {
   ticker: string;
@@ -29,9 +31,19 @@ export interface AssetSearchItem {
   logoUrl: string;
   displayIconUrl?: string;
   isFallback?: boolean;
+  price?: number;
+  change?: number;
+  changePercent?: number;
+  pnl?: number;
+  volume?: number;
+  marketCap?: number;
+  liquidityScore?: number;
   source: string;
   futureCategory?: string;
   economyCategory?: string;
+  expiry?: string;
+  strike?: string;
+  underlyingAsset?: string;
   contracts?: AssetSearchItem[];
 }
 
@@ -60,6 +72,9 @@ export interface AssetSearchFiltersResponse {
   exchangeTypes: AssetSearchFilterOption[];
   futureCategories: AssetSearchFilterOption[];
   economyCategories: AssetSearchFilterOption[];
+  expiries: AssetSearchFilterOption[];
+  strikes: AssetSearchFilterOption[];
+  underlyingAssets: AssetSearchFilterOption[];
   sourceUiType?: "modal" | "dropdown";
 }
 
@@ -103,6 +118,19 @@ function iconCacheKey(item: AssetSearchItem): string {
   return `${exchange}:${symbol}`;
 }
 
+function setCachedIcon(key: string, iconUrl: string): void {
+  if (!iconUrl) return;
+  if (iconCache.has(key)) {
+    iconCache.delete(key);
+  }
+  iconCache.set(key, iconUrl);
+  while (iconCache.size > ICON_CACHE_MAX_ENTRIES) {
+    const oldest = iconCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    iconCache.delete(oldest);
+  }
+}
+
 export async function searchAssets(params: {
   q: string;
   market?: string;
@@ -114,14 +142,20 @@ export async function searchAssets(params: {
   exchangeType?: string;
   futureCategory?: string;
   economyCategory?: string;
+  expiry?: string;
+  strike?: string;
+  underlyingAsset?: string;
+  sort?: AssetSortOption;
   page?: number;
   limit?: number;
   cursor?: string;
+  signal?: AbortSignal;
 }): Promise<AssetSearchResponse> {
   const limit = params.limit ?? 50;
   const requestedCategory = params.category ?? params.market;
 
   const response = await api.get<AssetSearchResponse>("/simulation/assets", {
+    signal: params.signal,
     params: {
       q: params.q,
       market: params.market,
@@ -133,6 +167,10 @@ export async function searchAssets(params: {
       exchangeType: params.exchangeType,
       futureCategory: params.futureCategory,
       economyCategory: params.economyCategory,
+      expiry: params.expiry,
+      strike: params.strike,
+      underlyingAsset: params.underlyingAsset,
+      sort: params.sort,
       limit,
       cursor: params.cursor,
     },
@@ -140,6 +178,10 @@ export async function searchAssets(params: {
 
   const mappedAssets = response.data.assets
     .map((item) => mapSymbolItemToUi(item, requestedCategory))
+    .filter((item) => {
+      if (requestedCategory && requestedCategory !== "all" && item.category !== requestedCategory) return false;
+      return true;
+    })
     .filter((item) => {
       if (params.type && params.type !== "all" && item.type !== params.type) return false;
       if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
@@ -150,7 +192,7 @@ export async function searchAssets(params: {
       const effectiveIcon = item.displayIconUrl || item.logoUrl || item.iconUrl || "";
 
       if (effectiveIcon) {
-        iconCache.set(key, effectiveIcon);
+        setCachedIcon(key, effectiveIcon);
         return {
           ...item,
           logoUrl: effectiveIcon,
@@ -171,9 +213,26 @@ export async function searchAssets(params: {
 
   mappedAssets.forEach(reportMissingLogo);
 
+  const sortedAssets = params.sort && params.sort !== "relevance"
+    ? [...mappedAssets].sort((a, b) => {
+        switch (params.sort) {
+          case "name":
+            return (a.name || "").localeCompare(b.name || "");
+          case "symbol":
+            return (a.ticker || a.symbol || "").localeCompare(b.ticker || b.symbol || "");
+          case "volume":
+            return (b.volume ?? 0) - (a.volume ?? 0);
+          case "marketCap":
+            return (b.marketCap ?? 0) - (a.marketCap ?? 0);
+          default:
+            return 0;
+        }
+      })
+    : mappedAssets;
+
   return {
     ...response.data,
-    assets: mappedAssets,
+    assets: sortedAssets,
   };
 }
 

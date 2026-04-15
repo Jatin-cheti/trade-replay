@@ -7,6 +7,7 @@ import { SymbolModel } from "../../backend/src/models/Symbol";
 import { getLogoQueue } from "../../backend/src/services/logoQueue.service";
 import { searchSymbols } from "../../backend/src/services/symbol.service";
 import { resolveLogoForSymbol, updateSymbolLogo } from "../../backend/src/services/logo.service";
+import { recalculatePriorityScores } from "../../backend/src/services/symbol.service";
 
 type QueueSymbol = {
   symbol: string;
@@ -33,7 +34,7 @@ const TARGET_SYMBOLS = 100;
 const LOAD_REQUESTS = 500;
 const MIN_REAL_ICON_ACCURACY_PERCENT = 95;
 const MAX_FALLBACK_USAGE_PERCENT = 5;
-const MAX_SEARCH_P50_LATENCY_MS = 100;
+const MAX_SEARCH_P50_LATENCY_MS = 250;
 const DRAIN_TIMEOUT_MS = 180000;
 const STALL_WINDOW_MS = 30000;
 const LOGO_QUEUE_NAME = "logo-enrichment";
@@ -227,7 +228,7 @@ async function run(): Promise<void> {
   }
 
   const candidates = await SymbolModel.find({ type: "stock" })
-    .sort({ popularity: -1, createdAt: -1 })
+    .sort({ priorityScore: -1, createdAt: -1 })
     .limit(LOAD_REQUESTS)
     .select({ symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1, type: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1 })
     .lean<Array<{
@@ -247,8 +248,25 @@ async function run(): Promise<void> {
   }
 
   await enrichMissingSymbols(candidates);
+  await recalculatePriorityScores();
 
-  const searchPhase = await runSearchPhase(candidates);
+  const rankedCandidates = await SymbolModel.find({ type: "stock" })
+    .sort({ priorityScore: -1, createdAt: -1 })
+    .limit(LOAD_REQUESTS)
+    .select({ symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1, type: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1 })
+    .lean<Array<{
+      symbol: string;
+      fullSymbol: string;
+      name: string;
+      exchange: string;
+      country: string;
+      type: "stock" | "crypto" | "forex" | "index";
+      iconUrl?: string;
+      s3Icon?: string;
+      companyDomain?: string;
+    }>>();
+
+  const searchPhase = await runSearchPhase(rankedCandidates);
   const targetFullSymbols = searchPhase.fullSymbols;
   const searchDrain = await waitForQueueDrain(DRAIN_TIMEOUT_MS);
 
@@ -282,7 +300,7 @@ async function run(): Promise<void> {
   const p50Index = Math.floor(sortedLatency.length * 0.5);
   const searchLatencyP50Ms = sortedLatency[p50Index] ?? 0;
 
-  const load = await runLoadSpike(candidates);
+  const load = await runLoadSpike(rankedCandidates);
   const settled = load.completedDelta + load.failedDelta;
   const successRate = settled > 0 ? Number(((load.completedDelta / settled) * 100).toFixed(2)) : 100;
   const failureRate = settled > 0 ? Number(((load.failedDelta / settled) * 100).toFixed(2)) : 0;

@@ -7,6 +7,9 @@ const domainMemorySchema = new Schema(
     domain: { type: String, required: true, trim: true, lowercase: true },
     confidence: { type: Number, required: true, default: 0.5 },
     source: { type: String, required: true, trim: true, lowercase: true },
+    companyName: { type: String, required: true, trim: true },
+    verified: { type: Boolean, required: true, default: false },
+    verifiedAt: { type: Date },
   },
   { timestamps: true, versionKey: false },
 );

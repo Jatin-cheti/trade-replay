@@ -1,6 +1,8 @@
 import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 import { inferDomainForSymbol } from "./domainInference.service";
+import { computePrefixesForSymbol } from "./searchIntelligence.service";
+import { markSearchIndexDirty } from "./searchIndex.service";
 
 export interface NormalizedSymbol {
   symbol: string;
@@ -103,7 +105,7 @@ async function ingestUsStocks(): Promise<NormalizedSymbol[]> {
         country: "US",
         type: "stock",
         currency: "USD",
-        popularity: 8,
+        popularity: 0,
         source: "nasdaq-trader",
       }));
 
@@ -122,7 +124,7 @@ async function ingestUsStocks(): Promise<NormalizedSymbol[]> {
           type: "stock",
           currency: "USD",
           companyDomain: inferDomainForSymbol({ symbol, name, exchange: listingExchange }) ?? undefined,
-          popularity: 7,
+          popularity: 0,
           source: "nasdaq-trader",
         });
       });
@@ -139,7 +141,7 @@ async function ingestUsStocks(): Promise<NormalizedSymbol[]> {
       country: "US",
       type: "stock",
       currency: "USD",
-      popularity: 10,
+      popularity: 0,
       source: "fallback",
     }));
   }
@@ -165,7 +167,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
           type: "stock",
           currency: "INR",
           companyDomain: inferDomainForSymbol({ symbol, name, exchange: "NSE" }) ?? undefined,
-          popularity: 8,
+          popularity: 0,
           source: "nse-equity-list",
         });
       });
@@ -180,7 +182,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
         type: "stock",
         currency: "INR",
         companyDomain: inferDomainForSymbol({ symbol, name: symbol, exchange: "BSE" }) ?? undefined,
-        popularity: 6,
+        popularity: 0,
         source: "bse-curated",
       }));
 
@@ -196,7 +198,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
         country: "IN",
         type: "stock",
         currency: "INR",
-        popularity: 8,
+        popularity: 0,
         source: "fallback",
       }),
       normalizeSymbol({
@@ -207,7 +209,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
         country: "IN",
         type: "stock",
         currency: "INR",
-        popularity: 7,
+        popularity: 0,
         source: "fallback",
       }),
     ]);
@@ -243,7 +245,7 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
         type: "crypto",
         currency: "USD",
         iconUrl: coin.image || (fallbackId ? coinGeckoIconUrl(fallbackId) : undefined),
-        popularity: Math.max(1, 300 - (coin.market_cap_rank ?? 250)),
+        popularity: 0,
         source: "coingecko",
       });
       }));
@@ -273,7 +275,7 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
         iconUrl: coinIconsBySymbol.get(baseSymbol)
           || (mappedId ? coinGeckoIconUrl(mappedId) : undefined)
           || `https://cryptoicons.org/api/icon/${baseSymbol.toLowerCase()}/200`,
-        popularity: 9,
+        popularity: 0,
         source: "binance",
       });
       }));
@@ -291,7 +293,7 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
       type: "crypto",
       currency: "USD",
       iconUrl: coinGeckoIconUrl(CRYPTO_ICON_ID_MAP[symbol.replace("USD", "")] ?? "bitcoin"),
-      popularity: 10,
+      popularity: 0,
       source: "fallback",
     }));
   }
@@ -323,7 +325,7 @@ async function ingestForex(): Promise<NormalizedSymbol[]> {
     country: "GLOBAL",
     type: "forex",
     currency: symbol.slice(0, 3),
-    popularity: 10,
+    popularity: 0,
     source: "curated",
   }));
 }
@@ -351,7 +353,7 @@ async function ingestIndices(): Promise<NormalizedSymbol[]> {
     country,
     type: "index",
     currency: country === "IN" ? "INR" : "USD",
-    popularity: 12,
+    popularity: 0,
     source: "curated",
   }));
 }
@@ -390,6 +392,7 @@ export async function ingestGlobalSymbols(): Promise<{ upserted: number; totalSo
           s3Icon: "",
           popularity: item.popularity,
           source: item.source,
+          ...computePrefixesForSymbol(item.symbol, item.name),
         },
       },
       upsert: true,
@@ -398,6 +401,7 @@ export async function ingestGlobalSymbols(): Promise<{ upserted: number; totalSo
 
   if (operations.length > 0) {
     await SymbolModel.bulkWrite(operations, { ordered: false });
+    markSearchIndexDirty("ingest_global_symbols");
   }
 
   return {
