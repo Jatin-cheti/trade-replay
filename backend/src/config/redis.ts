@@ -27,18 +27,24 @@ function parseRedisUrl(url: string): RedisOptions {
 }
 
 export const redisConnectionOptions = parseRedisUrl(env.REDIS_URL);
+
 const redisClientOptions: RedisOptions = {
   ...redisConnectionOptions,
   lazyConnect: true,
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: 2,
+  enableReadyCheck: true,
   enableOfflineQueue: false,
-  retryStrategy: () => null,
+  retryStrategy: (times: number) => {
+    if (times > REDIS_CONNECT_RETRIES) return null;
+    return Math.min(times * REDIS_RETRY_DELAY_MS, 5000);
+  },
 };
 
-export const redisClient = new IORedis(env.REDIS_URL, {
-  ...redisClientOptions,
-});
+function createRedisClient(): IORedis {
+  return new IORedis(env.REDIS_URL, { ...redisClientOptions });
+}
 
+export const redisClient = createRedisClient();
 export const redisPublisher = redisClient.duplicate(redisClientOptions);
 export const redisSubscriber = redisClient.duplicate(redisClientOptions);
 
@@ -115,6 +121,10 @@ export function isRedisPubSubReady(): boolean {
   return redisPublisher.status === "ready" && redisSubscriber.status === "ready";
 }
 
+export function isRedisMockMode(): boolean {
+  return false;
+}
+
 export function getRedisClient(): IORedis {
   return redisClient;
 }
@@ -130,7 +140,7 @@ export function getRedisSubscriber(): IORedis {
 export async function ensureRedisReady(): Promise<void> {
   if (isRedisReady() && isRedisPubSubReady()) return;
 
-  console.log(`REDIS CONNECTING TO: ${env.REDIS_URL}`);
+  console.log(`REDIS CONNECTING TO: ${env.REDIS_URL.replace(/(:\/\/[^:]+:)[^@]+@/, "$1***@")}`);
 
   const [mainReady, publisherReady, subscriberReady] = await Promise.all([
     waitForRedisClient(redisClient),
@@ -139,7 +149,7 @@ export async function ensureRedisReady(): Promise<void> {
   ]);
 
   if (mainReady && publisherReady && subscriberReady) {
-    logger.info("redis_connected", { url: env.REDIS_URL });
+    logger.info("redis_connected", { host: redisConnectionOptions.host });
     hasLoggedRedisUnavailable = false;
     return;
   }
@@ -152,7 +162,7 @@ export async function ensureRedisReady(): Promise<void> {
 
   if (!hasLoggedRedisUnavailable) {
     hasLoggedRedisUnavailable = true;
-    logger.error("redis_unavailable", { url: env.REDIS_URL });
+    logger.error("redis_unavailable", { host: redisConnectionOptions.host });
   }
 
   throw new Error(`Redis unavailable after ${REDIS_CONNECT_RETRIES} retries`);
@@ -166,13 +176,13 @@ export async function connectRedis(): Promise<void> {
 async function configureRedisMemoryPolicy(): Promise<void> {
   if (!isRedisReady()) return;
   try {
-    const maxmem = process.env.REDIS_MAXMEMORY || "128mb";
+    const maxmem = process.env.REDIS_MAXMEMORY || "256mb";
     const policy = process.env.REDIS_MAXMEMORY_POLICY || "allkeys-lru";
     await redisClient.config("SET", "maxmemory", maxmem);
     await redisClient.config("SET", "maxmemory-policy", policy);
     logger.info("redis_memory_configured", { maxmemory: maxmem, policy });
   } catch {
-    // CONFIG SET may be disabled on managed Redis — non-fatal
+    // CONFIG SET may be disabled on managed Redis (Upstash) — non-fatal
     logger.warn("redis_memory_config_skipped", { reason: "config_set_not_allowed" });
   }
 }

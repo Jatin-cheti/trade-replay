@@ -46,196 +46,6 @@ type PrefixCacheEntry = {
   lastAccessedAt: number;
 };
 
-// ── Symbol intent engine ────────────────────────────────────────────
-export type QueryIntent = "crypto" | "equity" | "forex" | "etf" | "index" | "general";
-
-const CRYPTO_SIGNAL_TOKENS = new Set([
-  "BTC", "ETH", "SOL", "XRP", "BNB", "ADA", "DOGE", "DOT", "AVAX", "MATIC",
-  "LINK", "ATOM", "UNI", "SHIB", "LTC", "NEAR", "APT", "ARB", "OP", "SUI",
-  "FIL", "AAVE", "MKR", "CRV", "SNX", "COMP", "SUSHI", "INJ", "TIA", "SEI",
-  "PEPE", "WIF", "BONK", "FLOKI", "MEME", "RENDER", "FET", "RNDR", "TAO",
-]);
-
-const ETF_SIGNAL_TOKENS = new Set([
-  "SPY", "QQQ", "IWM", "VTI", "VOO", "DIA", "GLD", "SLV", "TLT", "AGG",
-  "ARKK", "XLF", "XLK", "XLE", "XLV", "SCHD", "VNQ", "IEMG",
-]);
-
-const INDEX_SIGNAL_TOKENS = new Set([
-  "SPX", "NDX", "DJI", "IXIC", "VIX", "NIFTY", "SENSEX", "FTSE", "DAX", "N225",
-]);
-
-const FOREX_SIGNAL_TOKENS = new Set([
-  "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "USDINR",
-]);
-
-export function detectQueryIntent(query: string): QueryIntent {
-  const upper = query.toUpperCase().trim();
-  if (!upper) return "general";
-
-  // Explicit crypto markers
-  if (upper.includes("USDT") || upper.includes("USDC") || upper.includes("BUSD")) return "crypto";
-  if (upper.endsWith("USD") && upper.length >= 5 && !FOREX_SIGNAL_TOKENS.has(upper)) return "crypto";
-  if (upper.endsWith("PERP") || upper.endsWith("SWAP")) return "crypto";
-
-  // Known token sets
-  if (CRYPTO_SIGNAL_TOKENS.has(upper)) return "crypto";
-  if (ETF_SIGNAL_TOKENS.has(upper)) return "etf";
-  if (INDEX_SIGNAL_TOKENS.has(upper)) return "index";
-  if (FOREX_SIGNAL_TOKENS.has(upper)) return "forex";
-
-  return "general";
-}
-
-function intentBoost(item: SearchIndexItem, intent: QueryIntent): number {
-  if (intent === "general") return 0;
-
-  const type = item.type;
-  if (intent === "crypto") {
-    if (type === "crypto") return 200;
-    if (type === "etf") return -40;
-    if (type === "stock") return -80;
-  }
-  if (intent === "etf") {
-    if (type === "etf") return 120;
-    if (type === "crypto") return -30;
-  }
-  if (intent === "index") {
-    if (type === "index") return 120;
-    if (type === "stock") return -20;
-  }
-  if (intent === "forex") {
-    if (type === "forex") return 120;
-  }
-  if (intent === "equity") {
-    if (type === "stock") return 60;
-    if (type === "crypto") return -40;
-  }
-  return 0;
-}
-
-// ── CTR (click-through rate) scoring ────────────────────────────────
-// Redis HASH layout:
-//   ctr:c:{query} → { SYMBOL: clickCount, ... }   (clicks)
-//   ctr:i:{query} → { SYMBOL: impressionCount, ... } (impressions)
-//   ctr:t:{query} → timestamp of first event (for decay)
-//   ctr:u:{userId}:{query} → { SYMBOL: 1, ... }   (per-user dedup, short TTL)
-const CTR_CLICK_PREFIX = "ctr:c:";
-const CTR_IMP_PREFIX = "ctr:i:";
-const CTR_TIME_PREFIX = "ctr:t:";
-const CTR_USER_PREFIX = "ctr:u:";
-const CTR_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-const CTR_USER_DEDUP_TTL = 3600; // 1 hour — same user/query/symbol counted once per hour
-const CTR_DECAY_LAMBDA = 0.1; // decay half-life ~7 days
-const CTR_WEIGHT = 25; // max effective CTR boost
-const CTR_SMOOTHING_ALPHA = 0.3; // EMA: 30% new, 70% old
-const CTR_COLD_START_BOOST = 3; // small exploration boost for symbols with < 5 impressions
-const CTR_MIN_IMPRESSIONS = 3; // minimum impressions before CTR is trusted
-
-// Anti-abuse: max clicks per user per query per hour
-const CTR_MAX_CLICKS_PER_USER = 5;
-
-export async function recordSearchClick(query: string, symbol: string, userId?: string): Promise<void> {
-  if (!isRedisReady() || !query || !symbol) return;
-  try {
-    const lq = query.toLowerCase();
-    const sym = symbol.toUpperCase();
-    const clickKey = `${CTR_CLICK_PREFIX}${lq}`;
-
-    // Anti-abuse: per-user dedup
-    if (userId) {
-      const userKey = `${CTR_USER_PREFIX}${userId}:${lq}`;
-      const already = await redisClient.hget(userKey, sym);
-      if (already && Number(already) >= CTR_MAX_CLICKS_PER_USER) return; // spam threshold
-      await redisClient.hincrby(userKey, sym, 1);
-      await redisClient.expire(userKey, CTR_USER_DEDUP_TTL);
-    }
-
-    await redisClient.hincrby(clickKey, sym, 1);
-    await redisClient.expire(clickKey, CTR_TTL_SECONDS);
-
-    // Track first-event timestamp for decay
-    const timeKey = `${CTR_TIME_PREFIX}${lq}`;
-    const existing = await redisClient.get(timeKey);
-    if (!existing) {
-      await redisClient.setex(timeKey, CTR_TTL_SECONDS, String(Date.now()));
-    }
-
-    // Trending (global, not per-query)
-    await redisClient.hincrby("ctr:trending", sym, 1);
-    await redisClient.expire("ctr:trending", CTR_TTL_SECONDS);
-  } catch { /* fire-and-forget */ }
-}
-
-export async function recordSearchImpressions(query: string, symbols: string[]): Promise<void> {
-  if (!isRedisReady() || !query || symbols.length === 0) return;
-  try {
-    const lq = query.toLowerCase();
-    const impKey = `${CTR_IMP_PREFIX}${lq}`;
-    const pipeline = redisClient.multi();
-    for (const sym of symbols.slice(0, 50)) { // cap at 50 to limit Redis ops
-      pipeline.hincrby(impKey, sym.toUpperCase(), 1);
-    }
-    pipeline.expire(impKey, CTR_TTL_SECONDS);
-
-    // Track first-event timestamp
-    const timeKey = `${CTR_TIME_PREFIX}${lq}`;
-    const existing = await redisClient.get(timeKey);
-    if (!existing) {
-      pipeline.setex(timeKey, CTR_TTL_SECONDS, String(Date.now()));
-    }
-
-    await pipeline.exec();
-  } catch { /* fire-and-forget */ }
-}
-
-async function getCtrScoresBatch(query: string, symbols: string[]): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
-  if (!isRedisReady() || !query || symbols.length === 0) return result;
-  try {
-    const lq = query.toLowerCase();
-    const clickKey = `${CTR_CLICK_PREFIX}${lq}`;
-    const impKey = `${CTR_IMP_PREFIX}${lq}`;
-    const timeKey = `${CTR_TIME_PREFIX}${lq}`;
-
-    // Batch fetch clicks, impressions, and timestamp
-    const [clickHash, impHash, timeStr] = await Promise.all([
-      redisClient.hgetall(clickKey),
-      redisClient.hgetall(impKey),
-      redisClient.get(timeKey),
-    ]);
-
-    // Compute age-based decay
-    const ageMs = timeStr ? Date.now() - Number(timeStr) : 0;
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
-    const decay = Math.exp(-CTR_DECAY_LAMBDA * ageDays);
-
-    for (const sym of symbols) {
-      const upper = sym.toUpperCase();
-      const clicks = Number(clickHash[upper] || 0);
-      const impressions = Number(impHash[upper] || 0);
-
-      let ctrScore: number;
-      if (impressions < CTR_MIN_IMPRESSIONS) {
-        // Cold start: give a small exploration boost so new symbols can surface
-        ctrScore = CTR_COLD_START_BOOST;
-      } else {
-        // True CTR = clicks / impressions, with smoothing
-        const rawCTR = clicks / impressions;
-        // Apply EMA smoothing: blend with prior (0.5 base CTR)
-        const smoothedCTR = CTR_SMOOTHING_ALPHA * rawCTR + (1 - CTR_SMOOTHING_ALPHA) * 0.05;
-        // Scale to meaningful boost, apply decay
-        ctrScore = smoothedCTR * CTR_WEIGHT * decay;
-      }
-
-      if (ctrScore > 0) {
-        result.set(upper, ctrScore);
-      }
-    }
-  } catch { /* ignore */ }
-  return result;
-}
-
 const MAX_RESULTS = envNumber("SEARCH_INDEX_MAX_RESULTS", 120);
 const MAX_SYMBOLS_PER_PREFIX = envNumber("MAX_SYMBOLS_PER_PREFIX", 50);
 const PREFIX_KEY_LENGTH = envNumber("SEARCH_INDEX_PREFIX_KEY_LENGTH", 3);
@@ -250,11 +60,6 @@ const HOT_PREFIX_REFRESH_MS = envNumber("SEARCH_INDEX_HOT_PREFIX_REFRESH_MS", 12
 const PREFIX_CACHE_SWEEP_MS = envNumber("SEARCH_INDEX_PREFIX_CACHE_SWEEP_MS", 60_000);
 
 const PRECOMPUTE_QUERIES = Array.from(new Set(SEARCH_PRECACHE_QUERIES.map((query) => query.toLowerCase())));
-
-const REDIS_PREFIX_KEY = "sidx:pfx:"; // search index prefix ZSET
-const REDIS_SYMBOL_KEY = "sidx:sym:"; // search index symbol HASH
-const REDIS_PREFIX_TTL = envNumber("SEARCH_REDIS_PREFIX_TTL", 600); // 10 min
-const REDIS_SYMBOL_TTL = envNumber("SEARCH_REDIS_SYMBOL_TTL", 900); // 15 min
 
 const prefixCache = new Map<string, PrefixCacheEntry>();
 const loadingPrefixes = new Map<string, Promise<PrefixCacheEntry>>();
@@ -342,19 +147,6 @@ function prunePrefixCache(): void {
 
 function clearPrefixCache(reason: string): void {
   prefixCache.clear();
-  // Also flush Redis prefix keys on invalidation
-  if (isRedisReady()) {
-    void (async () => {
-      try {
-        let cursor = "0";
-        do {
-          const [next, keys] = await redisClient.scan(Number(cursor), "MATCH", `${REDIS_PREFIX_KEY}*`, "COUNT", 200);
-          cursor = next;
-          if (keys.length > 0) await redisClient.del(...keys);
-        } while (cursor !== "0");
-      } catch { /* best effort */ }
-    })();
-  }
   logger.info("search_index_prefix_cache_cleared", { reason });
   recordCurrentMemory();
 }
@@ -372,19 +164,12 @@ const BLUECHIP_BOOST: Record<string, number> = {
 // --- Geo-aware exchange boosts ---
 const GEO_EXCHANGE_BOOST: Record<string, Record<string, number>> = {
   IN: { NSE: 25, BSE: 15 },
-  US: { NASDAQ: 20, NYSE: 20, AMEX: 10, ARCA: 8 },
-  GB: { LSE: 20, LON: 20 },
-  JP: { TYO: 20, TSE: 18, JPX: 15 },
-  DE: { FRA: 15, XETRA: 18, ETR: 15 },
+  US: { NASDAQ: 20, NYSE: 20, AMEX: 10 },
+  GB: { LSE: 20 },
+  JP: { TYO: 20 },
+  DE: { FRA: 15 },
   AU: { ASX: 15 },
-  CA: { TSX: 15, TSXV: 10 },
-  CN: { SSE: 20, SZSE: 18 },
-  HK: { HKEX: 20, HKG: 18 },
-  KR: { KOSDAQ: 15, KRX: 15, KOSE: 12 },
-  BR: { BOVESPA: 15, BVMF: 15, SAO: 12 },
-  FR: { EPA: 15, EURONEXT: 12 },
-  CH: { SWX: 15, SIX: 15 },
-  SG: { SGX: 15 },
+  CA: { TSX: 15 },
   GLOBAL: { NSE: 5, NYSE: 5, NASDAQ: 5, CRYPTO: 3 },
 };
 
@@ -604,7 +389,7 @@ async function buildPrefixItems(prefix: string): Promise<SearchIndexItem[]> {
     liquidityScore: 1,
   };
 
-  const docsByPrefix = await SymbolModel.find({ searchPrefixes: prefix })
+  const docsByPrefix = await SymbolModel.find({ searchPrefixes: prefix, isCleanAsset: true })
     .select(projection)
     .sort({ priorityScore: -1 })
     .limit(PREFIX_DB_FETCH_LIMIT)
@@ -617,6 +402,7 @@ async function buildPrefixItems(prefix: string): Promise<SearchIndexItem[]> {
     const remainder = Math.max(0, PREFIX_DB_FETCH_LIMIT - docs.length);
     if (remainder > 0) {
       const fallbackDocs = await SymbolModel.find({
+        isCleanAsset: true,
         $or: [
           { symbol: { $regex: `^${escaped}` } },
           { fullSymbol: { $regex: `:${escaped}` } },
@@ -666,56 +452,6 @@ async function buildPrefixItems(prefix: string): Promise<SearchIndexItem[]> {
   return ranked;
 }
 
-/** Persist prefix items to Redis ZSETs + symbol HASHes for O(1) cold-start. */
-async function persistPrefixToRedis(prefix: string, items: SearchIndexItem[]): Promise<void> {
-  if (!isRedisReady() || items.length === 0) return;
-  const pipeline = redisClient.pipeline();
-  const prefixKey = `${REDIS_PREFIX_KEY}${prefix}`;
-
-  // ZSET: score → fullSymbol
-  const members: Array<string | number> = [];
-  for (const item of items) {
-    members.push(item.staticScore, item.fullSymbol);
-  }
-  pipeline.del(prefixKey);
-  pipeline.zadd(prefixKey, ...members);
-  pipeline.expire(prefixKey, REDIS_PREFIX_TTL);
-
-  // HASH per symbol: compact JSON
-  for (const item of items) {
-    const symKey = `${REDIS_SYMBOL_KEY}${item.fullSymbol}`;
-    pipeline.set(symKey, JSON.stringify(item), "EX", REDIS_SYMBOL_TTL);
-  }
-
-  await pipeline.exec();
-}
-
-/** Read prefix items from Redis ZSET + hydrate from symbol HASHes. */
-async function readPrefixFromRedis(prefix: string): Promise<SearchIndexItem[] | null> {
-  if (!isRedisReady()) return null;
-  const prefixKey = `${REDIS_PREFIX_KEY}${prefix}`;
-
-  try {
-    const members = await redisClient.zrevrangebyscore(prefixKey, "+inf", "-inf", "LIMIT", 0, MAX_SYMBOLS_PER_PREFIX);
-    if (!members || members.length === 0) return null;
-
-    const symKeys = members.map((fs) => `${REDIS_SYMBOL_KEY}${fs}`);
-    const rows = await redisClient.mget(...symKeys);
-    const items: SearchIndexItem[] = [];
-
-    for (const raw of rows) {
-      if (!raw) continue;
-      try {
-        items.push(JSON.parse(raw) as SearchIndexItem);
-      } catch { /* skip malformed */ }
-    }
-
-    return items.length > 0 ? items : null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadPrefixEntry(prefix: string, reason: string): Promise<PrefixCacheEntry> {
   const cached = prefixCache.get(prefix);
   if (cached && (Date.now() - cached.builtAt) <= PREFIX_CACHE_TTL_MS) {
@@ -729,17 +465,7 @@ async function loadPrefixEntry(prefix: string, reason: string): Promise<PrefixCa
 
   const promise = (async () => {
     try {
-      // L2: Try Redis ZSET before hitting MongoDB
-      const redisItems = await readPrefixFromRedis(prefix);
-      let items: SearchIndexItem[];
-      if (redisItems && redisItems.length > 0) {
-        items = redisItems;
-      } else {
-        items = await buildPrefixItems(prefix);
-        // Persist to Redis L2 for next cold start
-        void persistPrefixToRedis(prefix, items).catch(() => {});
-      }
-
+      const items = await buildPrefixItems(prefix);
       const entry: PrefixCacheEntry = {
         prefix,
         items,
@@ -821,7 +547,6 @@ export async function lookupSymbolsFromIndex(params: {
   type?: string;
   country?: string;
   userCountry?: string;
-  watchlistSymbols?: Set<string>;
   disablePrecomputed?: boolean;
 }): Promise<SearchIndexLookupResult> {
   const normalizedQuery = normalizeToken(params.query);
@@ -849,11 +574,6 @@ export async function lookupSymbolsFromIndex(params: {
   const entry = await loadPrefixEntry(prefix, "query_lookup");
   const scored: Array<{ item: SearchIndexItem; score: number }> = [];
 
-  // Detect intent and fetch CTR scores in parallel for all candidates
-  const intent = detectQueryIntent(normalizedQuery);
-  const candidateSymbols = entry.items.map((item) => item.symbol);
-  const ctrScores = await getCtrScoresBatch(normalizedQuery, candidateSymbols);
-
   for (const item of entry.items) {
     if (!matchesFilter(item, params.type, params.country)) continue;
 
@@ -870,18 +590,6 @@ export async function lookupSymbolsFromIndex(params: {
       const countryMatch = item.country === geoKey ? 15 : 0;
       itemScore += geoExchangeBoost + countryMatch;
     }
-
-    // Watchlist boost: symbols in user's watchlist get significant relevance bump
-    if (params.watchlistSymbols?.has(item.fullSymbol)) {
-      itemScore += 35;
-    }
-
-    // Intent-aware boost: strongly prefer crypto when query signals crypto intent
-    itemScore += intentBoost(item, intent);
-
-    // CTR boost: symbols users actually click on for this query rank higher
-    const ctr = ctrScores.get(item.symbol.toUpperCase()) ?? 0;
-    itemScore += ctr;
 
     scored.push({ item, score: itemScore });
   }
@@ -1009,4 +717,19 @@ export async function startSearchIndexService(): Promise<void> {
     prefixCacheTtlMs: PREFIX_CACHE_TTL_MS,
     maxPrefixCacheEntries: PREFIX_CACHE_MAX_ENTRIES,
   });
+}
+
+const CRYPTO_TOKENS = new Set(["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "MATIC", "LINK", "SHIB", "UNI", "LTC", "BCH", "ATOM", "NEAR", "APT", "ARB", "OP", "FIL", "PEPE", "BONK", "WIF", "RENDER", "FET", "INJ", "TIA", "SUI", "SEI", "JUP", "WLD", "STRK", "AAVE", "MKR", "CRV", "SNX", "COMP"]);
+
+export function detectQueryIntent(query: string): "crypto" | "stock" {
+  const upper = query.toUpperCase().replace(/USDT$|USD$|BUSD$|USDC$/, "");
+  return CRYPTO_TOKENS.has(upper) ? "crypto" : "stock";
+}
+
+export function recordSearchClick(_query: string, _symbol: string, _userId?: string): void {
+  // no-op: analytics stub
+}
+
+export function recordSearchImpressions(_query: string, _symbols: string[]): void {
+  // no-op: analytics stub
 }

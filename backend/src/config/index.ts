@@ -65,6 +65,7 @@ const EnvSchema = z.object({
   LOGO_ENRICHMENT_INTERVAL_MS: z.string().min(1),
   LOGO_FALLBACK_TARGET_RATIO: z.string().min(1),
   USD_TO_INR: z.string().min(1),
+  GEMINI_API_KEY: z.string().optional(),
 });
 
 EnvSchema.parse(process.env);
@@ -207,6 +208,7 @@ export const CONFIG = {
   logoEnrichmentIntervalMs: numberEnv("LOGO_ENRICHMENT_INTERVAL_MS"),
   logoFallbackTargetRatio: numberEnv("LOGO_FALLBACK_TARGET_RATIO"),
   usdToInr: numberEnv("USD_TO_INR"),
+  geminiApiKey: optionalEnv("GEMINI_API_KEY"),
 };
 
 

@@ -300,52 +300,178 @@ export async function expandFmpExchangeStocks(): Promise<ExpansionResult[]> {
   return results;
 }
 
-// ── Source: FMP per-exchange screener for deeper coverage ────────────────
+// ── Source: FMP Bonds ───────────────────────────────────────────────────
 
-export async function expandFmpDeepScreener(): Promise<ExpansionResult[]> {
-  const results: ExpansionResult[] = [];
-  const MARKET_CAPS = ["Large", "Mid", "Small", "Micro", "Nano"];
+interface FmpBondItem {
+  symbol: string;
+  name: string;
+  currency?: string;
+  exchange?: string;
+  type?: string;
+}
 
-  for (const cap of MARKET_CAPS) {
-    if (!isFmpAvailable()) {
-      results.push(fmpSkippedResult(`fmp-screener-${cap.toLowerCase()}`));
-      break;
-    }
-    const start = Date.now();
-    const url = fmpUrl(`/api/v3/stock-screener?marketCapMoreThan=0&marketCapLessThan=999999999999999&limit=100000&isActivelyTrading=true`);
-    if (!url) break;
+export async function expandFmpBonds(): Promise<ExpansionResult> {
+  const start = Date.now();
+  if (!isFmpAvailable()) return fmpSkippedResult("fmp-bonds");
+  const url = fmpUrl("/api/v3/bond/list");
+  if (!url) return fmpSkippedResult("fmp-bonds");
 
-    try {
-      const list = await fetchJson<Array<{ symbol: string; companyName?: string; exchangeShortName?: string; country?: string; sector?: string; industry?: string; marketCap?: number }>>(url);
-      const symbols: RawSymbol[] = list
-        .filter((item) => item.symbol && item.companyName)
-        .map((item) => {
-          const exchange = (item.exchangeShortName || "GLOBAL").toUpperCase();
-          const country = item.country?.toUpperCase() || deriveCountry(exchange);
-          return {
-            symbol: item.symbol.toUpperCase(),
-            fullSymbol: `${exchange}:${item.symbol.toUpperCase()}`,
-            name: item.companyName || item.symbol,
-            exchange,
-            country,
-            type: "stock",
-            currency: deriveCurrency(country),
-            source: `fmp-screener-${cap.toLowerCase()}`,
-            metadata: { sector: item.sector, industry: item.industry, marketCap: item.marketCap },
-          };
-        });
+  try {
+    const list = await fetchJson<FmpBondItem[]>(url);
+    const symbols: RawSymbol[] = list
+      .filter((item) => item.symbol && item.name)
+      .map((item) => {
+        const exchange = (item.exchange || "BOND").toUpperCase();
+        const country = deriveCountry(exchange);
+        return {
+          symbol: item.symbol.toUpperCase(),
+          fullSymbol: `${exchange}:${item.symbol.toUpperCase()}`,
+          name: item.name,
+          exchange,
+          country,
+          type: "bond",
+          currency: item.currency || deriveCurrency(country),
+          source: "fmp-bonds",
+        };
+      });
 
-      const { inserted, skipped } = await upsertToGlobalMaster(symbols);
-      results.push({ source: `fmp-screener-${cap.toLowerCase()}`, fetched: symbols.length, newInserted: inserted, existingSkipped: skipped, errors: 0, durationMs: Date.now() - start });
-    } catch (error) {
-      tripFmpCircuit(error);
-      logger.warn(`expansion_fmp_screener_${cap}_failed`, { error: error instanceof Error ? error.message : String(error) });
-      results.push({ source: `fmp-screener-${cap.toLowerCase()}`, fetched: 0, newInserted: 0, existingSkipped: 0, errors: 1, durationMs: Date.now() - start });
-    }
-
-    await new Promise((r) => setTimeout(r, 1000));
-    break;
+    const { inserted, skipped } = await upsertToGlobalMaster(symbols);
+    return { source: "fmp-bonds", fetched: symbols.length, newInserted: inserted, existingSkipped: skipped, errors: 0, durationMs: Date.now() - start };
+  } catch (error) {
+    tripFmpCircuit(error);
+    logger.warn("expansion_fmp_bonds_failed", { error: error instanceof Error ? error.message : String(error) });
+    return { source: "fmp-bonds", fetched: 0, newInserted: 0, existingSkipped: 0, errors: 1, durationMs: Date.now() - start };
   }
+}
 
-  return results;
+// ── Source: FMP Economy Indicators ───────────────────────────────────────
+
+interface FmpEconomyItem {
+  symbol: string;
+  name: string;
+  country?: string;
+  type?: string;
+}
+
+export async function expandFmpEconomy(): Promise<ExpansionResult> {
+  const start = Date.now();
+  if (!isFmpAvailable()) return fmpSkippedResult("fmp-economy");
+  const url = fmpUrl("/api/v3/economic-indicators");
+  if (!url) return fmpSkippedResult("fmp-economy");
+
+  try {
+    const list = await fetchJson<FmpEconomyItem[]>(url);
+    const symbols: RawSymbol[] = list
+      .filter((item) => item.symbol && item.name)
+      .map((item) => {
+        const country = item.country?.toUpperCase() || "GLOBAL";
+        return {
+          symbol: item.symbol.toUpperCase(),
+          fullSymbol: `ECONOMY:${item.symbol.toUpperCase()}`,
+          name: item.name,
+          exchange: "ECONOMY",
+          country,
+          type: "economy",
+          currency: deriveCurrency(country),
+          source: "fmp-economy",
+        };
+      });
+
+    const { inserted, skipped } = await upsertToGlobalMaster(symbols);
+    return { source: "fmp-economy", fetched: symbols.length, newInserted: inserted, existingSkipped: skipped, errors: 0, durationMs: Date.now() - start };
+  } catch (error) {
+    tripFmpCircuit(error);
+    logger.warn("expansion_fmp_economy_failed", { error: error instanceof Error ? error.message : String(error) });
+    return { source: "fmp-economy", fetched: 0, newInserted: 0, existingSkipped: 0, errors: 1, durationMs: Date.now() - start };
+  }
+}
+
+// ── Source: FMP Options ──────────────────────────────────────────────────
+
+interface FmpOptionItem {
+  symbol: string;
+  name: string;
+  underlying?: string;
+  type?: string;
+  expiration?: string;
+}
+
+export async function expandFmpOptions(): Promise<ExpansionResult> {
+  const start = Date.now();
+  if (!isFmpAvailable()) return fmpSkippedResult("fmp-options");
+  const url = fmpUrl("/api/v3/options/list");
+  if (!url) return fmpSkippedResult("fmp-options");
+
+  try {
+    const list = await fetchJson<FmpOptionItem[]>(url);
+    const symbols: RawSymbol[] = list
+      .filter((item) => item.symbol && item.name)
+      .map((item) => {
+        const exchange = "OPT";
+        const country = "GLOBAL";
+        return {
+          symbol: item.symbol.toUpperCase(),
+          fullSymbol: `${exchange}:${item.symbol.toUpperCase()}`,
+          name: item.name,
+          exchange,
+          country,
+          type: "option",
+          currency: "USD",
+          source: "fmp-options",
+          metadata: { underlying: item.underlying, expiration: item.expiration },
+        };
+      });
+
+    const { inserted, skipped } = await upsertToGlobalMaster(symbols);
+    return { source: "fmp-options", fetched: symbols.length, newInserted: inserted, existingSkipped: skipped, errors: 0, durationMs: Date.now() - start };
+  } catch (error) {
+    tripFmpCircuit(error);
+    logger.warn("expansion_fmp_options_failed", { error: error instanceof Error ? error.message : String(error) });
+    return { source: "fmp-options", fetched: 0, newInserted: 0, existingSkipped: 0, errors: 1, durationMs: Date.now() - start };
+  }
+}
+
+// ── Source: FMP Futures ──────────────────────────────────────────────────
+
+interface FmpFutureItem {
+  symbol: string;
+  name: string;
+  underlying?: string;
+  type?: string;
+  expiration?: string;
+}
+
+export async function expandFmpFutures(): Promise<ExpansionResult> {
+  const start = Date.now();
+  if (!isFmpAvailable()) return fmpSkippedResult("fmp-futures");
+  const url = fmpUrl("/api/v3/futures/list");
+  if (!url) return fmpSkippedResult("fmp-futures");
+
+  try {
+    const list = await fetchJson<FmpFutureItem[]>(url);
+    const symbols: RawSymbol[] = list
+      .filter((item) => item.symbol && item.name)
+      .map((item) => {
+        const exchange = "FUT";
+        const country = "GLOBAL";
+        return {
+          symbol: item.symbol.toUpperCase(),
+          fullSymbol: `${exchange}:${item.symbol.toUpperCase()}`,
+          name: item.name,
+          exchange,
+          country,
+          type: "future",
+          currency: "USD",
+          source: "fmp-futures",
+          metadata: { underlying: item.underlying, expiration: item.expiration },
+        };
+      });
+
+    const { inserted, skipped } = await upsertToGlobalMaster(symbols);
+    return { source: "fmp-futures", fetched: symbols.length, newInserted: inserted, existingSkipped: skipped, errors: 0, durationMs: Date.now() - start };
+  } catch (error) {
+    tripFmpCircuit(error);
+    logger.warn("expansion_fmp_futures_failed", { error: error instanceof Error ? error.message : String(error) });
+    return { source: "fmp-futures", fetched: 0, newInserted: 0, existingSkipped: 0, errors: 1, durationMs: Date.now() - start };
+  }
 }
