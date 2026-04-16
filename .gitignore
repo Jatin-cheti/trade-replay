@@ -33,6 +33,10 @@ desktop.ini
 test-results/
 playwright-report/
 debug-screenshots/
+artifacts/matrix-results.json
+artifacts/tool-coverage.json
+artifacts/tool-coverage.html
+artifacts/tool-inventory.json
 
 # Misc
 tmp-*
