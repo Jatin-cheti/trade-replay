@@ -183,44 +183,6 @@ export function createApp() {
     res.json(result);
   });
 
-  // ── One-shot: mark isCleanAsset on symbols that exist in clean_assets ──
-  app.post("/api/scaling/mark-clean-assets", async (_req, res) => {
-    try {
-      const mongoose = await import("mongoose");
-      const db = mongoose.default.connection.db;
-      if (!db) { res.status(500).json({ error: "db not ready" }); return; }
-
-      const cleanCol = db.collection("clean_assets");
-      const symCol = db.collection("symbols");
-
-      const cleanDocs = await cleanCol.find({}, { projection: { fullSymbol: 1 } }).toArray();
-      const cleanFullSymbols = cleanDocs.map((d: { fullSymbol?: string }) => d.fullSymbol).filter(Boolean);
-      logger.info("mark_clean_assets_start", { cleanCount: cleanFullSymbols.length });
-
-      // Reset
-      await symCol.updateMany({ isCleanAsset: true }, { $set: { isCleanAsset: false } });
-
-      // Mark in batches
-      let marked = 0;
-      const BATCH = 5000;
-      for (let i = 0; i < cleanFullSymbols.length; i += BATCH) {
-        const batch = cleanFullSymbols.slice(i, i + BATCH);
-        const r = await symCol.updateMany({ fullSymbol: { $in: batch } }, { $set: { isCleanAsset: true } });
-        marked += r.modifiedCount;
-      }
-
-      // Ensure indexes
-      await symCol.createIndex({ isCleanAsset: 1, priorityScore: -1 }, { name: "clean_asset_priority_idx", sparse: true });
-
-      const totalClean = await symCol.countDocuments({ isCleanAsset: true });
-      logger.info("mark_clean_assets_done", { marked, totalClean });
-      res.json({ marked, totalClean, cleanAssetsCount: cleanFullSymbols.length });
-    } catch (err) {
-      logger.error("mark_clean_assets_error", { error: String(err) });
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
   app.get("/api/scaling/expansion-stats", async (_req, res) => {
     const stats = await getExpansionStats();
     res.json(stats);
