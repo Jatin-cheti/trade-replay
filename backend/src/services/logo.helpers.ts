@@ -67,10 +67,61 @@ export function extractCryptoBaseSymbol(rawSymbol: string): string {
   return upper;
 }
 
-export function generateCryptoDomainGuesses(symbol: string): string[] {
-  const base = extractCryptoBaseSymbol(symbol).toLowerCase();
-  if (!base || base.length < 3) return [];
-  return [`${base}.com`, `${base}.org`, `${base}.io`];
+export function getLogoUrlDomain(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.host.toLowerCase();
+
+    if (host.includes("google.com") || host.includes("duckduckgo.com")) {
+      const queryDomain = parsed.searchParams.get("domain");
+      if (queryDomain) return normalizeDomain(queryDomain);
+      if (parsed.pathname.startsWith("/ip3/")) {
+        const match = parsed.pathname.match(/^\/ip3\/([^/.]+\.[^/.]+)\.?/i);
+        if (match?.[1]) return normalizeDomain(match[1]);
+      }
+    }
+
+    if (host.includes("logo.clearbit.com")) {
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      if (segments.length > 0) return normalizeDomain(segments[0]);
+    }
+
+    return normalizeDomain(host);
+  } catch {
+    return null;
+  }
+}
+
+export function getLogoSourceFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.host.toLowerCase();
+    if (host.includes("clearbit.com")) return "clearbit";
+    if (host.includes("google.com")) return "google";
+    if (host.includes("duckduckgo.com")) return "duckduckgo";
+    if (host.includes("financialmodelingprep.com")) return "fmp";
+    if (host.includes("coingecko.com")) return "coingecko";
+    if (host.includes("jsdelivr.net")) return "crypto-static";
+    if (host.includes("assets.coingecko.com")) return "coingecko";
+    return host;
+  } catch {
+    return "unknown";
+  }
+}
+
+const GENERIC_LOGO_PATTERNS = [
+  /exchange/i,
+  /default/i,
+  /generated/i,
+  /\/icons\/exchange\//i,
+  /\/icons\/category\//i,
+  /\/icons\/sector\//i,
+];
+
+export function isGenericLogoUrl(url?: string | null): boolean {
+  if (!url) return true;
+  const normalized = url.toLowerCase();
+  return GENERIC_LOGO_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function isBlockedGuessedDomain(domain: string): boolean {

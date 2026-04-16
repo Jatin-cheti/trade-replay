@@ -6,6 +6,7 @@ import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../s
 import { buildCountryFilterInput } from "../services/symbol.helpers";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
+import { verifySymbolLogo } from "../services/logoAuthority.service";
 import { SymbolModel } from "../models/Symbol";
 
 const searchSchema = z.object({
@@ -67,21 +68,6 @@ export function createSymbolController() {
           userCountry,
         });
 
-        const accessedSymbols = payload.items
-          .map((item) => String(item.symbol || "").trim().toUpperCase())
-          .filter(Boolean)
-          .slice(0, 100);
-
-        if (accessedSymbols.length > 0) {
-          void SymbolModel.updateMany(
-            { symbol: { $in: accessedSymbols } },
-            {
-              $inc: { searchFrequency: 1, searchCount: 1 },
-              $set: { lastAccessedAt: new Date(), isHot: true },
-            },
-          );
-        }
-
         res.json(payload);
       } catch (error) {
         if (error instanceof Error && error.message === "INVALID_CURSOR_TOKEN") {
@@ -137,6 +123,44 @@ export function createSymbolController() {
         res.status(204).send();
       } catch (error) {
         next(mapServiceError(error, "MISSING_LOGO_REPORT_FAILED", "Could not report missing logo"));
+      }
+    },
+
+    logoAudit: async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const symbol = typeof req.query.symbol === "string" ? req.query.symbol.toUpperCase() : undefined;
+        const limit = Math.min(Number(req.query.limit) || 25, 100);
+
+        if (symbol) {
+          const docs = await SymbolModel.find({ symbol })
+            .select({ symbol: 1, fullSymbol: 1, name: 1, type: 1, exchange: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1, logoVerificationStatus: 1, logoQualityScore: 1 })
+            .limit(10)
+            .lean();
+          const results = docs.map((d) => verifySymbolLogo(d));
+          res.json({ symbol, count: results.length, results });
+          return;
+        }
+
+        const [total, withIcon, validated, repaired, apiKeyLeaks, wrongDomain] = await Promise.all([
+          SymbolModel.estimatedDocumentCount(),
+          SymbolModel.countDocuments({ iconUrl: { $ne: "", $exists: true } }),
+          SymbolModel.countDocuments({ logoVerificationStatus: "validated" }),
+          SymbolModel.countDocuments({ logoVerificationStatus: "repaired" }),
+          SymbolModel.countDocuments({ iconUrl: /apikey=/i }),
+          SymbolModel.countDocuments({ companyDomain: { $in: ["financialmodelingprep.com", "clearbit.com"] } }),
+        ]);
+
+        res.json({
+          total,
+          withIcon,
+          coverage: total > 0 ? `${((withIcon / total) * 100).toFixed(1)}%` : "0%",
+          validated,
+          repaired,
+          apiKeyLeaks,
+          wrongDomain,
+        });
+      } catch (error) {
+        next(mapServiceError(error, "LOGO_AUDIT_FAILED", "Logo audit failed"));
       }
     },
   };

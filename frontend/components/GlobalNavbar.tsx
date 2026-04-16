@@ -4,10 +4,39 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
 import { useTheme } from "@/context/ThemeContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { LogOut, Settings, User, Sun, Moon, Menu, ChevronDown } from "lucide-react";
+import { LogOut, Settings, User, Sun, Moon, Menu, ChevronDown, ChevronRight, BarChart3, LayoutGrid, LineChart, Briefcase, Search, Globe } from "lucide-react";
 import BrandLottie from "@/components/BrandLottie";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 import type { NavItem, FeatureMenuItem } from "./MobileNavDrawer";
+
+/* ── Markets menu data (geo-aware) ───────────────────────────────────── */
+const MARKETS_SECTIONS = [
+  {
+    label: "\u{1F1EE}\u{1F1F3} India",
+    items: [
+      { label: "Stocks", path: "/screener?type=stock&country=IN" },
+      { label: "Indices", path: "/screener?type=index&country=IN" },
+      { label: "ETFs", path: "/screener?type=etf&country=IN" },
+    ],
+  },
+  {
+    label: "\u{1F1FA}\u{1F1F8} United States",
+    items: [
+      { label: "Stocks", path: "/screener?type=stock&country=US" },
+      { label: "ETFs", path: "/screener?type=etf&country=US" },
+      { label: "Indices", path: "/screener?type=index&country=US" },
+    ],
+  },
+  {
+    label: "Global",
+    items: [
+      { label: "Crypto", path: "/screener?type=crypto" },
+      { label: "Forex", path: "/screener?type=forex" },
+      { label: "Bonds", path: "/screener?type=bond" },
+      { label: "Economy", path: "/screener?type=economy" },
+    ],
+  },
+];
 
 export default function GlobalNavbar() {
   const navigate = useNavigate();
@@ -16,7 +45,8 @@ export default function GlobalNavbar() {
   const { theme, toggleTheme } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
+  const [marketsOpen, setMarketsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileFeaturesOpen, setMobileFeaturesOpen] = useState(false);
   const navRef = useRef<HTMLElement | null>(null);
@@ -36,19 +66,15 @@ export default function GlobalNavbar() {
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
-
     const updateHeightVar = (height: number) => {
       document.documentElement.style.setProperty("--navbar-height", `${Math.ceil(height)}px`);
     };
-
     updateHeightVar(nav.getBoundingClientRect().height);
-
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       updateHeightVar(entry.contentRect.height);
     });
-
     observer.observe(nav);
     return () => observer.disconnect();
   }, []);
@@ -58,11 +84,7 @@ export default function GlobalNavbar() {
       navigate("/");
       return;
     }
-
-    if (location.hash) {
-      navigate("/", { replace: true });
-    }
-
+    if (location.hash) navigate("/", { replace: true });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [location.hash, location.pathname, navigate]);
 
@@ -72,7 +94,6 @@ export default function GlobalNavbar() {
       navigate(`/${hash}`);
       return;
     }
-
     const target = document.querySelector(hash);
     if (target instanceof HTMLElement) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -82,52 +103,37 @@ export default function GlobalNavbar() {
   useEffect(() => {
     setMobileMenuOpen(false);
     setMobileFeaturesOpen(false);
-    setFeaturesOpen(false);
+    setProductsOpen(false);
+    setMarketsOpen(false);
   }, [location.pathname, location.hash]);
 
-  const homeNavItem = useMemo<NavItem>(() => (
-    {
-      label: "Home",
-      action: goHome,
-      activeMatch: (pathname, hash) => (pathname === "/" || pathname === "/homepage") && hash !== "#markets",
-    }
-  ), [goHome]);
+  const homeNavItem = useMemo<NavItem>(() => ({
+    label: "Home",
+    action: goHome,
+    activeMatch: (pathname, hash) => (pathname === "/" || pathname === "/homepage") && hash !== "#markets",
+  }), [goHome]);
 
-  const loggedInNavItems: NavItem[] = useMemo(() => {
-    return [
-      { label: "Dashboard", action: () => navigate("/dashboard"), activeMatch: (pathname) => pathname.startsWith("/dashboard") },
-      { label: "Portfolio", action: () => navigate("/portfolio/create"), activeMatch: (pathname) => pathname.startsWith("/portfolio") },
-      { label: "Scenarios", action: () => navigate("/simulation"), activeMatch: (pathname) => pathname.startsWith("/simulation") },
-      {
-        label: "Live Market",
-        action: () => navigate("/live-market"),
-        activeMatch: (pathname) => pathname.startsWith("/live-market"),
-      },
-    ];
-  }, [navigate]);
+  const loggedInNavItems: NavItem[] = useMemo(() => [], []);
 
-  const featureMenuItems: FeatureMenuItem[] = useMemo(() => (
-    [
-      { label: "Dashboard", path: "/dashboard" },
-      { label: "Portfolio", path: "/portfolio/create" },
-      { label: "Assets", path: "/portfolio/create" },
-      { label: "Scenarios", path: "/simulation" },
-    ]
-  ), []);
+  const featureMenuItems: FeatureMenuItem[] = useMemo(() => ([
+    { label: "Supercharts", path: "/simulation" },
+    { label: "Screener", path: "/screener" },
+    { label: "Portfolio", path: "/portfolio/create" },
+    { label: "Dashboard", path: "/dashboard" },
+    { label: "Live Market", path: "/live-market" },
+  ]), []);
 
   const mobilePrimaryNavItems: NavItem[] = useMemo(() => {
-    if (!isAuthenticated) {
-      return [homeNavItem];
-    }
-
-    return loggedInNavItems;
-  }, [homeNavItem, isAuthenticated, loggedInNavItems]);
+    if (!isAuthenticated) return [homeNavItem];
+    return [homeNavItem];
+  }, [homeNavItem, isAuthenticated]);
 
   const runFeatureMenuAction = useCallback((targetPath: string) => {
-    setFeaturesOpen(false);
+    setProductsOpen(false);
+    setMarketsOpen(false);
     setMobileFeaturesOpen(false);
     setMobileMenuOpen(false);
-    if (!isAuthenticated) {
+    if (!isAuthenticated && (targetPath.startsWith("/simulation") || targetPath.startsWith("/portfolio") || targetPath.startsWith("/live-market"))) {
       goToAuthGate(targetPath);
       return;
     }
@@ -140,16 +146,11 @@ export default function GlobalNavbar() {
     action();
   }, []);
 
-  const desktopTabClasses = (active: boolean) => {
-    return `relative rounded-xl px-1 py-1 text-sm font-medium tracking-wide transition-colors duration-200 ${
-      active
-        ? "text-foreground"
-        : "text-muted-foreground hover:text-foreground"
-    }`;
-  };
-
   const loginActive = location.pathname.startsWith("/login");
   const signupActive = location.pathname.startsWith("/signup");
+
+  const isProductsActive = productsOpen || location.pathname.startsWith("/simulation") || location.pathname.startsWith("/portfolio");
+  const isMarketsActive = marketsOpen || location.pathname.startsWith("/screener") || location.pathname.startsWith("/symbol");
 
   return (
     <>
@@ -162,6 +163,7 @@ export default function GlobalNavbar() {
         }`}
       >
         <div className="relative z-[2] mx-auto flex w-full max-w-[1200px] items-center justify-between gap-2 md:gap-4">
+          {/* Logo */}
           <button
             type="button"
             onClick={goHome}
@@ -173,87 +175,133 @@ export default function GlobalNavbar() {
             <span className="font-display text-[1.1rem] leading-none font-bold text-foreground tracking-wide whitespace-nowrap sm:text-[1.5rem]">Trade Replay</span>
           </button>
 
-          <div className="hidden md:flex items-center gap-4 lg:gap-6 rounded-2xl border border-border/55 bg-secondary/35 px-4 py-2">
-            {!isAuthenticated ? (
-              <div className="flex items-center gap-4 lg:gap-6">
-                {[homeNavItem].map((item) => {
-                  const active = item.activeMatch(location.pathname, location.hash);
-                  return (
-                    <button key={item.label} type="button" onClick={item.action} className={desktopTabClasses(active)}>
-                      {active && (
-                        <motion.span
-                          layoutId="global-nav-active"
-                          className="absolute inset-0 -z-10 rounded-xl border border-primary/35 bg-primary/20 shadow-[0_0_16px_hsl(var(--neon-blue)/0.24)]"
-                          transition={{ duration: 0.24, ease: "easeOut" }}
-                        />
-                      )}
-                      <span className="relative z-10 px-2 py-1">{item.label}</span>
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center gap-1 lg:gap-2 rounded-2xl border border-border/55 bg-secondary/35 px-3 py-2">
+            {/* Products Dropdown */}
+            <Popover open={productsOpen} onOpenChange={setProductsOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium tracking-wide transition-colors duration-200 ${
+                    isProductsActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Products
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${productsOpen ? "rotate-180" : ""}`} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={10}
+                className="w-[520px] border-primary/30 bg-background/95 p-0 backdrop-blur-xl"
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="flex"
+                >
+                  {/* Left column */}
+                  <div className="flex-1 p-3 border-r border-border/30">
+                    <button type="button" onClick={() => runFeatureMenuAction("/simulation")}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-secondary/45 group">
+                      <LineChart size={18} className="text-primary shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Supercharts</p>
+                        <p className="text-xs text-muted-foreground">The one terminal to rule them all</p>
+                      </div>
                     </button>
-                  );
-                })}
 
-                <Popover open={featuresOpen} onOpenChange={setFeaturesOpen}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="Open features menu"
-                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium tracking-wide transition-colors duration-200 ${
-                        featuresOpen
-                          ? "border border-primary/35 bg-primary/20 text-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      Features
-                      <ChevronDown size={15} className={`transition-transform duration-200 ${featuresOpen ? "rotate-180" : "rotate-0"}`} />
+                    <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Individual Tools</p>
+
+                    <button type="button" onClick={() => runFeatureMenuAction("/screener")}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground/90 transition-colors hover:bg-secondary/45">
+                      <span className="flex items-center gap-3"><Search size={16} className="text-muted-foreground shrink-0" />Screeners</span>
+                      <ChevronRight size={14} className="text-muted-foreground/50" />
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="center"
-                    sideOffset={10}
-                    className="w-56 border-primary/30 bg-background/90 p-2 backdrop-blur-xl"
-                  >
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                      className="space-y-1"
-                    >
-                      {featureMenuItems.map((item) => (
-                        <button
-                          key={item.label}
-                          type="button"
-                          onClick={() => runFeatureMenuAction(item.path)}
-                          className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground/90 transition-colors hover:bg-secondary/45 hover:text-foreground"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </motion.div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            ) : (
-              <div className="flex items-center gap-4 lg:gap-6">
-                {loggedInNavItems.map((item) => {
-                  const active = item.activeMatch(location.pathname, location.hash);
-                  return (
-                    <button key={item.label} type="button" onClick={item.action} className={desktopTabClasses(active)}>
-                      {active && (
-                        <motion.span
-                          layoutId="global-nav-active"
-                          className="absolute inset-0 -z-10 rounded-xl border border-primary/35 bg-primary/20 shadow-[0_0_16px_hsl(var(--neon-blue)/0.24)]"
-                          transition={{ duration: 0.24, ease: "easeOut" }}
-                        />
-                      )}
-                      <span className="relative z-10 px-2 py-1">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    {[
+                      { label: "Portfolio", icon: Briefcase, path: "/portfolio/create" },
+                      { label: "Dashboard", icon: LayoutGrid, path: "/dashboard" },
+                      { label: "Live Market", icon: BarChart3, path: "/live-market" },
+                    ].map((item) => (
+                      <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground/90 transition-colors hover:bg-secondary/45 hover:text-foreground">
+                        <item.icon size={16} className="text-muted-foreground shrink-0" />
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Right column — screener shortcuts */}
+                  <div className="w-[200px] p-3">
+                    <p className="px-2 pb-2 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Screeners</p>
+                    {[
+                      { label: "Stocks", type: "stock" },
+                      { label: "ETFs", type: "etf" },
+                      { label: "Bonds", type: "bond" },
+                      { label: "Crypto coins", type: "crypto" },
+                      { label: "Forex", type: "forex" },
+                      { label: "Indices", type: "index" },
+                    ].map((item) => (
+                      <button key={item.label} type="button" onClick={() => runFeatureMenuAction(`/screener?type=${item.type}`)}
+                        className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Markets Dropdown */}
+            <Popover open={marketsOpen} onOpenChange={setMarketsOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium tracking-wide transition-colors duration-200 ${
+                    isMarketsActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Markets
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${marketsOpen ? "rotate-180" : ""}`} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={10}
+                className="w-[380px] border-primary/30 bg-background/95 p-0 backdrop-blur-xl"
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="p-3"
+                >
+                  {MARKETS_SECTIONS.map((section) => (
+                    <div key={section.label} className="mb-2 last:mb-0">
+                      <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">
+                        {section.label}
+                      </p>
+                      <div className="grid grid-cols-2 gap-0.5">
+                        {section.items.map((item) => (
+                          <button
+                            key={item.path}
+                            type="button"
+                            onClick={() => runFeatureMenuAction(item.path)}
+                            className="flex items-center rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground"
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </motion.div>
+              </PopoverContent>
+            </Popover>
           </div>
 
+          {/* Right side actions */}
           <div className="flex items-center gap-2.5 md:gap-3">
             <motion.button
               type="button"

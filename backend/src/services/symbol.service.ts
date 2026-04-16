@@ -14,7 +14,6 @@ import {
   persistExternalSymbolsAsync,
   type ExternalSymbolCandidate,
 } from "./externalSymbolSearch.service";
-import { PortfolioModel } from "../models/Portfolio";
 import { logger } from "../utils/logger";
 
 import {
@@ -134,8 +133,8 @@ function prioritizeMarketDataCompleteness(items: SymbolRegistryItem[]): SymbolRe
 }
 
 function toQueueCompatibleType(type: SymbolType): "stock" | "crypto" | "forex" | "index" {
-  if (type === "etf" || type === "bond") return "stock";
-  if (type === "derivative" || type === "economy") return "index";
+  if (type === "etf") return "stock";
+  if (type === "derivative") return "index";
   return type;
 }
 
@@ -327,15 +326,6 @@ function classifySearchCategory(item: Pick<SymbolRegistryItem, "type" | "symbol"
   if (item.type === "crypto") return "crypto";
   if (item.type === "forex") return "forex";
   if (item.type === "etf") return "funds";
-  if (item.type === "bond") return "bonds";
-  if (item.type === "economy") return "economy";
-
-  const exchange = String(item.exchange || "").toUpperCase();
-  if (/\b(bond|gilt|treasury|debenture|note|bund|t-note|t-bill)\b/.test(name)
-    || exchange === "UST" || exchange === "FINRA"
-    || source.includes("treasury") || source.includes("finra") || source === "bund") {
-    return "bonds";
-  }
 
   if (item.type === "index") {
     if (
@@ -350,6 +340,10 @@ function classifySearchCategory(item: Pick<SymbolRegistryItem, "type" | "symbol"
   if (isOptionLikeSymbol(item)) return "options";
   if (isFutureLikeSymbol(item) || item.type === "derivative") return "futures";
 
+  if (/\b(bond|gilt|treasury|debenture|note)\b/.test(name)) {
+    return "bonds";
+  }
+
   return "stocks";
 }
 
@@ -361,29 +355,9 @@ function toSymbolTypeFromExternal(type: ExternalSymbolCandidate["type"]): Symbol
   return "index";
 }
 
-function isBlockedLogoUrl(url?: string): boolean {
-  const value = String(url || "").trim().toLowerCase();
-  if (!value) return false;
-  return value.includes("medic-data.s3.eu-north-1.amazonaws.com")
-    || value.includes("dl142w45levth.cloudfront.net");
-}
-
-function resolvePreferredLogoUrl(input: { iconUrl?: string; s3Icon?: string; staticIcon?: string }): string {
-  const preferredIconUrl = String(input.iconUrl || "").trim();
-  const staticIcon = String(input.staticIcon || "").trim();
-  const s3Icon = String(input.s3Icon || "").trim();
-
-  if (preferredIconUrl && !isBlockedLogoUrl(preferredIconUrl)) return preferredIconUrl;
-  if (staticIcon && !isBlockedLogoUrl(staticIcon)) return staticIcon;
-  if (s3Icon && !isBlockedLogoUrl(s3Icon)) return s3Icon;
-  if (preferredIconUrl && !preferredIconUrl.startsWith("https://medic-data.s3.")) return preferredIconUrl;
-  if (staticIcon) return staticIcon;
-  return "";
-}
-
 function toRegistryItemFromExternal(candidate: ExternalSymbolCandidate): SymbolRegistryItem {
   const staticIcon = resolveStaticIcon(candidate.symbol);
-  const realIconUrl = resolvePreferredLogoUrl({ iconUrl: candidate.iconUrl, staticIcon });
+  const realIconUrl = candidate.iconUrl || staticIcon || "";
   const fallbackIcon = fallbackSymbolIconUrl(candidate.exchange);
   const isFallback = !realIconUrl;
   const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -452,35 +426,6 @@ function hasStrongLocalMatch(items: SymbolRegistryItem[], query: string): boolea
   });
 }
 
-// Watchlist boost: cached user portfolio symbols for search ranking
-const watchlistCache = new Map<string, { symbols: Set<string>; loadedAt: number }>();
-const WATCHLIST_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-async function getUserWatchlistSymbols(userId?: string): Promise<Set<string> | undefined> {
-  if (!userId) return undefined;
-  const cached = watchlistCache.get(userId);
-  if (cached && (Date.now() - cached.loadedAt) < WATCHLIST_CACHE_TTL_MS) {
-    return cached.symbols;
-  }
-  try {
-    const portfolio = await PortfolioModel.findOne({ userId })
-      .select({ holdings: 1 })
-      .lean<{ holdings?: Array<{ symbol: string }> }>();
-    const symbols = new Set(
-      (portfolio?.holdings ?? []).map((h) => h.symbol.toUpperCase()),
-    );
-    watchlistCache.set(userId, { symbols, loadedAt: Date.now() });
-    // Cap watchlist cache size
-    if (watchlistCache.size > 1000) {
-      const oldest = watchlistCache.keys().next().value as string;
-      watchlistCache.delete(oldest);
-    }
-    return symbols.size > 0 ? symbols : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function searchSymbols(params: {
   query: string;
   type?: string;
@@ -490,7 +435,6 @@ export async function searchSymbols(params: {
   cursor?: string;
   userId?: string;
   userCountry?: string;
-  forceCursorMode?: boolean;
   skipLogoEnrichment?: boolean;
   disablePrefetch?: boolean;
   skipSearchFrequencyUpdate?: boolean;
@@ -517,7 +461,7 @@ export async function searchSymbols(params: {
     = "index";
 
   // --- INTELLIGENT SEARCH: first page uses prefix+fuzzy+clustering ---
-  if (query && !cursor && !params.cursor && !params.forceCursorMode) {
+  if (query && !cursor && !params.cursor) {
     const finalCacheKey = clusterScopedKey(
       "search",
       query.toLowerCase(),
@@ -528,7 +472,6 @@ export async function searchSymbols(params: {
       finalCacheKey,
       FINAL_SEARCH_CACHE_TTL_SECONDS,
       async () => {
-        const watchlistSymbols = await getUserWatchlistSymbols(params.userId);
         let indexResult: SearchIndexLookupResult = { items: [], total: 0, hasMore: false, source: "prefix-index" };
         try {
           indexResult = await lookupSymbolsFromIndex({
@@ -537,7 +480,6 @@ export async function searchSymbols(params: {
             type: params.type,
             country: normalizedCountry,
             userCountry: normalizedUserCountry,
-            watchlistSymbols,
           });
         } catch (error) {
           logger.warn("search_index_lookup_failed", {
@@ -554,7 +496,7 @@ export async function searchSymbols(params: {
           searchSource = "index";
           smartItems = indexResult.items.map((item) => {
             const staticIcon = resolveStaticIcon(item.symbol);
-            const realIconUrl = resolvePreferredLogoUrl({ iconUrl: item.iconUrl, s3Icon: item.s3Icon, staticIcon });
+            const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
             const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
             const isFallback = !realIconUrl;
             const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -620,7 +562,7 @@ export async function searchSymbols(params: {
 
           smartItems = cachedCandidates.items.map((item) => {
             const staticIcon = resolveStaticIcon(item.symbol);
-            const realIconUrl = resolvePreferredLogoUrl({ iconUrl: item.iconUrl, s3Icon: item.s3Icon, staticIcon });
+            const realIconUrl = item.iconUrl || item.s3Icon || staticIcon || "";
             const fallbackIcon = fallbackSymbolIconUrl(item.exchange);
             const isFallback = !realIconUrl;
             const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -731,7 +673,7 @@ export async function searchSymbols(params: {
   }
   // --- END INTELLIGENT SEARCH ---
 
-  if (!query && !cursor && !params.cursor && !params.forceCursorMode) {
+  if (!query && !cursor && !params.cursor) {
     const discoveryCacheKey = clusterScopedKey(
       "search-discovery",
       `${params.type ?? "all"}:${normalizedCountry ?? "all"}:${normalizedUserCountry ?? "GLOBAL"}:${limit}`,
@@ -743,7 +685,7 @@ export async function searchSymbols(params: {
       async () => {
         const normalizedType = coerceSymbolType(params.type);
         const countryFilter = buildCountryFilterInput(normalizedCountry);
-        const discoveryFilter: FilterQuery<SymbolDocument> = {};
+        const discoveryFilter: FilterQuery<SymbolDocument> = { isCleanAsset: true };
         if (normalizedType) {
           discoveryFilter.type = normalizedType;
         }
@@ -824,7 +766,7 @@ export async function searchSymbols(params: {
         const pagedRows = grouped.slice(0, limit);
         const items: SymbolRegistryItem[] = pagedRows.map((row) => {
           const staticIcon = resolveStaticIcon(row.symbol);
-          const realIconUrl = resolvePreferredLogoUrl({ iconUrl: row.iconUrl, s3Icon: row.s3Icon, staticIcon });
+          const realIconUrl = row.iconUrl || row.s3Icon || staticIcon || "";
           const fallbackIcon = fallbackSymbolIconUrl(row.exchange);
           const isFallback = !realIconUrl;
           const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -894,7 +836,7 @@ export async function searchSymbols(params: {
   );
 
   const response = await getOrSetCachedJsonWithLock<SymbolSearchResult>(cacheKey, CACHE_TTL_SECONDS, async () => {
-    const baseFilter = buildFilter({ query, type: params.type, country: normalizedCountry });
+    const baseFilter = { ...buildFilter({ query, type: params.type, country: normalizedCountry }), isCleanAsset: true };
     let filter: FilterQuery<SymbolDocument> = baseFilter;
 
     if (cursor) {
@@ -946,6 +888,7 @@ export async function searchSymbols(params: {
     }
 
     const exactMatchFilter: FilterQuery<SymbolDocument> = {
+      isCleanAsset: true,
       symbol: query.toUpperCase(),
       ...(params.type ? { type: coerceSymbolType(params.type) || params.type } : {}),
     };
@@ -1021,7 +964,7 @@ export async function searchSymbols(params: {
       : null;
     const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => {
       const staticIcon = resolveStaticIcon(rest.symbol);
-      const realIconUrl = resolvePreferredLogoUrl({ iconUrl: rest.iconUrl, s3Icon: rest.s3Icon, staticIcon });
+      const realIconUrl = rest.iconUrl || rest.s3Icon || staticIcon || "";
       const fallbackIcon = fallbackSymbolIconUrl(rest.exchange);
       const isFallback = !realIconUrl;
       const displayIconUrl = isFallback ? fallbackIcon : realIconUrl;
@@ -1191,14 +1134,12 @@ export async function fetchSymbolFilters(type?: string): Promise<{
 export function mapCategoryToSymbolType(category?: string): SymbolType | undefined {
   if (!category) return undefined;
   const normalized = category.toLowerCase();
-  if (normalized === "stocks") return "stock";
-  if (normalized === "bonds") return "bond";
+  if (normalized === "stocks" || normalized === "bonds") return "stock";
   if (normalized === "funds") return "etf";
   if (normalized === "options" || normalized === "futures") return "derivative";
   if (normalized === "crypto") return "crypto";
   if (normalized === "forex") return "forex";
-  if (normalized === "indices") return "index";
-  if (normalized === "economy") return "economy";
+  if (normalized === "indices" || normalized === "economy") return "index";
   return undefined;
 }
 
@@ -1251,9 +1192,6 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
     source: "symbol-registry",
     futureCategory: category === "futures" ? (symbol.type === "derivative" ? "index" : "commodity") : undefined,
     economyCategory: category === "economy" ? "macro" : undefined,
-    expiry: (symbol as unknown as Record<string, unknown>).expiry as string | undefined,
-    strike: (symbol as unknown as Record<string, unknown>).strike as string | undefined,
-    underlyingAsset: (symbol as unknown as Record<string, unknown>).underlyingAsset as string | undefined,
     price: symbol.price ?? 0,
     change: symbol.change ?? 0,
     changePercent: symbol.changePercent ?? 0,

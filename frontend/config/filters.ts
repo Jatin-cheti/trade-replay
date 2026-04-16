@@ -75,12 +75,7 @@ export const PREDEFINED_COUNTRIES: AssetSearchFilterOption[] = [
 
 // ── Stock Filters ─────────────────────────────────────────────────────────────
 export const STOCK_TYPES: AssetSearchFilterOption[] = [
-  option("all", "All types"),
-  option("common_stock", "Common stock"),
-  option("preferred_stock", "Preferred stock"),
-  option("depository_receipt", "Depository Receipt"),
-  option("warrant", "Warrant"),
-  option("pre_ipo", "Pre-IPO"),
+  option("stock", "Stocks"),
 ];
 
 export const STOCK_SECTORS: AssetSearchFilterOption[] = [
@@ -110,11 +105,7 @@ export const STOCK_SECTORS: AssetSearchFilterOption[] = [
 
 // ── Funds ─────────────────────────────────────────────────────────────────────
 export const FUND_TYPES: AssetSearchFilterOption[] = [
-  option("all", "All types"),
-  option("etf", "ETF"),
-  option("mutual_fund", "Mutual fund"),
-  option("trust", "Trust"),
-  option("reit", "REIT"),
+  option("etf", "ETFs"),
 ];
 
 // ── Futures ───────────────────────────────────────────────────────────────────
@@ -134,9 +125,7 @@ export const FUTURES_CATEGORIES: AssetSearchFilterOption[] = [
 
 // ── Bonds ─────────────────────────────────────────────────────────────────────
 export const BOND_TYPES: AssetSearchFilterOption[] = [
-  option("all", "All types"),
-  option("government", "Government"),
-  option("corporate", "Corporate"),
+  option("stock", "Bonds"),
 ];
 
 // ── Forex Sources ─────────────────────────────────────────────────────────────
@@ -363,12 +352,7 @@ export const CRYPTO_SOURCES: AssetSearchFilterOption[] = [
 ];
 
 export const CRYPTO_TYPES: AssetSearchFilterOption[] = [
-  option("all", "All types"),
-  option("spot", "Spot"),
-  option("swap", "Swap"),
-  option("futures", "Futures"),
-  option("index", "Index"),
-  option("fundamental", "Fundamental"),
+  option("crypto", "Cryptocurrencies"),
 ];
 
 export const CRYPTO_EXCHANGE_TYPES: AssetSearchFilterOption[] = [
@@ -569,19 +553,16 @@ export function getStaticFilters(category?: "all" | AssetCategory): AssetSearchF
   if (resolved === "stocks") {
     return {
       ...emptyFilters("modal"),
-      activeFilters: ["country", "type", "sector"],
+      activeFilters: ["country"],
       countries: PREDEFINED_COUNTRIES,
-      types: STOCK_TYPES,
-      sectors: STOCK_SECTORS,
     };
   }
 
   if (resolved === "funds") {
     return {
       ...emptyFilters("modal"),
-      activeFilters: ["country", "type"],
+      activeFilters: ["country"],
       countries: PREDEFINED_COUNTRIES,
-      types: FUND_TYPES,
     };
   }
 
@@ -606,10 +587,8 @@ export function getStaticFilters(category?: "all" | AssetCategory): AssetSearchF
   if (resolved === "crypto") {
     return {
       ...emptyFilters("modal"),
-      activeFilters: ["source", "type", "exchangeType"],
+      activeFilters: ["source"],
       sources: CRYPTO_SOURCES,
-      types: CRYPTO_TYPES,
-      exchangeTypes: CRYPTO_EXCHANGE_TYPES,
       sourceUiType: "modal",
     };
   }
@@ -626,9 +605,8 @@ export function getStaticFilters(category?: "all" | AssetCategory): AssetSearchF
   if (resolved === "bonds") {
     return {
       ...emptyFilters("modal"),
-      activeFilters: ["country", "type"],
+      activeFilters: ["country"],
       countries: PREDEFINED_COUNTRIES,
-      types: BOND_TYPES,
     };
   }
 
@@ -646,12 +624,10 @@ export function getStaticFilters(category?: "all" | AssetCategory): AssetSearchF
   if (resolved === "options") {
     return {
       ...emptyFilters("modal"),
-      activeFilters: ["country", "type", "expiry", "underlyingAsset"],
+      activeFilters: ["country", "expiry", "underlyingAsset"],
       countries: PREDEFINED_COUNTRIES,
       types: [
-        option("all", "All Types"),
-        option("call", "Call"),
-        option("put", "Put"),
+        option("derivative", "Options"),
       ],
       expiries: [
         option("all", "All Expiries"),

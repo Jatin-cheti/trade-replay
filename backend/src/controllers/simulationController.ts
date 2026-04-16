@@ -204,11 +204,13 @@ function matchesAssetFilters(asset: ReturnType<typeof toAssetSearchItem>, filter
   if (filters.country && !matchesCountryFlexible(String(asset.country || ""), String(asset.exchange || ""), filters.country)) return false;
   if (filters.type && String(asset.type || "").toLowerCase() !== filters.type) return false;
   if (filters.sector && String(asset.sector || "").toLowerCase() !== filters.sector) return false;
-  // For indices, source filter can match either the source field or country code
+  // Source filter matches exchange, source field, or country (for indices with country-based grouping)
   if (filters.source) {
-    const assetSource = String(asset.source || "").toLowerCase();
+    const normalizedFilter = filters.source.replace(/_/g, "").toLowerCase();
+    const assetSource = String(asset.source || "").replace(/[._\s]/g, "").toLowerCase();
+    const assetExchange = String(asset.exchange || "").replace(/[._\s]/g, "").toLowerCase();
     const assetCountry = String(asset.country || "").toLowerCase();
-    if (assetSource !== filters.source && assetCountry !== filters.source) return false;
+    if (assetSource !== normalizedFilter && assetExchange !== normalizedFilter && assetCountry !== filters.source) return false;
   }
   if (filters.exchangeType && String(asset.exchangeType || "").toLowerCase() !== filters.exchangeType) return false;
   if (filters.futureCategory && String(asset.futureCategory || "").toLowerCase() !== filters.futureCategory) return false;
@@ -416,8 +418,14 @@ export function createSimulationController(service: SimulationService) {
         underlyingAsset: requestedUnderlyingAsset,
       };
 
+      // Stable key for client-side staleness detection
+      const queryKey = [requestedQuery, requestedCategory, requestedCountry, requestedType,
+        requestedSector, requestedSource, requestedExchangeType, requestedFutureCategory,
+        requestedEconomyCategory].filter(Boolean).join("|") || "default";
+
       // ── Over-fetch factor: when post-filters are active we need more candidates ──
-      const hasPostFilters = !!(requestedCategory || requestedType || requestedSector ||
+      // Note: requestedCategory is excluded — it's already pushed to DB via queryType
+      const hasPostFilters = !!(requestedType || requestedSector ||
         requestedSource || requestedExchangeType || requestedFutureCategory ||
         requestedEconomyCategory || requestedExpiry || requestedStrike || requestedUnderlyingAsset);
       const fetchLimit = hasPostFilters ? Math.min(100, safeLimit * 3) : safeLimit;
@@ -511,6 +519,15 @@ export function createSimulationController(service: SimulationService) {
 
         if (cleanType) {
           andFilters.push({ type: cleanType });
+        }
+
+        if (requestedSource) {
+          const srcPattern = new RegExp(`^${escapeRegex(requestedSource).replace(/_/g, "[._\\\\s]?")}$`, "i");
+          andFilters.push({ $or: [{ exchange: { $regex: srcPattern } }, { source: { $regex: srcPattern } }] });
+        }
+
+        if (requestedSector) {
+          andFilters.push({ sector: { $regex: new RegExp(`^${escapeRegex(requestedSector)}$`, "i") } });
         }
 
         if (requestedCountry) {
@@ -702,6 +719,11 @@ export function createSimulationController(service: SimulationService) {
         const andFilters: Array<Record<string, unknown>> = [];
         if (symType) andFilters.push({ type: symType });
 
+        if (requestedSource) {
+          const srcPattern = new RegExp(`^${escapeRegex(requestedSource).replace(/_/g, "[._\\\\s]?")}$`, "i");
+          andFilters.push({ $or: [{ exchange: { $regex: srcPattern } }, { source: { $regex: srcPattern } }] });
+        }
+
         if (requestedCountry) {
           const countryInput = buildCountryFilterInput(requestedCountry);
           if (countryInput) {
@@ -815,11 +837,17 @@ export function createSimulationController(service: SimulationService) {
       // Fast path: query searches hit Symbol collection first, then clean_assets.
       if (requestedQuery.trim()) {
         const queryOffset = decodeCategoryOffset(cursor);
-        let cleanQueryBatch = await buildSymbolFallback(safeLimit + 1, queryOffset);
+        const queryFetchCount = hasPostFilters ? fetchLimit + 1 : safeLimit + 1;
+        let cleanQueryBatch = await buildSymbolFallback(queryFetchCount, queryOffset);
 
         // Fallback to CleanAsset when Symbol collection yields nothing
         if (cleanQueryBatch.length === 0) {
-          cleanQueryBatch = await buildCleanAssetsFallback(safeLimit + 1, queryOffset);
+          cleanQueryBatch = await buildCleanAssetsFallback(queryFetchCount, queryOffset);
+        }
+
+        // Apply post-filters (source, sector, exchangeType, futureCategory, etc.)
+        if (hasPostFilters) {
+          cleanQueryBatch = cleanQueryBatch.filter((a) => matchesAssetFilters(a, assetFilters));
         }
 
         if (cleanQueryBatch.length > 0) {
@@ -828,6 +856,7 @@ export function createSimulationController(service: SimulationService) {
           const nextCleanQueryCursor = hasMoreFromCleanQuery ? `off:${queryOffset + safeLimit}` : null;
 
           res.json({
+            queryKey,
             assets: paged,
             total: queryOffset + paged.length + (hasMoreFromCleanQuery ? 1 : 0),
             page: 1,
@@ -844,7 +873,13 @@ export function createSimulationController(service: SimulationService) {
         const categoryOffset = decodeCategoryOffset(cursor);
 
         // Use Symbol collection as the primary paginated source for all categories
-        const symbolBatch = await buildSymbolFallback(safeLimit + 1, categoryOffset);
+        const catFetchCount = hasPostFilters ? fetchLimit + 1 : safeLimit + 1;
+        let symbolBatch = await buildSymbolFallback(catFetchCount, categoryOffset);
+
+        // Apply post-filters (source, sector, exchangeType, futureCategory, etc.)
+        if (hasPostFilters) {
+          symbolBatch = symbolBatch.filter((a) => matchesAssetFilters(a, assetFilters));
+        }
 
         if (symbolBatch.length > 0) {
           const hasMore = symbolBatch.length > safeLimit;
@@ -865,6 +900,7 @@ export function createSimulationController(service: SimulationService) {
           const resolvedNextCursor = resolvedHasMore ? `off:${categoryOffset + safeLimit}` : null;
 
           res.json({
+            queryKey,
             assets: paged,
             total: Math.max(totalCount, categoryOffset + paged.length + (resolvedHasMore ? 1 : 0)),
             page: 1,
@@ -876,13 +912,17 @@ export function createSimulationController(service: SimulationService) {
         }
 
         // CleanAsset fallback when Symbol collection has nothing for this category
-        const cleanBatch = await buildCleanAssetsFallback(safeLimit + 1, categoryOffset);
+        let cleanBatch = await buildCleanAssetsFallback(hasPostFilters ? fetchLimit + 1 : safeLimit + 1, categoryOffset);
+        if (hasPostFilters) {
+          cleanBatch = cleanBatch.filter((a) => matchesAssetFilters(a, assetFilters));
+        }
         if (cleanBatch.length > 0) {
           const hasMoreFromClean = cleanBatch.length > safeLimit;
           const paged = await enrichWithSnapshotPrices(await applyLogoReuse(cleanBatch.slice(0, safeLimit)));
           const nextCategoryCursor = hasMoreFromClean ? `off:${categoryOffset + safeLimit}` : null;
 
           res.json({
+            queryKey,
             assets: paged,
             total: categoryOffset + paged.length + (hasMoreFromClean ? 1 : 0),
             page: 1,
@@ -913,6 +953,7 @@ export function createSimulationController(service: SimulationService) {
         if (seedFallback.assets.length > 0) {
           const mappedSeed = await enrichWithSnapshotPrices(await applyLogoReuse(seedFallback.assets.map((item) => mapCatalogAssetToUi(item))));
           res.json({
+            queryKey,
             assets: mappedSeed,
             total: mappedSeed.length,
             page: 1,
@@ -927,7 +968,7 @@ export function createSimulationController(service: SimulationService) {
       // Fast path: "All" category + empty query ➜ Symbol collection with offset pagination
       if (!requestedQuery.trim() && (!requestedCategory || requestedCategory === "all")) {
         const categoryOffset = decodeCategoryOffset(cursor);
-        const allFilter: Record<string, unknown> = {};
+        const allAndFilters: Array<Record<string, unknown>> = [];
         if (requestedCountry) {
           const countryInput = buildCountryFilterInput(requestedCountry);
           if (countryInput) {
@@ -937,20 +978,37 @@ export function createSimulationController(service: SimulationService) {
             if (countryInput.exchanges.length > 0) {
               countryOrExchange.push({ exchange: { $in: countryInput.exchanges } });
             }
-            allFilter.$or = countryOrExchange;
+            allAndFilters.push({ $or: countryOrExchange });
           }
         }
+        if (requestedType) {
+          allAndFilters.push({ type: requestedType });
+        }
+        if (requestedSource) {
+          const srcPattern = new RegExp(`^${escapeRegex(requestedSource).replace(/_/g, "[._\\\\s]?")}$`, "i");
+          allAndFilters.push({ $or: [{ exchange: { $regex: srcPattern } }, { source: { $regex: srcPattern } }] });
+        }
+        const allFilter: Record<string, unknown> = allAndFilters.length === 0
+          ? {}
+          : allAndFilters.length === 1
+            ? allAndFilters[0]
+            : { $and: allAndFilters };
+        const allFetchCount = hasPostFilters ? fetchLimit + 1 : safeLimit + 1;
         const allDocs = await SymbolModel.find(allFilter)
           .sort({ priorityScore: -1, marketCap: -1, liquidityScore: -1, _id: -1 })
           .skip(categoryOffset)
-          .limit(safeLimit + 1)
+          .limit(allFetchCount)
           .lean();
-        const allBatch = allDocs.map((doc) => toAssetSearchItem(doc as any));
+        let allBatch = allDocs.map((doc) => toAssetSearchItem(doc as any));
+        if (hasPostFilters) {
+          allBatch = allBatch.filter((a) => matchesAssetFilters(a, assetFilters));
+        }
         const allHasMore = allBatch.length > safeLimit;
         const allPaged = await enrichWithSnapshotPrices(await applyLogoReuse(allBatch.slice(0, safeLimit)));
         const allTotalCount = await SymbolModel.estimatedDocumentCount().catch(() => allPaged.length);
         const allResolvedHasMore = allHasMore || (categoryOffset + safeLimit < allTotalCount);
         res.json({
+          queryKey,
           assets: allPaged,
           total: allTotalCount,
           page: 1,
@@ -1055,6 +1113,7 @@ export function createSimulationController(service: SimulationService) {
       });
 
       res.json({
+        queryKey,
         assets: trimmedAssets,
         total: resolvedTotal,
         page: 1,

@@ -423,6 +423,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
 
   // PHASE 1: Exact match (O(1) via index)
   const exactRows = await SymbolModel.find({
+    isCleanAsset: true,
     symbol: upperQuery,
     ...typeFilter,
   })
@@ -433,6 +434,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
 
   // PHASE 2: Prefix match via anchored symbol regex
   const prefixRows = await SymbolModel.find({
+    isCleanAsset: true,
     symbol: { $regex: `^${escapeRegex(upperQuery)}` },
     ...typeFilter,
   })
@@ -443,6 +445,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
 
   // PHASE 3: Name match (partial name search, limited)
   const nameRows = await SymbolModel.find({
+    isCleanAsset: true,
     name: { $regex: escapeRegex(query), $options: "i" },
     ...typeFilter,
   })
@@ -494,6 +497,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
   if (query.length >= 3) {
     if (seen.size < 50) {
       const topSymbols = await SymbolModel.find({
+        isCleanAsset: true,
         symbol: { $regex: `^${escapeRegex(upperQuery.slice(0, 2))}`, $options: "i" },
         ...typeFilter,
       })
@@ -545,6 +549,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
   const sectorSymbols = SECTOR_MAP[lowerQuery];
   if (sectorSymbols) {
     const sectorRows = await SymbolModel.find({
+      isCleanAsset: true,
       symbol: { $in: sectorSymbols },
       ...typeFilter,
     })

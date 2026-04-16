@@ -1,23 +1,13 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, Globe, Search, X } from "lucide-react";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { AssetCategory, AssetSearchItem, AssetSortOption } from "@/lib/assetSearch";
+import type { AssetCategory, AssetSearchItem } from "@/lib/assetSearch";
 import { FilterDropdown, ModalPanel, ModalTriggerButton, SYMBOL_CATEGORIES } from "@/components/simulation/symbolSearchModalParts";
 import { useSymbolSearch } from "@/components/simulation/useSymbolSearch";
 import { FutureContractsView } from "@/components/simulation/FutureContractsView";
-import { isSpreadExpression, parseQuery, extractSymbols } from "@/lib/spreadOperator";
-import { api } from "@/lib/api";
 
 const FALLBACK_ICON = "/icons/exchange/default.svg";
-
-const SORT_OPTIONS: Array<{ value: AssetSortOption; label: string }> = [
-  { value: "relevance", label: "Relevance" },
-  { value: "name", label: "Name" },
-  { value: "symbol", label: "Symbol" },
-  { value: "volume", label: "Volume" },
-  { value: "marketCap", label: "Market Cap" },
-];
 
 function formatCompactNumber(value?: number): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "--";
@@ -103,14 +93,9 @@ export default function SymbolSearchModal({
     exchangeType, setExchangeType,
     futureCategory, setFutureCategory,
     economyCategory, setEconomyCategory,
-    expiry, setExpiry,
-    strike, setStrike,
-    underlyingAsset, setUnderlyingAsset,
-    sort, setSort,
     rows,
     loading,
     loadingMore,
-    hasMore,
     total,
     activeFilters,
     countryOptions,
@@ -120,9 +105,6 @@ export default function SymbolSearchModal({
     exchangeTypeOptions,
     futureCategoryOptions,
     economyCategoryOptions,
-    expiryOptions,
-    strikeOptions,
-    underlyingAssetOptions,
     sourceUiType,
     selectedFutureRoot, setSelectedFutureRoot,
     selectedCountryLabel,
@@ -132,44 +114,13 @@ export default function SymbolSearchModal({
     selectedExchangeTypeLabel,
     selectedFutureCategoryLabel,
     selectedEconomyCategoryLabel,
-    selectedExpiryLabel,
-    selectedStrikeLabel,
-    selectedUnderlyingAssetLabel,
     listContainerRef,
+    loadingTriggerRef,
   } = useSymbolSearch(open, selectedSymbol, initialCategory);
-
-  const spreadInfo = useMemo(() => {
-    if (!query || !isSpreadExpression(query)) return null;
-    const parsed = parseQuery(query);
-    if (parsed.type !== "spread") return null;
-    return { parsed, symbols: extractSymbols(parsed) };
-  }, [query]);
-
-  // Fire-and-forget click tracking for ML-lite CTR ranking
-  const trackSearchClick = (item: AssetSearchItem, position: number) => {
-    if (!query) return;
-    void api.post("/simulation/search/click", {
-      query,
-      symbol: item.ticker || item.symbol,
-      exchange: item.exchange,
-      position,
-    }).catch(() => { /* telemetry; never block UX */ });
-  };
-
-  // Fire-and-forget impression tracking for proper CTR = clicks/impressions
-  const lastImpressionKey = useRef("");
-  useEffect(() => {
-    if (!query || rows.length === 0) return;
-    const symbols = rows.slice(0, 50).map((r) => r.ticker || r.symbol);
-    const key = `${query}:${symbols.join(",")}`;
-    if (key === lastImpressionKey.current) return; // deduplicate
-    lastImpressionKey.current = key;
-    void api.post("/simulation/search/impression", { query, symbols }).catch(() => {});
-  }, [query, rows]);
 
   useEffect(() => {
     setExpandedGroups({});
-  }, [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset]);
+  }, [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
 
   const groupedRows = useMemo(() => {
     const order: string[] = [];
@@ -265,7 +216,7 @@ export default function SymbolSearchModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="symbol-search-modal" className="w-[min(960px,94vw)] max-w-none gap-3 border-border/80 bg-background/95 p-0 backdrop-blur-xl">
+      <DialogContent data-testid="symbol-search-modal" className="w-[min(960px,96vw)] max-w-none gap-3 border-border/80 bg-background/95 p-0 backdrop-blur-xl">
         <DialogHeader className="px-6 pt-5 pb-1">
           <DialogTitle className="font-display text-[1.9rem]">Symbol Search</DialogTitle>
         </DialogHeader>
@@ -278,7 +229,7 @@ export default function SymbolSearchModal({
                 data-testid="symbol-search-input"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Symbol or name (e.g. AAPL, BTC or AAPL/MSFT spread)"
+                placeholder="Symbol or name"
                 className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
               {query ? (
@@ -288,16 +239,6 @@ export default function SymbolSearchModal({
               ) : null}
             </div>
           </div>
-
-          {spreadInfo ? (
-            <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-              <span className="font-semibold text-primary">Spread detected:</span>{" "}
-              <span className="text-foreground">{spreadInfo.parsed.displayLabel}</span>
-              <span className="ml-2 text-muted-foreground">
-                ({spreadInfo.symbols.length} legs: {spreadInfo.symbols.join(` ${spreadInfo.parsed.operator} `)})
-              </span>
-            </div>
-          ) : null}
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {SYMBOL_CATEGORIES.map((categoryItem) => (
@@ -325,7 +266,7 @@ export default function SymbolSearchModal({
           </div>
 
           {activeFilters.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
               {activeFilters.includes("source") && sourceUiType === "modal" ? (
                 <ModalTriggerButton
                   testId="symbol-filter-source-modal"
@@ -401,52 +342,11 @@ export default function SymbolSearchModal({
                   onChange={setEconomyCategory}
                 />
               ) : null}
-
-              {activeFilters.includes("expiry") ? (
-                <FilterDropdown
-                  testId="symbol-filter-expiry"
-                  triggerLabel={selectedExpiryLabel}
-                  value={expiry}
-                  options={expiryOptions}
-                  onChange={setExpiry}
-                />
-              ) : null}
-
-              {activeFilters.includes("underlyingAsset") ? (
-                <FilterDropdown
-                  testId="symbol-filter-underlying-asset"
-                  triggerLabel={selectedUnderlyingAssetLabel}
-                  value={underlyingAsset}
-                  options={underlyingAssetOptions}
-                  onChange={setUnderlyingAsset}
-                />
-              ) : null}
-
-              {activeFilters.includes("strike") ? (
-                <FilterDropdown
-                  testId="symbol-filter-strike"
-                  triggerLabel={selectedStrikeLabel}
-                  value={strike}
-                  options={strikeOptions}
-                  onChange={setStrike}
-                />
-              ) : null}
             </div>
           )}
 
-          <div className="mt-3 flex items-center justify-between">
-            <div />
-            <FilterDropdown
-              testId="symbol-sort"
-              triggerLabel={`Sort: ${SORT_OPTIONS.find((opt) => opt.value === sort)?.label ?? "Relevance"}`}
-              value={sort}
-              options={SORT_OPTIONS}
-              onChange={(nextValue) => setSort(nextValue as AssetSortOption)}
-            />
-          </div>
-
-          <div ref={listContainerRef} className="mt-2 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
-            {groupedRows.map((group, groupIndex) => {
+          <div ref={listContainerRef} className="mt-3 max-h-[65vh] sm:max-h-[70vh] md:max-h-[75vh] overflow-y-auto rounded-xl border border-border/70">
+            {groupedRows.map((group) => {
               const item = group.representative;
               const isPositive = (item.changePercent ?? 0) >= 0;
               const changeClass = isPositive ? "text-profit" : "text-loss";
@@ -473,7 +373,6 @@ export default function SymbolSearchModal({
                         return;
                       }
                       onSelect(item);
-                      trackSearchClick(item, groupIndex);
                       onOpenChange(false);
                     }}
                     className={`grid w-full grid-cols-[1fr_auto] items-center gap-4 px-3 py-2.5 text-left transition-colors hover:bg-secondary/45 ${
@@ -522,7 +421,6 @@ export default function SymbolSearchModal({
                           type="button"
                           onClick={() => {
                             onSelect(listing);
-                            trackSearchClick(listing, groupIndex);
                             onOpenChange(false);
                           }}
                           className="mt-1 grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-border/60 bg-secondary/25 px-2.5 py-2 text-left transition-colors hover:bg-secondary/45 first:mt-0"
@@ -549,16 +447,18 @@ export default function SymbolSearchModal({
             {loading ? <p className="px-3 py-4 text-center text-xs text-muted-foreground">Loading symbols...</p> : null}
             {!loading && rows.length > 0 ? (
               <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
-                {groupedRows.length !== rows.length
-                  ? `Showing ${groupedRows.length} companies from ${rows.length}${hasMore ? "+" : ""} listings`
-                  : hasMore
-                    ? `Showing ${rows.length}+`
-                    : total > rows.length
-                    ? `Showing ${rows.length} of ${total}`
-                    : `Showing ${rows.length}${hasMore ? "+" : ""}`}
+                Showing {rows.length} of {total}
               </p>
             ) : null}
-            {loadingMore ? <p className="px-3 py-3 text-center text-xs text-muted-foreground">Loading more...</p> : null}
+            {!loading && rows.length > 0 ? (
+              <div ref={loadingTriggerRef} className="flex justify-center py-4">
+                {loadingMore ? (
+                  <p className="text-xs text-muted-foreground">Loading more...</p>
+                ) : hasMore ? (
+                  <p className="text-xs text-muted-foreground">Scroll for more</p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </DialogContent>

@@ -6,6 +6,9 @@ export function createSymbolRoutes() {
   const router = Router();
   const controller = createSymbolController();
 
+  // Public diagnostic endpoint
+  router.get("/logo-audit", controller.logoAudit);
+
   router.use(verifyToken);
   router.get("/search", controller.search);
   router.get("/filters", controller.filters);

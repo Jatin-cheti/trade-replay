@@ -5,8 +5,6 @@ import {
   type AssetCategory,
   type AssetSearchFilterOption,
   type AssetSearchItem,
-  type AssetSearchResponse,
-  type AssetSortOption,
 } from "@/lib/assetSearch";
 import { SYMBOL_CATEGORIES } from "@/components/simulation/symbolSearchModalParts";
 
@@ -40,10 +38,6 @@ export function useSymbolSearch(
   const [exchangeType, setExchangeType] = useState("all");
   const [futureCategory, setFutureCategory] = useState("all");
   const [economyCategory, setEconomyCategory] = useState("all");
-  const [expiry, setExpiry] = useState("all");
-  const [strike, setStrike] = useState("all");
-  const [underlyingAsset, setUnderlyingAsset] = useState("all");
-  const [sort, setSort] = useState<AssetSortOption>("relevance");
 
   const [rows, setRows] = useState<AssetSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,19 +54,11 @@ export function useSymbolSearch(
   const [exchangeTypeOptions, setExchangeTypeOptions] = useState<AssetSearchFilterOption[]>([]);
   const [futureCategoryOptions, setFutureCategoryOptions] = useState<AssetSearchFilterOption[]>([]);
   const [economyCategoryOptions, setEconomyCategoryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [expiryOptions, setExpiryOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [strikeOptions, setStrikeOptions] = useState<AssetSearchFilterOption[]>([]);
-  const [underlyingAssetOptions, setUnderlyingAssetOptions] = useState<AssetSearchFilterOption[]>([]);
   const [sourceUiType, setSourceUiType] = useState<"modal" | "dropdown">("modal");
 
   const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
 
-  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number; nextCursor: string | null }>());
-  const prefetchedPageCache = useRef(new Map<string, AssetSearchResponse>());
-  const listContainerRef = useRef<HTMLDivElement | null>(null);
-  const paginationInFlightRef = useRef(false);
-  const firstPageAbortRef = useRef<AbortController | null>(null);
-  const paginationAbortRef = useRef<AbortController | null>(null);
+  const loadingTriggerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -96,9 +82,6 @@ export function useSymbolSearch(
         setExchangeTypeOptions(response.exchangeTypes ?? []);
         setFutureCategoryOptions(response.futureCategories ?? []);
         setEconomyCategoryOptions(response.economyCategories ?? []);
-        setExpiryOptions(response.expiries ?? []);
-        setStrikeOptions(response.strikes ?? []);
-        setUnderlyingAssetOptions(response.underlyingAssets ?? []);
         setSourceUiType(response.sourceUiType ?? "modal");
       } catch {
         if (cancelled) return;
@@ -110,9 +93,6 @@ export function useSymbolSearch(
         setExchangeTypeOptions([]);
         setFutureCategoryOptions([]);
         setEconomyCategoryOptions([]);
-        setExpiryOptions([]);
-        setStrikeOptions([]);
-        setUnderlyingAssetOptions([]);
         setSourceUiType("modal");
       }
     })();
@@ -130,20 +110,12 @@ export function useSymbolSearch(
     setExchangeType("all");
     setFutureCategory("all");
     setEconomyCategory("all");
-    setExpiry("all");
-    setStrike("all");
-    setUnderlyingAsset("all");
     setView("search");
     setSelectedFutureRoot(null);
   }, [category]);
 
-  const effectiveQuery = useMemo(() => {
-    const normalized = query.trim();
-    return normalized.length < 2 ? "" : normalized;
-  }, [query]);
-
   const filterKey = useMemo(() => JSON.stringify({
-    q: effectiveQuery,
+    q: query.trim(),
     category,
     country,
     type,
@@ -152,11 +124,7 @@ export function useSymbolSearch(
     exchangeType,
     futureCategory,
     economyCategory,
-    expiry,
-    strike,
-    underlyingAsset,
-    sort,
-  }), [effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
+  }), [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
 
   useEffect(() => {
     if (!open) return;
@@ -178,7 +146,7 @@ export function useSymbolSearch(
       firstPageAbortRef.current = controller;
       try {
         const response = await searchAssets({
-          q: effectiveQuery,
+          q: query.trim(),
           category: category === "all" ? undefined : category,
           country: country === "all" ? undefined : country,
           type: type === "all" ? undefined : type,
@@ -187,10 +155,6 @@ export function useSymbolSearch(
           exchangeType: exchangeType === "all" ? undefined : exchangeType,
           futureCategory: futureCategory === "all" ? undefined : futureCategory,
           economyCategory: economyCategory === "all" ? undefined : economyCategory,
-          expiry: expiry === "all" ? undefined : expiry,
-          strike: strike === "all" ? undefined : strike,
-          underlyingAsset: underlyingAsset === "all" ? undefined : underlyingAsset,
-          sort,
           limit: 50,
           signal: controller.signal,
         });
@@ -218,10 +182,10 @@ export function useSymbolSearch(
 
     const timer = window.setTimeout(async () => {
       await loadFirstPage();
-    }, 200);
+    }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [open, filterKey, effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
+  }, [open, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
 
   useEffect(() => {
     return () => {
@@ -232,75 +196,68 @@ export function useSymbolSearch(
 
   useEffect(() => {
     if (!open) return;
-    const container = listContainerRef.current;
-    if (!container) return;
+    const trigger = loadingTriggerRef.current;
+    if (!trigger) return;
 
-    const onScroll = () => {
-      if (loading || loadingMore || paginationInFlightRef.current || !hasMore || !nextCursor) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && !paginationInFlightRef.current && nextCursor) {
+          paginationInFlightRef.current = true;
+          setLoadingMore(true);
+          paginationAbortRef.current?.abort();
+          const controller = new AbortController();
+          paginationAbortRef.current = controller;
+          void (async () => {
+            try {
+              const response = await searchAssets({
+                q: query.trim(),
+                category: category === "all" ? undefined : category,
+                country: country === "all" ? undefined : country,
+                type: type === "all" ? undefined : type,
+                sector: sector === "all" ? undefined : sector,
+                source: source === "all" ? undefined : source,
+                exchangeType: exchangeType === "all" ? undefined : exchangeType,
+                futureCategory: futureCategory === "all" ? undefined : futureCategory,
+                economyCategory: economyCategory === "all" ? undefined : economyCategory,
+                cursor: nextCursor,
+                limit: 50,
+                signal: controller.signal,
+              });
 
-      const scrollRatio = (container.scrollTop + container.clientHeight) / Math.max(container.scrollHeight, 1);
-      if (scrollRatio < 0.8) return;
+              setRows((previous) => {
+                const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
+                response.assets.forEach((item) => {
+                  mergedMap.set(`${item.category}|${item.ticker}|${item.exchange}`, item);
+                });
+                const merged = Array.from(mergedMap.values());
+                resultCache.current.set(filterKey, {
+                  rows: merged,
+                  hasMore: response.hasMore,
+                  total: response.total,
+                  nextCursor: response.nextCursor ?? null,
+                });
+                return merged;
+              });
 
-      paginationInFlightRef.current = true;
-      setLoadingMore(true);
-      paginationAbortRef.current?.abort();
-      const controller = new AbortController();
-      paginationAbortRef.current = controller;
-      void (async () => {
-        try {
-          const prefetchedKey = `${filterKey}:${nextCursor}`;
-          const prefetched = prefetchedPageCache.current.get(prefetchedKey);
-          const response = prefetched ?? await searchAssets({
-            q: effectiveQuery,
-            category: category === "all" ? undefined : category,
-            country: country === "all" ? undefined : country,
-            type: type === "all" ? undefined : type,
-            sector: sector === "all" ? undefined : sector,
-            source: source === "all" ? undefined : source,
-            exchangeType: exchangeType === "all" ? undefined : exchangeType,
-            futureCategory: futureCategory === "all" ? undefined : futureCategory,
-            economyCategory: economyCategory === "all" ? undefined : economyCategory,
-            expiry: expiry === "all" ? undefined : expiry,
-            strike: strike === "all" ? undefined : strike,
-            underlyingAsset: underlyingAsset === "all" ? undefined : underlyingAsset,
-            sort,
-            cursor: nextCursor,
-            limit: 50,
-            signal: controller.signal,
-          });
-          prefetchedPageCache.current.delete(prefetchedKey);
-
-          setRows((previous) => {
-            const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
-            response.assets.forEach((item) => {
-              mergedMap.set(`${item.category}|${item.ticker}|${item.exchange}`, item);
-            });
-            const merged = Array.from(mergedMap.values());
-            resultCache.current.set(filterKey, {
-              rows: merged,
-              hasMore: response.hasMore,
-              total: response.total,
-              nextCursor: response.nextCursor ?? null,
-            });
-            return merged;
-          });
-
-          setHasMore(response.hasMore);
-          setTotal(response.total);
-          setNextCursor(response.nextCursor ?? null);
-        } catch (error) {
-          if (isRequestCanceled(error)) return;
-          // Keep existing list on pagination failures.
-        } finally {
-          paginationInFlightRef.current = false;
-          setLoadingMore(false);
+              setHasMore(response.hasMore);
+              setTotal(response.total);
+              setNextCursor(response.nextCursor ?? null);
+            } catch (error) {
+              if (isRequestCanceled(error)) return;
+              // Keep existing list on pagination failures.
+            } finally {
+              paginationInFlightRef.current = false;
+              setLoadingMore(false);
+            }
+          })();
         }
-      })();
-    };
+      },
+      { threshold: 0.1, root: listContainerRef.current }
+    );
 
-    container.addEventListener("scroll", onScroll);
-    return () => container.removeEventListener("scroll", onScroll);
-  }, [open, loading, loadingMore, hasMore, nextCursor, effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort, filterKey]);
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [open, hasMore, loading, loadingMore, nextCursor, filterKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -308,38 +265,6 @@ export function useSymbolSearch(
     setView("search");
     setSelectedFutureRoot(null);
   }, [open, selectedSymbol]);
-
-  useEffect(() => {
-    if (!open || loading || loadingMore || !hasMore || !nextCursor) return;
-    const cacheKey = `${filterKey}:${nextCursor}`;
-    if (prefetchedPageCache.current.has(cacheKey)) return;
-
-    const controller = new AbortController();
-    void searchAssets({
-      q: effectiveQuery,
-      category: category === "all" ? undefined : category,
-      country: country === "all" ? undefined : country,
-      type: type === "all" ? undefined : type,
-      sector: sector === "all" ? undefined : sector,
-      source: source === "all" ? undefined : source,
-      exchangeType: exchangeType === "all" ? undefined : exchangeType,
-      futureCategory: futureCategory === "all" ? undefined : futureCategory,
-      economyCategory: economyCategory === "all" ? undefined : economyCategory,
-      expiry: expiry === "all" ? undefined : expiry,
-      strike: strike === "all" ? undefined : strike,
-      underlyingAsset: underlyingAsset === "all" ? undefined : underlyingAsset,
-      sort,
-      cursor: nextCursor,
-      limit: 50,
-      signal: controller.signal,
-    }).then((response) => {
-      prefetchedPageCache.current.set(cacheKey, response);
-    }).catch(() => {
-      // Prefetch is best-effort.
-    });
-
-    return () => controller.abort();
-  }, [open, loading, loadingMore, hasMore, nextCursor, filterKey, effectiveQuery, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort]);
 
   const selectedCountryLabel = useMemo(() => {
     return countryOptions.find((optionItem) => optionItem.value === country)?.label || "All Countries";
@@ -369,18 +294,6 @@ export function useSymbolSearch(
     return economyCategoryOptions.find((optionItem) => optionItem.value === economyCategory)?.label || "All Categories";
   }, [economyCategory, economyCategoryOptions]);
 
-  const selectedExpiryLabel = useMemo(() => {
-    return expiryOptions.find((optionItem) => optionItem.value === expiry)?.label || "All Expiries";
-  }, [expiry, expiryOptions]);
-
-  const selectedStrikeLabel = useMemo(() => {
-    return strikeOptions.find((optionItem) => optionItem.value === strike)?.label || "All Strikes";
-  }, [strike, strikeOptions]);
-
-  const selectedUnderlyingAssetLabel = useMemo(() => {
-    return underlyingAssetOptions.find((optionItem) => optionItem.value === underlyingAsset)?.label || "All Underlying";
-  }, [underlyingAsset, underlyingAssetOptions]);
-
   return {
     view,
     setView,
@@ -402,14 +315,6 @@ export function useSymbolSearch(
     setFutureCategory,
     economyCategory,
     setEconomyCategory,
-    expiry,
-    setExpiry,
-    strike,
-    setStrike,
-    underlyingAsset,
-    setUnderlyingAsset,
-    sort,
-    setSort,
     rows,
     loading,
     loadingMore,
@@ -423,9 +328,6 @@ export function useSymbolSearch(
     exchangeTypeOptions,
     futureCategoryOptions,
     economyCategoryOptions,
-    expiryOptions,
-    strikeOptions,
-    underlyingAssetOptions,
     sourceUiType,
     selectedFutureRoot,
     setSelectedFutureRoot,
@@ -436,9 +338,7 @@ export function useSymbolSearch(
     selectedExchangeTypeLabel,
     selectedFutureCategoryLabel,
     selectedEconomyCategoryLabel,
-    selectedExpiryLabel,
-    selectedStrikeLabel,
-    selectedUnderlyingAssetLabel,
     listContainerRef,
+    loadingTriggerRef,
   };
 }

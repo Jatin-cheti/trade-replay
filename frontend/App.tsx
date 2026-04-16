@@ -17,6 +17,8 @@ import LiveMarket from "./pages/LiveMarket";
 import CreatePortfolio from "./pages/CreatePortfolio";
 import EditPortfolio from "./pages/EditPortfolio";
 import Homepage from "./pages/Homepage";
+import Screener from "./pages/Screener";
+import SymbolPage from "./pages/SymbolPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +60,8 @@ function AnimatedRoutes() {
             <Route path="/portfolio/edit/:portfolioId" element={<RequireAuth><EditPortfolio /></RequireAuth>} />
             <Route path="/simulation" element={<RequireAuth><Simulation /></RequireAuth>} />
             <Route path="/live-market" element={<RequireAuth><LiveMarket /></RequireAuth>} />
+            <Route path="/screener" element={<Screener />} />
+            <Route path="/symbol/:fullSymbol" element={<SymbolPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>

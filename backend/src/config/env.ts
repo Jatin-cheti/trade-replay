@@ -36,6 +36,7 @@ export const env = {
   LOGO_ENRICHMENT_INTERVAL_MS: CONFIG.logoEnrichmentIntervalMs,
   LOGO_FALLBACK_TARGET_RATIO: CONFIG.logoFallbackTargetRatio,
   USD_TO_INR: CONFIG.usdToInr,
+  GEMINI_API_KEY: CONFIG.geminiApiKey,
 };
 
 

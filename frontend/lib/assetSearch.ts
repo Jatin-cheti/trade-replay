@@ -48,6 +48,7 @@ export interface AssetSearchItem {
 }
 
 export interface AssetSearchResponse {
+  queryKey?: string;
   assets: AssetSearchItem[];
   total: number;
   page: number;

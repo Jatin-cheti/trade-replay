@@ -137,7 +137,9 @@ async function main(): Promise<void> {
   await connectDB();
   await connectRedis();
 
-  const queue = new Queue(QUEUE_NAME, { connection: redisConnectionOptions });
+  const queue = new Queue(QUEUE_NAME, {
+    connection: redisConnectionOptions,
+  });
 
   const totalAll = await SymbolModel.estimatedDocumentCount();
   let mapped = await countMapped();

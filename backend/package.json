@@ -10,9 +10,6 @@
     "start": "tsx src/server.ts",
     "start:worker": "tsx src/worker.ts",
     "start:kafka": "tsx src/kafkaService.ts",
-    "start:asset-service": "tsx src/assetService.ts",
-    "dev:asset-service": "tsx watch src/assetService.ts",
-    "benchmark:snapshots": "tsx scripts/benchmarkSnapshots.ts",
     "build": "tsc -p tsconfig.build.json",
     "seed": "tsx src/seeders/seed.ts",
     "seed:domain-dataset": "tsx scripts/seedDomainDataset.ts",
@@ -32,16 +29,17 @@
     "logo:sweep:full": "tsx src/jobs/fullLogoSweep.ts",
     "validate:logo-coverage": "tsx scripts/validateLogoCoverage.ts",
     "ingest:global:infinite": "tsx src/jobs/globalInfiniteExpansionLoop.ts",
-    "map:logos:100k": "tsx scripts/mapLogos100k.ts",
     "global:infinite:loop": "tsx src/jobs/globalInfiniteExpansionLoop.ts",
     "test:search-ranking-snapshots": "tsx scripts/testSearchRankingSnapshots.ts",
-    "agent:global": "node src/agent/globalLogoAgent.cjs"
+    "agent:global": "node src/agent/globalLogoAgent.cjs",
+    "validate:real-system": "tsx scripts/validateRealSystem.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1025.0",
     "@aws-sdk/s3-request-presigner": "^3.1025.0",
     "@bull-board/api": "^6.11.1",
     "@bull-board/express": "^6.11.1",
+    "@google/generative-ai": "^0.24.1",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/compression": "^1.8.1",
     "axios": "^1.15.0",
@@ -74,9 +72,11 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/fast-levenshtein": "^0.0.4",
+    "@types/ioredis-mock": "^8.2.7",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.18.6",
+    "ioredis-mock": "^8.13.1",
     "tsx": "^4.20.6",
     "typescript": "^5.8.3"
   }
