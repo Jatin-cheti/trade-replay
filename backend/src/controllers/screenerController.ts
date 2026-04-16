@@ -57,9 +57,15 @@ const GEO_EXCHANGE_MAP: Record<string, string[]> = {
   BR: ["BOVESPA", "B3"],
 };
 
+/* ── Base quality filter (works without isCleanAsset migration) ─────── */
+const VALID_TYPES = ["stock", "etf", "crypto", "forex", "index", "bond", "economy"];
+function baseQualityFilter(): Record<string, unknown> {
+  return { type: { $in: VALID_TYPES }, name: { $exists: true, $ne: "" } };
+}
+
 /* ── Build filter query ──────────────────────────────────────────────── */
 function buildQuery(filters: z.infer<typeof listSchema>) {
-  const query: Record<string, unknown> = { isCleanAsset: true };
+  const query: Record<string, unknown> = baseQualityFilter();
 
   if (filters.type) query.type = filters.type.toLowerCase();
   if (filters.country) query.country = filters.country.toUpperCase();
@@ -237,7 +243,7 @@ export async function stats(_req: Request, res: Response) {
     }
 
     const agg = await SymbolModel.aggregate([
-      { $match: { isCleanAsset: true } },
+      { $match: baseQualityFilter() },
       { $group: { _id: "$type", count: { $sum: 1 } } },
     ]);
 
@@ -248,10 +254,11 @@ export async function stats(_req: Request, res: Response) {
       total += row.count;
     }
 
+    const bqf = baseQualityFilter();
     const [exchanges, countries, sectors] = await Promise.all([
-      SymbolModel.distinct("exchange", { isCleanAsset: true }),
-      SymbolModel.distinct("country", { isCleanAsset: true }),
-      SymbolModel.distinct("sector", { isCleanAsset: true }).then((s: string[]) => s.filter(Boolean)),
+      SymbolModel.distinct("exchange", bqf),
+      SymbolModel.distinct("country", bqf),
+      SymbolModel.distinct("sector", bqf).then((s: string[]) => s.filter(Boolean)),
     ]);
 
     const result = {
@@ -291,12 +298,8 @@ export async function symbolDetail(req: Request, res: Response) {
       } catch { /* miss */ }
     }
 
-    let doc = await SymbolModel.findOne({ fullSymbol: normalized, isCleanAsset: true })
+    let doc = await SymbolModel.findOne({ fullSymbol: normalized })
       .select(SELECT_FIELDS).lean();
-
-    if (!doc) {
-      doc = await SymbolModel.findOne({ fullSymbol: normalized }).select(SELECT_FIELDS).lean();
-    }
 
     if (!doc) return res.status(404).json({ error: "Symbol not found" });
 
@@ -341,10 +344,11 @@ export async function filterOptions(_req: Request, res: Response) {
       } catch { /* miss */ }
     }
 
+    const bqf2 = baseQualityFilter();
     const [exchanges, countries, sectors] = await Promise.all([
-      SymbolModel.distinct("exchange", { isCleanAsset: true }),
-      SymbolModel.distinct("country", { isCleanAsset: true }),
-      SymbolModel.distinct("sector", { isCleanAsset: true }).then((s: string[]) => s.filter(Boolean)),
+      SymbolModel.distinct("exchange", bqf2),
+      SymbolModel.distinct("country", bqf2),
+      SymbolModel.distinct("sector", bqf2).then((s: string[]) => s.filter(Boolean)),
     ]);
 
     const result = { exchanges: exchanges.sort(), countries: countries.sort(), sectors: sectors.sort() };
