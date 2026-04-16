@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
+import { CleanAssetModel } from "../models/CleanAsset";
 import { SymbolModel } from "../models/Symbol";
 import { getPriceQuotes } from "../services/priceCache.service";
 import { redisClient, isRedisReady } from "../config/redis";
@@ -57,15 +58,12 @@ const GEO_EXCHANGE_MAP: Record<string, string[]> = {
   BR: ["BOVESPA", "B3"],
 };
 
-/* ── Base quality filter (works without isCleanAsset migration) ─────── */
-const VALID_TYPES = ["stock", "etf", "crypto", "forex", "index", "bond", "economy"];
-function baseQualityFilter(): Record<string, unknown> {
-  return { type: { $in: VALID_TYPES }, name: { $exists: true, $ne: "" } };
-}
+/* ── Use CleanAsset (gold layer) as the screener data source ─────────── */
+const ScreenerModel = CleanAssetModel;
 
 /* ── Build filter query ──────────────────────────────────────────────── */
 function buildQuery(filters: z.infer<typeof listSchema>) {
-  const query: Record<string, unknown> = baseQualityFilter();
+  const query: Record<string, unknown> = {};
 
   if (filters.type) query.type = filters.type.toLowerCase();
   if (filters.country) query.country = filters.country.toUpperCase();
@@ -170,11 +168,11 @@ export async function list(req: Request, res: Response) {
       const restQuery = { ...query, exchange: { $nin: geoExchanges } };
 
       const [localItems, restItems, totalCount] = await Promise.all([
-        SymbolModel.find(localQuery).sort({ priorityScore: -1, symbol: 1 })
+        ScreenerModel.find(localQuery).sort({ priorityScore: -1, symbol: 1 })
           .skip(0).limit(filters.limit + filters.offset).select(SELECT_FIELDS).lean(),
-        SymbolModel.find(restQuery).sort({ priorityScore: -1, symbol: 1 })
+        ScreenerModel.find(restQuery).sort({ priorityScore: -1, symbol: 1 })
           .skip(0).limit(filters.limit + filters.offset).select(SELECT_FIELDS).lean(),
-        SymbolModel.countDocuments(query),
+        ScreenerModel.countDocuments(query),
       ]);
 
       const merged = [...localItems, ...restItems];
@@ -185,9 +183,9 @@ export async function list(req: Request, res: Response) {
       if (sortField !== "priorityScore") sortObj.priorityScore = -1;
 
       const [docs, count] = await Promise.all([
-        SymbolModel.find(query).sort(sortObj).skip(filters.offset).limit(filters.limit)
+        ScreenerModel.find(query).sort(sortObj).skip(filters.offset).limit(filters.limit)
           .select(SELECT_FIELDS).lean(),
-        SymbolModel.countDocuments(query),
+        ScreenerModel.countDocuments(query),
       ]);
       items = docs;
       total = count;
@@ -242,8 +240,8 @@ export async function stats(_req: Request, res: Response) {
       } catch { /* miss */ }
     }
 
-    const agg = await SymbolModel.aggregate([
-      { $match: baseQualityFilter() },
+    const agg = await ScreenerModel.aggregate([
+      { $match: {} },
       { $group: { _id: "$type", count: { $sum: 1 } } },
     ]);
 
@@ -254,11 +252,11 @@ export async function stats(_req: Request, res: Response) {
       total += row.count;
     }
 
-    const bqf = baseQualityFilter();
+    const bqf = {};
     const [exchanges, countries, sectors] = await Promise.all([
-      SymbolModel.distinct("exchange", bqf),
-      SymbolModel.distinct("country", bqf),
-      SymbolModel.distinct("sector", bqf).then((s: string[]) => s.filter(Boolean)),
+      ScreenerModel.distinct("exchange", bqf),
+      ScreenerModel.distinct("country", bqf),
+      ScreenerModel.distinct("sector", bqf).then((s: string[]) => s.filter(Boolean)),
     ]);
 
     const result = {
@@ -298,8 +296,13 @@ export async function symbolDetail(req: Request, res: Response) {
       } catch { /* miss */ }
     }
 
-    let doc = await SymbolModel.findOne({ fullSymbol: normalized })
+    let doc = await ScreenerModel.findOne({ fullSymbol: normalized })
       .select(SELECT_FIELDS).lean();
+
+    // Fallback to full symbols collection
+    if (!doc) {
+      doc = await SymbolModel.findOne({ fullSymbol: normalized }).select(SELECT_FIELDS).lean();
+    }
 
     if (!doc) return res.status(404).json({ error: "Symbol not found" });
 
@@ -344,11 +347,11 @@ export async function filterOptions(_req: Request, res: Response) {
       } catch { /* miss */ }
     }
 
-    const bqf2 = baseQualityFilter();
+    const bqf2 = {};
     const [exchanges, countries, sectors] = await Promise.all([
-      SymbolModel.distinct("exchange", bqf2),
-      SymbolModel.distinct("country", bqf2),
-      SymbolModel.distinct("sector", bqf2).then((s: string[]) => s.filter(Boolean)),
+      ScreenerModel.distinct("exchange", bqf2),
+      ScreenerModel.distinct("country", bqf2),
+      ScreenerModel.distinct("sector", bqf2).then((s: string[]) => s.filter(Boolean)),
     ]);
 
     const result = { exchanges: exchanges.sort(), countries: countries.sort(), sectors: sectors.sort() };
