@@ -1,4 +1,5 @@
 ﻿import { env } from "../config/env";
+import { getFmpKey } from "./apiKeyManager.service";
 import {
   normalizeDomain,
   normalizeSymbol,
@@ -31,11 +32,12 @@ export async function tryFetchLogo(domain: string): Promise<string | null> {
 }
 
 export async function tryFetchFmpLogo(symbol: string): Promise<string | null> {
-  if (!env.FMP_API_KEY) return null;
+  const fmpKey = getFmpKey();
+  if (!fmpKey) return null;
   const normalizedSymbol = normalizeSymbol(symbol);
   if (!normalizedSymbol) return null;
 
-  const apiKeySuffix = env.FMP_API_KEY ? `?apikey=${encodeURIComponent(env.FMP_API_KEY)}` : "";
+  const apiKeySuffix = `?apikey=${encodeURIComponent(fmpKey)}`;
   const candidate = `https://financialmodelingprep.com/image-stock/${normalizedSymbol.toUpperCase()}.png${apiKeySuffix}`;
   if (await validateLogoUrl(candidate)) return candidate;
   return null;
