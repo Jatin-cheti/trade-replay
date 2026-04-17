@@ -9,6 +9,7 @@ import { extractLogoFromWebsite } from "./logoExtractor.service";
 import { saveToDomainDataset } from "../curatedDomainDataset.service";
 import { rememberResolvedDomain } from "../domainMemory.service";
 import { invalidateSymbolCaches } from "../cacheInvalidation.service";
+import { getFmpKey } from "../apiKeyManager.service";
 
 const STOCK_BATCH_SIZE = 200;
 const STOCK_CONCURRENCY = 15;
@@ -24,7 +25,9 @@ function googleFaviconUrl(domain: string): string {
 }
 
 function fmpImageUrl(symbol: string): string {
-  return `https://financialmodelingprep.com/image-stock/${encodeURIComponent(symbol)}.png`;
+  const key = getFmpKey();
+  const suffix = key ? `?apikey=${encodeURIComponent(key)}` : "";
+  return `https://financialmodelingprep.com/image-stock/${encodeURIComponent(symbol)}.png${suffix}`;
 }
 
 function clearbitLogoUrl(domain: string): string {

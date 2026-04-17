@@ -1,6 +1,7 @@
 import { env } from "../config/env";
 import { getHighConfidenceDomain } from "../config/highConfidenceDomainMap";
 import { SymbolModel } from "../models/Symbol";
+import { getFmpKey } from "./apiKeyManager.service";
 
 export type DomainSource = "high-confidence-map" | "wikipedia" | "google-search" | "nse-profile" | "bse-profile" | "fmp-optional";
 
@@ -289,8 +290,9 @@ async function fetchFromBse(symbol: string): Promise<{ domain: string | null; ht
 }
 
 async function fetchFromFmpOptional(symbol: string): Promise<{ domain: string | null; httpError: boolean }> {
-  if (!env.FMP_API_KEY) return { domain: null, httpError: false };
-  const response = await fetchText(`https://financialmodelingprep.com/api/v3/profile/${encodeURIComponent(symbol.toUpperCase())}?apikey=${encodeURIComponent(env.FMP_API_KEY)}`);
+  const fmpKey = getFmpKey();
+  if (!fmpKey) return { domain: null, httpError: false };
+  const response = await fetchText(`https://financialmodelingprep.com/api/v3/profile/${encodeURIComponent(symbol.toUpperCase())}?apikey=${encodeURIComponent(fmpKey)}`);
   if (!response.ok) return { domain: null, httpError: true };
 
   try {

@@ -9,6 +9,7 @@
  * TIER 5: Generated initial-based icon (guarantees 100%)
  */
 import { deriveDomain } from "./companyNormalizer.service";
+import { retry } from "../utils/retry.util";
 
 /* ── TIER 1 — Symbol Map ───────────────────────────────────────────── */
 
@@ -284,4 +285,114 @@ export function resolveLogo(asset: {
     logoSource: "generated",
     logoTier: 5,
   };
+}
+
+/* ── Async Logo Resolution with HTTP validation ────────────────────── */
+
+async function isUrlReachable(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      headers: { "User-Agent": "tradereplay-logo/1.0" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("text/html")) return false;
+    const cl = parseInt(res.headers.get("content-length") || "0", 10);
+    if (cl > 0 && cl < 100) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Async logo resolution — validates URLs via HTTP HEAD.
+ * Falls through tiers until a reachable logo is found.
+ * Use for reprocessing failures only (not hot path).
+ */
+export async function resolveLogoAsync(asset: {
+  symbol: string;
+  type: string;
+  exchange?: string;
+  companyDomain?: string;
+  iconUrl?: string;
+  s3Icon?: string;
+  name?: string;
+}): Promise<LogoResult> {
+  const sym = asset.symbol.toUpperCase();
+
+  // TIER 0: Existing valid S3/external
+  if (asset.s3Icon && asset.s3Icon.startsWith("http")) {
+    return { iconUrl: asset.s3Icon, logoSource: "s3", logoTier: 0 };
+  }
+  if (asset.iconUrl && asset.iconUrl.startsWith("http") && !asset.iconUrl.includes("default")) {
+    const ok = await retry(() => isUrlReachable(asset.iconUrl!), 2, 300).catch(() => false);
+    if (ok) return { iconUrl: asset.iconUrl!, logoSource: "existing", logoTier: 0 };
+  }
+
+  // TIER 1: Symbol map
+  const baseSymbol = sym.replace(/(USDT|USDC|USD|BUSD|BTC|ETH)$/, "");
+  const mapHit = SYMBOL_LOGO_MAP[sym] || (baseSymbol ? SYMBOL_LOGO_MAP[baseSymbol] : undefined);
+  if (mapHit) return { iconUrl: mapHit, logoSource: "symbolMap", logoTier: 1 };
+  const nameUpper = (asset.name || "").toUpperCase();
+  if (nameUpper && SYMBOL_LOGO_MAP[nameUpper]) return { iconUrl: SYMBOL_LOGO_MAP[nameUpper], logoSource: "symbolMap:name", logoTier: 1 };
+  const nameNoSpace = nameUpper.replace(/\s+/g, "");
+  if (nameNoSpace && SYMBOL_LOGO_MAP[nameNoSpace]) return { iconUrl: SYMBOL_LOGO_MAP[nameNoSpace], logoSource: "symbolMap:nameCompact", logoTier: 1 };
+
+  // TIER 2: Type-based
+  if (asset.type === "crypto") {
+    const coinId = sym.toLowerCase().replace(/usdt$|usdc$|usd$|busd$|btc$|eth$/i, "");
+    if (coinId.length >= 2) {
+      const url = `https://www.google.com/s2/favicons?sz=128&domain=${coinId}.org`;
+      return { iconUrl: url, logoSource: "crypto:favicon", logoTier: 2 };
+    }
+  }
+  if (asset.type === "forex") {
+    const base = sym.slice(0, 3).toUpperCase();
+    if (FOREX_CURRENCY_FLAGS[base]) return { iconUrl: FOREX_CURRENCY_FLAGS[base], logoSource: "forex:flag", logoTier: 2 };
+  }
+  if (TYPE_FALLBACK_ICONS[asset.type]) {
+    return { iconUrl: TYPE_FALLBACK_ICONS[asset.type], logoSource: `type:${asset.type}`, logoTier: 2 };
+  }
+
+  // TIER 3: Clearbit (explicit domain — validated)
+  if (asset.companyDomain) {
+    const domain = asset.companyDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const cbUrl = `https://logo.clearbit.com/${domain}`;
+    const ok = await retry(() => isUrlReachable(cbUrl), 2, 300).catch(() => false);
+    if (ok) return { iconUrl: cbUrl, logoSource: "clearbit", logoTier: 3 };
+  }
+
+  // TIER 3b: Clearbit derived domain — validated
+  if (asset.name) {
+    const derived = deriveDomain(asset.name);
+    if (derived) {
+      const cbUrl = `https://logo.clearbit.com/${derived}`;
+      const ok = await retry(() => isUrlReachable(cbUrl), 2, 300).catch(() => false);
+      if (ok) return { iconUrl: cbUrl, logoSource: "clearbit:derived", logoTier: 3 };
+    }
+  }
+
+  // TIER 4: Google favicon via exchange
+  const exKey = (asset.exchange || "").toUpperCase();
+  const exDomain = EXCHANGE_DOMAIN[exKey];
+  if (exDomain) {
+    return { iconUrl: `https://www.google.com/s2/favicons?sz=128&domain=${exDomain}`, logoSource: "exchange:favicon", logoTier: 4 };
+  }
+
+  // TIER 4b: Google favicon from derived domain
+  if (asset.name) {
+    const derived = deriveDomain(asset.name);
+    if (derived) {
+      return { iconUrl: `https://www.google.com/s2/favicons?sz=128&domain=${derived}`, logoSource: "google:derived", logoTier: 4 };
+    }
+  }
+
+  // TIER 5: Generated SVG
+  return { iconUrl: generateSvgDataUri(sym), logoSource: "generated", logoTier: 5 };
 }
