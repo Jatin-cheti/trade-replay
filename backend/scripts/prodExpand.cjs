@@ -15,10 +15,10 @@
 
 const { MongoClient } = require("mongodb");
 
-const ATLAS = process.env.MONGO_URI_PRODUCTION || process.env.MONGO_URI;
-if (!ATLAS) { console.error("Set MONGO_URI_PRODUCTION or MONGO_URI env var"); process.exit(1); }
+const ATLAS = process.env.MONGO_URI_PRODUCTION;
+if (!ATLAS) { console.error("MONGO_URI_PRODUCTION required"); process.exit(1); }
 const AV_KEY = process.env.ALPHA_VANTAGE_KEY;
-if (!AV_KEY) { console.error("Set ALPHA_VANTAGE_KEY env var"); process.exit(1); }
+if (!AV_KEY) { console.error("ALPHA_VANTAGE_KEY required"); process.exit(1); }
 const UA = "tradereplay-expansion/3.0";
 const BATCH = 1000;
 

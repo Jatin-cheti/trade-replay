@@ -1,11 +1,9 @@
-﻿/**
- * trieSearch.service.ts — In-memory trie with incremental updates.
+/**
+ * trieSearch.service.ts — In-memory trie for O(k) prefix symbol search.
  *
- * Architecture:
- * - One initial build from DB on boot
- * - Incremental insert/update/remove — NO periodic full rebuilds
- * - O(k) prefix lookup on symbol + name
- * - Event-driven: call upsertAsset/removeAsset when data changes
+ * Loads all 102K clean assets into a trie on boot.
+ * Symbol prefix and name prefix lookups in ~1ms.
+ * Refreshed periodically to pick up new assets.
  */
 import { CleanAssetModel } from "../models/CleanAsset";
 import { resolveLogo } from "./logoResolver.service";
@@ -18,7 +16,7 @@ interface TrieNode {
   entries: TrieEntry[];
 }
 
-export interface TrieEntry {
+interface TrieEntry {
   symbol: string;
   fullSymbol: string;
   name: string;
@@ -31,33 +29,42 @@ export interface TrieEntry {
   marketCap: number;
 }
 
-export interface SearchResult extends TrieEntry {}
+export interface SearchResult {
+  symbol: string;
+  fullSymbol: string;
+  name: string;
+  exchange: string;
+  country: string;
+  type: string;
+  iconUrl: string;
+  priorityScore: number;
+  isPrimaryListing: boolean;
+  marketCap: number;
+}
 
-/* ── Trie Core ─────────────────────────────────────────────────────── */
-
-const MAX_ENTRIES_PER_NODE = 25;
-const MAX_KEY_DEPTH = 8;
+/* ── Trie Implementation ──────────────────────────────────────────── */
 
 function createNode(): TrieNode {
   return { children: new Map(), entries: [] };
 }
 
-function insertEntry(root: TrieNode, key: string, entry: TrieEntry): void {
+const MAX_ENTRIES_PER_NODE = 20; // Keep top 20 per prefix node
+
+function insertIntoTrie(root: TrieNode, key: string, entry: TrieEntry): void {
   let node = root;
   const lower = key.toLowerCase();
-  for (let i = 0; i < lower.length && i < MAX_KEY_DEPTH; i++) {
+
+  for (let i = 0; i < lower.length && i < 8; i++) {
     const ch = lower[i];
     let child = node.children.get(ch);
-    if (!child) { child = createNode(); node.children.set(ch, child); }
+    if (!child) {
+      child = createNode();
+      node.children.set(ch, child);
+    }
     node = child;
 
-    // Check if this fullSymbol is already in the node (dedup)
-    const existingIdx = node.entries.findIndex(e => e.fullSymbol === entry.fullSymbol);
-    if (existingIdx >= 0) {
-      // Update in place
-      node.entries[existingIdx] = entry;
-      node.entries.sort((a, b) => b.priorityScore - a.priorityScore);
-    } else if (node.entries.length < MAX_ENTRIES_PER_NODE) {
+    // Insert entry at each depth level, keep sorted by priorityScore
+    if (node.entries.length < MAX_ENTRIES_PER_NODE) {
       node.entries.push(entry);
       node.entries.sort((a, b) => b.priorityScore - a.priorityScore);
     } else if (entry.priorityScore > node.entries[node.entries.length - 1].priorityScore) {
@@ -67,26 +74,16 @@ function insertEntry(root: TrieNode, key: string, entry: TrieEntry): void {
   }
 }
 
-function removeEntry(root: TrieNode, key: string, fullSymbol: string): void {
-  let node = root;
-  const lower = key.toLowerCase();
-  for (let i = 0; i < lower.length && i < MAX_KEY_DEPTH; i++) {
-    const ch = lower[i];
-    const child = node.children.get(ch);
-    if (!child) return;
-    node = child;
-    node.entries = node.entries.filter(e => e.fullSymbol !== fullSymbol);
-  }
-}
-
-function searchPrefix(root: TrieNode, prefix: string, limit: number): TrieEntry[] {
+function searchTrie(root: TrieNode, prefix: string, limit: number): TrieEntry[] {
   let node = root;
   const lower = prefix.toLowerCase();
+
   for (const ch of lower) {
     const child = node.children.get(ch);
     if (!child) return [];
     node = child;
   }
+
   return node.entries.slice(0, limit);
 }
 
@@ -95,146 +92,194 @@ function searchPrefix(root: TrieNode, prefix: string, limit: number): TrieEntry[
 let symbolTrie = createNode();
 let nameTrie = createNode();
 let isBuilt = false;
-let entryCount = 0;
+let buildingInProgress = false;
 let lastBuildAt = 0;
+let entryCount = 0;
 
-/* ── Asset → TrieEntry helper ────────────────────────────────────── */
+const REBUILD_INTERVAL_MS = 5 * 60 * 1000; // Rebuild every 5 minutes
+let rebuildTimer: NodeJS.Timeout | null = null;
 
-function assetToEntry(doc: any): TrieEntry {
-  const logo = resolveLogo({
-    symbol: doc.symbol,
-    type: doc.type,
-    exchange: doc.exchange,
-    companyDomain: doc.companyDomain || "",
-    iconUrl: doc.s3Icon || doc.iconUrl || "",
-    s3Icon: doc.s3Icon || "",
-    name: doc.name,
-  });
-  return {
-    symbol: doc.symbol,
-    fullSymbol: doc.fullSymbol,
-    name: doc.name,
-    exchange: doc.exchange,
-    country: doc.country || "",
-    type: doc.type,
-    iconUrl: logo.iconUrl,
-    priorityScore: doc.priorityScore || 0,
-    isPrimaryListing: doc.isPrimaryListing || false,
-    marketCap: doc.marketCap || 0,
-  };
-}
+/* ── Build Trie from DB ──────────────────────────────────────────── */
 
-function insertAssetIntoTries(entry: TrieEntry): void {
-  insertEntry(symbolTrie, entry.symbol, entry);
-  if (entry.name) {
-    insertEntry(nameTrie, entry.name, entry);
-    const words = entry.name.split(/\s+/);
-    for (let i = 1; i < words.length && i < 3; i++) {
-      if (words[i].length >= 3) insertEntry(nameTrie, words[i], entry);
-    }
-  }
-}
+async function buildTrie(): Promise<void> {
+  if (buildingInProgress) return;
+  buildingInProgress = true;
 
-/* ── Initial Build (one-time on boot) ─────────────────────────────── */
-
-export async function initTrieSearch(): Promise<void> {
   const startMs = Date.now();
   const newSymbolTrie = createNode();
   const newNameTrie = createNode();
   let count = 0;
 
-  const BATCH = 5000;
-  let skip = 0;
-  while (true) {
-    const docs = await CleanAssetModel.find({})
+  try {
+    // Use cursor-based streaming instead of skip/limit to avoid O(n²) on large collections
+    const cursor = CleanAssetModel.find({})
       .select("symbol fullSymbol name exchange country type iconUrl s3Icon priorityScore isPrimaryListing marketCap companyDomain")
       .sort({ priorityScore: -1 })
-      .skip(skip).limit(BATCH).lean();
-    if (docs.length === 0) break;
+      .lean()
+      .cursor({ batchSize: 5000 });
 
-    for (const doc of docs) {
-      const entry = assetToEntry(doc);
-      // Insert into symbol trie
-      insertEntry(newSymbolTrie, entry.symbol, entry);
-      // Insert into name trie (full name + individual words)
-      if (entry.name) {
-        insertEntry(newNameTrie, entry.name, entry);
-        const words = entry.name.split(/\s+/);
-        for (let i = 1; i < words.length && i < 3; i++) {
-          if (words[i].length >= 3) insertEntry(newNameTrie, words[i], entry);
+    for await (const doc of cursor) {
+      const logo = resolveLogo({
+        symbol: doc.symbol,
+        type: doc.type,
+        exchange: doc.exchange,
+        companyDomain: doc.companyDomain || "",
+        iconUrl: doc.s3Icon || doc.iconUrl || "",
+        s3Icon: doc.s3Icon || "",
+        name: doc.name,
+      });
+
+      const entry: TrieEntry = {
+        symbol: doc.symbol,
+        fullSymbol: doc.fullSymbol,
+        name: doc.name,
+        exchange: doc.exchange,
+        country: doc.country || "",
+        type: doc.type,
+        iconUrl: logo.iconUrl,
+        priorityScore: doc.priorityScore || 0,
+        isPrimaryListing: (doc as any).isPrimaryListing || false,
+        marketCap: doc.marketCap || 0,
+      };
+
+      // Insert into symbol trie (e.g., "aapl", "tsla")
+      insertIntoTrie(newSymbolTrie, doc.symbol, entry);
+
+      // Insert into name trie (e.g., "apple", "tesla")
+      if (doc.name) {
+        insertIntoTrie(newNameTrie, doc.name, entry);
+        const words = doc.name.split(/\s+/);
+        if (words.length > 1) {
+          for (let i = 1; i < words.length && i < 3; i++) {
+            if (words[i].length >= 3) {
+              insertIntoTrie(newNameTrie, words[i], entry);
+            }
+          }
         }
       }
+
       count++;
+      // Yield to event loop every 5000 entries
+      if (count % 5000 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
     }
-    skip += docs.length;
-    await new Promise<void>(r => setImmediate(r));
-  }
 
-  // Atomic swap
-  symbolTrie = newSymbolTrie;
-  nameTrie = newNameTrie;
-  entryCount = count;
-  isBuilt = true;
-  lastBuildAt = Date.now();
+    // Atomic swap
+    symbolTrie = newSymbolTrie;
+    nameTrie = newNameTrie;
+    entryCount = count;
+    isBuilt = true;
+    lastBuildAt = Date.now();
 
-  logger.info("trie_search_built", { entries: count, durationMs: Date.now() - startMs });
-}
-
-/* ── Incremental Updates (event-driven) ──────────────────────────── */
-
-export function upsertAsset(doc: any): void {
-  if (!isBuilt) return;
-  const entry = assetToEntry(doc);
-  insertAssetIntoTries(entry);
-  entryCount++;  // approximate — dedup handled inside insertEntry
-}
-
-export function removeAsset(fullSymbol: string, symbol: string, name?: string): void {
-  if (!isBuilt) return;
-  removeEntry(symbolTrie, symbol, fullSymbol);
-  if (name) {
-    removeEntry(nameTrie, name, fullSymbol);
-    const words = name.split(/\s+/);
-    for (let i = 1; i < words.length && i < 3; i++) {
-      if (words[i].length >= 3) removeEntry(nameTrie, words[i], fullSymbol);
-    }
+    logger.info("trie_search_built", {
+      entries: count,
+      durationMs: Date.now() - startMs,
+    });
+  } catch (err) {
+    logger.error("trie_search_build_error", { error: (err as Error).message });
+  } finally {
+    buildingInProgress = false;
   }
 }
 
-/* ── Search API ──────────────────────────────────────────────────── */
+/* ── Public API ───────────────────────────────────────────────────── */
+
+export async function initTrieSearch(): Promise<void> {
+  await buildTrie();
+
+  if (rebuildTimer) clearInterval(rebuildTimer);
+  rebuildTimer = setInterval(() => void buildTrie(), REBUILD_INTERVAL_MS);
+  rebuildTimer.unref();
+
+  logger.info("trie_search_initialized", { rebuildIntervalMs: REBUILD_INTERVAL_MS });
+}
 
 export function trieSearchSymbols(query: string, limit = 20): SearchResult[] {
-  if (!isBuilt || !query) return [];
+  if (!isBuilt || !query || query.length === 0) return [];
+
   const q = query.trim();
-  if (!q) return [];
+  if (q.length === 0) return [];
 
-  const symbolResults = searchPrefix(symbolTrie, q, limit);
-  const nameResults = searchPrefix(nameTrie, q, limit);
+  // Search both tries and merge
+  const symbolResults = searchTrie(symbolTrie, q, limit);
+  const nameResults = searchTrie(nameTrie, q, limit);
 
-  // Deduplicate by fullSymbol
+  // Deduplicate by fullSymbol, prefer symbol matches
   const seen = new Set<string>();
   const merged: SearchResult[] = [];
-  for (const e of symbolResults) {
-    if (!seen.has(e.fullSymbol)) { seen.add(e.fullSymbol); merged.push(e); }
-  }
-  for (const e of nameResults) {
-    if (!seen.has(e.fullSymbol)) { seen.add(e.fullSymbol); merged.push(e); }
+
+  // Symbol matches first (exact symbol type-ahead)
+  for (const entry of symbolResults) {
+    if (!seen.has(entry.fullSymbol)) {
+      seen.add(entry.fullSymbol);
+      merged.push(entry);
+    }
   }
 
-  // Sort: exact match > prefix match > priorityScore
-  const lq = q.toLowerCase();
+  // Then name matches
+  for (const entry of nameResults) {
+    if (!seen.has(entry.fullSymbol)) {
+      seen.add(entry.fullSymbol);
+      merged.push(entry);
+    }
+  }
+
+  // Sort merged by: exact symbol match first, then priorityScore
+  const lowerQ = q.toLowerCase();
   merged.sort((a, b) => {
-    const aE = a.symbol.toLowerCase() === lq ? 2 : a.symbol.toLowerCase().startsWith(lq) ? 1 : 0;
-    const bE = b.symbol.toLowerCase() === lq ? 2 : b.symbol.toLowerCase().startsWith(lq) ? 1 : 0;
-    if (aE !== bE) return bE - aE;
+    const aExact = a.symbol.toLowerCase() === lowerQ ? 1 : 0;
+    const bExact = b.symbol.toLowerCase() === lowerQ ? 1 : 0;
+    if (aExact !== bExact) return bExact - aExact;
+
+    const aPrefix = a.symbol.toLowerCase().startsWith(lowerQ) ? 1 : 0;
+    const bPrefix = b.symbol.toLowerCase().startsWith(lowerQ) ? 1 : 0;
+    if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+
     return b.priorityScore - a.priorityScore;
   });
 
   return merged.slice(0, limit);
 }
 
-export function isTrieReady(): boolean { return isBuilt; }
+export function isTrieReady(): boolean {
+  return isBuilt;
+}
 
-export function getTrieStats() {
+export function getTrieStats(): {
+  isBuilt: boolean;
+  entryCount: number;
+  lastBuildAt: number;
+} {
   return { isBuilt, entryCount, lastBuildAt };
+}
+
+
+/* ── Incremental Updates ──────────────────────────────────────────── */
+
+export function upsertAsset(doc: any): void {
+  if (!doc || !doc.symbol) return;
+  const entry: TrieEntry = {
+    symbol: doc.symbol,
+    fullSymbol: doc.fullSymbol || doc.symbol,
+    name: doc.name || doc.symbol,
+    exchange: doc.exchange || "",
+    country: doc.country || "",
+    type: doc.type || "unknown",
+    iconUrl: resolveLogo(doc),
+    priorityScore: doc.priorityScore ?? 0,
+    isPrimaryListing: doc.isPrimaryListing ?? false,
+    marketCap: doc.marketCap ?? 0,
+  };
+  insertIntoTrie(symbolTrie, entry.symbol, entry);
+  if (entry.name) {
+    insertIntoTrie(nameTrie, entry.name, entry);
+    for (const word of entry.name.split(/\s+/).slice(1)) {
+      if (word.length >= 2) insertIntoTrie(nameTrie, word, entry);
+    }
+  }
+}
+
+export function removeAsset(_fullSymbol: string, _symbol: string, _name?: string): void {
+  // Trie node removal is complex; schedule a full rebuild instead.
+  // initTrieSearch rebuilds from DB which will exclude the removed asset.
+  initTrieSearch().catch((err) => logger.error("trie_rebuild_after_remove_failed", { error: err.message }));
 }

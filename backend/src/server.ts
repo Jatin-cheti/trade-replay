@@ -49,14 +49,16 @@ async function bootstrap() {
   logger.info("bootstrap_alerts");
   await bootstrapAlerts();
 
-  // ── Performance infrastructure: trie search + filter cache + screener cache ──
+  // ── Performance infrastructure: filter cache (fast, blocking) ──
   logger.info("bootstrap_perf_infra_start");
-  await Promise.all([
-    initTrieSearch(),
-    initFilterCache(),
-  ]);
+  await initFilterCache();
   await startInvalidationListener();
   logger.info("bootstrap_perf_infra_done");
+
+  // ── Non-blocking trie build — server starts while trie loads in background ──
+  initTrieSearch().catch((err: unknown) => {
+    logger.warn("trie_build_failed", { error: err instanceof Error ? err.message : String(err) });
+  });
 
   // ── Non-blocking cache warmup — eliminates cold-start penalty ──
   warmScreenerCache().catch((err: unknown) => {

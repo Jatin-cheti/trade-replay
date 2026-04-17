@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, ChevronDown, TrendingUp, TrendingDown, X, SlidersHorizontal, ChevronRight, BarChart3, Star, ArrowUpDown } from "lucide-react";
@@ -210,7 +210,6 @@ function FilterChip({
 export default function Screener() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isMobile, isTablet, isDesktop } = useResponsive();
 
   const activeCategory = searchParams.get("type") || "all";
   const activeCountry = searchParams.get("country") || "";
@@ -323,11 +322,13 @@ export default function Screener() {
 
   const activeFilterCount = [activeCountry, activeExchange, activeSector, marketCapMin, marketCapMax, volumeMin, volumeMax, primaryOnly].filter(Boolean).length;
 
-  /* ── Responsive column grid ──────────────────────────────────────── */
+  const { isMobile, isTablet, isDesktop } = useResponsive();
+
+  /* ── TradingView-style column grid (responsive) ────────────────────── */
   const gridTemplate = isMobile
-    ? "1fr"  // card layout — not used for grid
+    ? "1fr"
     : isTablet
-      ? "minmax(160px,2.5fr) 80px 75px 100px 80px" // hide vol + sector
+      ? "minmax(180px,2.5fr) 90px 80px 100px 80px"
       : "minmax(200px,2.5fr) 100px 90px 110px 120px 100px 90px";
 
   const catLabel = activeCategory === "all"
@@ -336,7 +337,7 @@ export default function Screener() {
 
   return (
     <div className="min-h-screen bg-background pt-2 pb-8">
-      <div className="mx-auto max-w-[1440px] px-2 sm:px-4 md:px-6">
+      <div className="mx-auto max-w-[1440px] px-4 md:px-6">
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
@@ -437,7 +438,7 @@ export default function Screener() {
           )}
         </div>
 
-        {/* Category Tabs — TradingView style (scrollable on mobile) */}
+        {/* Category Tabs — TradingView style */}
         <div className="flex items-center gap-0.5 border-b border-border/30 mb-0.5 overflow-x-auto scrollbar-hide">
           {CATEGORIES.map((cat) => {
             const count = cat.type ? stats?.byType[cat.type] || 0 : stats?.total || 0;
@@ -472,7 +473,7 @@ export default function Screener() {
             <button
               key={tab}
               onClick={() => setActiveViewTab(tab)}
-              className={`px-2 sm:px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+              className={`px-3 py-2 text-xs font-medium transition-colors ${
                 activeViewTab === tab ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -480,8 +481,8 @@ export default function Screener() {
             </button>
           ))}
 
-          <div className="ml-auto flex items-center gap-2 shrink-0">
-            <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-muted-foreground tabular-nums">
               {total > 0 ? `${total.toLocaleString()}` : "\u2014"}
             </span>
             <div className="relative">
@@ -512,7 +513,7 @@ export default function Screener() {
           </div>
         </div>
 
-        {/* Table Header — responsive */}
+        {/* Table Header — TradingView style (hidden on mobile) */}
         {!isMobile && (
         <div className="sticky top-[var(--navbar-height,64px)] z-20 rounded-t-lg border border-border/30 bg-secondary/40 backdrop-blur-sm">
           <div
@@ -535,18 +536,20 @@ export default function Screener() {
               </button>
             </div>
             {isDesktop && (
-              <div className="text-right">
-                <button onClick={() => handleSort("volume")} className="flex items-center gap-0.5 hover:text-foreground ml-auto">
-                  Vol <SortIcon field="volume" />
-                </button>
-              </div>
+            <div className="text-right">
+              <button onClick={() => handleSort("volume")} className="flex items-center gap-0.5 hover:text-foreground ml-auto">
+                Vol <SortIcon field="volume" />
+              </button>
+            </div>
             )}
             <div className="text-right">
               <button onClick={() => handleSort("marketCap")} className="flex items-center gap-0.5 hover:text-foreground ml-auto">
                 Mkt cap <SortIcon field="marketCap" />
               </button>
             </div>
-            {isDesktop && <div className="text-center">Sector</div>}
+            {isDesktop && (
+            <div className="text-center">Sector</div>
+            )}
             <div className="text-center">Country</div>
           </div>
         </div>
@@ -707,7 +710,7 @@ export default function Screener() {
         {/* Footer */}
         {!loading && items.length > 0 && (
           <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground px-1">
-            <span>Showing {items.length.toLocaleString()} of {total.toLocaleString()}</span>
+            <span>Showing {items.length.toLocaleString()} <span className="hidden sm:inline">of {total.toLocaleString()}</span></span>
             {!hasMoreRef.current && <span className="text-muted-foreground/50">End of results</span>}
           </div>
         )}
