@@ -4,6 +4,7 @@ import { CleanAssetModel } from "../models/CleanAsset";
 import { SymbolModel } from "../models/Symbol";
 import { getPriceQuotes } from "../services/priceCache.service";
 import { getLiveQuotes } from "../services/snapshotEngine.service";
+import { enrichScreenerBatch, getFullSymbolData } from "../services/symbolAggregation.service";
 import { redisClient, isRedisReady } from "../config/redis";
 import { logger } from "../utils/logger";
 
@@ -191,44 +192,11 @@ export async function list(req: Request, res: Response) {
       total = count;
     }
 
-    const formatted = items.map(formatDoc);
-
-    // Overlay live prices from priceCache, fallback to snapshot engine
-    try {
-      const symbols = formatted.map((f: any) => f.symbol);
-      const quotes = await getPriceQuotes(symbols);
-      const missing: string[] = [];
-      for (const item of formatted) {
-        const q = quotes[(item as any).symbol];
-        if (q && q.price > 0) {
-          (item as any).price = q.price;
-          (item as any).change = q.change;
-          (item as any).changePercent = q.changePercent;
-          if (q.volume > 0) (item as any).volume = q.volume;
-        } else {
-          missing.push((item as any).symbol);
-        }
-      }
-      // Fallback: use snapshot engine for any symbols without prices
-      if (missing.length > 0) {
-        try {
-          const snap = await getLiveQuotes({ symbols: missing });
-          for (const item of formatted) {
-            if ((item as any).price > 0) continue;
-            const sq = snap.quotes[(item as any).symbol];
-            if (sq && sq.price > 0) {
-              (item as any).price = sq.price;
-              (item as any).change = sq.change;
-              (item as any).changePercent = sq.changePercent;
-              if (sq.volume > 0) (item as any).volume = sq.volume;
-            }
-          }
-        } catch { /* snapshot fallback is best-effort */ }
-      }
-    } catch { /* price overlay is best-effort */ }
+    // Unified aggregation: prices + fundamentals + logos in one pass
+    const enriched = await enrichScreenerBatch(items);
 
     const result = {
-      items: formatted,
+      items: enriched,
       total,
       limit: filters.limit,
       offset: filters.offset,
@@ -305,55 +273,13 @@ export async function symbolDetail(req: Request, res: Response) {
 
     const normalized = decodeURIComponent(fullSymbol).toUpperCase();
 
-    // Redis cache check
-    const cacheKey = `screener:symbol:${normalized}`;
+    // Use unified aggregation service — returns full data with prices + fundamentals + logo
+    const result = await getFullSymbolData(normalized);
+    if (!result) return res.status(404).json({ error: "Symbol not found" });
 
+    // Cache for 30s (aggregation service also caches, but this caches the final response)
     if (isRedisReady()) {
-      try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached) return res.json(JSON.parse(cached));
-      } catch { /* miss */ }
-    }
-
-    let doc = await ScreenerModel.findOne({ fullSymbol: normalized })
-      .select(SELECT_FIELDS).lean();
-
-    // Fallback to full symbols collection
-    if (!doc) {
-      doc = await SymbolModel.findOne({ fullSymbol: normalized }).select(SELECT_FIELDS).lean();
-    }
-
-    if (!doc) return res.status(404).json({ error: "Symbol not found" });
-
-    const result: any = {
-      ...formatDoc(doc),
-      isSynthetic: doc.isSynthetic || false,
-    };
-
-    // Overlay live price
-    try {
-      const quotes = await getPriceQuotes([result.symbol]);
-      const q = quotes[result.symbol];
-      if (q && q.price > 0) {
-        result.price = q.price;
-        result.change = q.change;
-        result.changePercent = q.changePercent;
-        if (q.volume > 0) result.volume = q.volume;
-      } else {
-        // Fallback to snapshot engine
-        const snap = await getLiveQuotes({ symbols: [result.symbol] });
-        const sq = snap.quotes[result.symbol];
-        if (sq && sq.price > 0) {
-          result.price = sq.price;
-          result.change = sq.change;
-          result.changePercent = sq.changePercent;
-          if (sq.volume > 0) result.volume = sq.volume;
-        }
-      }
-    } catch { /* best-effort */ }
-
-    if (isRedisReady()) {
-      redisClient.set(cacheKey, JSON.stringify(result), "EX", CACHE_TTL).catch(() => {});
+      redisClient.set(`screener:symbol:${normalized}`, JSON.stringify(result), "EX", CACHE_TTL).catch(() => {});
     }
 
     return res.json(result);

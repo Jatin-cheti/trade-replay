@@ -26,6 +26,17 @@ interface SymbolDetail {
   price: number;
   change: number;
   changePercent: number;
+  // Fundamentals
+  pe: number;
+  eps: number;
+  dividendYield: number;
+  netIncome: number;
+  revenue: number;
+  sharesFloat: number;
+  beta: number;
+  revenueGrowth: number;
+  roe: number;
+  logoSource: string;
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -272,13 +283,13 @@ export default function SymbolPage() {
                   value={fmt(detail.marketCap, detail.currency)}
                   clickable
                 />
-                <KeyStat label="Dividend yield (indicated)" value={"\u2014"} clickable />
-                <KeyStat label="Price to earnings Ratio (TTM)" value={"\u2014"} clickable />
-                <KeyStat label="Basic EPS (TTM)" value={"\u2014"} />
-                <KeyStat label="Net income (FY)" value={"\u2014"} clickable />
-                <KeyStat label="Revenue (FY)" value={"\u2014"} clickable />
-                <KeyStat label="Shares float" value={"\u2014"} clickable />
-                <KeyStat label="Beta (1Y)" value={"\u2014"} />
+                <KeyStat label="Dividend yield (indicated)" value={detail.dividendYield > 0 ? `${detail.dividendYield.toFixed(2)}%` : "\u2014"} clickable />
+                <KeyStat label="Price to earnings Ratio (TTM)" value={detail.pe > 0 ? detail.pe.toFixed(2) : "\u2014"} clickable />
+                <KeyStat label="Basic EPS (TTM)" value={detail.eps > 0 ? detail.eps.toFixed(2) : "\u2014"} />
+                <KeyStat label="Net income (FY)" value={fmt(detail.netIncome, detail.currency)} clickable />
+                <KeyStat label="Revenue (FY)" value={fmt(detail.revenue, detail.currency)} clickable />
+                <KeyStat label="Shares float" value={fmt(detail.sharesFloat)} clickable />
+                <KeyStat label="Beta (1Y)" value={detail.beta > 0 ? detail.beta.toFixed(2) : "\u2014"} />
               </div>
             </div>
 
