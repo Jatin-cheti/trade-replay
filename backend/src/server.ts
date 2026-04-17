@@ -1,4 +1,4 @@
-import { connectDB } from "./config/db";
+﻿import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
 import { env } from "./config/env";
 import { CONFIG } from "./config/index";
@@ -9,6 +9,9 @@ import { bootstrapAlerts } from "./services/alertsEngine.service";
 import { SymbolModel } from "./models/Symbol";
 import { ingestGlobalSymbols } from "./services/ingestion.service";
 import { preloadHotSymbolLogos } from "./services/logoQueue.service";
+import { startInvalidationListener } from "./services/cacheInvalidation.service";
+import { initTrieSearch } from "./services/trieSearch.service";
+import { initFilterCache } from "./services/filterCache.service";
 
 type NodeErrorWithCode = Error & { code?: string };
 
@@ -40,11 +43,20 @@ async function bootstrap() {
   logger.info("bootstrap_connect_redis");
   await connectRedis();
   await ensureSymbolsIngested();
-  // Gold-layer builds are handled by the asset-service PM2 process
   void preloadHotSymbolLogos();
   await bootstrapKafkaProducerOnly();
   logger.info("bootstrap_alerts");
   await bootstrapAlerts();
+
+  // ── Performance infrastructure: trie search + filter cache + screener cache ──
+  logger.info("bootstrap_perf_infra_start");
+  await Promise.all([
+    initTrieSearch(),
+    initFilterCache(),
+  ]);
+  await startInvalidationListener();
+  logger.info("bootstrap_perf_infra_done");
+
   logger.info("bootstrap_create_app");
   const { httpServer } = createApp();
   const listenPort = env.PORT;
