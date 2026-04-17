@@ -32,6 +32,7 @@ const KNOWN_EXCHANGES = new Set([
   "FRED", "WORLDBANK", "TREASURY", "BOND", "ECONOMY",
   "NZX", "PSE", "QSE", "ADX", "EGX", "BCBA", "BCS", "BVC",
   "NYSEARCA", "CDNX", "SEC", "GLOBAL",
+  "NYSE ARCA", "CFD", "DERIV", "COINGECKO",
 ]);
 
 function isValidExchange(exchange: string): boolean {
@@ -45,8 +46,10 @@ function isValidExchange(exchange: string): boolean {
   return up.length >= 2 && up.length <= 20;
 }
 
-function isValidName(name: string): boolean {
-  if (!name || name.length < 2) return false;
+function isValidName(name: string, type?: string): boolean {
+  if (!name || name.length < 1) return false;
+  // For crypto, forex, index, bond, economy — short names like "BTC", "ETH" are valid
+  if (type && ["crypto", "forex", "index", "bond", "economy"].includes(type)) return true;
   if (/^[A-Z0-9.\-:\/]+$/i.test(name) && name.length < 6) return false; // just a ticker
   return true;
 }
@@ -71,7 +74,7 @@ export async function buildCleanAssets(): Promise<{
 
   // Process using cursor to avoid loading all 1.5M into memory
   const cursor = SymbolModel.find({
-    type: { $in: ["stock", "etf", "crypto", "forex", "index", "bond", "economy"] },
+    type: { $in: ["stock", "etf", "crypto", "forex", "index", "bond", "economy", "derivative"] },
   })
     .select({
       symbol: 1, fullSymbol: 1, name: 1, exchange: 1, country: 1,
@@ -92,7 +95,16 @@ export async function buildCleanAssets(): Promise<{
 
     // Filter: valid exchange, valid name, not synthetic derivative noise
     if (!isValidExchange(doc.exchange)) { skipped++; continue; }
-    if (!isValidName(doc.name)) { skipped++; continue; }
+
+    // Map derivative types
+    let cleanType = doc.type;
+    if (doc.type === "derivative") {
+      if (doc.exchange === "CFD") cleanType = "stock";
+      else if (doc.exchange === "DERIV") cleanType = "futures";
+      else { skipped++; continue; }
+    }
+
+    if (!isValidName(doc.name, cleanType)) { skipped++; continue; }
 
     // Accept all symbols with valid exchange and valid name
     // Logo and priority are used for ranking, not filtering
@@ -107,7 +119,7 @@ export async function buildCleanAssets(): Promise<{
             name: doc.name,
             exchange: doc.exchange,
             country: doc.country || "",
-            type: doc.type,
+            type: cleanType,
             currency: doc.currency || "USD",
             iconUrl: doc.iconUrl || "",
             s3Icon: doc.s3Icon || "",
@@ -131,15 +143,21 @@ export async function buildCleanAssets(): Promise<{
     });
 
     if (batch.length >= BATCH_SIZE) {
-      const result = await CleanAssetModel.bulkWrite(batch, { ordered: false });
-      promoted += result.upsertedCount + result.modifiedCount;
+      try {
+        const result = await CleanAssetModel.bulkWrite(batch, { ordered: false });
+        promoted += result.upsertedCount + result.modifiedCount;
 
-      // Emit Kafka events for new/updated assets
-      if (result.upsertedCount > 0) {
-        produce(KAFKA_TOPICS.ASSET_CREATED, { count: result.upsertedCount, batch: batches + 1 });
-      }
-      if (result.modifiedCount > 0) {
-        produce(KAFKA_TOPICS.ASSET_UPDATED, { count: result.modifiedCount, batch: batches + 1 });
+        // Emit Kafka events for new/updated assets
+        if (result.upsertedCount > 0) {
+          produce(KAFKA_TOPICS.ASSET_CREATED, { count: result.upsertedCount, batch: batches + 1 });
+        }
+        if (result.modifiedCount > 0) {
+          produce(KAFKA_TOPICS.ASSET_UPDATED, { count: result.modifiedCount, batch: batches + 1 });
+        }
+      } catch (err: unknown) {
+        // E11000 duplicate key errors are expected for symbol+exchange collisions
+        const bulkErr = err as { result?: { nUpserted?: number; nModified?: number } };
+        if (bulkErr.result) promoted += (bulkErr.result.nUpserted || 0) + (bulkErr.result.nModified || 0);
       }
       batches++;
       batch = [];
@@ -155,8 +173,13 @@ export async function buildCleanAssets(): Promise<{
 
   // Flush remaining
   if (batch.length > 0) {
-    const result = await CleanAssetModel.bulkWrite(batch, { ordered: false });
-    promoted += result.upsertedCount + result.modifiedCount;
+    try {
+      const result = await CleanAssetModel.bulkWrite(batch, { ordered: false });
+      promoted += result.upsertedCount + result.modifiedCount;
+    } catch (err: unknown) {
+      const bulkErr = err as { result?: { nUpserted?: number; nModified?: number } };
+      if (bulkErr.result) promoted += (bulkErr.result.nUpserted || 0) + (bulkErr.result.nModified || 0);
+    }
   }
 
   const duration = Date.now() - t0;

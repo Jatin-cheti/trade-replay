@@ -37,6 +37,8 @@ import { getFullCoverageReport, runTailEliminationOnce, startTailOrchestrator, s
 import { startScalingOrchestrator, stopScalingOrchestrator, isScalingOrchestratorRunning, getLiveScalingReport, runExpansionOnce, runSyncOnce, getScalingStatus } from "./services/scalingOrchestrator.service";
 import { getExpansionStats } from "./services/symbolExpansion.service";
 import { getShardStats } from "./services/redisShard.service";
+import { validateSystem } from "./services/validation.service";
+import { buildCleanAssets, getCleanAssetStats } from "./services/cleanAsset.service";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
 
@@ -318,6 +320,23 @@ export function createApp() {
   });
 
   app.use("/api", apiLimiter);
+
+  // ── Validation & gold layer endpoints ──────────────────────────────
+  app.get("/api/validate", async (_req, res) => {
+    const result = await validateSystem();
+    res.json(result);
+  });
+
+  app.post("/api/rebuild-gold", async (_req, res) => {
+    const result = await buildCleanAssets();
+    const stats = await getCleanAssetStats();
+    res.json({ buildResult: result, stats });
+  });
+
+  app.get("/api/clean-stats", async (_req, res) => {
+    const stats = await getCleanAssetStats();
+    res.json(stats);
+  });
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
   app.get("/api/search", verifyToken, symbolController.search);

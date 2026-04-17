@@ -8,7 +8,7 @@ import { Queue, type JobsOptions } from "bullmq";
 import { redisConnectionOptions } from "../config/redis";
 import { logger } from "../utils/logger";
 
-export const INGESTION_QUEUE_NAME = "ingestion:jobs";
+export const INGESTION_QUEUE_NAME = "ingestion-jobs";
 
 const defaultJobOpts: JobsOptions = {
   attempts: 3,
