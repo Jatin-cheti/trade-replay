@@ -1,18 +1,53 @@
 /**
  * Batch reprocess all clean assets to resolve logos — 100% coverage.
- * Uses logoResolver.service.ts tiered resolution.
+ * Mirrors the upgraded logoResolver.service.ts + companyNormalizer.service.ts logic.
  */
 const mongoose = require('mongoose');
 
-// Inline logo resolver (since we can't import TS from CJS)
+// ── Expanded Symbol Map (mirrors logoResolver.service.ts) ──
 const SYMBOL_LOGO_MAP = {
+  // Indices
   NIFTY: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
   NIFTY50: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
+  "NIFTY 50": "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
   SENSEX: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/BSE_Logo.svg/120px-BSE_Logo.svg.png",
   BANKNIFTY: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
+  "BANK NIFTY": "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
+  NIFTYBANK: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
   SPX: "https://logo.clearbit.com/spglobal.com",
   DJI: "https://logo.clearbit.com/spglobal.com",
+  DJIA: "https://logo.clearbit.com/spglobal.com",
   IXIC: "https://logo.clearbit.com/nasdaq.com",
+  FTSE: "https://logo.clearbit.com/lseg.com",
+  FTSE100: "https://logo.clearbit.com/lseg.com",
+  DAX: "https://logo.clearbit.com/deutsche-boerse.com",
+  CAC40: "https://logo.clearbit.com/euronext.com",
+  N225: "https://logo.clearbit.com/jpx.co.jp",
+  NIKKEI: "https://logo.clearbit.com/jpx.co.jp",
+  HSI: "https://logo.clearbit.com/hkex.com.hk",
+  KOSPI: "https://logo.clearbit.com/krx.co.kr",
+  STI: "https://logo.clearbit.com/sgx.com",
+  ASX200: "https://logo.clearbit.com/asx.com.au",
+  DXY: "https://www.google.com/s2/favicons?sz=128&domain=ice.com",
+  VIX: "https://logo.clearbit.com/cboe.com",
+  RUT: "https://logo.clearbit.com/ftserussell.com",
+  NDX: "https://logo.clearbit.com/nasdaq.com",
+  // Commodities
+  XAUUSD: "https://www.google.com/s2/favicons?sz=128&domain=gold.org",
+  XAGUSD: "https://www.google.com/s2/favicons?sz=128&domain=silverinstitute.org",
+  GOLD: "https://www.google.com/s2/favicons?sz=128&domain=gold.org",
+  SILVER: "https://www.google.com/s2/favicons?sz=128&domain=silverinstitute.org",
+  CRUDEOIL: "https://www.google.com/s2/favicons?sz=128&domain=opec.org",
+  NATURALGAS: "https://www.google.com/s2/favicons?sz=128&domain=eia.gov",
+  COPPER: "https://www.google.com/s2/favicons?sz=128&domain=lme.com",
+  // Bonds
+  EUROBOND: "https://www.google.com/s2/favicons?sz=128&domain=ecb.europa.eu",
+  TBOND: "https://www.google.com/s2/favicons?sz=128&domain=treasury.gov",
+  TNOTE: "https://www.google.com/s2/favicons?sz=128&domain=treasury.gov",
+  BUND: "https://www.google.com/s2/favicons?sz=128&domain=bundesbank.de",
+  GILT: "https://www.google.com/s2/favicons?sz=128&domain=bankofengland.co.uk",
+  JGB: "https://www.google.com/s2/favicons?sz=128&domain=boj.or.jp",
+  // Crypto
   BTC: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
   ETH: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
   BNB: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png",
@@ -56,7 +91,62 @@ const EXCHANGE_DOMAIN = {
   SGX: "sgx.com", BINANCE: "binance.com", COINBASE: "coinbase.com",
   KRAKEN: "kraken.com", BYBIT: "bybit.com", OKX: "okx.com",
   GATEIO: "gate.io", KUCOIN: "kucoin.com", COINGECKO: "coingecko.com",
+  MCX: "mcxindia.com", NCDEX: "ncdex.com", SWX: "six-group.com",
+  MOEX: "moex.com", B3: "b3.com.br", JSE: "jse.co.za",
+  AMEX: "nyse.com", OTCMARKETS: "otcmarkets.com", CFD: "ig.com",
+  FOREX: "xe.com", FX: "xe.com",
 };
+
+// ── Company Name Normalizer (mirrors companyNormalizer.service.ts) ──
+const STRIP_RE = /\b(ltd|limited|inc|incorporated|corp|corporation|co|company|plc|ag|sa|se|nv|bv|gmbh|llc|lp|industries|industry|group|holdings|holding|enterprises|enterprise|international|intl|global|services|solutions|technologies|technology|tech|systems|pharma|pharmaceuticals|infra|infrastructure|logistics|capital|financial|finance|bancorp|bank|insurance|assurance|realty|properties|land|development|manufacturing|mfg|chemicals|chemical|textiles|textile|metals|metal|power|energy|oil|gas|petroleum|construction|engineering|steel|cement|foods|food|beverages|minerals|mining|investments|investors|associates|partners|ventures)\b/gi;
+
+const NAME_DOMAIN_MAP = {
+  "hdfc life": "hdfclife.com", "hdfc bank": "hdfcbank.com", "hdfc": "hdfc.com",
+  "icici bank": "icicibank.com", "icici prudential": "iciciprulife.com",
+  "sbi": "sbi.co.in", "sbi life": "sbilife.co.in", "reliance": "ril.com",
+  "tata motors": "tatamotors.com", "tata steel": "tatasteel.com",
+  "tata consultancy": "tcs.com", "tcs": "tcs.com", "infosys": "infosys.com",
+  "wipro": "wipro.com", "bajaj finance": "bajajfinserv.in", "mahindra": "mahindra.com",
+  "bharti airtel": "airtel.in", "airtel": "airtel.in", "kotak mahindra": "kotak.com",
+  "asian paints": "asianpaints.com", "ultratech": "ultratechcement.com",
+  "sun pharma": "sunpharma.com", "dr reddys": "drreddys.com", "cipla": "cipla.com",
+  "maruti suzuki": "marutisuzuki.com", "hero motocorp": "heromotocorp.com",
+  "bajaj auto": "bajajauto.com", "nestle india": "nestle.in",
+  "hindustan unilever": "hul.co.in", "itc": "itcportal.com",
+  "larsen toubro": "larsentoubro.com", "axis bank": "axisbank.com", "adani": "adani.com",
+  "power grid": "powergrid.in", "ntpc": "ntpc.co.in", "ongc": "ongcindia.com",
+  "coal india": "coalindia.in", "grasim": "grasim.com", "dhunseri": "dhunseri.com",
+  "tarachand": "tarachand.com",
+  "apple": "apple.com", "microsoft": "microsoft.com", "google": "google.com",
+  "alphabet": "abc.xyz", "amazon": "amazon.com", "meta platforms": "meta.com",
+  "tesla": "tesla.com", "nvidia": "nvidia.com", "berkshire hathaway": "berkshirehathaway.com",
+  "johnson johnson": "jnj.com", "jpmorgan": "jpmorganchase.com",
+  "visa": "visa.com", "mastercard": "mastercard.com", "walmart": "walmart.com",
+  "procter gamble": "pg.com", "disney": "disney.com", "coca cola": "coca-cola.com",
+};
+
+function normalizeName(name) {
+  let n = name.toLowerCase().trim();
+  n = n.replace(STRIP_RE, '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+  return n;
+}
+
+function deriveDomain(name) {
+  const norm = normalizeName(name);
+  if (!norm || norm.length < 2) return null;
+  for (const [key, domain] of Object.entries(NAME_DOMAIN_MAP)) {
+    if (norm.includes(key)) return domain;
+  }
+  const words = norm.split(/\s+/).filter(w => w.length > 1);
+  if (words.length === 0) return null;
+  if (words.length >= 2) {
+    const two = words.slice(0, 2).join('').replace(/[^a-z0-9]/g, '');
+    if (two.length >= 3) return `${two}.com`;
+  }
+  const one = words[0].replace(/[^a-z0-9]/g, '');
+  if (one.length >= 3) return `${one}.com`;
+  return null;
+}
 
 function hashColor(str) {
   let hash = 0;
@@ -78,10 +168,14 @@ function resolveLogo(doc) {
   if (doc.s3Icon && doc.s3Icon.startsWith('http')) return { url: doc.s3Icon, source: 's3', tier: 0 };
   if (doc.iconUrl && doc.iconUrl.startsWith('http') && !doc.iconUrl.includes('default')) return { url: doc.iconUrl, source: 'existing', tier: 0 };
 
-  // Tier 1: symbol map
+  // Tier 1: symbol map (+ name variants)
   const base = sym.replace(/(USDT|USDC|USD|BUSD|BTC|ETH)$/, '');
   if (SYMBOL_LOGO_MAP[sym]) return { url: SYMBOL_LOGO_MAP[sym], source: 'symbolMap', tier: 1 };
   if (base && SYMBOL_LOGO_MAP[base]) return { url: SYMBOL_LOGO_MAP[base], source: 'symbolMap:base', tier: 1 };
+  const nameUp = (doc.name || '').toUpperCase();
+  if (nameUp && SYMBOL_LOGO_MAP[nameUp]) return { url: SYMBOL_LOGO_MAP[nameUp], source: 'symbolMap:name', tier: 1 };
+  const nameCompact = nameUp.replace(/\s+/g, '');
+  if (nameCompact && SYMBOL_LOGO_MAP[nameCompact]) return { url: SYMBOL_LOGO_MAP[nameCompact], source: 'symbolMap:nameCompact', tier: 1 };
 
   // Tier 2: type-based
   if (doc.type === 'crypto') {
@@ -94,15 +188,27 @@ function resolveLogo(doc) {
   }
   if (TYPE_FALLBACK[doc.type]) return { url: TYPE_FALLBACK[doc.type], source: `type:${doc.type}`, tier: 2 };
 
-  // Tier 3: Clearbit
+  // Tier 3: Clearbit (explicit domain)
   if (doc.companyDomain) {
     const domain = doc.companyDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     return { url: `https://logo.clearbit.com/${domain}`, source: 'clearbit', tier: 3 };
   }
 
+  // Tier 3b: Clearbit (derived domain from company name)
+  if (doc.name) {
+    const derived = deriveDomain(doc.name);
+    if (derived) return { url: `https://logo.clearbit.com/${derived}`, source: 'clearbit:derived', tier: 3 };
+  }
+
   // Tier 4: exchange favicon
   const exDomain = EXCHANGE_DOMAIN[(doc.exchange || '').toUpperCase()];
   if (exDomain) return { url: `https://www.google.com/s2/favicons?sz=128&domain=${exDomain}`, source: 'exchange:favicon', tier: 4 };
+
+  // Tier 4b: Google favicon from derived domain
+  if (doc.name) {
+    const derived = deriveDomain(doc.name);
+    if (derived) return { url: `https://www.google.com/s2/favicons?sz=128&domain=${derived}`, source: 'google:derived', tier: 4 };
+  }
 
   // Tier 5: generated SVG
   return { url: generateSvg(sym), source: 'generated', tier: 5 };
@@ -118,6 +224,7 @@ mongoose.connect('mongodb://127.0.0.1:27017/tradereplay').then(async () => {
   const BATCH = 1000;
   let processed = 0, updated = 0;
   const tierCounts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const tier5Samples = []; // track generated-SVG symbols for debugging
 
   const cursor = clean.find({}).project({
     _id: 1, symbol: 1, type: 1, exchange: 1, companyDomain: 1,
@@ -130,6 +237,9 @@ mongoose.connect('mongodb://127.0.0.1:27017/tradereplay').then(async () => {
     processed++;
     const logo = resolveLogo(doc);
     tierCounts[logo.tier]++;
+    if (logo.tier >= 5 && tier5Samples.length < 50) {
+      tier5Samples.push({ symbol: doc.symbol, name: doc.name, exchange: doc.exchange, type: doc.type });
+    }
 
     batch.push({
       updateOne: {
@@ -180,6 +290,12 @@ mongoose.connect('mongodb://127.0.0.1:27017/tradereplay').then(async () => {
   console.log(`Tier breakdown:`, tierCounts);
   console.log(`Total: ${total}, With logo: ${withLogo}, Without: ${withoutLogo}`);
   console.log(`Coverage: ${((withLogo / total) * 100).toFixed(1)}%`);
+  if (tier5Samples.length > 0) {
+    console.log(`\nTier 5 samples (generated SVG — no real logo found):`);
+    for (const s of tier5Samples.slice(0, 20)) {
+      console.log(`  ${s.symbol} | ${s.name} | ${s.exchange} | ${s.type}`);
+    }
+  }
 
   process.exit(0);
 }).catch(e => { console.error(e); process.exit(1); });
