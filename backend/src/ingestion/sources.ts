@@ -83,7 +83,8 @@ export async function fetchNasdaqTrader(): Promise<RawSymbol[]> {
 }
 
 export async function fetchAlphaVantage(): Promise<RawSymbol[]> {
-  const key = env.ALPHA_VANTAGE_KEY || "***REDACTED_AV_KEY***";
+  const key = env.ALPHA_VANTAGE_KEY;
+  if (!key) throw new Error("ALPHA_VANTAGE_KEY is required for Alpha Vantage ingestion");
   const csv = await fetchText(`https://www.alphavantage.co/query?function=LISTING_STATUS&apikey=${key}`, 60_000);
   const rows: RawSymbol[] = [];
   for (const line of csv.split("\n").slice(1)) {

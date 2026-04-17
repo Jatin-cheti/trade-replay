@@ -12,6 +12,7 @@ import { preloadHotSymbolLogos } from "./services/logoQueue.service";
 import { startInvalidationListener } from "./services/cacheInvalidation.service";
 import { initTrieSearch } from "./services/trieSearch.service";
 import { initFilterCache } from "./services/filterCache.service";
+import { warmScreenerCache } from "./services/cacheWarmup.service";
 
 type NodeErrorWithCode = Error & { code?: string };
 
@@ -56,6 +57,11 @@ async function bootstrap() {
   ]);
   await startInvalidationListener();
   logger.info("bootstrap_perf_infra_done");
+
+  // ── Non-blocking cache warmup — eliminates cold-start penalty ──
+  warmScreenerCache().catch((err: unknown) => {
+    logger.warn("cache_warmup_failed", { error: err instanceof Error ? err.message : String(err) });
+  });
 
   logger.info("bootstrap_create_app");
   const { httpServer } = createApp();

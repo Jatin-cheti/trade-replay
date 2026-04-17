@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, ChevronDown, TrendingUp, TrendingDown, X, SlidersHorizontal, ChevronRight, BarChart3, Star, ArrowUpDown } from "lucide-react";
@@ -6,6 +6,7 @@ import { Virtuoso } from "react-virtuoso";
 import { api } from "@/lib/api";
 import { isSpreadExpression } from "@/lib/spreadOperator";
 import AssetAvatar from "@/components/ui/AssetAvatar";
+import { useResponsive } from "@/hooks/useResponsive";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 interface ScreenerItem {
@@ -209,6 +210,7 @@ function FilterChip({
 export default function Screener() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isMobile, isTablet, isDesktop } = useResponsive();
 
   const activeCategory = searchParams.get("type") || "all";
   const activeCountry = searchParams.get("country") || "";
@@ -321,8 +323,12 @@ export default function Screener() {
 
   const activeFilterCount = [activeCountry, activeExchange, activeSector, marketCapMin, marketCapMax, volumeMin, volumeMax, primaryOnly].filter(Boolean).length;
 
-  /* ── TradingView-style column grid ─────────────────────────────────── */
-  const gridTemplate = "minmax(200px,2.5fr) 100px 90px 110px 120px 100px 90px";
+  /* ── Responsive column grid ──────────────────────────────────────── */
+  const gridTemplate = isMobile
+    ? "1fr"  // card layout — not used for grid
+    : isTablet
+      ? "minmax(160px,2.5fr) 80px 75px 100px 80px" // hide vol + sector
+      : "minmax(200px,2.5fr) 100px 90px 110px 120px 100px 90px";
 
   const catLabel = activeCategory === "all"
     ? "All stocks"
@@ -330,7 +336,7 @@ export default function Screener() {
 
   return (
     <div className="min-h-screen bg-background pt-2 pb-8">
-      <div className="mx-auto max-w-[1440px] px-4 md:px-6">
+      <div className="mx-auto max-w-[1440px] px-2 sm:px-4 md:px-6">
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
@@ -431,8 +437,8 @@ export default function Screener() {
           )}
         </div>
 
-        {/* Category Tabs — TradingView style */}
-        <div className="flex items-center gap-0.5 border-b border-border/30 mb-0.5">
+        {/* Category Tabs — TradingView style (scrollable on mobile) */}
+        <div className="flex items-center gap-0.5 border-b border-border/30 mb-0.5 overflow-x-auto scrollbar-hide">
           {CATEGORIES.map((cat) => {
             const count = cat.type ? stats?.byType[cat.type] || 0 : stats?.total || 0;
             const isActive = activeCategory === cat.key;
@@ -461,12 +467,12 @@ export default function Screener() {
         </div>
 
         {/* View sub-tabs — TradingView style */}
-        <div className="flex items-center gap-0.5 mb-2 border-b border-border/20">
+        <div className="flex items-center gap-0.5 mb-2 border-b border-border/20 overflow-x-auto scrollbar-hide">
           {VIEW_TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveViewTab(tab)}
-              className={`px-3 py-2 text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
                 activeViewTab === tab ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -474,8 +480,8 @@ export default function Screener() {
             </button>
           ))}
 
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground tabular-nums">
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
               {total > 0 ? `${total.toLocaleString()}` : "\u2014"}
             </span>
             <div className="relative">
@@ -485,7 +491,7 @@ export default function Screener() {
                 placeholder="Search..."
                 value={localQuery}
                 onChange={(e) => setLocalQuery(e.target.value)}
-                className="w-40 pl-7 pr-7 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
+                className="w-28 sm:w-40 pl-7 pr-7 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
               />
               {localQuery && (
                 <button onClick={() => { setLocalQuery(""); updateParams({ q: undefined }); }}
@@ -506,10 +512,11 @@ export default function Screener() {
           </div>
         </div>
 
-        {/* Table Header — TradingView style */}
+        {/* Table Header — responsive */}
+        {!isMobile && (
         <div className="sticky top-[var(--navbar-height,64px)] z-20 rounded-t-lg border border-border/30 bg-secondary/40 backdrop-blur-sm">
           <div
-            className="grid gap-2 px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
+            className="grid gap-2 px-3 sm:px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
             style={{ gridTemplateColumns: gridTemplate }}
           >
             <div className="flex items-center">
@@ -527,23 +534,26 @@ export default function Screener() {
                 Chg% <SortIcon field="changePercent" />
               </button>
             </div>
-            <div className="text-right">
-              <button onClick={() => handleSort("volume")} className="flex items-center gap-0.5 hover:text-foreground ml-auto">
-                Vol <SortIcon field="volume" />
-              </button>
-            </div>
+            {isDesktop && (
+              <div className="text-right">
+                <button onClick={() => handleSort("volume")} className="flex items-center gap-0.5 hover:text-foreground ml-auto">
+                  Vol <SortIcon field="volume" />
+                </button>
+              </div>
+            )}
             <div className="text-right">
               <button onClick={() => handleSort("marketCap")} className="flex items-center gap-0.5 hover:text-foreground ml-auto">
                 Mkt cap <SortIcon field="marketCap" />
               </button>
             </div>
-            <div className="text-center">Sector</div>
+            {isDesktop && <div className="text-center">Sector</div>}
             <div className="text-center">Country</div>
           </div>
         </div>
+        )}
 
-        {/* Table Body — Virtualized */}
-        <div className="border-x border-b border-border/30 rounded-b-lg bg-background/60">
+        {/* Table Body — Virtualized + Responsive */}
+        <div className={`${isMobile ? "" : "border-x border-b border-border/30 rounded-b-lg"} bg-background/60`}>
           {loading && items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3">
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -560,79 +570,128 @@ export default function Screener() {
               style={{ height: "calc(100vh - 320px)", minHeight: "400px" }}
               endReached={loadMore}
               overscan={400}
-              itemContent={(index, item) => (
-                <div
-                  onClick={() => navigate(`/symbol/${encodeURIComponent(item.fullSymbol)}`)}
-                  className={`grid gap-2 px-4 py-2.5 items-center cursor-pointer transition-colors hover:bg-secondary/30 ${
-                    index > 0 ? "border-t border-border/10" : ""
-                  }`}
-                  style={{ gridTemplateColumns: gridTemplate }}
-                >
-                  {/* Ticker + Description (TradingView style) */}
-                  <div className="flex items-center gap-2.5 min-w-0">
+              itemContent={(index, item) =>
+                isMobile ? (
+                  /* ── MOBILE CARD LAYOUT ── */
+                  <div
+                    onClick={() => navigate(`/symbol/${encodeURIComponent(item.fullSymbol)}`)}
+                    className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors hover:bg-secondary/30 ${
+                      index > 0 ? "border-t border-border/10" : ""
+                    }`}
+                  >
                     <AssetAvatar
                       src={item.iconUrl}
                       label={item.symbol}
-                      className="h-7 w-7 rounded-full object-cover ring-1 ring-border/40 shrink-0"
+                      className="h-9 w-9 rounded-full object-cover ring-1 ring-border/40 shrink-0"
                     />
-                    <div className="min-w-0">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-sm text-foreground truncate">{item.symbol}</span>
-                        <span className="text-[10px] text-muted-foreground/60 font-medium">{item.exchange}</span>
+                        <span className="font-semibold text-sm text-foreground">{item.symbol}</span>
+                        <span className="text-[10px] text-muted-foreground/60">{item.exchange}</span>
                         {item.type !== "stock" && (
                           <span className={`text-[9px] px-1 py-0.5 rounded border ${typeBadge(item.type)}`}>
                             {typeLabel(item.type)}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate max-w-[180px]">{item.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{item.name}</p>
+                      {item.sector && (
+                        <span className="text-[10px] text-muted-foreground/70">{item.sector}</span>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-medium text-foreground tabular-nums">{fmtPrice(item.price)}</div>
+                      {item.changePercent !== 0 ? (
+                        <span className={`text-xs font-medium tabular-nums ${
+                          item.changePercent > 0 ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          {item.changePercent > 0 ? "+" : ""}{item.changePercent.toFixed(2)}%
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                      )}
+                      <div className="text-[10px] text-muted-foreground">{fmt(item.marketCap)}</div>
                     </div>
                   </div>
+                ) : (
+                  /* ── TABLET / DESKTOP GRID ROW ── */
+                  <div
+                    onClick={() => navigate(`/symbol/${encodeURIComponent(item.fullSymbol)}`)}
+                    className={`grid gap-2 px-3 sm:px-4 py-2.5 items-center cursor-pointer transition-colors hover:bg-secondary/30 ${
+                      index > 0 ? "border-t border-border/10" : ""
+                    }`}
+                    style={{ gridTemplateColumns: gridTemplate }}
+                  >
+                    {/* Ticker + Description */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <AssetAvatar
+                        src={item.iconUrl}
+                        label={item.symbol}
+                        className="h-7 w-7 rounded-full object-cover ring-1 ring-border/40 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-sm text-foreground truncate">{item.symbol}</span>
+                          <span className="text-[10px] text-muted-foreground/60 font-medium">{item.exchange}</span>
+                          {item.type !== "stock" && (
+                            <span className={`text-[9px] px-1 py-0.5 rounded border ${typeBadge(item.type)}`}>
+                              {typeLabel(item.type)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate max-w-[180px]">{item.name}</p>
+                      </div>
+                    </div>
 
-                  {/* Last (Price) */}
-                  <div className="text-right">
-                    <span className="text-sm font-medium text-foreground tabular-nums">{fmtPrice(item.price)}</span>
-                    {item.currency && item.currency !== "USD" && (
-                      <span className="text-[10px] text-muted-foreground ml-0.5">{item.currency}</span>
+                    {/* Last (Price) */}
+                    <div className="text-right">
+                      <span className="text-sm font-medium text-foreground tabular-nums">{fmtPrice(item.price)}</span>
+                      {item.currency && item.currency !== "USD" && (
+                        <span className="text-[10px] text-muted-foreground ml-0.5">{item.currency}</span>
+                      )}
+                    </div>
+
+                    {/* Chg% */}
+                    <div className="text-right">
+                      {item.changePercent !== 0 ? (
+                        <span className={`text-sm font-medium tabular-nums ${
+                          item.changePercent > 0 ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          {item.changePercent > 0 ? "+" : ""}{item.changePercent.toFixed(2)}%
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground tabular-nums">{"\u2014"}</span>
+                      )}
+                    </div>
+
+                    {/* Vol — desktop only */}
+                    {isDesktop && (
+                      <div className="text-right">
+                        <span className="text-sm text-foreground tabular-nums">{fmt(item.volume)}</span>
+                      </div>
                     )}
-                  </div>
 
-                  {/* Chg% */}
-                  <div className="text-right">
-                    {item.changePercent !== 0 ? (
-                      <span className={`text-sm font-medium tabular-nums ${
-                        item.changePercent > 0 ? "text-emerald-400" : "text-red-400"
-                      }`}>
-                        {item.changePercent > 0 ? "+" : ""}{item.changePercent.toFixed(2)}%
+                    {/* Mkt cap */}
+                    <div className="text-right">
+                      <span className="text-sm text-foreground tabular-nums">{fmt(item.marketCap)}</span>
+                    </div>
+
+                    {/* Sector — desktop only */}
+                    {isDesktop && (
+                      <div className="text-center">
+                        <span className="text-[10px] text-muted-foreground truncate block">{item.sector || "\u2014"}</span>
+                      </div>
+                    )}
+
+                    {/* Country */}
+                    <div className="text-center">
+                      <span className="text-xs">
+                        {item.country ? `${COUNTRY_FLAGS[item.country] || ""} ${item.country}` : "\u2014"}
                       </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground tabular-nums">{"\u2014"}</span>
-                    )}
+                    </div>
                   </div>
-
-                  {/* Vol */}
-                  <div className="text-right">
-                    <span className="text-sm text-foreground tabular-nums">{fmt(item.volume)}</span>
-                  </div>
-
-                  {/* Mkt cap */}
-                  <div className="text-right">
-                    <span className="text-sm text-foreground tabular-nums">{fmt(item.marketCap)}</span>
-                  </div>
-
-                  {/* Sector */}
-                  <div className="text-center">
-                    <span className="text-[10px] text-muted-foreground truncate block">{item.sector || "\u2014"}</span>
-                  </div>
-
-                  {/* Country */}
-                  <div className="text-center">
-                    <span className="text-xs">
-                      {item.country ? `${COUNTRY_FLAGS[item.country] || ""} ${item.country}` : "\u2014"}
-                    </span>
-                  </div>
-                </div>
-              )}
+                )
+              }
               components={{
                 Footer: () => loadingMore ? (
                   <div className="flex items-center justify-center py-4 gap-2">
