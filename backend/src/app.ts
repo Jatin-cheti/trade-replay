@@ -27,6 +27,9 @@ import { createPortfolioController } from "./controllers/portfolioController";
 import { createSymbolController } from "./controllers/symbolController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
+import { getIngestionQueue } from "./ingestion/queue";
+import { createIngestionRoutes } from "./ingestion/routes";
+import { startIngestionWorker } from "./ingestion/worker";
 import { warmSymbolSearchCache } from "./services/symbol.service";
 import { startSearchIndexService } from "./services/searchIndex.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
@@ -112,9 +115,15 @@ export function createApp() {
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath("/admin/queues");
   createBullBoard({
-    queues: [new BullMQAdapter(getLogoQueue())],
+    queues: [
+      new BullMQAdapter(getLogoQueue()),
+      new BullMQAdapter(getIngestionQueue()),
+    ],
     serverAdapter,
   });
+
+  // Start ingestion worker so it processes jobs immediately
+  startIngestionWorker();
   app.use("/admin/queues", serverAdapter.getRouter());
 
   const portfolioController = createPortfolioController();
@@ -323,6 +332,7 @@ export function createApp() {
   app.use("/api/screener", createScreenerRoutes());
   app.use("/api/alerts", createAlertsRoutes());
   app.use("/api/datafeed", createDatafeedRoutes());
+  app.use("/api/ingestion", createIngestionRoutes());
   app.use(notFoundHandler);
   app.use(errorHandler);
 
