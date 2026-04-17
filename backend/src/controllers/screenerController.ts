@@ -3,6 +3,7 @@ import { z } from "zod";
 import { CleanAssetModel } from "../models/CleanAsset";
 import { SymbolModel } from "../models/Symbol";
 import { getPriceQuotes } from "../services/priceCache.service";
+import { getLiveQuotes } from "../services/snapshotEngine.service";
 import { redisClient, isRedisReady } from "../config/redis";
 import { logger } from "../utils/logger";
 
@@ -69,7 +70,6 @@ function buildQuery(filters: z.infer<typeof listSchema>) {
   if (filters.country) query.country = filters.country.toUpperCase();
   if (filters.exchange) query.exchange = filters.exchange.toUpperCase();
   if (filters.sector) query.sector = { $regex: filters.sector, $options: "i" };
-  if (filters.primary === "true") query.isPrimaryListing = true;
 
   // Range filters
   if (filters.marketCapMin || filters.marketCapMax) {
@@ -193,10 +193,11 @@ export async function list(req: Request, res: Response) {
 
     const formatted = items.map(formatDoc);
 
-    // Overlay live prices from priceCache
+    // Overlay live prices from priceCache, fallback to snapshot engine
     try {
       const symbols = formatted.map((f: any) => f.symbol);
       const quotes = await getPriceQuotes(symbols);
+      const missing: string[] = [];
       for (const item of formatted) {
         const q = quotes[(item as any).symbol];
         if (q && q.price > 0) {
@@ -204,7 +205,25 @@ export async function list(req: Request, res: Response) {
           (item as any).change = q.change;
           (item as any).changePercent = q.changePercent;
           if (q.volume > 0) (item as any).volume = q.volume;
+        } else {
+          missing.push((item as any).symbol);
         }
+      }
+      // Fallback: use snapshot engine for any symbols without prices
+      if (missing.length > 0) {
+        try {
+          const snap = await getLiveQuotes({ symbols: missing });
+          for (const item of formatted) {
+            if ((item as any).price > 0) continue;
+            const sq = snap.quotes[(item as any).symbol];
+            if (sq && sq.price > 0) {
+              (item as any).price = sq.price;
+              (item as any).change = sq.change;
+              (item as any).changePercent = sq.changePercent;
+              if (sq.volume > 0) (item as any).volume = sq.volume;
+            }
+          }
+        } catch { /* snapshot fallback is best-effort */ }
       }
     } catch { /* price overlay is best-effort */ }
 
@@ -320,6 +339,16 @@ export async function symbolDetail(req: Request, res: Response) {
         result.change = q.change;
         result.changePercent = q.changePercent;
         if (q.volume > 0) result.volume = q.volume;
+      } else {
+        // Fallback to snapshot engine
+        const snap = await getLiveQuotes({ symbols: [result.symbol] });
+        const sq = snap.quotes[result.symbol];
+        if (sq && sq.price > 0) {
+          result.price = sq.price;
+          result.change = sq.change;
+          result.changePercent = sq.changePercent;
+          if (sq.volume > 0) result.volume = sq.volume;
+        }
       }
     } catch { /* best-effort */ }
 

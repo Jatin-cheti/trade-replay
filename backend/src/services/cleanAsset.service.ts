@@ -13,10 +13,10 @@ import type { AnyBulkWriteOperation } from "mongoose";
 
 const BATCH_SIZE = 500;
 const KNOWN_EXCHANGES = new Set([
-  "NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "OTC", "OTCBB", "PINK",
+  "NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "OTC", "OTCBB", "PINK", "OTCMARKETS", "BATSTRADING",
   "LSE", "LON", "TSX", "TSXV", "ASX", "NSE", "BSE",
-  "XETRA", "FRA", "FSX", "ETR", "BER", "MUN", "STU", "DUS", "HAM",
-  "EURONEXT", "EPA", "AMS", "BRU", "LIS",
+  "XETRA", "FRA", "FSX", "ETR", "BER", "MUN", "STU", "DUS", "HAM", "FRANKFURT", "STUTTGART",
+  "EURONEXT", "EPA", "AMS", "BRU", "LIS", "PARIS",
   "TSE", "JPX", "KOSDAQ", "KRX", "KOSE", "TWSE", "TAI", "TPEX",
   "SSE", "SZSE", "HKEX", "HKG",
   "JSE", "SAU", "TADAWUL",
@@ -24,11 +24,14 @@ const KNOWN_EXCHANGES = new Set([
   "BOVESPA", "BVMF", "SAO",
   "MIL", "BIT", "BME", "MCE", "SWX", "SIX", "VIE", "WSE", "CPH", "HEL", "STO", "OSL", "ISE",
   "BINANCE", "COINBASE", "KRAKEN", "BYBIT", "OKX", "GATEIO", "KUCOIN", "MEXC",
-  "BITFINEX", "HUOBI", "CRYPTO.COM", "BITSTAMP", "GEMINI",
+  "BITFINEX", "HUOBI", "CRYPTO.COM", "BITSTAMP", "GEMINI", "CRYPTO",
   "FOREX", "FX", "OANDA", "FXCM",
   "INDEX", "INDEXSP", "INDEXDJX", "INDEXNASDAQ", "INDEXFTSE", "INDEXNIKKEI",
+  "SP", "DJI", "CBOE", "RUSSELL",
   "COMMODITY",
-  "FRED", "WORLDBANK", "TREASURY",
+  "FRED", "WORLDBANK", "TREASURY", "BOND", "ECONOMY",
+  "NZX", "PSE", "QSE", "ADX", "EGX", "BCBA", "BCS", "BVC",
+  "NYSEARCA", "CDNX", "SEC", "GLOBAL",
 ]);
 
 function isValidExchange(exchange: string): boolean {
@@ -75,6 +78,7 @@ export async function buildCleanAssets(): Promise<{
       type: 1, currency: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1,
       source: 1, priorityScore: 1, marketCap: 1, volume: 1,
       liquidityScore: 1, popularity: 1, logoStatus: 1, logoLastUpdated: 1,
+      sector: 1,
     })
     .sort({ priorityScore: -1 })
     .lean()
@@ -90,12 +94,8 @@ export async function buildCleanAssets(): Promise<{
     if (!isValidExchange(doc.exchange)) { skipped++; continue; }
     if (!isValidName(doc.name)) { skipped++; continue; }
 
-    // For high-priority items (top stocks/crypto), accept even without logo
-    const isHighPriority = (doc.priorityScore ?? 0) > 10 ||
-      (doc.marketCap ?? 0) > 1_000_000 ||
-      (doc.popularity ?? 0) > 5;
-
-    if (!hasLogo(doc) && !isHighPriority) { skipped++; continue; }
+    // Accept all symbols with valid exchange and valid name
+    // Logo and priority are used for ranking, not filtering
 
     batch.push({
       updateOne: {
@@ -118,6 +118,7 @@ export async function buildCleanAssets(): Promise<{
             volume: doc.volume ?? 0,
             liquidityScore: doc.liquidityScore ?? 0,
             popularity: doc.popularity ?? 0,
+            sector: doc.sector || "",
             logoStatus: doc.logoStatus || (hasLogo(doc) ? "mapped" : "pending"),
             logoLastUpdated: doc.logoLastUpdated || (hasLogo(doc) ? new Date() : undefined),
             isActive: true,

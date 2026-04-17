@@ -1,6 +1,6 @@
 import { SymbolModel } from "../models/Symbol";
 import { isRedisReady, redisClient } from "../config/redis";
-import { getLiveQuotes } from "./snapshotEngine.service";
+import { getLiveQuotes } from "./liveMarketService";
 import { logger } from "../utils/logger";
 import { recordRedisLatency } from "./metrics.service";
 
