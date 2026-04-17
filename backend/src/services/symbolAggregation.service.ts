@@ -1,8 +1,9 @@
-/**
+﻿/**
  * symbolAggregation.service.ts — Single source of truth for symbol data.
  *
  * Aggregates: asset metadata + live prices + fundamentals + logos.
- * No dummy values — every field is populated with real or derived data.
+ * Uses Redis pipeline for batch reads (no N+1).
+ * Symbol detail uses getCached pattern (L1+L2, on-demand).
  */
 import { CleanAssetModel } from "../models/CleanAsset";
 import { SymbolModel } from "../models/Symbol";
@@ -11,6 +12,7 @@ import { getLiveQuotes } from "./snapshotEngine.service";
 import { resolveLogo } from "./logoResolver.service";
 import { trackLogoFailure, clearLogoFailure } from "./logoFailures.service";
 import { redisClient, isRedisReady } from "../config/redis";
+import { getCached } from "./screenerCache.service";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -83,7 +85,7 @@ interface Fundamentals {
 }
 
 const TYPE_PROFILES: Record<string, {
-  mcapRange: [number, number]; // in millions
+  mcapRange: [number, number];
   peRange: [number, number];
   divRange: [number, number];
   betaRange: [number, number];
@@ -103,49 +105,38 @@ function generateFundamentals(symbol: string, type: string, price: number, exist
   const profile = TYPE_PROFILES[type] || TYPE_PROFILES.stock;
   const r = (i: number) => seededRandom(hash, i);
 
-  // Market cap: use existing if valid, otherwise generate
   let marketCap = existingMcap;
   if (marketCap <= 0 && profile.mcapRange[1] > 0) {
-    // Log-normal distribution for market cap (more small-caps than mega-caps)
     const logMin = Math.log(profile.mcapRange[0] * 1e6);
     const logMax = Math.log(profile.mcapRange[1] * 1e6);
     marketCap = Math.exp(logMin + r(0) * (logMax - logMin));
   }
 
-  // P/E ratio
   let pe = 0;
   if (profile.peRange[1] > 0) {
     pe = +(profile.peRange[0] + r(1) * (profile.peRange[1] - profile.peRange[0])).toFixed(2);
   }
 
-  // EPS derived from price and P/E
   const eps = pe > 0 && price > 0 ? +(price / pe).toFixed(2) : 0;
 
-  // Dividend yield
   let dividendYield = 0;
   if (profile.divRange[1] > 0) {
     dividendYield = +(profile.divRange[0] + r(2) * (profile.divRange[1] - profile.divRange[0])).toFixed(2);
   }
 
-  // Shares float derived from market cap and price
   const sharesFloat = price > 0 && marketCap > 0 ? Math.round(marketCap / price) : 0;
 
-  // Revenue and net income from market cap (price-to-sales ~2-8x)
   const pSales = 2 + r(3) * 6;
   const revenue = marketCap > 0 ? Math.round(marketCap / pSales) : 0;
-  const netMargin = 0.05 + r(4) * 0.25; // 5–30% net margin
+  const netMargin = 0.05 + r(4) * 0.25;
   const netIncome = revenue > 0 ? Math.round(revenue * netMargin) : 0;
 
-  // Beta
   let beta = 0;
   if (profile.betaRange[1] > 0) {
     beta = +(profile.betaRange[0] + r(5) * (profile.betaRange[1] - profile.betaRange[0])).toFixed(2);
   }
 
-  // Revenue growth (-10% to +40%)
   const revenueGrowth = +(-0.10 + r(6) * 0.50).toFixed(2);
-
-  // ROE (5–35%)
   const roe = marketCap > 0 ? +(0.05 + r(7) * 0.30).toFixed(2) : 0;
 
   return { marketCap, pe, eps, dividendYield, netIncome, revenue, sharesFloat, beta, revenueGrowth, roe };
@@ -160,8 +151,9 @@ interface PriceData {
   volume: number;
 }
 
+const ZERO_PRICE: PriceData = { price: 0, change: 0, changePercent: 0, volume: 0 };
+
 async function resolvePrice(symbol: string): Promise<PriceData> {
-  // Layer 1: priceCache
   try {
     const quotes = await getPriceQuotes([symbol]);
     const q = quotes[symbol];
@@ -170,7 +162,6 @@ async function resolvePrice(symbol: string): Promise<PriceData> {
     }
   } catch { /* fallthrough */ }
 
-  // Layer 2: snapshot engine
   try {
     const snap = await getLiveQuotes({ symbols: [symbol] });
     const sq = snap.quotes[symbol];
@@ -179,13 +170,12 @@ async function resolvePrice(symbol: string): Promise<PriceData> {
     }
   } catch { /* fallthrough */ }
 
-  return { price: 0, change: 0, changePercent: 0, volume: 0 };
+  return ZERO_PRICE;
 }
 
 async function resolvePricesBatch(symbols: string[]): Promise<Record<string, PriceData>> {
   const result: Record<string, PriceData> = {};
 
-  // Batch resolve via priceCache
   try {
     const quotes = await getPriceQuotes(symbols);
     const missing: string[] = [];
@@ -198,159 +188,70 @@ async function resolvePricesBatch(symbols: string[]): Promise<Record<string, Pri
       }
     }
 
-    // Fallback: snapshot engine for missing
     if (missing.length > 0) {
       try {
         const snap = await getLiveQuotes({ symbols: missing });
         for (const sym of missing) {
           const sq = snap.quotes[sym];
-          if (sq && sq.price > 0) {
-            result[sym] = { price: sq.price, change: sq.change, changePercent: sq.changePercent, volume: sq.volume || 0 };
-          } else {
-            result[sym] = { price: 0, change: 0, changePercent: 0, volume: 0 };
-          }
+          result[sym] = sq && sq.price > 0
+            ? { price: sq.price, change: sq.change, changePercent: sq.changePercent, volume: sq.volume || 0 }
+            : ZERO_PRICE;
         }
       } catch {
-        for (const sym of missing) {
-          result[sym] = { price: 0, change: 0, changePercent: 0, volume: 0 };
-        }
+        for (const sym of missing) result[sym] = ZERO_PRICE;
       }
     }
   } catch {
-    // If priceCache completely fails, try snapshot for all
     try {
       const snap = await getLiveQuotes({ symbols });
       for (const sym of symbols) {
         const sq = snap.quotes[sym];
         result[sym] = sq && sq.price > 0
           ? { price: sq.price, change: sq.change, changePercent: sq.changePercent, volume: sq.volume || 0 }
-          : { price: 0, change: 0, changePercent: 0, volume: 0 };
+          : ZERO_PRICE;
       }
     } catch {
-      for (const sym of symbols) {
-        result[sym] = { price: 0, change: 0, changePercent: 0, volume: 0 };
-      }
+      for (const sym of symbols) result[sym] = ZERO_PRICE;
     }
   }
 
   return result;
 }
 
-/* ── Main Aggregation Functions ────────────────────────────────────── */
+/* ── Main: getFullSymbolData — uses getCached (L1+L2) ────────────── */
 
 export async function getFullSymbolData(fullSymbol: string): Promise<FullSymbolData | null> {
-  // Cache check
-  if (isRedisReady()) {
-    try {
-      const cached = await redisClient.get(`agg:${fullSymbol}`);
-      if (cached) return JSON.parse(cached) as FullSymbolData;
-    } catch { /* miss */ }
-  }
+  return getCached<FullSymbolData | null>(`agg:${fullSymbol}`, async () => {
+    const cleanDoc = await CleanAssetModel.findOne({ fullSymbol }).lean();
+    const doc: any = cleanDoc || await SymbolModel.findOne({ fullSymbol }).lean();
+    if (!doc) return null;
 
-  // Find asset
-  let doc = await CleanAssetModel.findOne({ fullSymbol }).lean();
-  if (!doc) doc = await SymbolModel.findOne({ fullSymbol }).lean() as typeof doc;
-  if (!doc) return null;
+    const priceData = await resolvePrice(doc.symbol);
 
-  // Resolve price
-  const priceData = await resolvePrice(doc.symbol);
-
-  // Resolve logo
-  const logo = resolveLogo({
-    symbol: doc.symbol,
-    type: doc.type,
-    exchange: doc.exchange,
-    companyDomain: doc.companyDomain || "",
-    iconUrl: doc.iconUrl || "",
-    s3Icon: doc.s3Icon || "",
-    name: doc.name,
-  });
-
-  // Track failures (tier 5 = generated SVG = no real logo found)
-  if (logo.logoTier >= 5) {
-    trackLogoFailure(doc.symbol, { name: doc.name, exchange: doc.exchange, type: doc.type, tier: logo.logoTier }).catch(() => {});
-  } else {
-    clearLogoFailure(doc.symbol).catch(() => {});
-  }
-
-  // Generate fundamentals
-  const effectivePrice = priceData.price > 0 ? priceData.price : 100;
-  const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
-
-  // Use price-derived volume if DB volume is 0
-  const volume = priceData.volume > 0 ? priceData.volume
-    : (doc.volume || 0) > 0 ? doc.volume
-    : Math.round(100_000 + symbolHash(doc.symbol) % 900_000);
-
-  const result: FullSymbolData = {
-    symbol: doc.symbol,
-    fullSymbol: doc.fullSymbol,
-    name: doc.name,
-    exchange: doc.exchange,
-    country: doc.country || "",
-    type: doc.type,
-    currency: doc.currency || "USD",
-    iconUrl: logo.iconUrl,
-    companyDomain: doc.companyDomain || "",
-    sector: doc.sector || "",
-    source: doc.source || "",
-    popularity: doc.popularity || 0,
-    isPrimaryListing: (doc as any).isPrimaryListing || false,
-
-    price: priceData.price,
-    change: priceData.change,
-    changePercent: priceData.changePercent,
-    volume,
-
-    ...fundamentals,
-
-    logoSource: logo.logoSource,
-    isSynthetic: (doc as any).isSynthetic || false,
-  };
-
-  // Cache for 30s
-  if (isRedisReady()) {
-    redisClient.set(`agg:${fullSymbol}`, JSON.stringify(result), "EX", 30).catch(() => {});
-  }
-
-  return result;
-}
-
-/**
- * Batch aggregation for screener list — enriches formatted docs with prices + fundamentals + logos.
- * Designed for non-blocking batch processing.
- */
-export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]> {
-  if (docs.length === 0) return [];
-
-  const symbols = docs.map((d: any) => d.symbol);
-  const prices = await resolvePricesBatch(symbols);
-
-  const results: FullSymbolData[] = [];
-  for (const doc of docs) {
-    const priceData = prices[doc.symbol] || { price: 0, change: 0, changePercent: 0, volume: 0 };
     const logo = resolveLogo({
       symbol: doc.symbol,
       type: doc.type,
       exchange: doc.exchange,
       companyDomain: doc.companyDomain || "",
-      iconUrl: doc.s3Icon || doc.iconUrl || "",
+      iconUrl: doc.iconUrl || "",
       s3Icon: doc.s3Icon || "",
       name: doc.name,
     });
 
-    // Track failures (tier 5 = generated SVG)
     if (logo.logoTier >= 5) {
       trackLogoFailure(doc.symbol, { name: doc.name, exchange: doc.exchange, type: doc.type, tier: logo.logoTier }).catch(() => {});
+    } else {
+      clearLogoFailure(doc.symbol).catch(() => {});
     }
 
     const effectivePrice = priceData.price > 0 ? priceData.price : 100;
     const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
+
     const volume = priceData.volume > 0 ? priceData.volume
       : (doc.volume || 0) > 0 ? doc.volume
       : Math.round(100_000 + symbolHash(doc.symbol) % 900_000);
 
-    results.push({
+    return {
       symbol: doc.symbol,
       fullSymbol: doc.fullSymbol,
       name: doc.name,
@@ -363,7 +264,7 @@ export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]
       sector: doc.sector || "",
       source: doc.source || "",
       popularity: doc.popularity || 0,
-      isPrimaryListing: doc.isPrimaryListing || false,
+      isPrimaryListing: (doc as any).isPrimaryListing || false,
 
       price: priceData.price,
       change: priceData.change,
@@ -373,9 +274,122 @@ export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]
       ...fundamentals,
 
       logoSource: logo.logoSource,
-      isSynthetic: doc.isSynthetic || false,
-    });
+      isSynthetic: (doc as any).isSynthetic || false,
+    };
+  });
+}
+
+/**
+ * Batch aggregation for screener list.
+ * Uses Redis pipeline for batch cache reads — no N+1.
+ */
+export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]> {
+  if (docs.length === 0) return [];
+
+  // ── Pipeline: check Redis for pre-cached aggregations ──
+  const cacheKeys = docs.map((d: any) => `agg:${d.fullSymbol}`);
+  let cachedResults: (string | null)[] = [];
+
+  if (isRedisReady() && cacheKeys.length > 0) {
+    try {
+      // Use mget for batch Redis reads (1 round trip instead of N)
+      cachedResults = await redisClient.mget(...cacheKeys);
+    } catch {
+      cachedResults = new Array(docs.length).fill(null);
+    }
+  } else {
+    cachedResults = new Array(docs.length).fill(null);
   }
 
-  return results;
+  // Separate hit vs miss
+  const results: (FullSymbolData | null)[] = new Array(docs.length).fill(null);
+  const missIndices: number[] = [];
+
+  for (let i = 0; i < docs.length; i++) {
+    if (cachedResults[i]) {
+      try {
+        results[i] = JSON.parse(cachedResults[i]!) as FullSymbolData;
+      } catch {
+        missIndices.push(i);
+      }
+    } else {
+      missIndices.push(i);
+    }
+  }
+
+  // Compute misses in batch
+  if (missIndices.length > 0) {
+    const missDocs = missIndices.map(i => docs[i]);
+    const missSymbols = missDocs.map((d: any) => d.symbol);
+    const prices = await resolvePricesBatch(missSymbols);
+
+    // Pipeline write: cache computed results
+    const pipeline = isRedisReady() ? redisClient.pipeline() : null;
+
+    for (let j = 0; j < missIndices.length; j++) {
+      const idx = missIndices[j];
+      const doc = docs[idx];
+      const priceData = prices[doc.symbol] || ZERO_PRICE;
+
+      const logo = resolveLogo({
+        symbol: doc.symbol,
+        type: doc.type,
+        exchange: doc.exchange,
+        companyDomain: doc.companyDomain || "",
+        iconUrl: doc.s3Icon || doc.iconUrl || "",
+        s3Icon: doc.s3Icon || "",
+        name: doc.name,
+      });
+
+      if (logo.logoTier >= 5) {
+        trackLogoFailure(doc.symbol, { name: doc.name, exchange: doc.exchange, type: doc.type, tier: logo.logoTier }).catch(() => {});
+      }
+
+      const effectivePrice = priceData.price > 0 ? priceData.price : 100;
+      const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
+      const volume = priceData.volume > 0 ? priceData.volume
+        : (doc.volume || 0) > 0 ? doc.volume
+        : Math.round(100_000 + symbolHash(doc.symbol) % 900_000);
+
+      const entry: FullSymbolData = {
+        symbol: doc.symbol,
+        fullSymbol: doc.fullSymbol,
+        name: doc.name,
+        exchange: doc.exchange,
+        country: doc.country || "",
+        type: doc.type,
+        currency: doc.currency || "USD",
+        iconUrl: logo.iconUrl,
+        companyDomain: doc.companyDomain || "",
+        sector: doc.sector || "",
+        source: doc.source || "",
+        popularity: doc.popularity || 0,
+        isPrimaryListing: doc.isPrimaryListing || false,
+
+        price: priceData.price,
+        change: priceData.change,
+        changePercent: priceData.changePercent,
+        volume,
+
+        ...fundamentals,
+
+        logoSource: logo.logoSource,
+        isSynthetic: doc.isSynthetic || false,
+      };
+
+      results[idx] = entry;
+
+      // Pipeline write — batch all SET commands (1 round trip)
+      if (pipeline) {
+        pipeline.set(`agg:${doc.fullSymbol}`, JSON.stringify(entry), "EX", 60);
+      }
+    }
+
+    // Execute pipeline (single round trip for all writes)
+    if (pipeline) {
+      pipeline.exec().catch(() => {});
+    }
+  }
+
+  return results.filter((r): r is FullSymbolData => r !== null);
 }

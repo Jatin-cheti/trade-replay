@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { list, stats, symbolDetail, filterOptions } from "../controllers/screenerController";
+import { list, stats, symbolDetail, filterOptions, fastSearch } from "../controllers/screenerController";
 
 export function createScreenerRoutes() {
   const router = Router();
@@ -8,6 +8,7 @@ export function createScreenerRoutes() {
   router.get("/stats", stats);
   router.get("/list", list);
   router.get("/filters", filterOptions);
+  router.get("/search", fastSearch);
   router.get("/symbol/:fullSymbol", symbolDetail);
 
   return router;
