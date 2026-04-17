@@ -3,6 +3,7 @@ import { CleanAssetModel } from "../models/CleanAsset";
 import { logger } from "../utils/logger";
 import { produce } from "../kafka/producer";
 import { KAFKA_TOPICS } from "../kafka/topics";
+import { classifySector } from "./sectorClassifier.service";
 import type { AnyBulkWriteOperation } from "mongoose";
 
 /**
@@ -130,7 +131,7 @@ export async function buildCleanAssets(): Promise<{
             volume: doc.volume ?? 0,
             liquidityScore: doc.liquidityScore ?? 0,
             popularity: doc.popularity ?? 0,
-            sector: doc.sector || "",
+            sector: classifySector(cleanType, doc.symbol, doc.name, doc.exchange, doc.country || "", doc.sector),
             logoStatus: doc.logoStatus || (hasLogo(doc) ? "mapped" : "pending"),
             logoLastUpdated: doc.logoLastUpdated || (hasLogo(doc) ? new Date() : undefined),
             isActive: true,

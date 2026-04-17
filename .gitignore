@@ -37,6 +37,8 @@ debug-screenshots/
 # Misc
 tmp-*
 tmp/
+_*.cjs
+_*.js
 *.tgz
 .vercel
 

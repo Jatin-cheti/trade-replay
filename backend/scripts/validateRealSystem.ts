@@ -38,7 +38,7 @@ type SnapshotPayload = {
 };
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:4000/api";
-const REDIS_URL = process.env.REDIS_URL ?? "rediss://default:gQAAAAAAAYUaAAIncDJhYWY3MjY0Mzk3NjY0OTBhOWQ4M2UyMDZjY2Q1MmE2NHAyOTk2MTA@related-mole-99610.upstash.io:6379";
+const REDIS_URL = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 const QUEUE_NAME = "logo-enrichment";
 const QUEUE_JOB = "symbol-logo-enrichment";
 const QUEUE_BATCH = Number(process.env.REAL_QUEUE_BATCH_SIZE ?? "100");
