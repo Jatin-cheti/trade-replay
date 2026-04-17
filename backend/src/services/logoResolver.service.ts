@@ -1,12 +1,14 @@
 /**
  * logoResolver.service.ts — Tiered logo resolution for 100% coverage.
  *
- * TIER 1: Hard-coded symbol map (well-known indices, commodities)
+ * TIER 0: Existing valid S3/external URL
+ * TIER 1: Hard-coded symbol map (indices, commodities, major crypto)
  * TIER 2: Type-based resolution (crypto coin icons, forex flags, etc.)
- * TIER 3: Clearbit domain lookup
- * TIER 4: Google favicon fallback
+ * TIER 3: Clearbit domain lookup (company domain OR normalized name)
+ * TIER 4: Google favicon via exchange domain
  * TIER 5: Generated initial-based icon (guarantees 100%)
  */
+import { deriveDomain } from "./companyNormalizer.service";
 
 /* ── TIER 1 — Symbol Map ───────────────────────────────────────────── */
 
@@ -14,20 +16,50 @@ const SYMBOL_LOGO_MAP: Record<string, string> = {
   // Major indices
   NIFTY: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
   NIFTY50: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
+  "NIFTY 50": "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
   SENSEX: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/BSE_Logo.svg/120px-BSE_Logo.svg.png",
   BANKNIFTY: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
+  "BANK NIFTY": "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
+  NIFTYBANK: "https://upload.wikimedia.org/wikipedia/en/thumb/4/49/NSE_India_Logo.svg/120px-NSE_India_Logo.svg.png",
   SPX: "https://logo.clearbit.com/spglobal.com",
   DJI: "https://logo.clearbit.com/spglobal.com",
+  DJIA: "https://logo.clearbit.com/spglobal.com",
   IXIC: "https://logo.clearbit.com/nasdaq.com",
   FTSE: "https://logo.clearbit.com/lseg.com",
+  FTSE100: "https://logo.clearbit.com/lseg.com",
   DAX: "https://logo.clearbit.com/deutsche-boerse.com",
+  CAC40: "https://logo.clearbit.com/euronext.com",
   N225: "https://logo.clearbit.com/jpx.co.jp",
+  NIKKEI: "https://logo.clearbit.com/jpx.co.jp",
   HSI: "https://logo.clearbit.com/hkex.com.hk",
+  KOSPI: "https://logo.clearbit.com/krx.co.kr",
+  STI: "https://logo.clearbit.com/sgx.com",
+  ASX200: "https://logo.clearbit.com/asx.com.au",
+  IBOVESPA: "https://logo.clearbit.com/b3.com.br",
+  TSX: "https://logo.clearbit.com/tsx.com",
+  DXY: "https://www.google.com/s2/favicons?sz=128&domain=ice.com",
+  VIX: "https://logo.clearbit.com/cboe.com",
+  RUT: "https://logo.clearbit.com/ftserussell.com",
+  NDX: "https://logo.clearbit.com/nasdaq.com",
+  RUSSELL2000: "https://logo.clearbit.com/ftserussell.com",
 
   // Commodities / metals
   XAUUSD: "https://www.google.com/s2/favicons?sz=128&domain=gold.org",
   XAGUSD: "https://www.google.com/s2/favicons?sz=128&domain=silverinstitute.org",
-  DXY: "https://www.google.com/s2/favicons?sz=128&domain=ice.com",
+  GOLD: "https://www.google.com/s2/favicons?sz=128&domain=gold.org",
+  SILVER: "https://www.google.com/s2/favicons?sz=128&domain=silverinstitute.org",
+  CRUDEOIL: "https://www.google.com/s2/favicons?sz=128&domain=opec.org",
+  NATURALGAS: "https://www.google.com/s2/favicons?sz=128&domain=eia.gov",
+  COPPER: "https://www.google.com/s2/favicons?sz=128&domain=lme.com",
+
+  // Bonds
+  EUROBOND: "https://www.google.com/s2/favicons?sz=128&domain=ecb.europa.eu",
+  TBOND: "https://www.google.com/s2/favicons?sz=128&domain=treasury.gov",
+  TNOTE: "https://www.google.com/s2/favicons?sz=128&domain=treasury.gov",
+  TBILL: "https://www.google.com/s2/favicons?sz=128&domain=treasury.gov",
+  BUND: "https://www.google.com/s2/favicons?sz=128&domain=bundesbank.de",
+  GILT: "https://www.google.com/s2/favicons?sz=128&domain=bankofengland.co.uk",
+  JGB: "https://www.google.com/s2/favicons?sz=128&domain=boj.or.jp",
 
   // Major crypto
   BTC: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
@@ -90,6 +122,21 @@ const EXCHANGE_DOMAIN: Record<string, string> = {
   GATEIO: "gate.io",
   KUCOIN: "kucoin.com",
   COINGECKO: "coingecko.com",
+  // Indian
+  MCX: "mcxindia.com",
+  NCDEX: "ncdex.com",
+  // European
+  SWX: "six-group.com",
+  MOEX: "moex.com",
+  BOLSA: "bmv.com.mx",
+  B3: "b3.com.br",
+  JSE: "jse.co.za",
+  // Other
+  AMEX: "nyse.com",
+  OTCMARKETS: "otcmarkets.com",
+  CFD: "ig.com",
+  FOREX: "xe.com",
+  FX: "xe.com",
 };
 
 /* ── TIER 5 — Generated SVG ────────────────────────────────────────── */
@@ -150,6 +197,16 @@ export function resolveLogo(asset: {
   if (baseSymbol && SYMBOL_LOGO_MAP[baseSymbol]) {
     return { iconUrl: SYMBOL_LOGO_MAP[baseSymbol], logoSource: "symbolMap:base", logoTier: 1 };
   }
+  // Also try the asset name (e.g. "NIFTY 50", "SENSEX")
+  const nameUpper = (asset.name || "").toUpperCase();
+  if (nameUpper && SYMBOL_LOGO_MAP[nameUpper]) {
+    return { iconUrl: SYMBOL_LOGO_MAP[nameUpper], logoSource: "symbolMap:name", logoTier: 1 };
+  }
+  // Try symbol with spaces stripped from name
+  const nameNoSpace = nameUpper.replace(/\s+/g, "");
+  if (nameNoSpace && SYMBOL_LOGO_MAP[nameNoSpace]) {
+    return { iconUrl: SYMBOL_LOGO_MAP[nameNoSpace], logoSource: "symbolMap:nameCompact", logoTier: 1 };
+  }
 
   // TIER 2: Type-based resolution
   if (asset.type === "crypto") {
@@ -176,7 +233,7 @@ export function resolveLogo(asset: {
     return { iconUrl: TYPE_FALLBACK_ICONS[asset.type], logoSource: `type:${asset.type}`, logoTier: 2 };
   }
 
-  // TIER 3: Clearbit domain lookup
+  // TIER 3: Clearbit domain lookup (explicit domain OR derived from name)
   if (asset.companyDomain) {
     const domain = asset.companyDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
     return {
@@ -186,14 +243,39 @@ export function resolveLogo(asset: {
     };
   }
 
+  // TIER 3b: Derive domain from company name via normalization
+  if (asset.name) {
+    const derived = deriveDomain(asset.name);
+    if (derived) {
+      return {
+        iconUrl: `https://logo.clearbit.com/${derived}`,
+        logoSource: "clearbit:derived",
+        logoTier: 3,
+      };
+    }
+  }
+
   // TIER 4: Google favicon via exchange domain
-  const exDomain = EXCHANGE_DOMAIN[(asset.exchange || "").toUpperCase()];
+  const exKey = (asset.exchange || "").toUpperCase();
+  const exDomain = EXCHANGE_DOMAIN[exKey];
   if (exDomain) {
     return {
       iconUrl: `https://www.google.com/s2/favicons?sz=128&domain=${exDomain}`,
       logoSource: "exchange:favicon",
       logoTier: 4,
     };
+  }
+
+  // TIER 4b: Google favicon from derived domain (different from Clearbit)
+  if (asset.name) {
+    const derived = deriveDomain(asset.name);
+    if (derived) {
+      return {
+        iconUrl: `https://www.google.com/s2/favicons?sz=128&domain=${derived}`,
+        logoSource: "google:derived",
+        logoTier: 4,
+      };
+    }
   }
 
   // TIER 5: Generated SVG (guarantees 100% coverage)

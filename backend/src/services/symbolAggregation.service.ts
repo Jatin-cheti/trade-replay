@@ -9,6 +9,7 @@ import { SymbolModel } from "../models/Symbol";
 import { getPriceQuotes } from "./priceCache.service";
 import { getLiveQuotes } from "./snapshotEngine.service";
 import { resolveLogo } from "./logoResolver.service";
+import { trackLogoFailure, clearLogoFailure } from "./logoFailures.service";
 import { redisClient, isRedisReady } from "../config/redis";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
@@ -265,6 +266,13 @@ export async function getFullSymbolData(fullSymbol: string): Promise<FullSymbolD
     name: doc.name,
   });
 
+  // Track failures (tier 5 = generated SVG = no real logo found)
+  if (logo.logoTier >= 5) {
+    trackLogoFailure(doc.symbol, { name: doc.name, exchange: doc.exchange, type: doc.type, tier: logo.logoTier }).catch(() => {});
+  } else {
+    clearLogoFailure(doc.symbol).catch(() => {});
+  }
+
   // Generate fundamentals
   const effectivePrice = priceData.price > 0 ? priceData.price : 100;
   const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
@@ -330,6 +338,11 @@ export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]
       s3Icon: doc.s3Icon || "",
       name: doc.name,
     });
+
+    // Track failures (tier 5 = generated SVG)
+    if (logo.logoTier >= 5) {
+      trackLogoFailure(doc.symbol, { name: doc.name, exchange: doc.exchange, type: doc.type, tier: logo.logoTier }).catch(() => {});
+    }
 
     const effectivePrice = priceData.price > 0 ? priceData.price : 100;
     const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
