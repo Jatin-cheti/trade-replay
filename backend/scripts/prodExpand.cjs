@@ -15,8 +15,10 @@
 
 const { MongoClient } = require("mongodb");
 
-const ATLAS = "mongodb+srv://admin:Jatin%402874@trade-replay.5jityve.mongodb.net/tradereplay";
-const AV_KEY = "PCDWC3C4U8HZ5G98";
+const ATLAS = process.env.MONGO_URI_PRODUCTION || process.env.MONGO_URI;
+if (!ATLAS) { console.error("Set MONGO_URI_PRODUCTION or MONGO_URI env var"); process.exit(1); }
+const AV_KEY = process.env.ALPHA_VANTAGE_KEY;
+if (!AV_KEY) { console.error("Set ALPHA_VANTAGE_KEY env var"); process.exit(1); }
 const UA = "tradereplay-expansion/3.0";
 const BATCH = 1000;
 
