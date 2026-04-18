@@ -50,6 +50,10 @@ const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/tradereplay";
 const LIMIT = Number(process.env.ALPHA_US_LIMIT || 300);
 const DELAY_MS = Number(process.env.ALPHA_US_DELAY_MS || 1200);
+const TARGET_SYMBOLS = (process.env.ALPHA_US_SYMBOLS || "")
+  .split(",")
+  .map((value) => value.trim().toUpperCase())
+  .filter(Boolean);
 
 if (!ALPHA_VANTAGE_KEY) {
   console.error("Missing ALPHA_VANTAGE_KEY");
@@ -117,6 +121,7 @@ async function main() {
     type: "stock",
     source: { $ne: "synthetic-derivatives" },
     isPrimaryListing: { $ne: false },
+    ...(TARGET_SYMBOLS.length > 0 ? { symbol: { $in: TARGET_SYMBOLS } } : {}),
     $or: [
       { marketCap: { $exists: false } },
       { marketCap: null },
@@ -137,10 +142,14 @@ async function main() {
       },
     })
     .sort({ priorityScore: -1, searchFrequency: -1, popularity: -1, symbol: 1 })
-    .limit(LIMIT)
+    .limit(TARGET_SYMBOLS.length > 0 ? TARGET_SYMBOLS.length : LIMIT)
     .toArray();
 
-  console.log(`Found ${docs.length} high-priority US symbols needing marketCap enrichment`);
+  if (TARGET_SYMBOLS.length > 0) {
+    console.log(`Found ${docs.length} targeted US symbols needing marketCap enrichment`);
+  } else {
+    console.log(`Found ${docs.length} high-priority US symbols needing marketCap enrichment`);
+  }
 
   let updated = 0;
   let failed = 0;
