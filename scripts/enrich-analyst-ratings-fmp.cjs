@@ -143,11 +143,16 @@ async function main() {
       .toArray();
     const merged = [...all, ...allClean];
     const wanted = new Set(TARGET_SYMBOLS.map(s => s.toUpperCase()));
+    // Deduplicate by base symbol
+    const seenBase = new Set();
     docs = merged.filter((d) => {
       const sym = String(d.symbol || "").toUpperCase();
       const full = String(d.fullSymbol || "").toUpperCase();
       const base = baseSymbol(sym);
-      return wanted.has(sym) || wanted.has(full) || wanted.has(base);
+      if (!wanted.has(sym) && !wanted.has(full) && !wanted.has(base)) return false;
+      if (seenBase.has(base)) return false;
+      seenBase.add(base);
+      return true;
     }).slice(0, LIMIT);
   } else {
     docs = await cleanColl
