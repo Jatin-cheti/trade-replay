@@ -205,7 +205,6 @@ async function resolveCandles(candles?: ChartCandle[], source?: SourceRequest): 
     const payload = await getLiveCandles({
       symbol: source.symbol,
       limit: source.limit,
-      mode: source.dataMode,
     });
     return payload.candles.map((row) => ({
       time: Math.floor(new Date(row.time).getTime() / 1000),

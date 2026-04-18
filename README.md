@@ -20,6 +20,7 @@ tradereplay/
 ## Architecture
 
 - API service: Express backend handling auth, portfolio, simulation, trading, symbol search.
+- Chart microservice: delegated chart bundle/transform/indicator compute plus realtime feeds.
 - Logo microservice: dedicated worker for logo enrichment and optional S3/CDN upload.
 - Kafka service: consumer/producer worker for analytics and event fan-out.
 - Redis queue: BullMQ logo enrichment queue and cache/lock primitives.
@@ -194,6 +195,7 @@ Compose services:
 
 - backend
 - worker
+- chart-service
 - logo-service
 - kafka-service
 - mongodb
