@@ -41,6 +41,7 @@ export interface FullSymbolData {
   marketCap: number | null;
   pe: number | null;
   eps: number | null;
+  epsGrowth: number | null;
   dividendYield: number | null;
   netIncome: number | null;
   revenue: number | null;
@@ -48,6 +49,8 @@ export interface FullSymbolData {
   beta: number | null;
   revenueGrowth: number | null;
   roe: number | null;
+  avgVolume: number | null;
+  analystRating: string;
 
   // Meta
   logoSource: string;
@@ -60,6 +63,7 @@ interface Fundamentals {
   marketCap: number | null;
   pe: number | null;
   eps: number | null;
+  epsGrowth: number | null;
   dividendYield: number | null;
   netIncome: number | null;
   revenue: number | null;
@@ -67,6 +71,34 @@ interface Fundamentals {
   beta: number | null;
   revenueGrowth: number | null;
   roe: number | null;
+  avgVolume: number | null;
+  analystRating: string;
+}
+
+function pickNumber(doc: any, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = doc?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function normalizeRatio(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  if (value > 1 && value <= 100) return value / 100;
+  return value;
+}
+
+function normalizeAnalystRating(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("strong") && normalized.includes("buy")) return "strong-buy";
+  if (normalized.includes("strong") && normalized.includes("sell")) return "strong-sell";
+  if (["buy", "outperform", "overweight", "accumulate", "positive"].includes(normalized)) return "buy";
+  if (["sell", "underperform", "underweight", "reduce", "negative"].includes(normalized)) return "sell";
+  if (["hold", "neutral", "market perform", "market-perform", "equal weight", "equal-weight", "mixed"].includes(normalized)) return "neutral";
+  return normalized.replace(/\s+/g, "-");
 }
 
 /**
@@ -75,17 +107,39 @@ interface Fundamentals {
  * Returns null for fields not available — never fabricates values.
  */
 function extractFundamentals(doc: any): Fundamentals {
+  const marketCap = pickNumber(doc, ["marketCap", "mktCap"]);
+  const pe = pickNumber(doc, ["pe", "peRatio", "peRatioTTM", "priceEarningsRatioTTM"]);
+  const eps = pickNumber(doc, ["eps", "epsTTM", "epsDiluted", "epsDilutedTTM"]);
+  const epsGrowth = normalizeRatio(pickNumber(doc, ["epsGrowth", "epsDilGrowth", "epsGrowthTTM", "earningsGrowth"]));
+  const dividendYield = normalizeRatio(pickNumber(doc, ["dividendYield", "dividendYieldTTM", "lastAnnualDividend"]));
+  const netIncome = pickNumber(doc, ["netIncome", "netIncomeTTM"]);
+  const revenue = pickNumber(doc, ["revenue", "revenueTTM", "totalRevenue"]);
+  const sharesFloat = pickNumber(doc, ["sharesFloat", "floatShares", "sharesOutstanding"]);
+  const beta = pickNumber(doc, ["beta"]);
+  const revenueGrowth = normalizeRatio(pickNumber(doc, ["revenueGrowth", "revenueGrowthTTM"]));
+  const roe = normalizeRatio(pickNumber(doc, ["roe", "returnOnEquity", "returnOnEquityTTM"]));
+  const avgVolume = pickNumber(doc, ["avgVolume", "averageVolume", "volAvg", "volumeAvg"]);
+
   return {
-    marketCap: typeof doc.marketCap === "number" && doc.marketCap > 0 ? doc.marketCap : null,
-    pe: typeof doc.pe === "number" && doc.pe > 0 ? doc.pe : null,
-    eps: typeof doc.eps === "number" ? doc.eps : null,
-    dividendYield: typeof doc.dividendYield === "number" && doc.dividendYield > 0 ? doc.dividendYield : null,
-    netIncome: typeof doc.netIncome === "number" ? doc.netIncome : null,
-    revenue: typeof doc.revenue === "number" && doc.revenue > 0 ? doc.revenue : null,
-    sharesFloat: typeof doc.sharesFloat === "number" && doc.sharesFloat > 0 ? doc.sharesFloat : null,
-    beta: typeof doc.beta === "number" ? doc.beta : null,
-    revenueGrowth: typeof doc.revenueGrowth === "number" ? doc.revenueGrowth : null,
-    roe: typeof doc.roe === "number" ? doc.roe : null,
+    marketCap: marketCap != null && marketCap > 0 ? marketCap : null,
+    pe: pe != null && pe > 0 ? pe : null,
+    eps,
+    epsGrowth,
+    dividendYield: dividendYield != null && dividendYield >= 0 ? dividendYield : null,
+    netIncome,
+    revenue: revenue != null && revenue > 0 ? revenue : null,
+    sharesFloat: sharesFloat != null && sharesFloat > 0 ? sharesFloat : null,
+    beta,
+    revenueGrowth,
+    roe,
+    avgVolume: avgVolume != null && avgVolume > 0 ? avgVolume : null,
+    analystRating: normalizeAnalystRating(
+      doc.analystRating
+      ?? doc.consensus
+      ?? doc.recommendation
+      ?? doc.rating
+      ?? "",
+    ),
   };
 }
 

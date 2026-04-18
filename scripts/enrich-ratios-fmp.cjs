@@ -51,6 +51,11 @@ const TARGET_SYMBOLS = argSymbols
   ? argSymbols.split("=")[1].split(",").map(s => s.trim().toUpperCase()).filter(Boolean)
   : [];
 
+function baseSymbol(symbol) {
+  if (!symbol) return "";
+  return String(symbol).split(":").pop().toUpperCase();
+}
+
 // Stable endpoint rate limits can still trip with key rotation; keep conservative pacing.
 const DELAY_MS = Math.ceil(9000 / FMP_KEYS.length);
 let keyIndex = 0;
@@ -94,14 +99,25 @@ async function main() {
   const cleanColl = db.collection("cleanassets");
 
   // Find symbols missing pe that have a base symbol (equities)
-  const query = TARGET_SYMBOLS.length
-    ? { symbol: { $in: TARGET_SYMBOLS }, assetType: "stock" }
-    : { pe: { $exists: false }, assetType: "stock" };
-
-  const docs = await symbolsColl
-    .find(query, { projection: { symbol: 1, fullSymbol: 1 } })
-    .limit(LIMIT)
-    .toArray();
+  let docs = [];
+  if (TARGET_SYMBOLS.length) {
+    const all = await symbolsColl
+      .find({ assetType: "stock" }, { projection: { symbol: 1, fullSymbol: 1 } })
+      .limit(Math.max(LIMIT * 10, 5000))
+      .toArray();
+    const wanted = new Set(TARGET_SYMBOLS.map(s => s.toUpperCase()));
+    docs = all.filter((d) => {
+      const sym = String(d.symbol || "").toUpperCase();
+      const full = String(d.fullSymbol || "").toUpperCase();
+      const base = baseSymbol(sym);
+      return wanted.has(sym) || wanted.has(full) || wanted.has(base);
+    }).slice(0, LIMIT);
+  } else {
+    docs = await symbolsColl
+      .find({ pe: { $exists: false }, assetType: "stock" }, { projection: { symbol: 1, fullSymbol: 1 } })
+      .limit(LIMIT)
+      .toArray();
+  }
 
   console.log(`Found ${docs.length} symbols to enrich with ratios`);
   let enriched = 0;

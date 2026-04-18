@@ -38,6 +38,12 @@ function toPercent(value: number): number {
   return value * 100;
 }
 
+function toDisplayPercent(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const normalized = value > 1 && value <= 100 ? value : value * 100;
+  return Number(normalized.toFixed(2));
+}
+
 function inNumericRange(value: number | null | undefined, range?: { min?: number; max?: number }): boolean {
   if (!range) return true;
   if (value == null) return false; // null values don't match any numeric range
@@ -84,7 +90,15 @@ function isCexExchange(exchange: string): boolean {
  * Returns empty string when insufficient data is available.
  */
 function deriveAnalystRating(base: { analystRating?: string }): string {
-  return base.analystRating || "";
+  const raw = base.analystRating;
+  if (!raw) return "";
+  const normalized = raw.trim().toLowerCase();
+  if (normalized.includes("strong") && normalized.includes("buy")) return "strong-buy";
+  if (normalized.includes("strong") && normalized.includes("sell")) return "strong-sell";
+  if (["buy", "outperform", "overweight", "accumulate", "positive"].includes(normalized)) return "buy";
+  if (["sell", "underperform", "underweight", "reduce", "negative"].includes(normalized)) return "sell";
+  if (["hold", "neutral", "market perform", "market-perform", "equal weight", "equal-weight", "mixed"].includes(normalized)) return "neutral";
+  return normalized.replace(/\s+/g, "-");
 }
 
 /**
@@ -94,15 +108,19 @@ function deriveAnalystRating(base: { analystRating?: string }): string {
  */
 function mapRow(base: Awaited<ReturnType<typeof enrichScreenerBatch>>[number]): ScreenerRow {
   const perfPercent = Number((base.changePercent || 0).toFixed(2));
-  const epsDilGrowth = (base as Record<string, unknown>).epsGrowth != null ? Number(toPercent(((base as Record<string, unknown>).epsGrowth) as number).toFixed(2)) : null;
-  const revenueGrowth = base.revenueGrowth != null ? Number(toPercent(base.revenueGrowth).toFixed(2)) : null;
-  const divYieldPercent = base.dividendYield != null ? Number(base.dividendYield.toFixed(2)) : null;
+  const epsDilGrowth = toDisplayPercent(base.epsGrowth);
+  const revenueGrowth = toDisplayPercent(base.revenueGrowth);
+  const divYieldPercent = toDisplayPercent(base.dividendYield);
   const pe = base.pe;
   const peg = pe != null && pe > 0 && epsDilGrowth != null && epsDilGrowth > 0
     ? Number((pe / Math.max(0.1, epsDilGrowth)).toFixed(2))
     : null;
-  const roe = base.roe != null ? Number(toPercent(base.roe).toFixed(2)) : null;
-  const relVolume: number | null = null; // Requires average volume data not yet available
+  const roe = toDisplayPercent(base.roe);
+  const avgVolume = base.avgVolume;
+  const relVolume: number | null =
+    typeof avgVolume === "number" && Number.isFinite(avgVolume) && avgVolume > 0 && base.volume > 0
+      ? Number((base.volume / avgVolume).toFixed(2))
+      : null;
 
   const marketClass = isDexExchange(base.exchange)
     ? "dex"
@@ -120,7 +138,7 @@ function mapRow(base: Awaited<ReturnType<typeof enrichScreenerBatch>>[number]): 
     perfPercent,
     peg,
     roe,
-    analystRating: deriveAnalystRating(base as any),
+    analystRating: deriveAnalystRating(base),
     recentEarningsDate: (base as any).recentEarningsDate || "",
     upcomingEarningsDate: (base as any).upcomingEarningsDate || "",
     marketClass,
