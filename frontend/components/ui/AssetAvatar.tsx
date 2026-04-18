@@ -80,6 +80,7 @@ function buildImageCandidates(src?: string): string[] {
 
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [svgFailed, setSvgFailed] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const imageCandidates = useMemo(() => buildImageCandidates(src), [src]);
   const fallbackIcon = "/icons/exchange/default.svg";
@@ -91,10 +92,20 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
 
   useEffect(() => {
     setImageFailed(false);
+    setSvgFailed(false);
     setCandidateIndex(0);
   }, [src]);
 
   const displaySrc = imageFailed ? fallbackIcon : currentSrc;
+  const initials = label.slice(0, 2).toUpperCase();
+
+  if (svgFailed) {
+    return (
+      <div className={`flex items-center justify-center bg-gradient-to-br from-primary/40 to-primary/20 text-xs font-bold text-primary ${normalizedClassName}`}>
+        {initials}
+      </div>
+    );
+  }
 
   return (
     <img
@@ -109,7 +120,9 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
         }
         if (displaySrc !== fallbackIcon) {
           setImageFailed(true);
+          return;
         }
+        setSvgFailed(true);
       }}
       referrerPolicy="no-referrer"
       className={normalizedClassName}
