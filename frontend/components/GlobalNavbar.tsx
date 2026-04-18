@@ -297,16 +297,15 @@ export default function GlobalNavbar() {
                     ))}
                   </div>
 
-                  {/* Right column — screener shortcuts */}
+                  {/* Right column — quick actions */}
                   <div className="w-[200px] p-3">
-                    <p className="px-2 pb-2 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Screeners</p>
+                    <p className="px-2 pb-2 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Quick Links</p>
                     {[
-                      { label: "Stocks", path: "/screener/stocks" },
-                      { label: "ETFs", path: "/screener/etfs" },
-                      { label: "Bonds", path: "/screener/bonds" },
-                      { label: "Crypto coins", path: "/screener/crypto-coins" },
-                      { label: "CEX pairs", path: "/screener/cex-pairs" },
-                      { label: "DEX pairs", path: "/screener/dex-pairs" },
+                      { label: "Top Gainers", path: "/screener/stocks?sort=changePercent&order=desc" },
+                      { label: "Top Losers", path: "/screener/stocks?sort=changePercent&order=asc" },
+                      { label: "Most Active", path: "/screener/stocks?sort=volume&order=desc" },
+                      { label: "Crypto Overview", path: "/screener/crypto-coins" },
+                      { label: "ETF Explorer", path: "/screener/etfs" },
                     ].map((item) => (
                       <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
                         className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">

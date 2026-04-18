@@ -35,17 +35,42 @@ function extractDomainFromClearbitUrl(src: string): string | null {
   return domain;
 }
 
+function extractDomainFromGoogleFavicon(src: string): string | null {
+  const match = src.match(/[?&]domain=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function buildImageCandidates(src?: string): string[] {
   if (!src) return [];
 
-  const clearbitDomain = extractDomainFromClearbitUrl(src);
-  if (!clearbitDomain) return [src];
+  // Extract domain from any known URL pattern
+  let domain: string | null = null;
 
-  const encoded = encodeURIComponent(clearbitDomain);
+  const clearbitDomain = extractDomainFromClearbitUrl(src);
+  if (clearbitDomain) domain = clearbitDomain;
+
+  if (!domain) {
+    const googleDomain = extractDomainFromGoogleFavicon(src);
+    if (googleDomain) domain = googleDomain;
+  }
+
+  if (!domain) {
+    try {
+      const parsed = new URL(src);
+      if (parsed.hostname !== "www.google.com" && parsed.hostname !== "icons.duckduckgo.com") {
+        domain = parsed.hostname;
+      }
+    } catch { /* not a URL */ }
+  }
+
+  if (!domain) return [src];
+
+  const encoded = encodeURIComponent(domain);
   return [
-    src,
+    `https://logo.clearbit.com/${domain}?size=128`,
     `https://www.google.com/s2/favicons?sz=128&domain=${encoded}`,
-    `https://icons.duckduckgo.com/ip3/${clearbitDomain}.ico`,
+    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+    src,
   ];
 }
 
