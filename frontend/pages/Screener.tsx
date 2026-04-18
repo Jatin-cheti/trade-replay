@@ -2479,7 +2479,7 @@ export default function Screener() {
               <div style={{ minWidth: tableMinWidth }}>
                 <div
                   className="sticky top-0 z-20 grid items-center gap-2 border-b border-border/35 bg-[hsl(var(--background))]/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm"
-                  style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
+                  style={{ gridTemplateColumns: `${tableGridTemplate} 36px`, paddingRight: 14 }}
                 >
                   {visibleColumns.map((column) => {
                     const label = columnLookup.get(column)?.label || column;
@@ -2507,7 +2507,7 @@ export default function Screener() {
                     <button
                       type="button"
                       onClick={() => setAddColumnOpen((open) => !open)}
-                      className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-secondary/45 hover:text-foreground"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/55 bg-secondary/20 text-muted-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground"
                       title="Add column"
                     >
                       <Plus className="h-3.5 w-3.5" />
@@ -2554,7 +2554,7 @@ export default function Screener() {
 
                 <Virtuoso
                   data={items}
-                  style={{ height: "calc(100vh - 350px)", minHeight: 420, overflowX: "visible", scrollbarGutter: "stable" }}
+                  style={{ height: "calc(100vh - 350px)", minHeight: 420, overflowX: "hidden", scrollbarGutter: "stable" }}
                   endReached={() => {
                     void loadMore();
                   }}
@@ -2564,7 +2564,7 @@ export default function Screener() {
                       key={`${item.fullSymbol}-${index}`}
                       type="button"
                       onClick={() => navigate(`/symbol/${encodeURIComponent(item.symbol)}`)}
-                      className={`grid w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-secondary/30 ${
+                      className={`grid w-full items-center gap-2 py-2.5 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 ${
                         index > 0 ? "border-t border-border/20" : ""
                       } ${flashBySymbol[item.fullSymbol || item.symbol] === "up" ? "screener-flash-up" : ""} ${flashBySymbol[item.fullSymbol || item.symbol] === "down" ? "screener-flash-down" : ""}`}
                       style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
