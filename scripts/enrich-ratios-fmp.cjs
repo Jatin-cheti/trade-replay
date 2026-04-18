@@ -97,12 +97,13 @@ async function main() {
   const db = client.db();
   const symbolsColl = db.collection("symbols");
   const cleanColl = db.collection("cleanassets");
+  const stockTypeQuery = { $or: [{ assetType: "stock" }, { type: "stock" }] };
 
   // Find symbols missing pe that have a base symbol (equities)
   let docs = [];
   if (TARGET_SYMBOLS.length) {
     const all = await symbolsColl
-      .find({ assetType: "stock" }, { projection: { symbol: 1, fullSymbol: 1 } })
+      .find(stockTypeQuery, { projection: { symbol: 1, fullSymbol: 1 } })
       .limit(Math.max(LIMIT * 10, 5000))
       .toArray();
     const wanted = new Set(TARGET_SYMBOLS.map(s => s.toUpperCase()));
@@ -114,7 +115,7 @@ async function main() {
     }).slice(0, LIMIT);
   } else {
     docs = await symbolsColl
-      .find({ pe: { $exists: false }, assetType: "stock" }, { projection: { symbol: 1, fullSymbol: 1 } })
+      .find({ ...stockTypeQuery, pe: { $exists: false } }, { projection: { symbol: 1, fullSymbol: 1 } })
       .limit(LIMIT)
       .toArray();
   }
