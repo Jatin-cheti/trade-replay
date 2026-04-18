@@ -307,16 +307,8 @@ function flagEmojiToCountryCode(flag: string): string {
 }
 
 function CountryFlagImg({ code, size = 16 }: { code: string; size?: number }) {
-  let cc = code;
-  if (code.length > 2) {
-    const decoded = flagEmojiToCountryCode(code);
-    if (decoded) {
-      cc = decoded;
-    } else {
-      return <span className="inline-flex items-center justify-center" style={{ width: size, height: size, fontSize: size * 0.85 }}>{code}</span>;
-    }
-  }
-  if (!cc || cc === "WORLD" || cc === "OTHER") {
+  // Special codes — render world/UN flag immediately, before any length checks
+  if (!code || code === "WORLD" || code === "OTHER") {
     return (
       <img
         src="https://flagcdn.com/w40/un.png"
@@ -329,6 +321,17 @@ function CountryFlagImg({ code, size = 16 }: { code: string; size?: number }) {
         loading="lazy"
       />
     );
+  }
+
+  let cc = code;
+  if (code.length > 2) {
+    const decoded = flagEmojiToCountryCode(code);
+    if (decoded) {
+      cc = decoded;
+    } else {
+      // Unknown multi-char code — show nothing rather than raw text
+      return <span className="inline-flex items-center justify-center" style={{ width: size, height: size }} />;
+    }
   }
   const h = Math.round(size * 0.75);
   return (
@@ -2462,8 +2465,8 @@ export default function Screener() {
           </div>
         ) : (
           <div className="rounded-xl border border-border/30 bg-background/40">
-            <div className="overflow-x-auto" style={{ minWidth: 0 }}>
-              <div style={{ minWidth: tableMinWidth }}>
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <div style={{ minWidth: tableMinWidth, overflowX: "hidden" }}>
                 <div
                   className="sticky top-0 z-20 grid items-center gap-2 border-b border-border/35 bg-[hsl(var(--background))]/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm"
                   style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
@@ -2541,7 +2544,7 @@ export default function Screener() {
 
                 <Virtuoso
                   data={items}
-                  style={{ height: "calc(100vh - 350px)", minHeight: 420 }}
+                  style={{ height: "calc(100vh - 350px)", minHeight: 420, overflowX: "hidden" }}
                   endReached={() => {
                     void loadMore();
                   }}
