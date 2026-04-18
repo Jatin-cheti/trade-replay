@@ -18,6 +18,11 @@ const L1_TTL_MS = 30_000;        // 30s L1 (short — L2 is truth)
 const L2_TTL_S = 60;             // 60s in Redis
 const L2_HOT_TTL_S = 120;        // 120s for hot queries (hit > 2x)
 
+interface CacheTtlOptions {
+  l1TtlMs?: number;
+  l2TtlS?: number;
+}
+
 /* ── L1 In-Memory Cache ──────────────────────────────────────────── */
 
 interface L1Entry {
@@ -39,7 +44,7 @@ function l1Get(key: string): string | null {
   return entry.data;
 }
 
-function l1Set(key: string, data: string): void {
+function l1Set(key: string, data: string, ttlMs = L1_TTL_MS): void {
   if (l1.size >= L1_MAX_ENTRIES) {
     // Evict lowest-hit entry
     let evictKey = "";
@@ -50,7 +55,7 @@ function l1Set(key: string, data: string): void {
     }
     if (evictKey && l1.size >= L1_MAX_ENTRIES) l1.delete(evictKey);
   }
-  l1.set(key, { data, expiresAt: Date.now() + L1_TTL_MS, hits: 1 });
+  l1.set(key, { data, expiresAt: Date.now() + ttlMs, hits: 1 });
 }
 
 function l1Del(key: string): void {
@@ -73,7 +78,11 @@ export function buildScreenerCacheKey(params: Record<string, unknown>): string {
 export async function getCached<T>(
   key: string,
   fetcher: () => Promise<T>,
+  options: CacheTtlOptions = {},
 ): Promise<T> {
+  const l1TtlMs = options.l1TtlMs ?? L1_TTL_MS;
+  const l2TtlS = options.l2TtlS ?? L2_TTL_S;
+
   // L1 hit
   const mem = l1Get(key);
   if (mem) return JSON.parse(mem) as T;
@@ -83,7 +92,7 @@ export async function getCached<T>(
     try {
       const redisData = await redisClient.get(key);
       if (redisData) {
-        l1Set(key, redisData);
+        l1Set(key, redisData, l1TtlMs);
         return JSON.parse(redisData) as T;
       }
     } catch { /* miss — compute below */ }
@@ -95,9 +104,9 @@ export async function getCached<T>(
 
   // Write-through: L2 first (truth), then L1
   if (isRedisReady()) {
-    redisClient.set(key, json, "EX", L2_TTL_S).catch(() => {});
+    redisClient.set(key, json, "EX", l2TtlS).catch(() => {});
   }
-  l1Set(key, json);
+  l1Set(key, json, l1TtlMs);
 
   return result;
 }
@@ -109,7 +118,11 @@ export async function getCached<T>(
 export async function getCachedRaw(
   key: string,
   fetcher: () => Promise<string>,
+  options: CacheTtlOptions = {},
 ): Promise<string> {
+  const l1TtlMs = options.l1TtlMs ?? L1_TTL_MS;
+  const l2TtlS = options.l2TtlS ?? L2_TTL_S;
+
   // L1 hit
   const mem = l1Get(key);
   if (mem) return mem;
@@ -119,7 +132,7 @@ export async function getCachedRaw(
     try {
       const redisData = await redisClient.get(key);
       if (redisData) {
-        l1Set(key, redisData);
+        l1Set(key, redisData, l1TtlMs);
         return redisData;
       }
     } catch { /* miss */ }
@@ -129,9 +142,9 @@ export async function getCachedRaw(
   const json = await fetcher();
 
   if (isRedisReady()) {
-    redisClient.set(key, json, "EX", L2_TTL_S).catch(() => {});
+    redisClient.set(key, json, "EX", l2TtlS).catch(() => {});
   }
-  l1Set(key, json);
+  l1Set(key, json, l1TtlMs);
 
   return json;
 }

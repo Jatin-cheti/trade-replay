@@ -9,6 +9,11 @@ import { getScreenerFilterOptions, getScreenerMeta, getScreenerStats } from "../
 import { getSymbolBySymbolOrFullSymbol, getSymbols } from "../services/screener/symbolQuery.service";
 import type { ScreenerFiltersInput } from "../services/screener/screener.types";
 
+const LIVE_SCREENER_CACHE_TTL = {
+  l1TtlMs: 4_000,
+  l2TtlS: 8,
+};
+
 const listSchema = z.object({
   type: z.string().optional(),
   q: z.string().optional(),
@@ -230,7 +235,7 @@ export async function list(req: Request, res: Response) {
         selectedColumns: selectedColumns.length > 0 ? selectedColumns : DEFAULT_VISIBLE_COLUMNS,
       });
       return JSON.stringify(result);
-    });
+    }, LIVE_SCREENER_CACHE_TTL);
 
     return res.type("json").send(json);
   } catch (err) {
