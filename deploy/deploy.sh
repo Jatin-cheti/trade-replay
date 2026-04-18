@@ -15,6 +15,8 @@ if ! git remote get-url "${REMOTE_NAME}" >/dev/null 2>&1; then
   exit 1
 fi
 
+REMOTE_URL="$(git remote get-url "${REMOTE_NAME}")"
+
 # Warn if GOOGLE_CLIENT_ID is missing from the secrets file
 if ! grep -q "^GOOGLE_CLIENT_ID=" deploy/env/.env.secrets.ci 2>/dev/null && \
    ! grep -q "^GOOGLE_CLIENT_ID=" deploy/env/.env.ci 2>/dev/null; then
@@ -32,17 +34,24 @@ fi
 git push "${REMOTE_NAME}" "${BRANCH}"
 
 # Pull on remote, install, restart
-ssh "root@${DROPLET_IP}" << REMOTE
+ssh "root@${DROPLET_IP}" REMOTE_NAME="${REMOTE_NAME}" REMOTE_URL="${REMOTE_URL}" BRANCH="${BRANCH}" REMOTE_DIR="${REMOTE_DIR}" << 'REMOTE'
   set -euo pipefail
-  cd ${REMOTE_DIR}
+  cd "${REMOTE_DIR}"
 
-  git fetch origin ${BRANCH}
-  if git show-ref --verify --quiet refs/heads/${BRANCH}; then
-    git checkout ${BRANCH}
+  # Ensure the target remote exists on droplet and points to the same URL used locally
+  if git remote get-url "${REMOTE_NAME}" >/dev/null 2>&1; then
+    git remote set-url "${REMOTE_NAME}" "${REMOTE_URL}"
   else
-    git checkout -b ${BRANCH} origin/${BRANCH}
+    git remote add "${REMOTE_NAME}" "${REMOTE_URL}"
   fi
-  git pull --ff-only origin ${BRANCH}
+
+  git fetch "${REMOTE_NAME}" "${BRANCH}"
+  if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
+    git checkout "${BRANCH}"
+  else
+    git checkout -b "${BRANCH}" "${REMOTE_NAME}/${BRANCH}"
+  fi
+  git pull --ff-only "${REMOTE_NAME}" "${BRANCH}"
 
   cd backend && npm ci
   cd ../services/logo-service && npm ci
@@ -58,7 +67,7 @@ ssh "root@${DROPLET_IP}" << REMOTE
   # Verify GOOGLE_CLIENT_ID is set before restarting
   if ! grep -q "^GOOGLE_CLIENT_ID=" /opt/tradereplay/.env 2>/dev/null && \
      ! grep -q "^GOOGLE_CLIENT_ID=" /opt/tradereplay/.env.secrets 2>/dev/null; then
-    echo "WARNING: GOOGLE_CLIENT_ID is missing from /opt/tradereplay/.env — Google login will be broken!"
+    echo "WARNING: GOOGLE_CLIENT_ID is missing from /opt/tradereplay/.env - Google login will be broken!"
     echo "         Add it: echo 'GOOGLE_CLIENT_ID=519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com' >> /opt/tradereplay/.env"
   fi
 
@@ -76,3 +85,4 @@ REMOTE
 echo "Done. Verify:"
 echo "  - https://api.tradereplay.me/api/health"
 echo "  - https://api.tradereplay.me/api/chart/health"
+
