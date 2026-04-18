@@ -51,7 +51,8 @@ const TARGET_SYMBOLS = argSymbols
   ? argSymbols.split("=")[1].split(",").map(s => s.trim().toUpperCase()).filter(Boolean)
   : [];
 
-const DELAY_MS = Math.ceil(4200 / FMP_KEYS.length);
+// Stable endpoint rate limits can still trip with key rotation; keep conservative pacing.
+const DELAY_MS = Math.ceil(9000 / FMP_KEYS.length);
 let keyIndex = 0;
 const nextKey = () => FMP_KEYS[keyIndex++ % FMP_KEYS.length];
 
@@ -62,10 +63,24 @@ function fetchJSON(url) {
       let data = "";
       res.on("data", c => (data += c));
       res.on("end", () => {
-        try { resolve(JSON.parse(data)); } catch { reject(new Error("JSON parse failed")); }
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          reject(new Error(`JSON parse failed: ${String(data).slice(0, 120)}`));
+        }
       });
     }).on("error", reject).on("timeout", () => reject(new Error("Timeout")));
   });
+}
+
+function normalizeSymbolForFmp(symbol) {
+  if (!symbol) return symbol;
+  // Use base ticker and normalize class separator for FMP (e.g. BRK.B -> BRK-B)
+  let s = String(symbol).split(":").pop() || String(symbol);
+  s = s.replace(/\.(?=[A-Z]$)/, "-");
+  // Remove unsupported warrant/units suffixes that produce systematic failures
+  s = s.replace(/\.(W|WS|U|RT)$/i, "");
+  return s;
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -80,8 +95,8 @@ async function main() {
 
   // Find symbols missing pe that have a base symbol (equities)
   const query = TARGET_SYMBOLS.length
-    ? { symbol: { $in: TARGET_SYMBOLS }, assetType: { $ne: "crypto" } }
-    : { pe: { $exists: false }, assetType: { $ne: "crypto" } };
+    ? { symbol: { $in: TARGET_SYMBOLS }, assetType: "stock" }
+    : { pe: { $exists: false }, assetType: "stock" };
 
   const docs = await symbolsColl
     .find(query, { projection: { symbol: 1, fullSymbol: 1 } })
@@ -94,7 +109,7 @@ async function main() {
 
   for (let i = 0; i < docs.length; i++) {
     const doc = docs[i];
-    const sym = (doc.symbol || "").split(":").pop() || doc.symbol;
+    const sym = normalizeSymbolForFmp(doc.symbol);
     const key = nextKey();
     const url = `https://financialmodelingprep.com/stable/ratios?symbol=${encodeURIComponent(sym)}&apikey=${key}`;
 

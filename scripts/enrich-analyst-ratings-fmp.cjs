@@ -52,7 +52,7 @@ const TARGET_SYMBOLS = argSymbols
   ? argSymbols.split("=")[1].split(",").map(s => s.trim().toUpperCase()).filter(Boolean)
   : [];
 
-const DELAY_MS = Math.ceil(4200 / FMP_KEYS.length);
+const DELAY_MS = Math.ceil(9000 / FMP_KEYS.length);
 let keyIndex = 0;
 const nextKey = () => FMP_KEYS[keyIndex++ % FMP_KEYS.length];
 
@@ -63,7 +63,11 @@ function fetchJSON(url) {
       let data = "";
       res.on("data", c => (data += c));
       res.on("end", () => {
-        try { resolve(JSON.parse(data)); } catch { reject(new Error("JSON parse failed")); }
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          reject(new Error(`JSON parse failed: ${String(data).slice(0, 120)}`));
+        }
       });
     }).on("error", reject).on("timeout", () => reject(new Error("Timeout")));
   });
@@ -81,6 +85,14 @@ function normalizeRating(raw) {
   if (r === "sell" || r === "underperform" || r === "underweight" || r === "reduce") return "sell";
   if (r === "hold" || r === "neutral" || r === "marketperform" || r === "equalweight" || r === "sectorperform") return "neutral";
   return null;
+}
+
+function normalizeSymbolForFmp(symbol) {
+  if (!symbol) return symbol;
+  let s = String(symbol).split(":").pop() || String(symbol);
+  s = s.replace(/\.(?=[A-Z]$)/, "-");
+  s = s.replace(/\.(W|WS|U|RT)$/i, "");
+  return s;
 }
 
 /* ── Consensus from array of grades ──────────────────────────────── */
@@ -114,8 +126,8 @@ async function main() {
   const cleanColl = db.collection("cleanassets");
 
   const query = TARGET_SYMBOLS.length
-    ? { symbol: { $in: TARGET_SYMBOLS }, assetType: { $ne: "crypto" } }
-    : { analystRating: { $exists: false }, assetType: { $ne: "crypto" } };
+    ? { symbol: { $in: TARGET_SYMBOLS }, assetType: "stock" }
+    : { analystRating: { $exists: false }, assetType: "stock" };
 
   const docs = await symbolsColl
     .find(query, { projection: { symbol: 1, fullSymbol: 1 } })
@@ -128,15 +140,33 @@ async function main() {
 
   for (let i = 0; i < docs.length; i++) {
     const doc = docs[i];
-    const sym = (doc.symbol || "").split(":").pop() || doc.symbol;
+    const sym = normalizeSymbolForFmp(doc.symbol);
     const key = nextKey();
-    const url = `https://financialmodelingprep.com/stable/grades-latest?symbol=${encodeURIComponent(sym)}&apikey=${key}`;
+    const url = `https://financialmodelingprep.com/stable/grades-consensus?symbol=${encodeURIComponent(sym)}&apikey=${key}`;
 
     try {
       const data = await fetchJSON(url);
-      const rating = Array.isArray(data) && data.length > 0
-        ? (normalizeRating(data[0].analystRatingsbuy || data[0].ratingScore || data[0].rating || data[0].grade) || consensusRating(data))
-        : null;
+      let rating = null;
+      if (Array.isArray(data) && data.length > 0) {
+        const c = data[0].consensus;
+        rating = normalizeRating(c);
+        if (!rating) {
+          const strongBuy = Number(data[0].strongBuy || 0);
+          const buy = Number(data[0].buy || 0);
+          const hold = Number(data[0].hold || 0);
+          const sell = Number(data[0].sell || 0);
+          const strongSell = Number(data[0].strongSell || 0);
+          const total = strongBuy + buy + hold + sell + strongSell;
+          if (total > 0) {
+            const avg = (strongBuy * 2 + buy * 1 + hold * 0 + sell * -1 + strongSell * -2) / total;
+            if (avg >= 1.3) rating = "strong-buy";
+            else if (avg >= 0.4) rating = "buy";
+            else if (avg > -0.4) rating = "neutral";
+            else if (avg > -1.3) rating = "sell";
+            else rating = "strong-sell";
+          }
+        }
+      }
 
       if (!rating) { failed++; continue; }
 
