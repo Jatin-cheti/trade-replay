@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, X } from "lucide-react";
+import { useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 export interface NavItem {
@@ -13,6 +14,11 @@ export interface FeatureMenuItem {
   path: string;
 }
 
+export interface MarketSection {
+  label: string;
+  items: FeatureMenuItem[];
+}
+
 interface MobileNavDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,6 +27,9 @@ interface MobileNavDrawerProps {
   setMobileFeaturesOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
   isAuthenticated: boolean;
   featureMenuItems: FeatureMenuItem[];
+  screenerMenuItems: FeatureMenuItem[];
+  heatmapMenuItems: FeatureMenuItem[];
+  marketSections: MarketSection[];
   runFeatureMenuAction: (path: string) => void;
   runMobileItemAction: (action: () => void) => void;
   pathname: string;
@@ -37,6 +46,9 @@ export function MobileNavDrawer({
   setMobileFeaturesOpen,
   isAuthenticated,
   featureMenuItems,
+  screenerMenuItems,
+  heatmapMenuItems,
+  marketSections,
   runFeatureMenuAction,
   runMobileItemAction,
   pathname,
@@ -44,6 +56,11 @@ export function MobileNavDrawer({
   logout,
   navigate,
 }: MobileNavDrawerProps) {
+  const [productsOpen, setProductsOpen] = useState(false);
+  const [screenersOpen, setScreenersOpen] = useState(false);
+  const [heatmapsOpen, setHeatmapsOpen] = useState(false);
+  const [marketsOpen, setMarketsOpen] = useState(false);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -96,42 +113,153 @@ export function MobileNavDrawer({
                 );
               })}
 
-              {!isAuthenticated && (
-                <div className="rounded-xl border border-border/60 bg-secondary/20">
-                  <button
-                    type="button"
-                    onClick={() => setMobileFeaturesOpen((prev) => !prev)}
-                    aria-expanded={mobileFeaturesOpen}
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-secondary/45"
-                  >
-                    <span>Features</span>
-                    <ChevronDown size={16} className={`transition-transform duration-200 ${mobileFeaturesOpen ? "rotate-180" : "rotate-0"}`} />
-                  </button>
+              <div className="rounded-xl border border-border/60 bg-secondary/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductsOpen((prev) => !prev);
+                    setMobileFeaturesOpen((prev) => !prev);
+                  }}
+                  aria-expanded={productsOpen}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-secondary/45"
+                >
+                  <span>Products</span>
+                  <ChevronDown size={16} className={`transition-transform duration-200 ${productsOpen ? "rotate-180" : "rotate-0"}`} />
+                </button>
 
-                  <AnimatePresence initial={false}>
-                    {mobileFeaturesOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6, height: 0 }}
-                        animate={{ opacity: 1, y: 0, height: "auto" }}
-                        exit={{ opacity: 0, y: -6, height: 0 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="space-y-1 overflow-hidden border-t border-border/60 px-2 py-2"
-                      >
-                        {featureMenuItems.map((item) => (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => runFeatureMenuAction(item.path)}
-                            className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
+                <AnimatePresence initial={false}>
+                  {productsOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -6, height: 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="space-y-1 overflow-hidden border-t border-border/60 px-2 py-2"
+                    >
+                      {featureMenuItems.map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => runFeatureMenuAction(item.path)}
+                          className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+
+                      <div className="rounded-md border border-border/50 bg-background/35">
+                        <button
+                          type="button"
+                          onClick={() => setScreenersOpen((prev) => !prev)}
+                          className="flex w-full items-center justify-between px-2.5 py-2 text-left text-sm font-medium text-foreground/90 transition-colors hover:bg-secondary/45"
+                        >
+                          <span>Screeners</span>
+                          <ChevronDown size={14} className={`transition-transform duration-200 ${screenersOpen ? "rotate-180" : "rotate-0"}`} />
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {screenersOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -4, height: 0 }}
+                              animate={{ opacity: 1, y: 0, height: "auto" }}
+                              exit={{ opacity: 0, y: -4, height: 0 }}
+                              transition={{ duration: 0.16, ease: "easeOut" }}
+                              className="space-y-0.5 overflow-hidden border-t border-border/50 px-1 py-1"
+                            >
+                              {screenerMenuItems.map((item) => (
+                                <button
+                                  key={item.path}
+                                  type="button"
+                                  onClick={() => runFeatureMenuAction(item.path)}
+                                  className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+                                >
+                                  {item.label}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      <div className="rounded-md border border-border/50 bg-background/35">
+                        <button
+                          type="button"
+                          onClick={() => setHeatmapsOpen((prev) => !prev)}
+                          className="flex w-full items-center justify-between px-2.5 py-2 text-left text-sm font-medium text-foreground/90 transition-colors hover:bg-secondary/45"
+                        >
+                          <span>Heat maps</span>
+                          <ChevronDown size={14} className={`transition-transform duration-200 ${heatmapsOpen ? "rotate-180" : "rotate-0"}`} />
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {heatmapsOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -4, height: 0 }}
+                              animate={{ opacity: 1, y: 0, height: "auto" }}
+                              exit={{ opacity: 0, y: -4, height: 0 }}
+                              transition={{ duration: 0.16, ease: "easeOut" }}
+                              className="space-y-0.5 overflow-hidden border-t border-border/50 px-1 py-1"
+                            >
+                              {heatmapMenuItems.map((item) => (
+                                <button
+                                  key={item.path}
+                                  type="button"
+                                  onClick={() => runFeatureMenuAction(item.path)}
+                                  className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+                                >
+                                  {item.label}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="rounded-xl border border-border/60 bg-secondary/20">
+                <button
+                  type="button"
+                  onClick={() => setMarketsOpen((prev) => !prev)}
+                  aria-expanded={marketsOpen}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-secondary/45"
+                >
+                  <span>Markets</span>
+                  <ChevronDown size={16} className={`transition-transform duration-200 ${marketsOpen ? "rotate-180" : "rotate-0"}`} />
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {marketsOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -6, height: 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="space-y-2 overflow-hidden border-t border-border/60 px-2 py-2"
+                    >
+                      {marketSections.map((section) => (
+                        <div key={section.label} className="rounded-md border border-border/50 bg-background/35 p-1">
+                          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                            {section.label}
+                          </p>
+                          <div className="grid grid-cols-2 gap-0.5">
+                            {section.items.map((item) => (
+                              <button
+                                key={item.path}
+                                type="button"
+                                onClick={() => runFeatureMenuAction(item.path)}
+                                className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+                              >
+                                {item.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
               {isAuthenticated ? (
                 <button

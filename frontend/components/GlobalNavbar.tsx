@@ -7,16 +7,36 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { LogOut, Settings, User, Sun, Moon, Menu, ChevronDown, ChevronRight, BarChart3, LayoutGrid, LineChart, Briefcase, Search, Globe } from "lucide-react";
 import BrandLottie from "@/components/BrandLottie";
 import { MobileNavDrawer } from "./MobileNavDrawer";
-import type { NavItem, FeatureMenuItem } from "./MobileNavDrawer";
+import type { NavItem, FeatureMenuItem, MarketSection } from "./MobileNavDrawer";
+
+const PRODUCTS_SCREENER_ITEMS: FeatureMenuItem[] = [
+  { label: "Stocks", path: "/screener/stocks" },
+  { label: "ETFs", path: "/screener/etfs" },
+  { label: "Bonds", path: "/screener/bonds" },
+  { label: "Crypto coins", path: "/screener/crypto-coins" },
+  { label: "CEX pairs", path: "/screener/cex-pairs" },
+  { label: "DEX pairs", path: "/screener/dex-pairs" },
+  { label: "Indices", path: "/screener/indices" },
+  { label: "Futures", path: "/screener/futures" },
+  { label: "Forex", path: "/screener/forex" },
+  { label: "Options", path: "/screener/options" },
+];
+
+const PRODUCTS_HEATMAP_ITEMS: FeatureMenuItem[] = [
+  { label: "Stocks", path: "/heatmap?type=stock" },
+  { label: "ETFs", path: "/heatmap?type=etf" },
+  { label: "Crypto coins", path: "/heatmap?type=crypto" },
+];
 
 /* ── Markets menu data (geo-aware) ───────────────────────────────────── */
-const MARKETS_SECTIONS = [
+const MARKETS_SECTIONS: MarketSection[] = [
   {
     label: "\u{1F1EE}\u{1F1F3} India",
     items: [
       { label: "Stocks", path: "/screener/stocks?marketCountries=IN" },
       { label: "Indices", path: "/screener/stocks?indices=NIFTY" },
       { label: "ETFs", path: "/screener/etfs?marketCountries=IN" },
+      { label: "Bonds", path: "/screener/bonds?marketCountries=IN" },
     ],
   },
   {
@@ -25,6 +45,7 @@ const MARKETS_SECTIONS = [
       { label: "Stocks", path: "/screener/stocks?marketCountries=US" },
       { label: "ETFs", path: "/screener/etfs?marketCountries=US" },
       { label: "Indices", path: "/screener/stocks?indices=SPX" },
+      { label: "Bonds", path: "/screener/bonds?marketCountries=US" },
     ],
   },
   {
@@ -34,6 +55,12 @@ const MARKETS_SECTIONS = [
       { label: "CEX pairs", path: "/screener/cex-pairs" },
       { label: "DEX pairs", path: "/screener/dex-pairs" },
       { label: "Bonds", path: "/screener/bonds" },
+      { label: "Stocks", path: "/screener/stocks?marketCountries=WORLD" },
+      { label: "ETFs", path: "/screener/etfs?marketCountries=WORLD" },
+      { label: "Indices", path: "/screener/indices" },
+      { label: "Options", path: "/screener/options" },
+      { label: "Futures", path: "/screener/futures" },
+      { label: "Forex", path: "/screener/forex" },
     ],
   },
 ];
@@ -254,14 +281,7 @@ export default function GlobalNavbar() {
                           className="absolute left-full top-0 z-50 ml-1 w-64 rounded-lg border border-primary/30 bg-background/95 p-2 backdrop-blur-xl"
                         >
                           <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Screeners</p>
-                          {[
-                            { label: "Stocks", path: "/screener/stocks" },
-                            { label: "ETFs", path: "/screener/etfs" },
-                            { label: "Bonds", path: "/screener/bonds" },
-                            { label: "Crypto coins", path: "/screener/crypto-coins" },
-                            { label: "CEX pairs", path: "/screener/cex-pairs" },
-                            { label: "DEX pairs", path: "/screener/dex-pairs" },
-                          ].map((item) => (
+                          {PRODUCTS_SCREENER_ITEMS.map((item) => (
                             <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
                               className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
                               {item.label}
@@ -271,11 +291,7 @@ export default function GlobalNavbar() {
                           <div className="my-2 h-px bg-border/40" />
 
                           <p className="px-2 pb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Heat Maps</p>
-                          {[
-                            { label: "Stocks", path: "/heatmap?type=stock" },
-                            { label: "ETFs", path: "/heatmap?type=etf" },
-                            { label: "Crypto coins", path: "/heatmap?type=crypto" },
-                          ].map((item) => (
+                          {PRODUCTS_HEATMAP_ITEMS.map((item) => (
                             <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
                               className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
                               {item.label}
@@ -487,6 +503,9 @@ export default function GlobalNavbar() {
         setMobileFeaturesOpen={setMobileFeaturesOpen}
         isAuthenticated={isAuthenticated}
         featureMenuItems={featureMenuItems}
+        screenerMenuItems={PRODUCTS_SCREENER_ITEMS}
+        heatmapMenuItems={PRODUCTS_HEATMAP_ITEMS}
+        marketSections={MARKETS_SECTIONS}
         runFeatureMenuAction={runFeatureMenuAction}
         runMobileItemAction={runMobileItemAction}
         pathname={location.pathname}
