@@ -1,0 +1,64 @@
+import { Virtuoso } from "react-virtuoso";
+import AssetAvatar from "@/components/ui/AssetAvatar";
+import type { ScreenerItem } from "@/lib/screener";
+import { formatCompactNumber, formatPercent, formatPrice } from "@/lib/screener";
+
+export default function ScreenerMobileList({
+  items,
+  loadingMore,
+  onNavigate,
+  onLoadMore,
+}: {
+  items: ScreenerItem[];
+  loadingMore: boolean;
+  onNavigate: (symbol: string) => void;
+  onLoadMore: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border/30 bg-background/40">
+      <Virtuoso
+        data={items}
+        style={{ height: "calc(100vh - 330px)", minHeight: 420 }}
+        endReached={onLoadMore}
+        overscan={300}
+        itemContent={(index, item) => (
+          <button
+            type="button"
+            onClick={() => onNavigate(item.symbol)}
+            className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-secondary/35 ${
+              index > 0 ? "border-t border-border/20" : ""
+            }`}
+          >
+            <AssetAvatar
+              src={item.iconUrl}
+              label={item.symbol}
+              className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-border/40"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-semibold text-foreground">{item.symbol}</span>
+                <span className="text-[10px] text-muted-foreground">{item.exchange}</span>
+              </div>
+              <p className="truncate text-xs text-muted-foreground">{item.name}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm tabular-nums text-foreground">{formatPrice(item.price)}</p>
+              <p className={`text-xs font-semibold tabular-nums ${item.changePercent > 0 ? "text-emerald-400" : item.changePercent < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                {formatPercent(item.changePercent)}
+              </p>
+              <p className="text-[11px] tabular-nums text-muted-foreground">{formatCompactNumber(item.marketCap)}</p>
+            </div>
+          </button>
+        )}
+        components={{
+          Footer: () => loadingMore ? (
+            <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              Loading more symbols...
+            </div>
+          ) : null,
+        }}
+      />
+    </div>
+  );
+}
