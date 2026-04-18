@@ -12,6 +12,7 @@ import ScreenerFilterBar from "@/components/screener/ScreenerFilterBar";
 import ScreenerTabBar from "@/components/screener/ScreenerTabBar";
 import ScreenerTable from "@/components/screener/ScreenerTable";
 import ScreenerMobileList from "@/components/screener/ScreenerMobileList";
+import "@/styles/screener.css";
 
 export default function Screener() {
   const { type } = useParams<{ type: string }>();
