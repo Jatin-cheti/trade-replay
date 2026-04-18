@@ -15,7 +15,8 @@ const DELAY_MS = 500;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Suppress yahoo-finance2 validation warnings
-yahooFinance.suppressNotices(["yahooSurvey"]);
+try { yahooFinance.suppressNotices(["yahooSurvey"]); } catch {}
+try { yahooFinance.setGlobalConfig({ validation: { logErrors: false } }); } catch {}
 
 // Map exchange codes to Yahoo Finance suffix
 const EXCHANGE_SUFFIX = {
