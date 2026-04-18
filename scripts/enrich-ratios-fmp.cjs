@@ -153,9 +153,19 @@ async function main() {
 
       const filter = doc.fullSymbol ? { fullSymbol: doc.fullSymbol } : { symbol: doc.symbol };
       await symbolsColl.updateOne(filter, { $set: update });
-      // Mirror to cleanassets
-      const baseSymFilter = { symbol: sym };
-      await cleanColl.updateOne(baseSymFilter, { $set: update });
+      // Mirror to cleanassets, handling both base and exchange-prefixed symbols.
+      const escaped = sym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await cleanColl.updateMany(
+        {
+          $or: [
+            { symbol: sym },
+            { fullSymbol: sym },
+            { symbol: { $regex: `(^|:)${escaped}$`, $options: "i" } },
+            { fullSymbol: { $regex: `(^|:)${escaped}$`, $options: "i" } },
+          ],
+        },
+        { $set: update },
+      );
 
       enriched++;
       if (enriched % 50 === 0) console.log(`  Enriched ${enriched}/${docs.length}...`);
