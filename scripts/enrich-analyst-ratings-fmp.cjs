@@ -189,7 +189,18 @@ async function main() {
 
       const filter = doc.fullSymbol ? { fullSymbol: doc.fullSymbol } : { symbol: doc.symbol };
       await symbolsColl.updateOne(filter, { $set: { analystRating: rating } });
-      await cleanColl.updateOne({ symbol: sym }, { $set: { analystRating: rating } });
+      const escaped = sym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await cleanColl.updateMany(
+        {
+          $or: [
+            { symbol: sym },
+            { fullSymbol: sym },
+            { symbol: { $regex: `(^|:)${escaped}$`, $options: "i" } },
+            { fullSymbol: { $regex: `(^|:)${escaped}$`, $options: "i" } },
+          ],
+        },
+        { $set: { analystRating: rating } },
+      );
 
       enriched++;
       if (enriched % 50 === 0) console.log(`  Enriched ${enriched}/${docs.length}...`);
