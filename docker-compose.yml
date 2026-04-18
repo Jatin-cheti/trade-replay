@@ -18,7 +18,16 @@ services:
     image: redis:7
     container_name: tradereplay-redis
     restart: always
-    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    command:
+      - redis-server
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
     ports:
       - "6379:6379"
     healthcheck:
@@ -26,6 +35,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   kafka:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.10
@@ -38,7 +51,7 @@ services:
       - --smp
       - "1"
       - --memory
-      - "1G"
+      - "512M"
       - --reserve-memory
       - "0M"
       - --check=false
@@ -181,32 +194,58 @@ services:
 
   chart-service:
     build:
-      context: ./packages/tradereplay-charts
+      context: ./services/chart-service
+      dockerfile: Dockerfile
     container_name: tradereplay-chart-service
     restart: unless-stopped
-    command: npm run start
     env_file:
       - ./.env
-      - ./.env.secrets
     environment:
+      PORT: "3001"
       APP_ENV: docker
-      KAFKA_ENABLED: "true"
-      MONGO_URI_DOCKER: mongodb://mongodb:27017/tradereplay
-      REDIS_URL_DOCKER: redis://redis:6379
-      KAFKA_BROKER_DOCKER: kafka:9092
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      BACKEND_URL: http://backend:4000
     ports:
-      - "4010:4010"
+      - "3001:3001"
     depends_on:
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
       backend:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:4010/api/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  nginx:
+    image: nginx:alpine
+    container_name: tradereplay-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      backend:
+        condition: service_started
+      chart-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   prometheus:
     image: prom/prometheus:latest
@@ -259,8 +298,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: tradereplay-global-expansion
-    restart: unless-stopped
-    command: npm run ingest:global:infinite
+    restart: "no"
+    command: npm run ingest:global:once
     env_file:
       - ./.env
       - ./.env.secrets

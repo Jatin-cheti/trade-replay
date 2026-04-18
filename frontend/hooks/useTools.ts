@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { clampOptionValue, defaultToolOptions, mergeToolOptions, type ToolOptions } from '@/services/tools/toolOptions';
 import { buildToolOptions, type DrawPoint, type Drawing, type ToolState, type ToolVariant } from '@/services/tools/toolRegistry';
-import { createDrawing, isPointOnlyVariant, isWizardVariant, updateDraftDrawing } from '@/services/tools/toolEngine';
+import { createDrawing, isPointOnlyVariant, isWizardVariant, normalizeDrawings, updateDraftDrawing } from '@/services/tools/toolEngine';
 
 function preserveVariantIndependentOptions(options: ToolOptions): Partial<ToolOptions> {
   const {
@@ -78,7 +78,7 @@ export function useTools() {
   }, []);
 
   const mutateDrawings = useCallback((updater: (prev: Drawing[]) => Drawing[], commitHistory = true) => {
-    const nextDrawings = updater(drawingsRef.current);
+    const nextDrawings = normalizeDrawings(updater(drawingsRef.current));
     drawingsRef.current = nextDrawings;
 
     if (!commitHistory) {

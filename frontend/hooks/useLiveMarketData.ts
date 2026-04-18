@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CandleData } from "@/data/stockData";
-import { fetchLiveQuotes, type LiveQuote } from "@/services/live/liveMarketApi";
+import { fetchLiveCandles, fetchLiveQuotes, type LiveDataMode, type LiveQuote } from "@/services/live/liveMarketApi";
 import { fetchChartBundle } from "@/services/api/chartBundle";
 
 type LiveMode = "symbol" | "portfolio";
@@ -31,6 +31,8 @@ const initialState: LiveMarketState = {
   isLoading: true,
   error: null,
 };
+
+const PARITY_LIVE_CANDLE_LIMIT = 391;
 
 function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();
@@ -130,8 +132,9 @@ export function useLiveMarketData(input: {
   holdings: PortfolioHolding[];
   quoteSymbols?: string[];
   pollMs?: number;
+  dataMode?: LiveDataMode;
 }) {
-  const { mode, symbol, holdings, quoteSymbols = [], pollMs = 2500 } = input;
+  const { mode, symbol, holdings, quoteSymbols = [], pollMs = 2500, dataMode } = input;
 
   const [state, setState] = useState<LiveMarketState>(initialState);
   const frameRef = useRef<number | null>(null);
@@ -188,17 +191,34 @@ export function useLiveMarketData(input: {
 
       try {
         const normalizedSymbol = normalizeSymbol(symbol);
-        const symbolPayload = await fetchChartBundle({
-          symbol: normalizedSymbol,
-          timeframe: "1m",
-          limit: 260,
-          transformType: "renko",
-          params: { boxSize: 0.5 },
-          indicators: [{ id: "sma", params: { period: 20 } }],
-        });
+
+        let symbolCandles: CandleData[] = [];
+        let symbolQuoteFromCandles: LiveQuote | null = null;
+
+        if (dataMode === "parity-live") {
+          const livePayload = await fetchLiveCandles({
+            symbol: normalizedSymbol,
+            limit: PARITY_LIVE_CANDLE_LIMIT,
+            dataMode,
+          });
+          symbolCandles = normalizeMinuteCandles(livePayload.candles);
+          symbolQuoteFromCandles = livePayload.quote;
+        } else {
+          const symbolPayload = await fetchChartBundle({
+            symbol: normalizedSymbol,
+            timeframe: "1m",
+            limit: 260,
+            dataMode,
+            transformType: "renko",
+            params: { boxSize: 0.5 },
+            indicators: [{ id: "sma", params: { period: 20 } }],
+          });
+          symbolCandles = normalizeMinuteCandles(symbolPayload.candles);
+        }
 
         let partial: Partial<LiveMarketState> = {
-          symbolCandles: normalizeMinuteCandles(symbolPayload.candles),
+          symbolCandles,
+          symbolQuote: symbolQuoteFromCandles,
           isLoading: false,
           error: null,
         };
@@ -210,11 +230,11 @@ export function useLiveMarketData(input: {
         ].filter(Boolean)));
 
         if (requestedQuoteSymbols.length > 0) {
-          const watchlistQuotesPayload = await fetchLiveQuotes({ symbols: requestedQuoteSymbols });
+          const watchlistQuotesPayload = await fetchLiveQuotes({ symbols: requestedQuoteSymbols, dataMode });
           partial = {
             ...partial,
             quotesBySymbol: watchlistQuotesPayload.quotes,
-            symbolQuote: watchlistQuotesPayload.quotes[normalizedSymbol] ?? null,
+            symbolQuote: watchlistQuotesPayload.quotes[normalizedSymbol] ?? symbolQuoteFromCandles,
           };
         }
 
@@ -225,10 +245,16 @@ export function useLiveMarketData(input: {
           if (missing.length > 0) {
             const candleLoads = await Promise.all(
               missing.map(async (item) => {
+                if (dataMode === "parity-live") {
+                  const response = await fetchLiveCandles({ symbol: item, limit: PARITY_LIVE_CANDLE_LIMIT, dataMode });
+                  return { symbol: item, candles: normalizeMinuteCandles(response.candles) };
+                }
+
                 const response = await fetchChartBundle({
                   symbol: item,
                   timeframe: "1m",
                   limit: 220,
+                  dataMode,
                   transformType: "renko",
                   params: { boxSize: 0.5 },
                   indicators: [{ id: "sma", params: { period: 20 } }],
@@ -242,7 +268,7 @@ export function useLiveMarketData(input: {
             });
           }
 
-          const quotesPayload = await fetchLiveQuotes({ symbols });
+          const quotesPayload = await fetchLiveQuotes({ symbols, dataMode });
 
           Object.entries(quotesPayload.quotes).forEach(([quoteSymbol, quote]) => {
             const candles = portfolioCandleMapRef.current[quoteSymbol] ?? [];
@@ -317,7 +343,7 @@ export function useLiveMarketData(input: {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [mode, symbol, holdings, holdingsKey, quoteSymbols, quoteSymbolsKey, pollMs]);
+  }, [mode, symbol, holdings, holdingsKey, quoteSymbols, quoteSymbolsKey, pollMs, dataMode]);
 
   return state;
 }

@@ -1,37 +1,23 @@
 import { createServer } from "node:http";
 import { createApp } from "./app";
 import { env } from "./config/env";
-import { connectRedis, isRedisFallbackActive } from "./config/redis";
-import { startStreaming } from "./services/streaming";
-import { logError, logInfo } from "./services/logger";
+import { closeRedis, connectRedis } from "./config/redis";
+import { startStreaming, stopStreaming } from "./services/streaming.service";
 
 async function bootstrap(): Promise<void> {
   const app = createApp();
-  let stopStreaming: (() => Promise<void>) | null = null;
-
-  try {
-    await connectRedis();
-    if (isRedisFallbackActive()) {
-      logInfo("chart_service_redis_fallback_enabled", {
-        mode: "cache-disabled",
-      });
-    }
-  } catch {
-    // Continue with in-memory cache fallback.
-  }
-
+  await connectRedis().catch(() => {});
   const server = createServer(app);
-  server.listen(env.PORT, () => {
-    logInfo("chart_service_started", { port: env.PORT });
-  });
 
-  stopStreaming = await startStreaming();
+  startStreaming(server);
+  server.listen(env.PORT, () => {
+    process.stdout.write(`chart-service listening on ${env.PORT}\n`);
+  });
 
   const stop = () => {
     void (async () => {
-      if (stopStreaming) {
-        await stopStreaming();
-      }
+      stopStreaming();
+      await closeRedis().catch(() => {});
       server.close(() => process.exit(0));
     })();
   };
@@ -41,8 +27,6 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error) => {
-  logError("chart_service_bootstrap_failed", {
-    error: error instanceof Error ? error.message : String(error),
-  });
+  process.stderr.write(`chart_service_bootstrap_failed: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 });

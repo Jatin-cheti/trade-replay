@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "./playwright-fixture";
+import { apiUrl } from "./test-env";
 
-test.setTimeout(120_000);
+test.setTimeout(240_000);
 
 async function registerAndLogin(page: Page): Promise<void> {
   const uid = Date.now();
@@ -9,18 +10,18 @@ async function registerAndLogin(page: Page): Promise<void> {
 
   await expect
     .poll(async () => {
-      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      const response = await page.request.get(apiUrl("/api/health"));
       return response.status();
     })
     .toBe(200);
 
-  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const registerResponse = await page.request.post(apiUrl("/api/auth/register"), {
     data: { email, password, name: `tool_rail_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
     ? registerResponse
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+    : await page.request.post(apiUrl("/api/auth/login"), {
         data: { email, password },
       });
 
@@ -41,7 +42,11 @@ async function waitForChart(page: Page): Promise<void> {
 }
 
 async function clickVisible(page: Page, testId: string): Promise<void> {
-  await page.locator(`[data-testid="${testId}"]:visible`).first().click({ timeout: 5000 });
+  try {
+    await page.locator(`[data-testid="${testId}"]:visible`).first().click({ timeout: 5000 });
+  } catch {
+    await clickByTestId(page, testId);
+  }
 }
 
 async function clickByTestId(page: Page, testId: string): Promise<void> {

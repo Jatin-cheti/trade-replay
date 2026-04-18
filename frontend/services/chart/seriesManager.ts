@@ -47,6 +47,10 @@ export type ChartSeriesMap = {
   volume: ISeriesApi<'Histogram'>;
 };
 
+type ChartSeriesOptions = {
+  parityMode?: boolean;
+};
+
 export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   candlestick: ['candlestick'],
   line: ['line'],
@@ -70,18 +74,32 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   volumeLine: ['line', 'volume'],
 };
 
-export function createChartSeries(chart: IChartApi): ChartSeriesMap {
+export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions): ChartSeriesMap {
+  const parityMode = options?.parityMode ?? false;
+  const candleUpColor = parityMode ? '#089981' : '#26a69a';
+  const candleDownColor = parityMode ? '#f23645' : '#ef5350';
+
   const map: ChartSeriesMap = {
     candlestick: chart.addSeries('Candlestick', {
-      upColor: '#17c964', downColor: '#ff4d4f', borderUpColor: '#17c964', borderDownColor: '#ff4d4f',
-      wickUpColor: '#3ee187', wickDownColor: '#ff7275', visible: true,
+      upColor: candleUpColor,
+      downColor: candleDownColor,
+      borderUpColor: candleUpColor,
+      borderDownColor: candleDownColor,
+      wickUpColor: candleUpColor,
+      wickDownColor: candleDownColor,
+      visible: true,
     }),
     hollowCandles: chart.addSeries('Candlestick', {
       upColor: 'rgba(23, 201, 100, 0.08)', downColor: '#ff4d4f', borderUpColor: '#43e391', borderDownColor: '#ff7275',
       wickUpColor: '#43e391', wickDownColor: '#ff7275', visible: false,
     }),
-    line: chart.addSeries('Line', { color: '#00d1ff', lineWidth: 2, visible: false }),
-    stepLine: chart.addSeries('Line', { color: '#89e7ff', lineWidth: 2, visible: false }),
+    line: chart.addSeries('Line', { color: '#2962ff', lineWidth: 2, visible: false }),
+    stepLine: chart.addSeries('Line', {
+      color: '#89e7ff',
+      lineWidth: 2,
+      visible: false,
+      excludeFromTimeIndex: true,
+    }),
     area: chart.addSeries('Area', {
       lineColor: '#00d1ff', lineWidth: 2, topColor: 'rgba(0, 209, 255, 0.42)', bottomColor: 'rgba(0, 209, 255, 0.02)', visible: false,
     }),
@@ -126,7 +144,12 @@ export function createChartSeries(chart: IChartApi): ChartSeriesMap {
     volume: chart.addSeries('Histogram', { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
   };
 
-  map.volume.priceScale().applyOptions({ scaleMargins: { top: 0.72, bottom: 0 } });
+  map.volume.priceScale().applyOptions({
+    scaleMargins: {
+      top: parityMode ? 0.865 : 0.84,
+      bottom: 0,
+    },
+  });
   return map;
 }
 

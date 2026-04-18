@@ -1,4 +1,6 @@
 import { expect, test } from "./playwright-fixture";
+import { apiUrl } from "./test-env";
+import { installSymbolSearchMock } from "./helpers/mockSymbolSearch";
 
 /**
  * E2E tests for the TradingView-parity Chart Header, Indicators Modal,
@@ -14,18 +16,18 @@ async function registerAndLogin(page: import("@playwright/test").Page) {
 
   await expect
     .poll(async () => {
-      const r = await page.request.get("http://127.0.0.1:4000/api/health");
+      const r = await page.request.get(apiUrl("/api/health"));
       return r.status();
     })
     .toBe(200);
 
-  const reg = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const reg = await page.request.post(apiUrl("/api/auth/register"), {
     data: { email, password, name: `header_${uid}` },
   });
 
   const auth = reg.ok()
     ? reg
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", { data: { email, password } });
+    : await page.request.post(apiUrl("/api/auth/login"), { data: { email, password } });
   expect(auth.ok()).toBeTruthy();
 
   await page.goto("/login");
@@ -45,6 +47,41 @@ const clickByTestId = async (page: import("@playwright/test").Page, testId: stri
     }
   }, testId);
 };
+
+type PaneLayoutEntry = {
+  id: string;
+  top: number;
+  height: number;
+};
+
+async function readPaneLayout(page: import("@playwright/test").Page): Promise<PaneLayoutEntry[]> {
+  return page.evaluate(() => {
+    const canvas = Array.from(document.querySelectorAll('.chart-wrapper canvas'))
+      .find((node) => {
+        const element = node as HTMLCanvasElement;
+        const style = window.getComputedStyle(element);
+        return element.getAttribute('aria-label') !== 'chart-drawing-overlay'
+          && style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && element.getClientRects().length > 0;
+      }) as HTMLCanvasElement | undefined;
+
+    const raw = canvas?.dataset.paneLayout ?? '';
+    if (!raw) return [];
+
+    return raw
+      .split('|')
+      .map((entry) => {
+        const [id, top, height] = entry.split(':');
+        return {
+          id,
+          top: Number(top),
+          height: Number(height),
+        };
+      })
+      .filter((entry) => entry.id && Number.isFinite(entry.top) && Number.isFinite(entry.height));
+  });
+}
 
 /* ─── Interval dropdown + custom interval ─────────────────────────────── */
 
@@ -289,4 +326,128 @@ test("indicators modal: add candlestick pattern indicator", async ({ page }) => 
   await expect(modal.getByTestId("indicator-catalog-cp_doji")).not.toContainText(/active/i);
 
   await modal.getByTestId("indicators-modal-close").click();
+});
+
+test("volume indicator renders in a subpane below main chart", async ({ page }) => {
+  await registerAndLogin(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
+
+  await clickByTestId(page, "indicators-button");
+  const modal = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(modal).toBeVisible();
+
+  const search = modal.getByTestId("indicators-modal-search");
+  await search.fill("volume");
+  const volumeItem = modal.getByTestId("indicator-catalog-volume");
+  await expect(volumeItem).toBeVisible();
+  await volumeItem.click();
+  await expect(volumeItem).toContainText(/active/i);
+  await modal.getByTestId("indicators-modal-close").click();
+
+  await expect
+    .poll(async () => {
+      const panes = await readPaneLayout(page);
+      return panes.length;
+    })
+    .toBeGreaterThanOrEqual(2);
+
+  const withVolume = await readPaneLayout(page);
+  const mainPane = withVolume.find((pane) => pane.id === "main");
+  const subpane = withVolume.find((pane) => pane.id.startsWith("ind-pane-"));
+  expect(mainPane).toBeTruthy();
+  expect(subpane).toBeTruthy();
+  expect((subpane?.top ?? 0)).toBeGreaterThan((mainPane?.top ?? 0) + 1);
+
+  await clickByTestId(page, "indicators-button");
+  const modalAfter = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(modalAfter).toBeVisible();
+  await modalAfter.getByTestId("indicators-modal-search").fill("volume");
+  const activeVolumeItem = modalAfter.getByTestId("indicator-catalog-volume");
+  await expect(activeVolumeItem).toContainText(/active/i);
+  await activeVolumeItem.click();
+  await expect(activeVolumeItem).not.toContainText(/active/i);
+  await modalAfter.getByTestId("indicators-modal-close").click();
+
+  await expect
+    .poll(async () => {
+      const panes = await readPaneLayout(page);
+      return panes.length;
+    })
+    .toBe(1);
+});
+
+test("indicators stay active across timeframe and symbol changes", async ({ page }) => {
+  await registerAndLogin(page);
+  await installSymbolSearchMock(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
+
+  await clickByTestId(page, "indicators-button");
+  const modal = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(modal).toBeVisible();
+
+  const search = modal.getByTestId("indicators-modal-search");
+  await search.fill("sma");
+  const smaItem = modal.getByTestId("indicator-catalog-sma");
+  await expect(smaItem).toBeVisible();
+  await smaItem.click();
+  await expect(smaItem).toContainText(/active/i);
+
+  await search.fill("volume");
+  const volumeItem = modal.getByTestId("indicator-catalog-volume");
+  await expect(volumeItem).toBeVisible();
+  await volumeItem.click();
+  await expect(volumeItem).toContainText(/active/i);
+  await modal.getByTestId("indicators-modal-close").click();
+
+  const indicatorButton = page.locator('[data-testid="indicators-button"]:visible').first();
+  await expect(indicatorButton).toContainText("Indicators (2)");
+
+  await clickByTestId(page, "interval-60");
+  await expect(indicatorButton).toContainText("Indicators (2)");
+
+  const panesAfterInterval = await readPaneLayout(page);
+  expect(panesAfterInterval.length).toBeGreaterThanOrEqual(2);
+  const mainAfterInterval = panesAfterInterval.find((pane) => pane.id === "main");
+  const subpaneAfterInterval = panesAfterInterval.find((pane) => pane.id.startsWith("ind-pane-"));
+  expect(mainAfterInterval).toBeTruthy();
+  expect(subpaneAfterInterval).toBeTruthy();
+  expect((subpaneAfterInterval?.top ?? 0)).toBeGreaterThan((mainAfterInterval?.top ?? 0) + 1);
+
+  const symbolTrigger = page.getByTestId("scenario-symbol-trigger");
+  await symbolTrigger.click();
+  await expect(page.locator('[data-testid="symbol-search-modal"]:visible').first()).toBeVisible();
+  await page.getByTestId("symbol-category-indices").click({ force: true });
+  await page.getByTestId("symbol-search-input").fill("IXIC");
+
+  const ixicRow = page.locator('[data-testid="symbol-result-row"][data-symbol="IXIC"]').first();
+  await expect(ixicRow).toBeVisible();
+  await ixicRow.evaluate((element) => {
+    if (element instanceof HTMLElement) {
+      element.click();
+    }
+  });
+
+  const listingRow = page.locator('[data-testid="symbol-listing-row"]').first();
+  if (await listingRow.isVisible().catch(() => false)) {
+    await listingRow.click();
+  }
+
+  await expect
+    .poll(async () => page.locator('[data-testid="symbol-search-modal"]:visible').count())
+    .toBe(0);
+
+  await expect(symbolTrigger).toContainText(/IXIC|Nasdaq/i);
+  await expect(indicatorButton).toContainText("Indicators (2)");
+
+  const panesAfterSymbol = await readPaneLayout(page);
+  expect(panesAfterSymbol.length).toBeGreaterThanOrEqual(2);
+  const mainAfterSymbol = panesAfterSymbol.find((pane) => pane.id === "main");
+  const subpaneAfterSymbol = panesAfterSymbol.find((pane) => pane.id.startsWith("ind-pane-"));
+  expect(mainAfterSymbol).toBeTruthy();
+  expect(subpaneAfterSymbol).toBeTruthy();
+  expect((subpaneAfterSymbol?.top ?? 0)).toBeGreaterThan((mainAfterSymbol?.top ?? 0) + 1);
 });

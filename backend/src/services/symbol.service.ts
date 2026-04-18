@@ -477,7 +477,7 @@ export async function searchSymbols(params: {
 }): Promise<SymbolSearchResult> {
   const startedAt = Date.now();
   const query = normalizeQuery(params.query);
-  const limit = Math.max(1, Math.min(100, params.limit ?? 50));
+  const limit = Math.max(1, Math.min(1000, params.limit ?? 50));
   const offset = Math.max(0, params.offset ?? 0);
   const normalizedCountry = buildCountryFilterInput(params.country)?.code;
   const normalizedUserCountry = buildCountryFilterInput(params.userCountry)?.code ?? params.userCountry?.toUpperCase();

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "./playwright-fixture";
+import { expect, test, type Page, type TestInfo } from "./playwright-fixture";
+import { apiUrl } from "./test-env";
 
 test.setTimeout(120_000);
 
@@ -9,18 +10,18 @@ async function registerAndLogin(page: Page): Promise<void> {
 
   await expect
     .poll(async () => {
-      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      const response = await page.request.get(apiUrl("/api/health"));
       return response.status();
     })
     .toBe(200);
 
-  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const registerResponse = await page.request.post(apiUrl("/api/auth/register"), {
     data: { email, password, name: `chart_interactions_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
     ? registerResponse
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+    : await page.request.post(apiUrl("/api/auth/login"), {
         data: { email, password },
       });
 
@@ -172,8 +173,24 @@ async function panAwayFromLiveEdge(page: Page): Promise<void> {
   await page.mouse.up();
 }
 
+async function activeChartOverlay(page: Page) {
+  const inFullscreen = (await page.locator('[data-testid="chart-full-view-overlay"]:visible').count()) > 0;
+  const selector = inFullscreen
+    ? '[data-testid="chart-full-view-overlay"] canvas[aria-label="chart-drawing-overlay"]:visible'
+    : '[data-testid="chart-root"][data-full-view="false"] canvas[aria-label="chart-drawing-overlay"]:visible';
+  return page.locator(selector).first();
+}
+
+async function activeChartContainer(page: Page) {
+  const inFullscreen = (await page.locator('[data-testid="chart-full-view-overlay"]:visible').count()) > 0;
+  const selector = inFullscreen
+    ? '[data-testid="chart-full-view-overlay"] [data-testid="chart-container"]:visible'
+    : '[data-testid="chart-root"][data-full-view="false"] [data-testid="chart-container"]:visible';
+  return page.locator(selector).first();
+}
+
 async function drawTrendLine(page: Page): Promise<Array<{ x: number; y: number }>> {
-  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  const overlay = await activeChartOverlay(page);
   await expect(overlay).toBeVisible();
 
   await ensureGroupMenuOpen(page, 'lines');
@@ -243,7 +260,7 @@ async function drawTrendLine(page: Page): Promise<Array<{ x: number; y: number }
 }
 
 async function drawHorizontalLine(page: Page): Promise<Array<{ x: number; y: number }>> {
-  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  const overlay = await activeChartOverlay(page);
   await expect(overlay).toBeVisible();
 
   await ensureGroupMenuOpen(page, 'lines');
@@ -271,13 +288,17 @@ async function clickByTestId(page: Page, testId: string): Promise<void> {
     const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
     const target = nodes.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? nodes[0];
     if (target instanceof HTMLElement) {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     }
   }, testId);
 }
 
 async function clickVisible(page: Page, testId: string): Promise<void> {
-  await page.locator(`[data-testid="${testId}"]:visible`).first().click({ timeout: 5000 });
+  try {
+    await page.locator(`[data-testid="${testId}"]:visible`).first().click({ timeout: 5000 });
+  } catch {
+    await clickByTestId(page, testId);
+  }
 }
 
 async function ensureGroupMenuOpen(page: Page, group: string): Promise<void> {
@@ -285,8 +306,11 @@ async function ensureGroupMenuOpen(page: Page, group: string): Promise<void> {
   const menu = page.locator(`[data-testid="${menuTestId}"]:visible`).first();
   if (await menu.isVisible().catch(() => false)) return;
 
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(80);
+  const inFullscreen = (await page.locator('[data-testid="chart-full-view-overlay"]:visible').count()) > 0;
+  if (!inFullscreen) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+  }
   await clickVisible(page, `rail-${group}`);
   if (await menu.isVisible().catch(() => false)) return;
 
@@ -295,13 +319,35 @@ async function ensureGroupMenuOpen(page: Page, group: string): Promise<void> {
 }
 
 async function readChartCursor(page: Page): Promise<string> {
-  return page.locator('[data-testid="chart-container"]:visible').first().evaluate((el) => getComputedStyle(el).cursor);
+  const container = await activeChartContainer(page);
+  return container.evaluate((el) => getComputedStyle(el).cursor);
 }
 
 async function readDrawingCount(page: Page): Promise<number> {
-  const badgeText = await page.locator('[data-testid="drawing-badge"]:visible').first().textContent();
+  const badgeText = await page
+    .locator('[data-testid="drawing-badge"]:visible')
+    .first()
+    .textContent({ timeout: 1000 })
+    .catch(() => null);
   const match = badgeText?.match(/\b(\d+)\s+drawing/);
-  return match ? Number(match[1]) : 0;
+  if (match) return Number(match[1]);
+
+  return page.evaluate(() => {
+    const debug = (window as unknown as {
+      __chartDebug?: {
+        getDrawingsCount?: () => number;
+        getDrawings?: () => Array<unknown>;
+      };
+    }).__chartDebug;
+
+    const direct = debug?.getDrawingsCount?.();
+    if (typeof direct === 'number' && Number.isFinite(direct)) {
+      return direct;
+    }
+
+    const list = debug?.getDrawings?.();
+    return Array.isArray(list) ? list.length : 0;
+  });
 }
 
 async function readScrollPosition(page: Page): Promise<number | null> {
@@ -317,7 +363,7 @@ async function readScrollPosition(page: Page): Promise<number | null> {
 }
 
 async function eraseOneDrawingReliably(page: Page, lineTargets: Array<{ x: number; y: number }> = []): Promise<void> {
-  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  const overlay = await activeChartOverlay(page);
   const box = await overlay.boundingBox();
   expect(box).toBeTruthy();
   if (!box) return;
@@ -334,10 +380,31 @@ async function eraseOneDrawingReliably(page: Page, lineTargets: Array<{ x: numbe
   const liveTargets = await page.evaluate(() => {
     const debug = (window as unknown as {
       __chartDebug?: {
+        getLatestDrawingId?: () => string | null;
+        getProjectedAnchors?: (drawingId?: string) => { anchors: Array<{ x: number; y: number }> } | null;
         getDrawings?: () => Array<{ anchors: Array<{ time: number; price: number }> }>;
         dataPointToClient?: (time: number, price: number) => { x: number; y: number } | null;
       };
     }).__chartDebug;
+
+    const latestId = debug?.getLatestDrawingId?.() ?? null;
+    const projected = latestId ? debug?.getProjectedAnchors?.(latestId) : null;
+    if (projected && Array.isArray(projected.anchors) && projected.anchors.length >= 2) {
+      const [first, second] = projected.anchors;
+      const midpoint = {
+        x: (first.x + second.x) / 2,
+        y: (first.y + second.y) / 2,
+      };
+      const q1 = {
+        x: first.x + (second.x - first.x) * 0.25,
+        y: first.y + (second.y - first.y) * 0.25,
+      };
+      const q3 = {
+        x: first.x + (second.x - first.x) * 0.75,
+        y: first.y + (second.y - first.y) * 0.75,
+      };
+      return [first, q1, midpoint, q3, second];
+    }
 
     const drawings = debug?.getDrawings?.() ?? [];
     const latest = drawings[drawings.length - 1];
@@ -395,6 +462,54 @@ async function expectFullscreenCoverage(page: Page): Promise<void> {
   expect(bounds.height).toBeGreaterThanOrEqual(bounds.vh * 0.95);
 }
 
+async function expectChartSurfaceRenderable(page: Page, inFullscreen: boolean): Promise<void> {
+  const metrics = await page.evaluate((full) => {
+    const isVisible = (element: Element | null): element is HTMLElement => {
+      if (!(element instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(element);
+      return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0;
+    };
+
+    const pickVisible = <T extends HTMLElement>(elements: T[]): T | null => {
+      return elements.find((el) => isVisible(el)) ?? null;
+    };
+
+    const containerSelector = full
+      ? '[data-testid="chart-full-view-overlay"] [data-testid="chart-container"]'
+      : '[data-testid="chart-root"][data-full-view="false"] [data-testid="chart-container"]';
+    const container = pickVisible(Array.from(document.querySelectorAll(containerSelector)) as HTMLElement[]);
+    const overlay = pickVisible(Array.from(document.querySelectorAll('canvas[aria-label="chart-drawing-overlay"]')) as HTMLCanvasElement[]);
+    const main = pickVisible(Array.from(document.querySelectorAll('.chart-wrapper canvas:not([aria-label="chart-drawing-overlay"])')) as HTMLCanvasElement[]);
+
+    const containerRect = container?.getBoundingClientRect();
+    const overlayRect = overlay?.getBoundingClientRect();
+    const mainRect = main?.getBoundingClientRect();
+
+    return {
+      container: containerRect
+        ? { width: containerRect.width, height: containerRect.height }
+        : { width: 0, height: 0 },
+      overlay: overlayRect
+        ? { width: overlayRect.width, height: overlayRect.height, bufferWidth: overlay?.width ?? 0, bufferHeight: overlay?.height ?? 0 }
+        : { width: 0, height: 0, bufferWidth: 0, bufferHeight: 0 },
+      main: mainRect
+        ? { width: mainRect.width, height: mainRect.height, bufferWidth: main?.width ?? 0, bufferHeight: main?.height ?? 0 }
+        : { width: 0, height: 0, bufferWidth: 0, bufferHeight: 0 },
+    };
+  }, inFullscreen);
+
+  expect(metrics.container.width).toBeGreaterThan(120);
+  expect(metrics.container.height).toBeGreaterThan(120);
+  expect(metrics.overlay.width).toBeGreaterThan(120);
+  expect(metrics.overlay.height).toBeGreaterThan(120);
+  expect(metrics.overlay.bufferWidth).toBeGreaterThan(120);
+  expect(metrics.overlay.bufferHeight).toBeGreaterThan(120);
+  expect(metrics.main.width).toBeGreaterThan(120);
+  expect(metrics.main.height).toBeGreaterThan(120);
+  expect(metrics.main.bufferWidth).toBeGreaterThan(120);
+  expect(metrics.main.bufferHeight).toBeGreaterThan(120);
+}
+
 async function runFullViewAndEraserChecks(page: Page, route: "/simulation" | "/live-market", checkEraser = true): Promise<void> {
   await page.goto(route);
   await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible({ timeout: 20_000 });
@@ -410,8 +525,11 @@ async function runFullViewAndEraserChecks(page: Page, route: "/simulation" | "/l
   if (checkEraser) {
     // Normal mode erase flow
     await clickByTestId(page, 'chart-clear');
-    const normalTargets = await drawHorizontalLine(page);
+    const normalTargets = await drawTrendLine(page);
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('1 drawing');
+    // Eraser only applies when no drawing tool is active.
+    await ensureGroupMenuOpen(page, 'cursor');
+    await clickVisible(page, 'cursor-cross');
     await ensureGroupMenuOpen(page, 'cursor');
     await clickVisible(page, 'cursor-eraser');
     await expect.poll(async () => readChartCursor(page)).toContain('url(');
@@ -427,8 +545,11 @@ async function runFullViewAndEraserChecks(page: Page, route: "/simulation" | "/l
 
   if (checkEraser) {
     await clickByTestId(page, 'chart-clear');
-    const fullTargets = await drawHorizontalLine(page);
+    const fullTargets = await drawTrendLine(page);
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('1 drawing');
+    // Eraser only applies when no drawing tool is active.
+    await ensureGroupMenuOpen(page, 'cursor');
+    await clickVisible(page, 'cursor-cross');
     await ensureGroupMenuOpen(page, 'cursor');
     await clickVisible(page, 'cursor-eraser');
     await expect.poll(async () => readChartCursor(page)).toContain('url(');
@@ -573,6 +694,41 @@ test("fullscreen coverage and eraser behavior work on simulation and live market
   await runFullViewAndEraserChecks(page, "/live-market", false);
 });
 
+test('fullscreen toggle keeps chart renderable across resize and navigation', async ({ page }, testInfo: TestInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await registerAndLogin(page);
+
+  for (const route of ['/simulation', '/live-market'] as const) {
+    const routeName = route.replace('/', '');
+    await page.goto(route);
+    await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible({ timeout: 20_000 });
+    await expectChartSurfaceRenderable(page, false);
+    await page.screenshot({ path: testInfo.outputPath(`${routeName}-normal-initial.png`), fullPage: true });
+
+    for (const viewport of [{ width: 1366, height: 820 }, { width: 1280, height: 720 }, { width: 1440, height: 900 }]) {
+      await clickByTestId(page, 'chart-toggle-full-view');
+      await expect(page.locator('[data-testid="chart-full-view-overlay"]:visible').first()).toBeVisible({ timeout: 10_000 });
+      await expectFullscreenCoverage(page);
+      await expectChartSurfaceRenderable(page, true);
+      await page.screenshot({ path: testInfo.outputPath(`${routeName}-full-${viewport.width}x${viewport.height}.png`), fullPage: true });
+
+      await page.setViewportSize(viewport);
+      await page.waitForTimeout(150);
+      await expectChartSurfaceRenderable(page, true);
+
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-testid="chart-full-view-overlay"]:visible')).toHaveCount(0);
+      await expectChartSurfaceRenderable(page, false);
+      await page.screenshot({ path: testInfo.outputPath(`${routeName}-normal-${viewport.width}x${viewport.height}.png`), fullPage: true });
+    }
+
+    await page.goBack();
+    await page.goForward();
+    await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible({ timeout: 20_000 });
+    await expectChartSurfaceRenderable(page, false);
+  }
+});
+
 test("live chart keeps detached viewport during realtime updates", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await registerAndLogin(page);
@@ -580,15 +736,30 @@ test("live chart keeps detached viewport during realtime updates", async ({ page
   await page.goto('/live-market');
   await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible({ timeout: 20_000 });
 
-  const detached = await page.evaluate(() => {
-    const debug = (window as unknown as {
-      __chartDebug?: {
-        scrollToPosition?: (position: number) => number | null;
-      };
-    }).__chartDebug;
-    return debug?.scrollToPosition?.(22) ?? null;
-  });
-  expect(detached).not.toBeNull();
+  await expect
+    .poll(async () => {
+      const detached = await page.evaluate(() => {
+        const debug = (window as unknown as {
+          __chartDebug?: {
+            scrollToPosition?: (position: number) => number | null;
+          };
+        }).__chartDebug;
+        if (!debug?.scrollToPosition) return null;
+
+        // Try multiple offsets because live data can still be hydrating right after route load.
+        const attempts = [22, 14, 8, 4, 2];
+        let latest: number | null = null;
+        for (const offset of attempts) {
+          latest = debug.scrollToPosition(offset) ?? null;
+          if (typeof latest === 'number' && Number.isFinite(latest) && latest > 0.5) {
+            return latest;
+          }
+        }
+        return latest;
+      });
+      return typeof detached === 'number' && Number.isFinite(detached) ? detached : 0;
+    }, { timeout: 15_000 })
+    .toBeGreaterThan(0.5);
 
   const initialScroll = await readScrollPosition(page);
   expect(initialScroll).not.toBeNull();

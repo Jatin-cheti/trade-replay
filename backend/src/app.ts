@@ -444,6 +444,7 @@ export function createApp() {
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
   app.get("/api/search", verifyToken, symbolController.search);
+  app.get("/api/symbol-search", verifyToken, symbolController.searchTradingView);
 
   app.use("/api/auth", authRoutes);
   app.use("/api/sim", createSimulationRoutes(engine));

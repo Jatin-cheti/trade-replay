@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { CandleData } from '@/data/stockData';
-import TradingChart from '@/components/chart/TradingChart';
+import ChartEngine from '@/components/chart/ChartEngine';
 
 export type PaneLayout = '1' | '2h' | '2v' | '3' | '4';
 
@@ -37,6 +37,7 @@ interface SuperChartProps {
 export default function SuperChart({ data, visibleCount, symbol, mode = 'simulation' }: SuperChartProps) {
   const [layout, setLayout] = useState<PaneLayout>('1');
   const [activePane, setActivePane] = useState(0);
+  const syncGroup = useMemo(() => `super-${symbol}`, [symbol]);
 
   const count = paneCount(layout);
 
@@ -75,11 +76,13 @@ export default function SuperChart({ data, visibleCount, symbol, mode = 'simulat
             tabIndex={0}
             className={`relative min-h-[200px] overflow-hidden rounded-xl border transition-colors ${i === activePane ? 'border-primary/50 ring-1 ring-primary/25' : 'border-border/40'} ${layout === '3' && i === 0 ? 'row-span-2' : ''}`}
           >
-            <TradingChart
+            <ChartEngine
               data={data}
               visibleCount={visibleCount}
               symbol={symbol}
+              timeframe="1m"
               mode={mode}
+              syncGroup={syncGroup}
             />
           </div>
         ))}

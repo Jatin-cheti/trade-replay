@@ -22,6 +22,7 @@
     "migrate": "tsx src/migrations/index.ts",
     "seed:portfolio-datasets": "tsx src/seeders/generatePortfolioDatasets.ts",
     "ingest:symbols": "tsx src/seeders/ingestSymbols.ts",
+    "ingest:global:once": "tsx src/jobs/globalExpansionOnce.ts",
     "ingest:global:continuous": "tsx src/jobs/continuousSymbolIngestion.ts",
     "global:coverage:loop": "tsx src/jobs/globalCoverageLoop.ts",
     "job:logo-validate": "tsx src/jobs/logoValidation.job.ts",

@@ -2,6 +2,7 @@ import { CandleData } from "../types/shared";
 import { getFallbackCandles } from "./fallbackData";
 import { produceChartCandleUpdated } from "../kafka/eventProducers";
 import { logger } from "../utils/logger";
+import { fetchYahooIntradayCandles, fetchYahooQuotes } from "./yahooMarketData";
 
 export type LiveQuote = {
   symbol: string;
@@ -10,8 +11,10 @@ export type LiveQuote = {
   changePercent: number;
   volume: number;
   timestamp: string;
-  source: "synthetic-live";
+  source: "synthetic-live" | "yahoo-live";
 };
+
+export type LiveDataMode = "default" | "parity-live";
 
 type LiveSymbolState = {
   symbol: string;
@@ -21,10 +24,26 @@ type LiveSymbolState = {
 
 const LIVE_STEP_MS = 2000;
 const MAX_BUFFER = 400;
+const YAHOO_CANDLE_CACHE_TTL_MS = 12_000;
+const YAHOO_QUOTE_CACHE_TTL_MS = 4_000;
 const stateBySymbol = new Map<string, LiveSymbolState>();
+const yahooCandleCache = new Map<string, { expiresAt: number; candles: CandleData[] }>();
+const yahooQuoteCache = new Map<string, { expiresAt: number; quote: LiveQuote }>();
 
 function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();
+}
+
+function normalizeLimit(limit?: number): number {
+  return Math.max(20, Math.min(500, Number(limit ?? 240)));
+}
+
+function pruneExpiredCaches(now: number): void {
+  for (const [key, value] of yahooQuoteCache.entries()) {
+    if (value.expiresAt <= now) {
+      yahooQuoteCache.delete(key);
+    }
+  }
 }
 
 function seedFromSymbol(symbol: string): number {
@@ -114,7 +133,7 @@ function tickSymbol(state: LiveSymbolState): void {
   state.lastEmittedAt = now;
 }
 
-function quoteFromCandles(symbol: string, candles: CandleData[]): LiveQuote {
+function quoteFromCandles(symbol: string, candles: CandleData[], source: LiveQuote["source"]): LiveQuote {
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2] ?? last;
   const change = last.close - prev.close;
@@ -127,36 +146,169 @@ function quoteFromCandles(symbol: string, candles: CandleData[]): LiveQuote {
     changePercent: Number(changePercent.toFixed(4)),
     volume: last.volume,
     timestamp: last.time,
-    source: "synthetic-live",
+    source,
   };
 }
 
-export function getLiveCandles(input: { symbol: string; limit?: number }): { symbol: string; candles: CandleData[]; quote: LiveQuote; source: "synthetic-live" } {
-  const state = ensureSymbolState(input.symbol);
+function tailCandles(candles: CandleData[], limit: number): CandleData[] {
+  if (candles.length <= limit) return candles;
+  return candles.slice(-limit);
+}
+
+async function getYahooCandles(symbol: string, limit: number): Promise<CandleData[] | null> {
+  const normalized = normalizeSymbol(symbol);
+  const now = Date.now();
+  pruneExpiredCaches(now);
+
+  const cached = yahooCandleCache.get(normalized);
+  if (cached && cached.expiresAt > now && cached.candles.length > 0) {
+    return tailCandles(cached.candles, limit);
+  }
+
+  let fetched = await fetchYahooIntradayCandles({
+    symbol: normalized,
+    interval: "1m",
+    range: "1d",
+  });
+
+  if (!fetched || fetched.length === 0) {
+    fetched = await fetchYahooIntradayCandles({
+      symbol: normalized,
+      interval: "1m",
+      range: "1d",
+      timeoutMs: 7000,
+    });
+  }
+
+  if (!fetched || fetched.length === 0) {
+    if (cached && cached.candles.length > 0) {
+      return tailCandles(cached.candles, limit);
+    }
+    return null;
+  }
+
+  yahooCandleCache.set(normalized, {
+    expiresAt: now + YAHOO_CANDLE_CACHE_TTL_MS,
+    candles: fetched,
+  });
+
+  return tailCandles(fetched, limit);
+}
+
+async function getYahooQuotesMap(symbols: string[]): Promise<Record<string, LiveQuote>> {
+  const now = Date.now();
+  pruneExpiredCaches(now);
+
+  const quotes: Record<string, LiveQuote> = {};
+  const missing: string[] = [];
+
+  for (const symbol of symbols) {
+    const cached = yahooQuoteCache.get(symbol);
+    if (cached && cached.expiresAt > now) {
+      quotes[symbol] = cached.quote;
+      continue;
+    }
+    missing.push(symbol);
+  }
+
+  if (missing.length > 0) {
+    const fetched = await fetchYahooQuotes(missing);
+    if (fetched && fetched.length > 0) {
+      for (const row of fetched) {
+        const symbol = normalizeSymbol(row.symbol);
+        const quote: LiveQuote = {
+          symbol,
+          price: Number(row.price.toFixed(4)),
+          change: Number(row.change.toFixed(4)),
+          changePercent: Number(row.changePercent.toFixed(4)),
+          volume: row.volume,
+          timestamp: row.timestamp,
+          source: "yahoo-live",
+        };
+        quotes[symbol] = quote;
+        yahooQuoteCache.set(symbol, {
+          expiresAt: now + YAHOO_QUOTE_CACHE_TTL_MS,
+          quote,
+        });
+      }
+    }
+  }
+
+  return quotes;
+}
+
+export async function getLiveCandles(input: {
+  symbol: string;
+  limit?: number;
+  mode?: LiveDataMode;
+}): Promise<{ symbol: string; candles: CandleData[]; quote: LiveQuote; source: "synthetic-live" | "yahoo-live" }> {
+  const mode = input.mode ?? "default";
+  const normalized = normalizeSymbol(input.symbol);
+  const limit = normalizeLimit(input.limit);
+
+  if (mode === "parity-live") {
+    const candles = await getYahooCandles(normalized, limit);
+    if (candles && candles.length > 0) {
+      return {
+        symbol: normalized,
+        candles,
+        quote: quoteFromCandles(normalized, candles, "yahoo-live"),
+        source: "yahoo-live",
+      };
+    }
+  }
+
+  const state = ensureSymbolState(normalized);
   tickSymbol(state);
 
-  const limit = Math.max(20, Math.min(500, Number(input.limit ?? 240)));
   const candles = state.candles.slice(-limit);
 
   return {
     symbol: state.symbol,
     candles,
-    quote: quoteFromCandles(state.symbol, candles),
+    quote: quoteFromCandles(state.symbol, candles, "synthetic-live"),
     source: "synthetic-live",
   };
 }
 
-export function getLiveQuotes(input: { symbols: string[] }): { quotes: Record<string, LiveQuote>; source: "synthetic-live" } {
+export async function getLiveQuotes(input: {
+  symbols: string[];
+  mode?: LiveDataMode;
+}): Promise<{ quotes: Record<string, LiveQuote>; source: "synthetic-live" | "yahoo-live" }> {
+  const mode = input.mode ?? "default";
   const quotes: Record<string, LiveQuote> = {};
 
-  input.symbols
+  const symbols = input.symbols
     .map((symbol) => normalizeSymbol(symbol))
-    .filter((symbol, index, all) => Boolean(symbol) && all.indexOf(symbol) === index)
-    .forEach((symbol) => {
+    .filter((symbol, index, all) => Boolean(symbol) && all.indexOf(symbol) === index);
+
+  if (mode === "parity-live" && symbols.length > 0) {
+    const yahooQuotes = await getYahooQuotesMap(symbols);
+    for (const symbol of symbols) {
+      const yahooQuote = yahooQuotes[symbol];
+      if (yahooQuote) {
+        quotes[symbol] = yahooQuote;
+        continue;
+      }
+
       const state = ensureSymbolState(symbol);
       tickSymbol(state);
-      quotes[symbol] = quoteFromCandles(symbol, state.candles);
-    });
+      quotes[symbol] = quoteFromCandles(symbol, state.candles, "synthetic-live");
+    }
+
+    return {
+      quotes,
+      source: Object.values(quotes).some((quote) => quote.source === "yahoo-live")
+        ? "yahoo-live"
+        : "synthetic-live",
+    };
+  }
+
+  symbols.forEach((symbol) => {
+    const state = ensureSymbolState(symbol);
+    tickSymbol(state);
+    quotes[symbol] = quoteFromCandles(symbol, state.candles, "synthetic-live");
+  });
 
   return {
     quotes,

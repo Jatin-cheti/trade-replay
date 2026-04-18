@@ -1,57 +1,39 @@
-import { loadEnv } from "./loadEnv.js";
+import { z } from "zod";
 
-// Load .env and .env.secrets deterministically (must be first)
-const envStatus = loadEnv();
-const runtimeAppEnv = (process.env.APP_ENV ?? "local").toLowerCase();
-
-function defaultForLocal(localValue: string, nonLocalValue: string): string {
-  return runtimeAppEnv === "local" ? localValue : nonLocalValue;
-}
-
-function read(key: string, fallback: string): string {
-  return process.env[key] ?? process.env[`LOCAL_${key}`] ?? fallback;
-}
-
-function normalizeRedis(url: string): string {
-  if (/redis:\/\/redis[:/]/i.test(url)) {
-    return "redis://127.0.0.1:6379";
+const boolFromEnv = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return ["1", "true", "yes", "on"].includes(normalized);
   }
-  return url;
-}
+  return value;
+}, z.boolean());
 
-function normalizeKafkaBrokers(brokers: string): string {
-  return brokers
-    .split(",")
-    .map((broker) => broker.trim())
-    .filter(Boolean)
-    .map((broker) => /^kafka:\d+$/i.test(broker) ? "localhost:19092" : broker)
-    .join(",") || "localhost:19092";
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  APP_ENV: z.string().default("local"),
+  PORT: z.coerce.number().int().positive().default(3001),
+  BACKEND_URL: z.string().url().default("http://127.0.0.1:4000"),
+  REDIS_URL: z.string().default("redis://127.0.0.1:6379"),
+  KAFKA_BROKERS: z.string().default("localhost:19092"),
+  CHART_SERVICE_AUTH_ENABLED: boolFromEnv.default(false),
+  CHART_SERVICE_AUTH_TOKEN: z.string().default(""),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+  WARM_WINDOW: z.coerce.number().int().positive().default(150),
+  ENABLE_INDICATOR_WORKER: boolFromEnv.default(true),
+  CHART_UPSTREAM_WS_URL: z.string().url().optional(),
+  CHART_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
+});
+
+const parsed = schema.safeParse(process.env);
+if (!parsed.success) {
+  throw new Error(`Invalid chart-service environment: ${parsed.error.message}`);
 }
 
 export const env = {
-  APP_ENV: read("APP_ENV", "local"),
-  PORT: Number(read("CHART_SERVICE_PORT", "4010")),
-  REDIS_ENABLED: read("REDIS_ENABLED", defaultForLocal("false", "true")) === "true",
-  REDIS_URL: normalizeRedis(read("REDIS_URL", "redis://127.0.0.1:6379")),
-  DEV_ALLOW_MOCK_REDIS: read("DEV_ALLOW_MOCK_REDIS", "true") === "true",
-  DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE: read("DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE", "true") === "true",
-  DEV_DISABLE_KAFKA_IF_UNAVAILABLE: read("DEV_DISABLE_KAFKA_IF_UNAVAILABLE", defaultForLocal("true", "false")) === "true",
-  MAIN_BACKEND_URL: read("MAIN_BACKEND_URL", "http://127.0.0.1:4000"),
-  CHART_SERVICE_AUTH_ENABLED: read("CHART_SERVICE_AUTH_ENABLED", "false") === "true",
-  CHART_SERVICE_AUTH_TOKEN: read("CHART_SERVICE_AUTH_TOKEN", ""),
-  CHART_CACHE_TTL_SECONDS: Number(read("CHART_CACHE_TTL_SECONDS", "120")),
-  CHART_CACHE_LIVE_TTL_SECONDS: Number(read("CHART_CACHE_LIVE_TTL_SECONDS", "15")),
-  CHART_CACHE_HISTORICAL_TTL_SECONDS: Number(read("CHART_CACHE_HISTORICAL_TTL_SECONDS", "900")),
-  CHART_CACHE_SWR_SECONDS: Number(read("CHART_CACHE_SWR_SECONDS", "30")),
-  CHART_CANDLE_SOURCE_PATH: read("CHART_CANDLE_SOURCE_PATH", "/api/live/candles"),
-  CHART_SERVICE_TIMEOUT_MS: Number(read("CHART_SERVICE_TIMEOUT_MS", "5000")),
-  KAFKA_ENABLED: read("KAFKA_ENABLED", defaultForLocal("false", "false")) === "true",
-  CHART_STREAMING_ENABLED: read("CHART_STREAMING_ENABLED", runtimeAppEnv === "production" ? "true" : "false") === "true",
-  KAFKA_BROKERS: normalizeKafkaBrokers(read("KAFKA_BROKERS", "localhost:19092")),
-  CHART_CANDLE_UPDATE_TOPIC: read("CHART_CANDLE_UPDATE_TOPIC", "chart.candle.updated"),
-  CHART_KAFKA_DLQ_TOPIC: read("CHART_KAFKA_DLQ_TOPIC", "chart.candle.updated.dlq"),
-  CHART_KAFKA_MAX_RETRIES: Math.max(0, Number(read("CHART_KAFKA_MAX_RETRIES", "5"))),
-  CHART_KAFKA_RETRY_BASE_MS: Math.max(10, Number(read("CHART_KAFKA_RETRY_BASE_MS", "200"))),
-  CHART_KAFKA_CLIENT_ID: read("CHART_KAFKA_CLIENT_ID", "chart-service"),
-  CHART_KAFKA_GROUP_ID: read("CHART_KAFKA_GROUP_ID", "chart-service-consumers"),
+  ...parsed.data,
+  kafkaBrokers: parsed.data.KAFKA_BROKERS.split(",").map((v) => v.trim()).filter(Boolean),
 };
+
+export type Env = typeof env;

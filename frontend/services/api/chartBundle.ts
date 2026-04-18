@@ -12,6 +12,7 @@ type BundleRequest = {
   symbol: string;
   timeframe?: string;
   limit?: number;
+  dataMode?: "default" | "parity-live";
   transformType?: TransformType;
   params?: Record<string, number>;
   indicators?: IndicatorRequest[];
@@ -121,6 +122,7 @@ export async function fetchChartBundle(input: BundleRequest): Promise<BundleResu
       symbol: input.symbol,
       timeframe: input.timeframe ?? "1m",
       limit: input.limit ?? 260,
+      dataMode: input.dataMode,
     },
     transformType: input.transformType,
     params: input.params,

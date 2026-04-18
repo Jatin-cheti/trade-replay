@@ -9,6 +9,40 @@ type BenchSample = {
   indicatorCount: number;
 };
 
+type SeriesMutationSample = {
+  kind: 'setData' | 'update';
+  seriesId: string;
+  seriesType: string;
+  result?: 'replaced' | 'appended';
+  outOfOrderInsert?: boolean;
+  sourceLength: number;
+};
+
+type IncrementalSample = {
+  indicatorCount: number;
+  sourceLength: number;
+  fallbackCount: number;
+};
+
+type FullRecomputeSample = {
+  indicatorCount: number;
+  sourceLength: number;
+  usedWorker: boolean;
+};
+
+type TickBurstResult = {
+  ticks: number;
+  updates: number;
+  appends: number;
+  renderCount: number;
+  recomputeCount: number;
+  incrementalCount: number;
+  fallbackCount: number;
+  fullRecomputeCount: number;
+  setDataCount: number;
+  outOfOrderInsertCount: number;
+};
+
 type BenchResult = {
   bars: number;
   indicators: number;
@@ -33,8 +67,19 @@ type BenchmarkDebugState = {
   clearSamples: () => void;
   getRenderSummary: () => { count: number; avgMs: number; maxMs: number };
   getRecomputeSummary: () => { count: number; avgMs: number; maxMs: number };
+  getMutationSummary: () => {
+    total: number;
+    setDataCount: number;
+    updateCount: number;
+    appendCount: number;
+    replaceCount: number;
+    outOfOrderInsertCount: number;
+  };
+  getIncrementalSummary: () => { count: number; fallbackCount: number; avgFallbackPerCall: number };
+  getFullRecomputeSummary: () => { count: number; workerCount: number; mainThreadCount: number };
   getRenderSamples: () => number[];
   getRecomputeSamples: () => number[];
+  runTickBurst: (opts?: { ticks?: number; appendEvery?: number; frameStride?: number }) => Promise<TickBurstResult>;
 };
 
 interface SyntheticRow {
@@ -118,14 +163,24 @@ export default function ChartPerformanceBench() {
 
     let cancelled = false;
     let chart: ReturnType<typeof createTradingChart> | null = null;
+    let sourceSeries: { update: (row: SyntheticRow) => void } | null = null;
+    let streamTime = rows[rows.length - 1]?.time ?? 1_700_000_000;
+    let streamPrice = rows[rows.length - 1]?.close ?? 100;
+    const streamRandom = makeSeededRandom((seed ^ 0x9e37_79b9) >>> 0);
 
     const renderSamples: BenchSample[] = [];
     const recomputeSamples: BenchSample[] = [];
+    const mutationSamples: SeriesMutationSample[] = [];
+    const incrementalSamples: IncrementalSample[] = [];
+    const fullRecomputeSamples: FullRecomputeSample[] = [];
     const debugState: BenchmarkDebugState = {
       ready: false,
       clearSamples() {
         renderSamples.length = 0;
         recomputeSamples.length = 0;
+        mutationSamples.length = 0;
+        incrementalSamples.length = 0;
+        fullRecomputeSamples.length = 0;
       },
       getRenderSummary() {
         return {
@@ -141,11 +196,120 @@ export default function ChartPerformanceBench() {
           maxMs: max(recomputeSamples.map((sample) => sample.durationMs)),
         };
       },
+      getMutationSummary() {
+        const setDataCount = mutationSamples.filter((sample) => sample.kind === 'setData').length;
+        const updates = mutationSamples.filter((sample) => sample.kind === 'update');
+        const appendCount = updates.filter((sample) => sample.result === 'appended').length;
+        const replaceCount = updates.filter((sample) => sample.result === 'replaced').length;
+        const outOfOrderInsertCount = updates.filter((sample) => sample.outOfOrderInsert === true).length;
+        return {
+          total: mutationSamples.length,
+          setDataCount,
+          updateCount: updates.length,
+          appendCount,
+          replaceCount,
+          outOfOrderInsertCount,
+        };
+      },
+      getIncrementalSummary() {
+        const fallbackCount = incrementalSamples.reduce((sum, sample) => sum + sample.fallbackCount, 0);
+        return {
+          count: incrementalSamples.length,
+          fallbackCount,
+          avgFallbackPerCall: incrementalSamples.length > 0 ? fallbackCount / incrementalSamples.length : 0,
+        };
+      },
+      getFullRecomputeSummary() {
+        const workerCount = fullRecomputeSamples.filter((sample) => sample.usedWorker).length;
+        return {
+          count: fullRecomputeSamples.length,
+          workerCount,
+          mainThreadCount: fullRecomputeSamples.length - workerCount,
+        };
+      },
       getRenderSamples() {
         return renderSamples.map((sample) => sample.durationMs);
       },
       getRecomputeSamples() {
         return recomputeSamples.map((sample) => sample.durationMs);
+      },
+      async runTickBurst(opts) {
+        if (!sourceSeries) {
+          return {
+            ticks: 0,
+            updates: 0,
+            appends: 0,
+            renderCount: 0,
+            recomputeCount: 0,
+            incrementalCount: 0,
+            fallbackCount: 0,
+            fullRecomputeCount: 0,
+            setDataCount: 0,
+            outOfOrderInsertCount: 0,
+          };
+        }
+
+        const ticks = Math.max(1, Math.min(20_000, Math.floor(opts?.ticks ?? 800)));
+        const appendEvery = Math.max(1, Math.min(120, Math.floor(opts?.appendEvery ?? 4)));
+        const frameStride = Math.max(1, Math.min(240, Math.floor(opts?.frameStride ?? 8)));
+
+        const startRender = renderSamples.length;
+        const startRecompute = recomputeSamples.length;
+        const startIncremental = incrementalSamples.length;
+        const startFullRecompute = fullRecomputeSamples.length;
+        const startMutations = mutationSamples.length;
+
+        let appends = 0;
+        for (let i = 0; i < ticks; i += 1) {
+          const append = (i + 1) % appendEvery === 0;
+          const open = streamPrice;
+          const drift = ((streamRandom() - 0.5) * 0.006) + Math.sin((streamTime + i) / 97) * 0.0008;
+          const close = Math.max(1, open * (1 + drift));
+          const wick = Math.max(0.02, open * (0.001 + streamRandom() * 0.0025));
+          const high = Math.max(open, close) + wick;
+          const low = Math.min(open, close) - wick;
+
+          if (append) {
+            streamTime += 60;
+            appends += 1;
+          }
+
+          sourceSeries.update({
+            time: streamTime,
+            open: Number(open.toFixed(4)),
+            high: Number(high.toFixed(4)),
+            low: Number(low.toFixed(4)),
+            close: Number(close.toFixed(4)),
+            volume: Math.floor(220_000 + streamRandom() * 440_000),
+          });
+          streamPrice = close;
+
+          if ((i + 1) % frameStride === 0) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          }
+        }
+
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+        const mutationDelta = mutationSamples.slice(startMutations);
+        const incrementalDelta = incrementalSamples.slice(startIncremental);
+        const setDataCount = mutationDelta.filter((sample) => sample.kind === 'setData').length;
+        const outOfOrderInsertCount = mutationDelta.filter((sample) => sample.outOfOrderInsert === true).length;
+        const fallbackCount = incrementalDelta.reduce((sum, sample) => sum + sample.fallbackCount, 0);
+
+        return {
+          ticks,
+          updates: ticks - appends,
+          appends,
+          renderCount: renderSamples.length - startRender,
+          recomputeCount: recomputeSamples.length - startRecompute,
+          incrementalCount: incrementalSamples.length - startIncremental,
+          fallbackCount,
+          fullRecomputeCount: fullRecomputeSamples.length - startFullRecompute,
+          setDataCount,
+          outOfOrderInsertCount,
+        };
       },
     };
 
@@ -156,6 +320,15 @@ export default function ChartPerformanceBench() {
       },
       onRenderEnd: (payload: BenchSample) => {
         renderSamples.push(payload);
+      },
+      onSeriesDataMutation: (payload: SeriesMutationSample) => {
+        mutationSamples.push(payload);
+      },
+      onIndicatorIncremental: (payload: IncrementalSample) => {
+        incrementalSamples.push(payload);
+      },
+      onIndicatorFullRecompute: (payload: FullRecomputeSample) => {
+        fullRecomputeSamples.push(payload);
       },
     };
 
@@ -175,6 +348,7 @@ export default function ChartPerformanceBench() {
         wickUpColor: '#83e8bb',
         wickDownColor: '#ff8d8f',
       });
+      sourceSeries = source as unknown as { update: (row: SyntheticRow) => void };
 
       setStatus('loading data');
       const setDataStart = performance.now();
@@ -223,6 +397,7 @@ export default function ChartPerformanceBench() {
     return () => {
       cancelled = true;
       debugState.ready = false;
+      sourceSeries = null;
       chart?.remove();
       chartRef.current = null;
       delete (window as Window & { __chartBenchmarkState?: BenchmarkDebugState }).__chartBenchmarkState;

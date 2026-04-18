@@ -19,10 +19,11 @@ const envPath = path.resolve(__dirname, "../.env");
 const secretsPath = path.resolve(__dirname, "../.env.secrets");
 
 if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath, override: true });
+  // Keep explicit process env (e.g. E2E injected ports) authoritative.
+  dotenv.config({ path: envPath, override: false });
 }
 if (fs.existsSync(secretsPath)) {
-  dotenv.config({ path: secretsPath, override: true });
+  dotenv.config({ path: secretsPath, override: false });
 }
 
 const ensureInfraScript = path.resolve(__dirname, "../scripts/dev/ensure-infra.js");

@@ -1,5 +1,6 @@
 ﻿import { expect, test } from "./playwright-fixture";
 import fs from "node:fs/promises";
+import { apiUrl } from "./test-env";
 
 test("chart platform types, tools, and object actions", async ({ page }) => {
   const uid = Date.now();
@@ -8,18 +9,18 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   await expect
     .poll(async () => {
-      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      const response = await page.request.get(apiUrl("/api/health"));
       return response.status();
     })
     .toBe(200);
 
-  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const registerResponse = await page.request.post(apiUrl("/api/auth/register"), {
     data: { email, password, name: `chart_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
     ? registerResponse
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+    : await page.request.post(apiUrl("/api/auth/login"), {
         data: { email, password },
       });
 

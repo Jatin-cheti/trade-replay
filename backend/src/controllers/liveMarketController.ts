@@ -7,10 +7,12 @@ import { AppError } from "../utils/appError";
 const candlesSchema = z.object({
   symbol: z.string().min(1),
   limit: z.coerce.number().int().min(20).max(500).optional(),
+  dataMode: z.enum(["default", "parity-live"]).optional(),
 });
 
 const quotesSchema = z.object({
   symbols: z.string().min(1),
+  dataMode: z.enum(["default", "parity-live"]).optional(),
 });
 
 export function createLiveMarketController() {
@@ -21,9 +23,10 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_CANDLES_QUERY", "Invalid live candles query");
       }
 
-      const payload = getLiveCandles({
+      const payload = await getLiveCandles({
         symbol: parsed.data.symbol,
         limit: parsed.data.limit,
+        mode: parsed.data.dataMode,
       });
 
       res.json(payload);
@@ -44,7 +47,7 @@ export function createLiveMarketController() {
         throw new AppError(400, "INVALID_LIVE_QUOTES_QUERY", "At least one symbol is required");
       }
 
-      res.json(getLiveQuotes({ symbols }));
+      res.json(await getLiveQuotes({ symbols, mode: parsed.data.dataMode }));
     },
   };
 }

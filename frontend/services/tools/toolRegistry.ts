@@ -127,6 +127,13 @@ export type ToolVariant =
 
 export type DrawPoint = { time: UTCTimestamp; price: number };
 
+export type BoundingBox = {
+  minTime: number;
+  maxTime: number;
+  minPrice: number;
+  maxPrice: number;
+};
+
 export type ToolCapabilities = {
   anchors: number;
   draggable: boolean;
@@ -158,7 +165,11 @@ export type Drawing = {
   type: ToolFamily;
   variant: Exclude<ToolVariant, 'none'>;
   anchors: DrawPoint[];
+  bounds?: BoundingBox;
   options: ToolOptions;
+  zIndex: number;
+  renderOrder: number;
+  interactionPriority: number;
   selected: boolean;
   locked: boolean;
   visible: boolean;

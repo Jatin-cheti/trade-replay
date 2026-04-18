@@ -92,8 +92,53 @@ export type TransformedData = {
   times: UTCTimestamp[];
 };
 
-export function toTimestamp(input: string): UTCTimestamp {
-  return Math.floor(new Date(input).getTime() / 1000) as UTCTimestamp;
+const FALLBACK_TIMESTAMP_START = Math.floor(Date.UTC(2000, 0, 1, 0, 0, 0) / 1000);
+const MIN_TIMESTAMP_STEP_SECONDS = 60;
+
+function parseTimestampSeconds(input: string | number): number | null {
+  if (typeof input === 'number') {
+    if (!Number.isFinite(input)) return null;
+    const abs = Math.abs(input);
+    if (abs >= 1e11) return Math.floor(input / 1000);
+    return Math.floor(input);
+  }
+
+  const normalized = String(input).trim();
+  if (!normalized) return null;
+
+  if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+    const numeric = Number(normalized);
+    if (!Number.isFinite(numeric)) return null;
+    const abs = Math.abs(numeric);
+    if (abs >= 1e11) return Math.floor(numeric / 1000);
+    return Math.floor(numeric);
+  }
+
+  const dateOnly = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+      return Math.floor(Date.UTC(year, month - 1, day, 0, 0, 0) / 1000);
+    }
+  }
+
+  const parsedMs = Date.parse(normalized);
+  if (!Number.isFinite(parsedMs)) return null;
+  return Math.floor(parsedMs / 1000);
+}
+
+export function toTimestamp(input: string | number, previous?: UTCTimestamp): UTCTimestamp {
+  const parsed = parseTimestampSeconds(input);
+  const fallback = previous != null
+    ? Number(previous) + MIN_TIMESTAMP_STEP_SECONDS
+    : FALLBACK_TIMESTAMP_START;
+  let resolved = Number.isFinite(parsed) ? (parsed as number) : fallback;
+  if (previous != null && resolved <= Number(previous)) {
+    resolved = Number(previous) + MIN_TIMESTAMP_STEP_SECONDS;
+  }
+  return Math.floor(resolved) as UTCTimestamp;
 }
 
 export function heikinAshiTransform(rows: OhlcRow[]): CandlestickData[] {
@@ -133,16 +178,21 @@ export function stepLineTransform(rows: LineData[]): LineData[] {
   return output;
 }
 
-export function transformChartData(data: CandleData[], visibleCount: number): TransformedData {
+export function transformChartData(data: CandleData[], visibleCount: number, parityMode = false): TransformedData {
   const visible = data.slice(0, visibleCount);
-  const ohlcRows = visible.map((item) => ({
-    time: toTimestamp(item.time),
-    open: item.open,
-    high: item.high,
-    low: item.low,
-    close: item.close,
-    volume: item.volume,
-  }));
+  let previousTime: UTCTimestamp | undefined;
+  const ohlcRows = visible.map((item) => {
+    const time = toTimestamp(item.time, previousTime);
+    previousTime = time;
+    return {
+      time,
+      open: item.open,
+      high: item.high,
+      low: item.low,
+      close: item.close,
+      volume: item.volume,
+    };
+  });
 
   const closeRows = ohlcRows.map((row) => ({ time: row.time, value: row.close }));
   const rangeRows = ohlcRows.map((row) => ({ time: row.time, value: (row.high + row.low) / 2 }));
@@ -154,6 +204,11 @@ export function transformChartData(data: CandleData[], visibleCount: number): Tr
   const kagiRows = kagiTransform(asTransformInput) as OhlcRow[];
   const pointFigureRows = pointFigureTransform(asTransformInput) as OhlcRow[];
   const brickRows = brickTransform(asTransformInput) as OhlcRow[];
+
+  const histogramUpColor = parityMode ? 'rgba(8, 153, 129, 0.72)' : 'rgba(23, 201, 100, 0.72)';
+  const histogramDownColor = parityMode ? 'rgba(242, 54, 69, 0.72)' : 'rgba(255, 77, 79, 0.72)';
+  const volumeUpColor = parityMode ? 'rgba(8, 153, 129, 0.45)' : 'rgba(38, 166, 154, 0.45)';
+  const volumeDownColor = parityMode ? 'rgba(242, 54, 69, 0.45)' : 'rgba(239, 83, 80, 0.45)';
 
   return {
     ohlcRows,
@@ -170,12 +225,12 @@ export function transformChartData(data: CandleData[], visibleCount: number): Tr
     histogramRows: ohlcRows.map((row) => ({
       time: row.time,
       value: row.close - row.open,
-      color: row.close >= row.open ? 'rgba(23, 201, 100, 0.72)' : 'rgba(255, 77, 79, 0.72)',
+      color: row.close >= row.open ? histogramUpColor : histogramDownColor,
     })),
     volumeRows: ohlcRows.map((row) => ({
       time: row.time,
       value: row.volume,
-      color: row.close >= row.open ? 'rgba(0, 209, 255, 0.45)' : 'rgba(255, 120, 120, 0.45)',
+      color: row.close >= row.open ? volumeUpColor : volumeDownColor,
     })),
     heikinRows: heikinAshiTransform(ohlcRows),
     times: ohlcRows.map((row) => row.time),

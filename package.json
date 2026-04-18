@@ -26,13 +26,22 @@
     "validate:logo-pipeline": "npm --prefix backend exec tsx ./tests/load/testLogoPipeline.ts",
     "stress:test": "npm --prefix backend exec tsx ./tests/load/stressTest.ts",
     "test:e2e": "playwright test -c tests/integration/e2e/playwright.config.ts",
+    "test:matrix": "playwright test -c tests/integration/e2e/playwright.config.ts --project=chromium tests/integration/e2e/tool-matrix.spec.ts",
+    "test:parity:capture": "playwright test -c tests/integration/e2e/playwright.config.ts --project=chromium tests/integration/e2e/tradingview-parity.spec.ts",
+    "test:parity:reference": "node tests/tooling/capture-tradingview-reference.mjs",
+    "test:parity:diff": "node tests/tooling/tradingview-parity-diff.mjs",
+    "test:matrix:batches": "node tests/tooling/run-matrix-batches.mjs",
+    "tool:inventory": "node tests/tooling/generate-inventory.mjs",
+    "tool:coverage": "node tests/tooling/generate-coverage.mjs",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "deploy:auto": "docker compose up -d redis kafka mongodb backend worker logo-service kafka-service && npm run validate"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0"
   },
   "dependencies": {
     "dotenv": "^17.4.1"

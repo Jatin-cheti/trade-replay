@@ -72,6 +72,11 @@ export interface SeriesOptions {
   base?: number;
   thinBars?: boolean;
   priceScaleId?: string;
+  /**
+   * Internal escape hatch for derived helper series whose synthetic timestamps
+   * should not affect the chart's canonical time index.
+   */
+  excludeFromTimeIndex?: boolean;
 }
 
 export interface ScaleMargins {
@@ -160,6 +165,17 @@ export interface ChartOptions {
     visibleRangeOnly?: boolean;
     windowPaddingBars?: number;
   };
+  parity?: {
+    enabled?: boolean;
+    viewMode?: 'normal' | 'full';
+    showLastPriceLine?: boolean;
+    showLastValueLabels?: boolean;
+    showWatermark?: boolean;
+    /** Vertical range padding used for price series during parity capture. */
+    pricePadding?: number;
+    /** Vertical range padding used for histogram/volume series during parity capture. */
+    volumePadding?: number;
+  };
   /**
    * Enable opt-in perf instrumentation.  Logs a throttled summary
    * (avg / p95 per metric) to the console every 5 s.
@@ -197,6 +213,14 @@ export interface IChartApi {
   removeIndicator(instanceId: string): void;
 }
 
+export interface CrosshairMoveEvent {
+  point: { x: number; y: number } | null;
+  time: UTCTimestamp | null;
+  price: number | null;
+  paneId: string | null;
+  source: 'local-pointer' | 'leave';
+}
+
 // ─── Internal constants ───────────────────────────────────────────────────────
 const PRICE_AXIS_W = 68;
 const TIME_AXIS_H = 28;
@@ -204,6 +228,10 @@ const DEFAULT_BAR_WIDTH = 8;
 const MIN_BAR_WIDTH = 2;
 const MAX_BAR_WIDTH = 60;
 const PRICE_PADDING = 0.1;
+const PARITY_COMPACT_PRICE_AXIS_WIDTH = 56;
+const PARITY_COMPACT_PRICE_AXIS_MAX_VIEWPORT_WIDTH = 500;
+const CANDLE_BODY_WIDTH_FACTOR = 0.72;
+const CANDLE_MIN_BODY_PX = 1;
 const MAX_RIGHT_OFFSET_BARS = 24;
 const DEFAULT_INDICATOR_WINDOW_PADDING_BARS = 500;
 const MIN_INDICATOR_WINDOW_PADDING_BARS = 64;
@@ -216,6 +244,24 @@ interface ChartDebugHooks {
   onRecomputeStart?: (payload: { indicatorCount: number; sourceLength: number }) => void;
   onRecomputeEnd?: (payload: { indicatorCount: number; sourceLength: number; durationMs: number }) => void;
   onRenderEnd?: (payload: { durationMs: number; barCount: number; indicatorCount: number }) => void;
+  onSeriesDataMutation?: (payload: {
+    kind: 'setData' | 'update';
+    seriesId: string;
+    seriesType: SeriesType;
+    result?: 'replaced' | 'appended';
+    outOfOrderInsert?: boolean;
+    sourceLength: number;
+  }) => void;
+  onIndicatorIncremental?: (payload: {
+    indicatorCount: number;
+    sourceLength: number;
+    fallbackCount: number;
+  }) => void;
+  onIndicatorFullRecompute?: (payload: {
+    indicatorCount: number;
+    sourceLength: number;
+    usedWorker: boolean;
+  }) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -245,8 +291,127 @@ function fmtTime(ts: UTCTimestamp, interval: number): string {
   return `${hh}:${mm}`;
 }
 
+function pickIntradayTickStepSeconds(intervalSeconds: number): number {
+  if (intervalSeconds <= 60) return 15 * 60;
+  if (intervalSeconds <= 5 * 60) return 30 * 60;
+  if (intervalSeconds <= 15 * 60) return 60 * 60;
+  if (intervalSeconds <= 30 * 60) return 2 * 60 * 60;
+  return intervalSeconds;
+}
+
+function resolveTimeTickBars(
+  firstBar: number,
+  lastBar: number,
+  intervalSeconds: number,
+  barWidthPx: number,
+  minSpacingPx: number,
+  timeAt: (index: number) => UTCTimestamp | null,
+): number[] {
+  if (lastBar < firstBar) return [];
+  const safeInterval = Number.isFinite(intervalSeconds) && intervalSeconds > 0
+    ? intervalSeconds
+    : 60;
+  const anchorSeconds = safeInterval < 86400
+    ? pickIntradayTickStepSeconds(safeInterval)
+    : safeInterval;
+
+  let stepBars = Math.max(1, Math.round(anchorSeconds / safeInterval));
+  while (stepBars * Math.max(0.1, barWidthPx) < minSpacingPx) {
+    stepBars *= 2;
+  }
+
+  let start = -1;
+  for (let i = firstBar; i <= lastBar; i += 1) {
+    const t = timeAt(i);
+    if (t == null) continue;
+    if (anchorSeconds > 0 && t % anchorSeconds === 0) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) {
+    start = Math.ceil(firstBar / stepBars) * stepBars;
+  }
+
+  const ticks: number[] = [];
+  for (let i = start; i <= lastBar; i += stepBars) {
+    if (timeAt(i) == null) continue;
+    ticks.push(i);
+  }
+
+  if (ticks.length === 0) {
+    for (let i = lastBar; i >= firstBar; i -= 1) {
+      if (timeAt(i) == null) continue;
+      ticks.push(i);
+      break;
+    }
+  }
+
+  return ticks;
+}
+
+function fmtCompactVolume(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)} B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)} K`;
+  return value.toFixed(0);
+}
+
+function clampPadding(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(0.45, value as number));
+}
+
 function snapCssPixel(value: number): number {
   return Math.round(value) + 0.5;
+}
+
+type ParityDebugConfig = {
+  enabled?: boolean;
+  showPaneBounds?: boolean;
+  showScaleValues?: boolean;
+  showCursor?: boolean;
+};
+
+type ParityDebugGlobal = typeof globalThis & {
+  __TRADEREPLAY_PARITY_DEBUG__?: boolean | ParityDebugConfig;
+};
+
+function resolveParityDebugConfig(): Required<ParityDebugConfig> {
+  const raw = (globalThis as ParityDebugGlobal).__TRADEREPLAY_PARITY_DEBUG__;
+  if (raw === true) {
+    return {
+      enabled: true,
+      showPaneBounds: true,
+      showScaleValues: true,
+      showCursor: true,
+    };
+  }
+  if (!raw || typeof raw !== 'object') {
+    return {
+      enabled: false,
+      showPaneBounds: true,
+      showScaleValues: true,
+      showCursor: true,
+    };
+  }
+  return {
+    enabled: raw.enabled !== false,
+    showPaneBounds: raw.showPaneBounds !== false,
+    showScaleValues: raw.showScaleValues !== false,
+    showCursor: raw.showCursor !== false,
+  };
+}
+
+function parityDebugEnabled(): boolean {
+  return resolveParityDebugConfig().enabled;
+}
+
+function resolveCandleBodyWidth(barWidth: number, widthFactor = CANDLE_BODY_WIDTH_FACTOR): number {
+  const raw = Math.floor(barWidth * widthFactor);
+  const maxAllowed = Math.max(CANDLE_MIN_BODY_PX, Math.floor(barWidth - 1));
+  return Math.max(CANDLE_MIN_BODY_PX, Math.min(maxAllowed, raw));
 }
 
 /** Bars within this distance of the live edge are treated as "at live edge"
@@ -263,6 +428,7 @@ interface SeriesState {
   paneId: PaneId;
   scaleMargins: ScaleMargins;
   separateScale: boolean;
+  excludeFromTimeIndex: boolean;
   /**
    * If set, this series was created as indicator output.
    * It is excluded from TimeIndex rebuilds (its timestamps are always a
@@ -308,28 +474,73 @@ interface PanePriceScaleState {
   max: number;
 }
 
+type RenderLayerId = 'chart' | 'interaction' | 'ui';
+
+interface LayerRenderState {
+  firstBar: number;
+  lastBar: number;
+  paneStates: PaneRenderState[];
+  seriesRanges: Array<{ min: number; max: number } | null>;
+}
+
+type RenderLayer = {
+  id: RenderLayerId;
+  order: number;
+  render: (state: LayerRenderState) => void;
+};
+
 // ─── createChart ─────────────────────────────────────────────────────────────
 
 export function createChart(
   container: HTMLElement,
   initOpts?: Partial<ChartOptions>
 ): IChartApi {
+  const parityEnabled = initOpts?.parity?.enabled === true;
+  const parityViewMode = initOpts?.parity?.viewMode ?? 'normal';
+  const showParityLastPriceLine = parityEnabled && initOpts?.parity?.showLastPriceLine === true;
+  const showParityLastValueLabels = parityEnabled && initOpts?.parity?.showLastValueLabels === true;
+  const showParityWatermark = parityEnabled && initOpts?.parity?.showWatermark === true;
+  const pricePadding = clampPadding(initOpts?.parity?.pricePadding, PRICE_PADDING);
+  const volumePadding = clampPadding(initOpts?.parity?.volumePadding, pricePadding);
+
+  function resolvePriceAxisWidth(nextWidth: number): number {
+    if (!parityEnabled || parityViewMode !== 'normal') return PRICE_AXIS_W;
+    if (nextWidth <= PARITY_COMPACT_PRICE_AXIS_MAX_VIEWPORT_WIDTH) {
+      return PARITY_COMPACT_PRICE_AXIS_WIDTH;
+    }
+    return PRICE_AXIS_W;
+  }
+
   // ── dimensions ──
   let width = (initOpts?.width ?? container.clientWidth) || 800;
   let height = (initOpts?.height ?? container.clientHeight) || 400;
+  let priceAxisWidth = resolvePriceAxisWidth(width);
 
   // ── theme ──
-  let bgColor = 'rgba(9, 17, 32, 0.85)';
-  let textColor = 'rgba(173, 192, 225, 0.88)';
-  let fontFamily = 'JetBrains Mono, monospace';
+  let bgColor = '#131722';
+  let textColor = '#b2b5be';
+  let fontFamily = 'Trebuchet MS, Arial, sans-serif';
   let fontSize = 11;
-  let gridColor = 'rgba(38, 56, 84, 0.48)';
-  let crosshairVColor = 'rgba(0, 209, 255, 0.72)';
-  let crosshairHColor = 'rgba(255, 0, 0, 0.65)';
-  let axisBorderColor = 'rgba(56, 80, 117, 0.55)';
+  let gridColor = 'rgba(42, 46, 57, 0.72)';
+  let crosshairVColor = 'rgba(120, 123, 134, 0.8)';
+  let crosshairHColor = 'rgba(120, 123, 134, 0.8)';
+  let axisBorderColor = 'rgba(42, 46, 57, 0.95)';
+
+  if (initOpts?.layout?.background?.color) bgColor = initOpts.layout.background.color;
+  if (initOpts?.layout?.textColor) textColor = initOpts.layout.textColor;
+  if (initOpts?.layout?.fontFamily) fontFamily = initOpts.layout.fontFamily;
+  if (initOpts?.layout?.fontSize != null) fontSize = initOpts.layout.fontSize;
+  if (initOpts?.grid?.vertLines?.color) gridColor = initOpts.grid.vertLines.color;
+  if (initOpts?.crosshair?.vertLine?.color) crosshairVColor = initOpts.crosshair.vertLine.color;
+  if (initOpts?.crosshair?.horzLine?.color) crosshairHColor = initOpts.crosshair.horzLine.color;
+  if (initOpts?.rightPriceScale?.borderColor) axisBorderColor = initOpts.rightPriceScale.borderColor;
 
   // ── chart state ──
   let barWidth = DEFAULT_BAR_WIDTH;
+  let rightOffsetBars = Math.max(
+    -MAX_RIGHT_OFFSET_BARS,
+    Math.min(MAX_RIGHT_OFFSET_BARS, Number(initOpts?.timeScale?.rightOffset ?? 0)),
+  );
   /** Index into timeIndex for the bar at the right edge of the chart area. */
   let rightmostIndex = 0;
   const timeIndex = new TimeIndex();
@@ -347,6 +558,9 @@ export function createChart(
   const seriesList: SeriesState[] = [];
   const indicatorInstances = new Map<IndicatorInstanceId, IndicatorInstance>();
   let rafId: number | null = null;
+  let renderQueued = false;
+  let renderMicrotaskQueued = false;
+  const renderReasons = new Set<string>();
   let indicatorRafId: number | null = null;
   let indicatorWorker: Worker | null = null;
   let indicatorWorkerRequestSeq = 0;
@@ -371,19 +585,77 @@ export function createChart(
   container.appendChild(canvas);
 
   const ctx = canvas.getContext('2d')!;
+  let canvasDpr = window.devicePixelRatio || 1;
+  let renderSeq = 0;
+  let lastParityCanvasSetupLogKey = '';
 
-  function resizeCanvas(): void {
+  function resolveDevicePixelRatio(): number {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
+    if (!Number.isFinite(dpr) || dpr <= 0) return 1;
+    return dpr;
+  }
+
+  function maybeLogParityCanvasSetup(reason: string, nextWidth: number, nextHeight: number): void {
+    if (!parityDebugEnabled()) return;
+
+    const rect = container.getBoundingClientRect();
+    const expectedWidth = width * canvasDpr;
+    const expectedHeight = height * canvasDpr;
+    const scaled = Math.abs(canvas.width - expectedWidth) <= 1 && Math.abs(canvas.height - expectedHeight) <= 1;
+    const logKey = [
+      reason,
+      width.toFixed(2),
+      height.toFixed(2),
+      canvasDpr.toFixed(4),
+      `${canvas.width}x${canvas.height}`,
+      `${nextWidth}x${nextHeight}`,
+      `${container.clientWidth}x${container.clientHeight}`,
+      `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`,
+      scaled ? '1' : '0',
+    ].join('|');
+
+    if (logKey === lastParityCanvasSetupLogKey) return;
+    lastParityCanvasSetupLogKey = logKey;
+
+    const payload = {
+      reason,
+      cssWidth: width,
+      cssHeight: height,
+      dpr: Number(canvasDpr.toFixed(4)),
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      expectedCanvasWidth: Math.round(expectedWidth),
+      expectedCanvasHeight: Math.round(expectedHeight),
+      nextCanvasWidth: nextWidth,
+      nextCanvasHeight: nextHeight,
+      containerClientWidth: container.clientWidth,
+      containerClientHeight: container.clientHeight,
+      containerRectWidth: Number(rect.width.toFixed(2)),
+      containerRectHeight: Number(rect.height.toFixed(2)),
+      scaled,
+    };
+
+    console.info(`[parity:canvas-setup] ${JSON.stringify(payload)}`);
+  }
+
+  function resizeCanvas(forcedDpr?: number, reason = 'resize'): void {
+    canvasDpr = forcedDpr != null ? forcedDpr : resolveDevicePixelRatio();
+    priceAxisWidth = resolvePriceAxisWidth(width);
+    const nextWidth = Math.max(1, Math.round(width * canvasDpr));
+    const nextHeight = Math.max(1, Math.round(height * canvasDpr));
+    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+      canvas.width = nextWidth;
+      canvas.height = nextHeight;
+    }
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(canvasDpr, 0, 0, canvasDpr, 0, 0);
+    maybeLogParityCanvasSetup(reason, nextWidth, nextHeight);
   }
-  resizeCanvas();
+  resizeCanvas(undefined, 'init');
 
   // ── layout helpers ──
-  function cw(): number { return width - PRICE_AXIS_W; }
+  function cw(): number { return width - priceAxisWidth; }
   function ch(): number { return height - TIME_AXIS_H; }
   function vbars(): number { return cw() / barWidth; }
 
@@ -507,7 +779,7 @@ export function createChart(
     // Only source series (non-indicator) contribute timestamps.
     timeIndex.rebuild(
       seriesList
-        .filter((s) => !s.indicatorInstanceId)
+        .filter((s) => !s.indicatorInstanceId && !s.excludeFromTimeIndex)
         .map((s) =>
           (s.store.rawRows as Array<{ time: UTCTimestamp }>).map((r) => r.time),
         ),
@@ -528,7 +800,7 @@ export function createChart(
     const newLastTime = timeIndex.at(newLen - 1)!;
     if (oldLastTime === null || newLastTime !== oldLastTime) {
       // First load or symbol switch: jump to the live edge.
-      rightmostIndex = clampRightmostIndex(newLen - 1);
+      rightmostIndex = clampRightmostIndex((newLen - 1) + rightOffsetBars);
     } else {
       // Clamp to valid range (handles shrinking data sets).
       rightmostIndex = clampRightmostIndex(rightmostIndex);
@@ -742,10 +1014,12 @@ export function createChart(
     volume: (number | null)[];
   }): void {
     const windowRange = getIndicatorWindow(source.times.length);
+    let fallbackCount = 0;
 
     for (const inst of indicatorInstances.values()) {
       const ok = applyIndicatorIncrementalTail(inst, source);
       if (!ok) {
+        fallbackCount += 1;
         // Fallback for this specific indicator: window recompute.
         const windowSrc = sourceForWindow(source, windowRange);
         const ctx = { ...windowSrc, params: inst.params };
@@ -756,6 +1030,11 @@ export function createChart(
     }
 
     indicatorComputeWindow = windowRange;
+    debugHooks?.onIndicatorIncremental?.({
+      indicatorCount: indicatorInstances.size,
+      sourceLength: source.times.length,
+      fallbackCount,
+    });
     perf?.record('indicatorIncremental', 0); // signal incremental path was used
   }
 
@@ -876,6 +1155,12 @@ export function createChart(
       indicatorWorkerLastAppliedSeq = Math.max(indicatorWorkerLastAppliedSeq, indicatorWorkerRequestSeq);
     }
 
+    debugHooks?.onIndicatorFullRecompute?.({
+      indicatorCount: indicatorInstances.size,
+      sourceLength,
+      usedWorker,
+    });
+
     const recomputeDurationMs = performance.now() - recomputeStart;
     debugHooks?.onRecomputeEnd?.({
       indicatorCount: indicatorInstances.size,
@@ -919,7 +1204,8 @@ export function createChart(
       }
     }
     if (!isFinite(min) || !isFinite(max)) return null;
-    return padPriceRange(min, max, PRICE_PADDING);
+    const rangePadding = s.type === 'Histogram' ? volumePadding : pricePadding;
+    return padPriceRange(min, max, rangePadding);
   }
 
   interface RenderState {
@@ -991,9 +1277,17 @@ export function createChart(
     }
 
     // Vertical grid lines — span full chart area
-    const minSpacing = 60;
-    const bpl = Math.max(1, Math.ceil(minSpacing / barWidth));
-    for (let i = Math.ceil(rs.firstBar / bpl) * bpl; i <= rs.lastBar; i += bpl) {
+    let interval = 86400;
+    if (timeIndex.length >= 2) interval = timeIndex.interval();
+    const tickBars = resolveTimeTickBars(
+      rs.firstBar,
+      rs.lastBar,
+      interval,
+      barWidth,
+      60,
+      (i) => timeIndex.at(i),
+    );
+    for (const i of tickBars) {
       const x = snapCssPixel(barToX(i));
       if (x >= 0 && x <= w) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, totalH); ctx.stroke();
@@ -1017,7 +1311,7 @@ export function createChart(
       // The gap starts at (previous pane bottom) = pane.top - PANE_DIVIDER_H.
       // Draw a line through the vertical centre of the gap.
       const divY = snapCssPixel(pane.top - Math.round(PANE_DIVIDER_H / 2));
-      ctx.beginPath(); ctx.moveTo(0, divY); ctx.lineTo(w + PRICE_AXIS_W, divY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, divY); ctx.lineTo(w + priceAxisWidth, divY); ctx.stroke();
     }
   }
 
@@ -1037,9 +1331,15 @@ export function createChart(
       interval = timeIndex.interval();
     }
 
-    const minSpacing = 70;
-    const bpl = Math.max(1, Math.ceil(minSpacing / barWidth));
-    for (let i = Math.ceil(rs.firstBar / bpl) * bpl; i <= rs.lastBar; i += bpl) {
+    const tickBars = resolveTimeTickBars(
+      rs.firstBar,
+      rs.lastBar,
+      interval,
+      barWidth,
+      70,
+      (i) => timeIndex.at(i),
+    );
+    for (const i of tickBars) {
       const x = barToX(i);
       if (x < 10 || x > w - 10) continue;
       const t = timeIndex.at(i);
@@ -1051,7 +1351,11 @@ export function createChart(
   function drawPriceAxis(rs: RenderState): void {
     const w = cw();
     ctx.fillStyle = bgColor;
-    ctx.fillRect(w, 0, PRICE_AXIS_W, height);
+    ctx.fillRect(w, 0, priceAxisWidth, height);
+
+    const hideParityPriceTicks = parityEnabled
+      && width <= PARITY_COMPACT_PRICE_AXIS_MAX_VIEWPORT_WIDTH;
+    if (hideParityPriceTicks) return;
 
     ctx.fillStyle = textColor;
     ctx.font = `${fontSize}px ${fontFamily}`;
@@ -1072,51 +1376,266 @@ export function createChart(
     }
   }
 
+  function findLastSeriesRow<T extends TimedRow>(s: SeriesState): { row: T; index: number } | null {
+    const upper = Math.min(timeIndex.length - 1, s.store.length - 1);
+    for (let i = upper; i >= 0; i -= 1) {
+      const row = s.store.getAt(i) as T | null;
+      if (row) return { row, index: i };
+    }
+    return null;
+  }
+
+  function findLastSeriesRowWhere<T extends TimedRow>(
+    s: SeriesState,
+    predicate: (row: T, index: number) => boolean,
+  ): { row: T; index: number } | null {
+    const upper = Math.min(timeIndex.length - 1, s.store.length - 1);
+    for (let i = upper; i >= 0; i -= 1) {
+      const row = s.store.getAt(i) as T | null;
+      if (!row) continue;
+      if (predicate(row, i)) return { row, index: i };
+    }
+    return null;
+  }
+
+  function getPrimaryParityPriceSeries(): SeriesState | null {
+    for (const s of seriesList) {
+      if (s.opts.visible === false) continue;
+      if (s.indicatorInstanceId) continue;
+      if (s.paneId !== MAIN_PANE_ID) continue;
+      if (s.type === 'Candlestick' || s.type === 'Bar') return s;
+    }
+    return null;
+  }
+
+  function getPrimaryParityVolumeSeries(): SeriesState | null {
+    for (const s of seriesList) {
+      if (s.opts.visible === false) continue;
+      if (s.indicatorInstanceId) continue;
+      if (s.paneId !== MAIN_PANE_ID) continue;
+      if (s.type === 'Histogram' && s.separateScale) return s;
+    }
+    return null;
+  }
+
+  function drawParityLastValueMarkers(rs: RenderState): void {
+    if (!showParityLastPriceLine && !showParityLastValueLabels) return;
+
+    const w = cw();
+    const paneBottom = ch();
+    const labelH = 18;
+
+    const drawAxisTag = (y: number, label: string, color: string): void => {
+      const safeY = Math.max(labelH / 2 + 2, Math.min(paneBottom - labelH / 2 - 2, y));
+      ctx.font = `${fontSize}px ${fontFamily}`;
+      const boxW = Math.max(38, Math.ceil(ctx.measureText(label).width + 10));
+      const boxX = width - boxW - 1;
+      const boxY = Math.round(safeY - labelH / 2);
+
+      ctx.fillStyle = color;
+      ctx.fillRect(boxX, boxY, boxW, labelH);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, boxX + boxW / 2, boxY + labelH / 2);
+    };
+
+    const volumeSeries = getPrimaryParityVolumeSeries();
+    const latestNonZeroVolume = volumeSeries
+      ? findLastSeriesRowWhere<HistogramData>(volumeSeries, (row) => Math.abs(row.value) > 1e-6)
+      : null;
+
+    const priceSeries = getPrimaryParityPriceSeries();
+    if (priceSeries) {
+      const preferredPriceIndex = latestNonZeroVolume?.index;
+      let latestPrice: { row: CandlestickData; index: number } | null = null;
+      if (preferredPriceIndex != null) {
+        const preferred = priceSeries.store.getAt(preferredPriceIndex) as CandlestickData | null;
+        if (preferred) {
+          latestPrice = { row: preferred, index: preferredPriceIndex };
+        }
+      }
+      if (!latestPrice) {
+        latestPrice = findLastSeriesRow<CandlestickData>(priceSeries);
+      }
+
+      if (latestPrice) {
+        const pane = getPaneState(rs, priceSeries.paneId);
+        const lastClose = latestPrice.row.close;
+        const upColor = priceSeries.opts.upColor ?? '#00c2b8';
+        const downColor = priceSeries.opts.downColor ?? '#ff4d4f';
+        let markerColor = downColor;
+        let comparisonPrice = latestPrice.row.open;
+        for (let i = latestPrice.index - 1; i >= 0; i -= 1) {
+          const prev = priceSeries.store.getAt(i) as CandlestickData | null;
+          if (!prev) continue;
+          comparisonPrice = prev.close;
+          break;
+        }
+        if (lastClose > comparisonPrice) markerColor = upColor;
+        const markerY = snapCssPixel(priceToY(lastClose, pane.min, pane.max, pane.top, pane.h));
+
+        if (showParityLastPriceLine) {
+          ctx.save();
+          ctx.strokeStyle = markerColor;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([1, 2]);
+          ctx.beginPath();
+          ctx.moveTo(0, markerY);
+          ctx.lineTo(w, markerY);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (showParityLastValueLabels) {
+          drawAxisTag(markerY, fmtPrice(lastClose), markerColor);
+        }
+      }
+    }
+
+    if (!showParityLastValueLabels) return;
+
+    if (!volumeSeries) return;
+    const latestVolume = latestNonZeroVolume ?? findLastSeriesRow<HistogramData>(volumeSeries);
+    if (!latestVolume) return;
+    const seriesIndex = seriesList.indexOf(volumeSeries);
+    if (seriesIndex < 0) return;
+    const range = rs.seriesRanges[seriesIndex];
+    if (!range) return;
+    const pane = getPaneState(rs, volumeSeries.paneId);
+    const markerY = snapCssPixel(
+      sepPriceToY(
+        latestVolume.row.value,
+        range.min,
+        range.max,
+        volumeSeries.scaleMargins,
+        pane.top,
+        pane.h,
+      ),
+    );
+    const color = latestVolume.row.color
+      ?? volumeSeries.opts.color
+      ?? (latestVolume.row.value >= 0 ? '#26a69a' : '#ef5350');
+    drawAxisTag(markerY, fmtCompactVolume(latestVolume.row.value), color);
+  }
+
+  function drawParityWatermark(): void {
+    if (!showParityWatermark) return;
+
+    const centerX = 22;
+    const centerY = Math.max(18, ch() - 22);
+    const radius = 14;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 12, 17, 0.95)';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius - 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.93)';
+    ctx.font = `bold ${Math.max(10, fontSize)}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('TV', centerX, centerY + 0.5);
+    ctx.restore();
+  }
+
+  function drawParityDebugOverlay(rs: RenderState): void {
+    const debug = resolveParityDebugConfig();
+    if (!debug.enabled) return;
+
+    ctx.save();
+    ctx.setLineDash([]);
+
+    if (debug.showPaneBounds) {
+      ctx.strokeStyle = 'rgba(255, 203, 70, 0.9)';
+      ctx.lineWidth = 1;
+      for (const pane of rs.paneStates) {
+        ctx.strokeRect(0.5, pane.top + 0.5, Math.max(1, cw() - 1), Math.max(1, pane.h - 1));
+      }
+
+      ctx.strokeStyle = 'rgba(255, 120, 120, 0.85)';
+      ctx.beginPath();
+      ctx.moveTo(snapCssPixel(cw()), 0);
+      ctx.lineTo(snapCssPixel(cw()), height);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, snapCssPixel(ch()));
+      ctx.lineTo(width, snapCssPixel(ch()));
+      ctx.stroke();
+    }
+
+    ctx.font = '11px JetBrains Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(255, 230, 170, 0.95)';
+
+    if (debug.showScaleValues) {
+      const barCount = rs.lastBar >= rs.firstBar ? rs.lastBar - rs.firstBar + 1 : 0;
+      const header = `bars=${barCount} bw=${barWidth.toFixed(3)} right=${rightmostIndex.toFixed(3)} dpr=${canvasDpr.toFixed(3)} seq=${renderSeq}`;
+      ctx.fillText(header, 8, 8);
+      rs.paneStates.forEach((pane, index) => {
+        const line = `pane[${index}] ${pane.id} y=${pane.top.toFixed(1)} h=${pane.h.toFixed(1)} min=${pane.min.toFixed(3)} max=${pane.max.toFixed(3)}`;
+        ctx.fillText(line, 8, 24 + index * 14);
+      });
+    }
+
+    if (debug.showCursor && crosshairX != null && crosshairY != null) {
+      const cursorText = `cursor x=${crosshairX.toFixed(1)} y=${crosshairY.toFixed(1)}`;
+      ctx.fillText(cursorText, 8, Math.max(8, ch() - 22));
+    }
+
+    ctx.restore();
+  }
+
   function drawCandlestick(s: SeriesState, rs: RenderState, pane: PaneRenderState): void {
     const bw = barWidth;
-    const hw = Math.max(0.5, bw * 0.4);
+    const bodyW = resolveCandleBodyWidth(bw);
+    const bodyHalf = bodyW / 2;
     const { firstBar, lastBar } = rs;
     const w = cw();
 
     for (let i = firstBar; i <= lastBar; i++) {
       const row = s.store.getAt(i) as CandlestickData | null;
       if (!row) continue;
-      const x = snapCssPixel(barToX(i));
-      if (x < -bw || x > w + bw) continue;
+      const xCenter = snapCssPixel(barToX(i));
+      if (xCenter < -bw || xCenter > w + bw) continue;
 
       const isUp = row.close >= row.open;
       const wickColor = isUp
         ? (s.opts.wickUpColor ?? s.opts.upColor ?? '#17c964')
         : (s.opts.wickDownColor ?? s.opts.downColor ?? '#ff4d4f');
-      const borderColor = isUp
-        ? (s.opts.borderUpColor ?? s.opts.upColor ?? '#17c964')
-        : (s.opts.borderDownColor ?? s.opts.downColor ?? '#ff4d4f');
       const bodyColor = isUp
         ? (s.opts.upColor ?? '#17c964')
         : (s.opts.downColor ?? '#ff4d4f');
 
-      const openY  = priceToY(row.open,  pane.min, pane.max, pane.top, pane.h);
-      const closeY = priceToY(row.close, pane.min, pane.max, pane.top, pane.h);
-      const highY  = priceToY(row.high,  pane.min, pane.max, pane.top, pane.h);
-      const lowY   = priceToY(row.low,   pane.min, pane.max, pane.top, pane.h);
+      const openY = Math.round(priceToY(row.open, pane.min, pane.max, pane.top, pane.h));
+      const closeY = Math.round(priceToY(row.close, pane.min, pane.max, pane.top, pane.h));
+      const highY = snapCssPixel(priceToY(row.high, pane.min, pane.max, pane.top, pane.h));
+      const lowY = snapCssPixel(priceToY(row.low, pane.min, pane.max, pane.top, pane.h));
 
       // Wick
       ctx.strokeStyle = wickColor;
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.moveTo(x, highY);
-      ctx.lineTo(x, lowY);
+      ctx.moveTo(xCenter, highY);
+      ctx.lineTo(xCenter, lowY);
       ctx.stroke();
 
       // Body
       const bodyTop = Math.min(openY, closeY);
       const bodyH = Math.max(1, Math.abs(closeY - openY));
+      const bodyLeft = Math.round(xCenter - bodyHalf);
       ctx.fillStyle = bodyColor;
-      ctx.fillRect(x - hw, bodyTop, hw * 2, bodyH);
-      ctx.strokeStyle = borderColor;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - hw, bodyTop, hw * 2, bodyH);
+      ctx.fillRect(bodyLeft, bodyTop, bodyW, bodyH);
     }
   }
 
@@ -1390,7 +1909,7 @@ export function createChart(
       ctx.textBaseline = 'middle';
       const labelH = 16;
       ctx.fillStyle = crosshairHColor;
-      ctx.fillRect(w + 2, snappedCrosshairY - labelH / 2, PRICE_AXIS_W - 4, labelH);
+      ctx.fillRect(w + 2, snappedCrosshairY - labelH / 2, priceAxisWidth - 4, labelH);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
       ctx.fillText(pLabel, w + 6, snappedCrosshairY);
@@ -1417,24 +1936,115 @@ export function createChart(
     }
   }
 
-  function scheduleRender(): void {
-    if (rafId != null) return;
-    rafId = requestAnimationFrame(() => {
-      rafId = null;
-      render();
+  const renderLayers: RenderLayer[] = [
+    {
+      id: 'chart',
+      order: 10,
+      render: (rs) => {
+        drawBackground();
+        drawGrid(rs);
+
+        // Draw all chart-series per pane and clip each pane once.
+        for (const pane of rs.paneStates) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, pane.top, cw(), pane.h);
+          ctx.clip();
+          for (const s of seriesList) {
+            if (s.paneId === pane.id) drawSeries(s, rs, pane);
+          }
+          ctx.restore();
+        }
+      },
+    },
+    {
+      id: 'interaction',
+      order: 20,
+      render: (rs) => {
+        // Interaction layer is isolated so crosshair never mutates chart geometry.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, cw(), ch());
+        ctx.clip();
+        drawCrosshair(rs);
+        ctx.restore();
+      },
+    },
+    {
+      id: 'ui',
+      order: 30,
+      render: (rs) => {
+        drawAxesBorder(rs);
+        drawTimeAxis(rs);
+        drawPriceAxis(rs);
+        if (parityEnabled) {
+          drawParityLastValueMarkers(rs);
+          drawParityWatermark();
+        }
+        drawParityDebugOverlay(rs);
+      },
+    },
+  ];
+
+  const orderedRenderLayers = renderLayers.slice().sort((left, right) => left.order - right.order);
+
+  function queueRenderMicrotask(callback: () => void): void {
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(callback);
+      return;
+    }
+    void Promise.resolve().then(callback);
+  }
+
+  function scheduleRender(reason = 'state-change'): void {
+    renderQueued = true;
+    renderReasons.add(reason);
+    if (renderMicrotaskQueued) return;
+
+    renderMicrotaskQueued = true;
+    queueRenderMicrotask(() => {
+      renderMicrotaskQueued = false;
+      if (!renderQueued || rafId != null) return;
+
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const invalidationReasons = Array.from(renderReasons);
+        renderReasons.clear();
+        renderQueued = false;
+        render(invalidationReasons);
+      });
     });
   }
 
-  function render(): void {
-      const renderStart = performance.now();
-    const dpr = window.devicePixelRatio || 1;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  function render(_invalidationReasons: string[] = []): void {
+    const renderStart = performance.now();
+    const dpr = resolveDevicePixelRatio();
+    if (Math.abs(dpr - canvasDpr) > 0.001) {
+      resizeCanvas(dpr, 'render-dpr-change');
+    }
+
+    ctx.setTransform(canvasDpr, 0, 0, canvasDpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
     const rs = computeRenderState();
+    const barCount = rs.lastBar >= rs.firstBar ? rs.lastBar - rs.firstBar + 1 : 0;
+    renderSeq += 1;
+
     canvas.dataset.priceScale = rs.paneStates.length > 0
       ? `${rs.paneStates[0].min.toFixed(2)}:${rs.paneStates[0].max.toFixed(2)}`
       : '';
+    canvas.dataset.paneLayout = rs.paneStates
+      .map((pane) => `${pane.id}:${pane.top.toFixed(2)}:${pane.h.toFixed(2)}`)
+      .join('|');
+    canvas.dataset.barWindow = `${rs.firstBar}:${rs.lastBar}`;
+    canvas.dataset.barCount = String(Math.max(0, barCount));
+    canvas.dataset.totalBars = String(Math.max(0, timeIndex.length));
+    canvas.dataset.timeIndexLength = String(Math.max(0, timeIndex.length));
+    canvas.dataset.barWidth = barWidth.toFixed(4);
+    canvas.dataset.rightmostIndex = rightmostIndex.toFixed(4);
+    canvas.dataset.renderSeq = String(renderSeq);
+    canvas.dataset.renderAt = String(Date.now());
+    canvas.dataset.devicePixelRatio = canvasDpr.toFixed(4);
 
     if (indicatorInstances.size > 0 && indicatorVisibleRangeOnly && timeIndex.length > 0) {
       // Trigger recompute only when the visible range goes OUTSIDE the already-computed
@@ -1450,37 +2060,14 @@ export function createChart(
       }
     }
 
-    drawBackground();
-    drawGrid(rs);
-
-    // Draw series per pane, each clipped to its own pane rect.
-    for (const pane of rs.paneStates) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, pane.top, cw(), pane.h);
-      ctx.clip();
-      for (const s of seriesList) {
-        if (s.paneId === pane.id) drawSeries(s, rs, pane);
-      }
-      ctx.restore();
+    for (const layer of orderedRenderLayers) {
+      layer.render(rs);
     }
-
-    // Crosshair: vertical line spans all panes, horizontal only in active pane.
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, cw(), ch());
-    ctx.clip();
-    drawCrosshair(rs);
-    ctx.restore();
-
-    drawAxesBorder(rs);
-    drawTimeAxis(rs);
-    drawPriceAxis(rs);
 
     const renderDurationMs = performance.now() - renderStart;
     debugHooks?.onRenderEnd?.({
       durationMs: renderDurationMs,
-      barCount: rs.lastBar >= rs.firstBar ? rs.lastBar - rs.firstBar + 1 : 0,
+      barCount,
       indicatorCount: indicatorInstances.size,
     });
     perf?.record('render', renderDurationMs);
@@ -1490,6 +2077,7 @@ export function createChart(
 
   // ── interaction ──────────────────────────────────────────────────────────
 
+  const crosshairListeners = new Set<(param: CrosshairMoveEvent) => void>();
   let dragStart: { clientX: number; rightAtStart: number } | null = null;
   let wheelAccumDelta = 0;
   let wheelAnchorX: number | null = null;
@@ -1504,6 +2092,31 @@ export function createChart(
 
   function getPaneAtY(rs: RenderState, y: number): PaneRenderState | null {
     return rs.paneStates.find((pane) => y >= pane.top && y < pane.top + pane.h) ?? null;
+  }
+
+  function emitCrosshairMove(source: CrosshairMoveEvent['source']): void {
+    if (!crosshairListeners.size) return;
+
+    const rs = computeRenderState();
+    const activePane = crosshairY == null ? null : getPaneAtY(rs, crosshairY);
+    const x = crosshairX == null ? null : snapCssPixel(crosshairX);
+    const y = crosshairY == null ? null : snapCssPixel(crosshairY);
+
+    const payload: CrosshairMoveEvent = {
+      point: x == null || y == null ? null : { x, y },
+      time: x == null ? null : timeScaleApi.coordinateToTime(x),
+      price: activePane && y != null ? yToPrice(y, activePane.min, activePane.max, activePane.top, activePane.h) : null,
+      paneId: activePane?.id ?? null,
+      source,
+    };
+
+    for (const handler of crosshairListeners) {
+      try {
+        handler(payload);
+      } catch {
+        // Listener failures must not break chart interaction.
+      }
+    }
   }
 
   function updatePriceAxisDrag(y: number): void {
@@ -1609,6 +2222,7 @@ export function createChart(
 
     crosshairX = e.offsetX;
     crosshairY = e.offsetY;
+    emitCrosshairMove('local-pointer');
     if (dragStart != null && (mode === 'pan' || mode === 'scroll' || mode === 'idle')) {
       const dx = e.clientX - dragStart.clientX;
       rightmostIndex = clampRightmostIndex(dragStart.rightAtStart - dx / barWidth);
@@ -1633,6 +2247,7 @@ export function createChart(
     crosshairY = null;
     canvas.dataset.crosshairPrice = '';
     canvas.dataset.crosshairTime = '';
+    emitCrosshairMove('leave');
     scheduleRender();
   }
 
@@ -1649,12 +2264,19 @@ export function createChart(
     return {
       setData(data: RowOf<T>[]): void {
         sState.store.setData(data as TimedRow[]);
+        debugHooks?.onSeriesDataMutation?.({
+          kind: 'setData',
+          seriesId: sState.id,
+          seriesType: sState.type,
+          sourceLength: sState.store.rawRows.length,
+        });
         rebuildIndex();
         scheduleRender();
       },
       update(row: RowOf<T>): void {
         const t = (row as { time: UTCTimestamp }).time;
         const result = sState.store.update(row as TimedRow);
+        let outOfOrderInsert = false;
 
         if (result === 'appended') {
           // New timestamp: insert into the shared time index.
@@ -1673,11 +2295,21 @@ export function createChart(
             }
           } else {
             // Slow path: out-of-order insert — realign all stores.
+            outOfOrderInsert = true;
             for (const s of seriesList) {
               s.store.realign();
             }
           }
         }
+
+        debugHooks?.onSeriesDataMutation?.({
+          kind: 'update',
+          seriesId: sState.id,
+          seriesType: sState.type,
+          result,
+          outOfOrderInsert,
+          sourceLength: sState.store.rawRows.length,
+        });
 
         // Keep indicator outputs in sync with streaming source data.
         // Use the incremental tail-recompute path when possible so we avoid a
@@ -1759,7 +2391,8 @@ export function createChart(
     },
     applyOptions(opts: { rightOffset?: number; [key: string]: unknown }): void {
       if (typeof opts.rightOffset === 'number') {
-        rightmostIndex = clampRightmostIndex((timeIndex.length - 1) - opts.rightOffset);
+        rightOffsetBars = Math.max(-MAX_RIGHT_OFFSET_BARS, Math.min(MAX_RIGHT_OFFSET_BARS, opts.rightOffset));
+        rightmostIndex = clampRightmostIndex((timeIndex.length - 1) + rightOffsetBars);
         scheduleRender();
       }
     },
@@ -1768,7 +2401,7 @@ export function createChart(
       scheduleRender();
     },
     scrollToRealTime(): void {
-      rightmostIndex = clampRightmostIndex(timeIndex.length - 1);
+      rightmostIndex = clampRightmostIndex((timeIndex.length - 1) + rightOffsetBars);
       scheduleRender();
     },
     coordinateToTime(x: number): UTCTimestamp | null {
@@ -1805,6 +2438,9 @@ export function createChart(
     applyOptions(opts: Partial<ChartOptions>): void {
       if (opts.width != null) width = opts.width;
       if (opts.height != null) height = opts.height;
+      if (opts.timeScale?.rightOffset != null && Number.isFinite(opts.timeScale.rightOffset)) {
+        rightOffsetBars = Math.max(-MAX_RIGHT_OFFSET_BARS, Math.min(MAX_RIGHT_OFFSET_BARS, opts.timeScale.rightOffset));
+      }
       if (opts.layout?.background?.color) bgColor = opts.layout.background.color;
       if (opts.layout?.textColor) textColor = opts.layout.textColor;
       if (opts.layout?.fontFamily) fontFamily = opts.layout.fontFamily;
@@ -1813,7 +2449,7 @@ export function createChart(
       if (opts.crosshair?.vertLine?.color) crosshairVColor = opts.crosshair.vertLine.color;
       if (opts.crosshair?.horzLine?.color) crosshairHColor = opts.crosshair.horzLine.color;
       if (opts.rightPriceScale?.borderColor) axisBorderColor = opts.rightPriceScale.borderColor;
-      resizeCanvas();
+      resizeCanvas(undefined, 'apply-options');
       scheduleRender();
     },
     addSeries<T extends SeriesType>(type: T, options?: Partial<SeriesOptions>, paneId?: string): ISeriesApi<T> {
@@ -1828,6 +2464,7 @@ export function createChart(
         paneId: paneExists ? resolvedPaneId : MAIN_PANE_ID,
         scaleMargins: { top: 0, bottom: 0 },
         separateScale: options?.priceScaleId === '',
+        excludeFromTimeIndex: options?.excludeFromTimeIndex === true,
       };
       seriesList.push(sState);
       return makeSeries<T>(sState);
@@ -1835,11 +2472,11 @@ export function createChart(
     timeScale(): ITimeScaleApi {
       return timeScaleApi;
     },
-    subscribeCrosshairMove(_handler: (param: unknown) => void): void {
-      // optional: no-op for now
+    subscribeCrosshairMove(handler: (param: unknown) => void): void {
+      crosshairListeners.add(handler as (param: CrosshairMoveEvent) => void);
     },
-    unsubscribeCrosshairMove(_handler: (param: unknown) => void): void {
-      // optional: no-op
+    unsubscribeCrosshairMove(handler: (param: unknown) => void): void {
+      crosshairListeners.delete(handler as (param: CrosshairMoveEvent) => void);
     },
     setInteractionMode(newMode: InteractionMode): void {
       mode = newMode;
@@ -1893,6 +2530,7 @@ export function createChart(
           paneId: targetPaneId,
           scaleMargins: { top: 0, bottom: 0 },
           separateScale: false,
+          excludeFromTimeIndex: false,
           indicatorInstanceId: instanceId,
         };
         seriesList.push(sState);
@@ -1979,12 +2617,15 @@ export function createChart(
     },
     remove(): void {
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+      renderQueued = false;
+      renderReasons.clear();
       if (indicatorRafId != null) { cancelAnimationFrame(indicatorRafId); indicatorRafId = null; }
       if (wheelRafId != null) { cancelAnimationFrame(wheelRafId); wheelRafId = null; }
       if (indicatorWorker) {
         indicatorWorker.terminate();
         indicatorWorker = null;
       }
+      crosshairListeners.clear();
       indicatorWorkerInFlightRequestId = null;
       paneResizeDrag = null;
       canvas.removeEventListener('wheel', onWheel);

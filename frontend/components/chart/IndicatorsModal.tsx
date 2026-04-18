@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { X, Search, Star, Lock, ChevronRight, Check, Sparkles, TrendingUp, BarChart3, DollarSign, Users } from 'lucide-react';
-import { Dialog, DialogContent, DialogOverlay, DialogPortal } from '@/components/ui/dialog';
+import { Dialog, DialogOverlay, DialogPortal } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   technicalSections,
@@ -105,6 +105,9 @@ export default function IndicatorsModal({
     },
     [enabledSet, onAddIndicator, onRemoveIndicator],
   );
+
+  // Keep dialog tree unmounted while closed so hidden layers cannot intercept clicks.
+  if (!open) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

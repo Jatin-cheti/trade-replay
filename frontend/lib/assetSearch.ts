@@ -56,6 +56,34 @@ export interface AssetSearchResponse {
   nextCursor?: string | null;
 }
 
+interface TradingViewSymbolSearchResponse {
+  symbols: AssetSearchItem[];
+  total?: number;
+  nextCursor?: string | null;
+  hasMore: boolean;
+}
+
+export interface AssetSearchParams {
+  q: string;
+  market?: string;
+  category?: string;
+  country?: string;
+  type?: string;
+  sector?: string;
+  source?: string;
+  exchangeType?: string;
+  futureCategory?: string;
+  economyCategory?: string;
+  expiry?: string;
+  strike?: string;
+  underlyingAsset?: string;
+  sort?: AssetSortOption;
+  page?: number;
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
+
 export interface AssetSearchFilterOption {
   value: string;
   label: string;
@@ -131,26 +159,78 @@ function setCachedIcon(key: string, iconUrl: string): void {
   }
 }
 
-export async function searchAssets(params: {
-  q: string;
-  market?: string;
-  category?: string;
-  country?: string;
-  type?: string;
-  sector?: string;
-  source?: string;
-  exchangeType?: string;
-  futureCategory?: string;
-  economyCategory?: string;
-  expiry?: string;
-  strike?: string;
-  underlyingAsset?: string;
-  sort?: AssetSortOption;
-  page?: number;
-  limit?: number;
-  cursor?: string;
-  signal?: AbortSignal;
-}): Promise<AssetSearchResponse> {
+function matchesClientFilters(item: AssetSearchItem, params: AssetSearchParams, requestedCategory?: string): boolean {
+  if (requestedCategory && requestedCategory !== "all" && item.category !== requestedCategory) return false;
+  if (params.type && params.type !== "all" && item.type !== params.type) return false;
+  if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
+  if (params.source && params.source !== "all" && item.source !== params.source) return false;
+  if (params.exchangeType && params.exchangeType !== "all" && item.exchangeType !== params.exchangeType) return false;
+  if (params.futureCategory && params.futureCategory !== "all" && item.futureCategory !== params.futureCategory) return false;
+  if (params.economyCategory && params.economyCategory !== "all" && item.economyCategory !== params.economyCategory) return false;
+  if (params.expiry && params.expiry !== "all" && item.expiry !== params.expiry) return false;
+  if (params.strike && params.strike !== "all" && item.strike !== params.strike) return false;
+  if (params.underlyingAsset && params.underlyingAsset !== "all" && item.underlyingAsset !== params.underlyingAsset) return false;
+  if (params.country && params.country !== "all" && item.country !== params.country) return false;
+  return true;
+}
+
+function decorateAssets(
+  items: AssetSearchItem[],
+  requestedCategory: string | undefined,
+  params: AssetSearchParams,
+): AssetSearchItem[] {
+  const mapped = items
+    .map((item) => mapSymbolItemToUi(item, requestedCategory))
+    .filter((item) => matchesClientFilters(item, params, requestedCategory));
+
+  const withIcons = mapped.map((item) => {
+    const key = iconCacheKey(item);
+    const effectiveIcon = item.displayIconUrl || item.logoUrl || item.iconUrl || "";
+
+    if (effectiveIcon) {
+      setCachedIcon(key, effectiveIcon);
+      return {
+        ...item,
+        logoUrl: effectiveIcon,
+        iconUrl: item.iconUrl || "",
+        displayIconUrl: effectiveIcon,
+      };
+    }
+
+    const cached = iconCache.get(key);
+    if (!cached) return item;
+
+    return {
+      ...item,
+      displayIconUrl: cached,
+      logoUrl: cached,
+    };
+  });
+
+  withIcons.forEach(reportMissingLogo);
+  return withIcons;
+}
+
+function sortAssets(items: AssetSearchItem[], sort?: AssetSortOption): AssetSearchItem[] {
+  if (!sort || sort === "relevance") return items;
+
+  return [...items].sort((a, b) => {
+    switch (sort) {
+      case "name":
+        return (a.name || "").localeCompare(b.name || "");
+      case "symbol":
+        return (a.ticker || a.symbol || "").localeCompare(b.ticker || b.symbol || "");
+      case "volume":
+        return (b.volume ?? 0) - (a.volume ?? 0);
+      case "marketCap":
+        return (b.marketCap ?? 0) - (a.marketCap ?? 0);
+      default:
+        return 0;
+    }
+  });
+}
+
+export async function searchAssets(params: AssetSearchParams): Promise<AssetSearchResponse> {
   const limit = params.limit ?? 50;
   const requestedCategory = params.category ?? params.market;
 
@@ -176,63 +256,58 @@ export async function searchAssets(params: {
     },
   });
 
-  const mappedAssets = response.data.assets
-    .map((item) => mapSymbolItemToUi(item, requestedCategory))
-    .filter((item) => {
-      if (requestedCategory && requestedCategory !== "all" && item.category !== requestedCategory) return false;
-      return true;
-    })
-    .filter((item) => {
-      if (params.type && params.type !== "all" && item.type !== params.type) return false;
-      if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
-      return true;
-    })
-    .map((item) => {
-      const key = iconCacheKey(item);
-      const effectiveIcon = item.displayIconUrl || item.logoUrl || item.iconUrl || "";
-
-      if (effectiveIcon) {
-        setCachedIcon(key, effectiveIcon);
-        return {
-          ...item,
-          logoUrl: effectiveIcon,
-          iconUrl: item.iconUrl || "",
-          displayIconUrl: effectiveIcon,
-        };
-      }
-
-      const cached = iconCache.get(key);
-      if (!cached) return item;
-
-      return {
-        ...item,
-        displayIconUrl: cached,
-        logoUrl: cached,
-      };
-    });
-
-  mappedAssets.forEach(reportMissingLogo);
-
-  const sortedAssets = params.sort && params.sort !== "relevance"
-    ? [...mappedAssets].sort((a, b) => {
-        switch (params.sort) {
-          case "name":
-            return (a.name || "").localeCompare(b.name || "");
-          case "symbol":
-            return (a.ticker || a.symbol || "").localeCompare(b.ticker || b.symbol || "");
-          case "volume":
-            return (b.volume ?? 0) - (a.volume ?? 0);
-          case "marketCap":
-            return (b.marketCap ?? 0) - (a.marketCap ?? 0);
-          default:
-            return 0;
-        }
-      })
-    : mappedAssets;
+  const mappedAssets = decorateAssets(response.data.assets, requestedCategory, params);
+  const sortedAssets = sortAssets(mappedAssets, params.sort);
 
   return {
     ...response.data,
     assets: sortedAssets,
+  };
+}
+
+export async function searchAssetsTradingView(params: AssetSearchParams): Promise<AssetSearchResponse> {
+  const limit = params.limit ?? 50;
+  const requestedCategory = params.category ?? params.market;
+  const exchange = params.source && params.source !== "all"
+    ? params.source
+    : params.country && params.country !== "all"
+      ? params.country
+      : undefined;
+
+  const queryType = params.type && params.type !== "all"
+    ? params.type
+    : requestedCategory && requestedCategory !== "all"
+      ? requestedCategory
+      : undefined;
+
+  const response = await api.get<TradingViewSymbolSearchResponse>("/symbol-search", {
+    signal: params.signal,
+    params: {
+      text: params.q,
+      exchange,
+      type: queryType,
+      start: params.cursor ?? "0",
+      limit,
+    },
+  });
+
+  const mappedAssets = decorateAssets(response.data.symbols ?? [], requestedCategory, params);
+  const sortedAssets = sortAssets(mappedAssets, params.sort);
+
+  const cursorAsNumber = Number.parseInt(String(params.cursor ?? "0"), 10);
+  const safeCursor = Number.isFinite(cursorAsNumber) && cursorAsNumber > 0 ? cursorAsNumber : 0;
+  const fallbackTotal = safeCursor + sortedAssets.length + (response.data.hasMore ? 1 : 0);
+  const total = typeof response.data.total === "number" && Number.isFinite(response.data.total)
+    ? response.data.total
+    : fallbackTotal;
+
+  return {
+    assets: sortedAssets,
+    total,
+    page: 1,
+    limit,
+    hasMore: response.data.hasMore,
+    nextCursor: response.data.nextCursor ?? null,
   };
 }
 

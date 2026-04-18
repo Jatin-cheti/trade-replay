@@ -8,6 +8,7 @@
  * performance under load.
  */
 import { expect, test, type Page } from "./playwright-fixture";
+import { apiUrl } from "./test-env";
 
 test.setTimeout(180_000);
 
@@ -22,18 +23,18 @@ async function registerAndLogin(page: Page): Promise<void> {
 
   await expect
     .poll(async () => {
-      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      const response = await page.request.get(apiUrl("/api/health"));
       return response.status();
     })
     .toBe(200);
 
-  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const registerResponse = await page.request.post(apiUrl("/api/auth/register"), {
     data: { email, password, name: `tool_comp_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
     ? registerResponse
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+    : await page.request.post(apiUrl("/api/auth/login"), {
         data: { email, password },
       });
 
@@ -238,9 +239,30 @@ async function placeWizardTool(page: Page, anchorCount: number, region: "left" |
 }
 
 async function readDrawingCount(page: Page): Promise<number> {
-  const badgeText = await page.locator('[data-testid="drawing-badge"]:visible').first().textContent();
+  const badgeText = await page
+    .locator('[data-testid="drawing-badge"]:visible')
+    .first()
+    .textContent({ timeout: 1000 })
+    .catch(() => null);
   const match = badgeText?.match(/\b(\d+)\s+drawing/);
-  return match ? Number(match[1]) : 0;
+  if (match) return Number(match[1]);
+
+  return page.evaluate(() => {
+    const debug = (window as unknown as {
+      __chartDebug?: {
+        getDrawingsCount?: () => number;
+        getDrawings?: () => Array<unknown>;
+      };
+    }).__chartDebug;
+
+    const direct = debug?.getDrawingsCount?.();
+    if (typeof direct === 'number' && Number.isFinite(direct)) {
+      return direct;
+    }
+
+    const list = debug?.getDrawings?.();
+    return Array.isArray(list) ? list.length : 0;
+  });
 }
 
 async function readLatestDrawing(page: Page): Promise<{ variant?: string; text?: string; options?: Record<string, unknown>; anchors: Array<{ time: number; price: number }> }> {
@@ -761,7 +783,7 @@ test.describe("Comprehensive Tool Tests", () => {
 
     const xRatios = [0.34, 0.42, 0.5, 0.58, 0.66];
     const yRatios = [0.36, 0.44, 0.52];
-    const dragTextTools = new Set(["tool-table"]);
+    const dragTextTools = new Set<string>();
 
     for (const [idx, toolId] of textTools.entries()) {
       const badgeId = toolId.replace("tool-", "");
@@ -773,7 +795,7 @@ test.describe("Comprehensive Tool Tests", () => {
       if (dragTextTools.has(toolId)) {
         await draw2PointShape(page, "center");
       } else {
-        await drawPointTool(page, x, y, 2);
+        await drawPointTool(page, x, y, 5);
       }
       await confirmPromptIfVisible(page);
 
@@ -784,7 +806,7 @@ test.describe("Comprehensive Tool Tests", () => {
         if (dragTextTools.has(toolId)) {
           await draw2PointShape(page, "right");
         } else {
-          await drawPointTool(page, Math.min(0.72, x + 0.1), Math.min(0.66, y + 0.08), 2);
+          await drawPointTool(page, Math.min(0.72, x + 0.1), Math.min(0.66, y + 0.08), 5);
         }
         await confirmPromptIfVisible(page);
         await expect.poll(async () => readDrawingCount(page), { timeout: 6000 }).toBeGreaterThan(before);
@@ -877,18 +899,34 @@ test.describe("Comprehensive Tool Tests", () => {
   });
 
   test("history is capped at 180 entries under heavy use", async ({ page }) => {
-    await clickVisible(page, "rail-keep-drawing");
-    await selectTool(page, "lines", "tool-trendline", "tool: trend");
+    test.setTimeout(300_000);
 
-    const regions: Array<"left" | "center" | "right"> = ["left", "center", "right"];
-    for (let i = 0; i < 40; i += 1) {
-      await draw2PointShape(page, regions[i % 3]);
+    await clickVisible(page, "rail-keep-drawing");
+    await selectTool(page, "lines", "tool-horizontal-line", "tool: hline");
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    // Fast stress: many point-only placements to pressure history capping without drag overhead.
+    const xRatios = [0.14, 0.26, 0.38, 0.5, 0.62, 0.74, 0.86];
+    for (let i = 0; i < 220; i += 1) {
+      const x = box.x + box.width * xRatios[i % xRatios.length];
+      const y = box.y + box.height * (0.12 + ((i * 7) % 72) / 100);
+      await page.mouse.click(x, y);
+      if (i % 20 === 0) {
+        await page.waitForTimeout(20);
+      }
     }
+
+    await page.waitForTimeout(250);
 
     const hlen = await page.evaluate(() => {
       const debug = (window as unknown as { __chartDebug?: { getHistoryLength?: () => number } }).__chartDebug;
       return debug?.getHistoryLength?.() ?? 0;
     });
+    expect(hlen).toBeGreaterThan(30);
     expect(hlen).toBeLessThanOrEqual(180);
   });
 

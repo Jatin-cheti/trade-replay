@@ -1,5 +1,6 @@
 import { expect, test } from "./playwright-fixture";
 import { installSymbolSearchMock } from "./helpers/mockSymbolSearch";
+import { apiUrl } from "./test-env";
 
 async function expectSymbolModalClosed(page: import("@playwright/test").Page): Promise<void> {
   await expect
@@ -21,18 +22,18 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
 
   await expect
     .poll(async () => {
-      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      const response = await page.request.get(apiUrl("/api/health"));
       return response.status();
     })
     .toBe(200);
 
-  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const registerResponse = await page.request.post(apiUrl("/api/auth/register"), {
     data: { email, password, name: `symbol_modal_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
     ? registerResponse
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+    : await page.request.post(apiUrl("/api/auth/login"), {
         data: { email, password },
       });
 
@@ -74,6 +75,10 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
   const spyRow = page.locator('[data-testid="symbol-result-row"][data-symbol="SPY"]').first();
   await expect(spyRow).toBeVisible();
   await spyRow.click();
+  const spyListingRow = page.locator('[data-testid="symbol-listing-row"]').first();
+  if (await spyListingRow.isVisible().catch(() => false)) {
+    await spyListingRow.click();
+  }
 
   await expectSymbolModalClosed(page);
   await expect(portfolioSearchTrigger).toContainText("SPDR S&P 500 ETF Trust");
@@ -115,6 +120,10 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
       element.click();
     }
   });
+  const ixicListingRow = page.locator('[data-testid="symbol-listing-row"]').first();
+  if (await ixicListingRow.isVisible().catch(() => false)) {
+    await ixicListingRow.click();
+  }
 
   await expectSymbolModalClosed(page);
 

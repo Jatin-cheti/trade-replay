@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
 import { scenarios } from '@/data/stockData';
-import TradingChart from '@/components/chart/TradingChart';
+import ChartEngine from '@/components/chart/ChartEngine';
 import TradingPanel from '@/components/simulation/TradingPanel';
 import PortfolioPanel from '@/components/simulation/PortfolioPanel';
 import TradeHistory from '@/components/simulation/TradeHistory';
@@ -23,6 +23,7 @@ export default function Simulation() {
   } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const parityDataEnabled = searchParams.get('parityData') === '1';
   const [mobileTab, setMobileTab] = useState<'chart' | 'trade' | 'portfolio' | 'history'>('chart');
 
   useEffect(() => {
@@ -52,9 +53,10 @@ export default function Simulation() {
         portfolioId,
         scenarioId: nextScenarioId,
         symbol: nextSymbol,
+        dataMode: parityDataEnabled ? 'parity-live' : 'default',
       });
     }
-  }, [isAuthenticated, scenarioId, selectedStock, initializeSimulation, searchParams, setActivePortfolioId, setScenarioId, setSelectedStock]);
+  }, [isAuthenticated, scenarioId, selectedStock, initializeSimulation, parityDataEnabled, searchParams, setActivePortfolioId, setScenarioId, setSelectedStock]);
 
   const scenario = scenarios.find(s => s.id === scenarioId)!;
   const allStockCandles = useMemo(() => {
@@ -77,7 +79,7 @@ export default function Simulation() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col page-gradient-shell overflow-visible">
+    <div data-testid="simulation-page" className="min-h-screen flex flex-col page-gradient-shell overflow-visible">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
@@ -110,7 +112,13 @@ export default function Simulation() {
           className="flex-[7]"
         >
           <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
-            <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+            <ChartEngine
+              data={candles}
+              visibleCount={currentCandleIndex + 1}
+              symbol={selectedStock}
+              timeframe="1m"
+              parityMode={parityDataEnabled}
+            />
           </InteractiveSurface>
         </motion.div>
 
@@ -143,7 +151,13 @@ export default function Simulation() {
         {mobileTab === 'chart' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
-              <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+              <ChartEngine
+                data={candles}
+                visibleCount={currentCandleIndex + 1}
+                symbol={selectedStock}
+                timeframe="1m"
+                parityMode={parityDataEnabled}
+              />
             </InteractiveSurface>
           </motion.div>
         )}

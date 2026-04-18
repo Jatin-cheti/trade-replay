@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { getIndicator, listIndicators } from '../src/indicators/registry.ts';
 import { registerBuiltins } from '../src/indicators/builtins/index.ts';
+import type { IndicatorDefinition } from '../src/indicators/types.ts';
+import * as batch5Builtins from '../src/indicators/builtins/batch5.ts';
+import * as billWilliamsBuiltins from '../src/indicators/builtins/billWilliams.ts';
+import * as candlePatternBuiltins from '../src/indicators/builtins/candlePatterns.ts';
+import * as candlePattern2Builtins from '../src/indicators/builtins/candlePatterns2.ts';
+import * as strategyBuiltins from '../src/indicators/builtins/strategies.ts';
+import * as profileBuiltins from '../src/indicators/builtins/profiles.ts';
+import * as chartPatternBuiltins from '../src/indicators/builtins/chartPatterns.ts';
+import * as stubBuiltins from '../src/indicators/builtins/stubs.ts';
 
 type Num = number | null;
 
@@ -32,6 +41,41 @@ function closeTo(a: number | null, b: number, eps = 1e-6): boolean {
   return Math.abs(a - b) <= eps;
 }
 
+function isIndicatorDefinition(value: unknown): value is IndicatorDefinition {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<IndicatorDefinition>;
+  return (
+    typeof candidate.id === 'string'
+    && Array.isArray(candidate.inputs)
+    && Array.isArray(candidate.outputs)
+    && typeof candidate.compute === 'function'
+  );
+}
+
+function collectModuleIndicatorIds(moduleExports: Record<string, unknown>): Set<string> {
+  const ids = new Set<string>();
+
+  for (const value of Object.values(moduleExports)) {
+    if (isIndicatorDefinition(value)) {
+      ids.add(value.id);
+      continue;
+    }
+
+    if (!Array.isArray(value)) continue;
+    for (const entry of value) {
+      if (isIndicatorDefinition(entry)) {
+        ids.add(entry.id);
+      }
+    }
+  }
+
+  return ids;
+}
+
+function sortedIds(ids: Iterable<string>): string[] {
+  return Array.from(new Set(ids)).sort((left, right) => left.localeCompare(right));
+}
+
 const n = 160;
 const times = Array.from({ length: n }, (_, i) => 1_700_000_000 + i * 60) as readonly number[];
 const open = Array.from({ length: n }, (_, i) => 100 + i * 0.35 + Math.sin(i * 0.12) * 1.3) as readonly number[];
@@ -53,11 +97,6 @@ registerBuiltins();
 
 console.log('\nRegistry');
 
-test('registerBuiltins includes 101 indicators total', () => {
-  const ids = new Set(listIndicators().map((d) => d.id));
-  assert.equal(ids.size, 101);
-});
-
 const addedIds = [
   'wma', 'vwap', 'bbands', 'donchian', 'keltner', 'atr', 'supertrend', 'psar', 'pivot',
   'stochastic', 'cci', 'roc', 'momentum', 'williams_r', 'mfi', 'obv', 'cmf', 'adx',
@@ -76,11 +115,57 @@ const addedIds = [
   'rolling_return', 'log_return', 'volatility_ema', 'breakout_strength', 'trend_strength',
 ] as const;
 
+const requiredCoreIds = ['sma', 'ema', 'rsi', 'macd', ...addedIds] as const;
+const extendedManifestModules = [
+  batch5Builtins,
+  billWilliamsBuiltins,
+  candlePatternBuiltins,
+  candlePattern2Builtins,
+  strategyBuiltins,
+  profileBuiltins,
+  chartPatternBuiltins,
+  stubBuiltins,
+] as const;
+const extendedManifestIds = sortedIds(
+  extendedManifestModules.flatMap((moduleExports) => Array.from(collectModuleIndicatorIds(moduleExports))),
+);
+const expectedRegistryIds = sortedIds([...requiredCoreIds, ...extendedManifestIds]);
+
+test('registerBuiltins keeps legacy minimum indicator coverage', () => {
+  const count = new Set(listIndicators().map((d) => d.id)).size;
+  assert.ok(count >= 101, `expected at least 101 indicators, got ${count}`);
+});
+
+test('registerBuiltins registry matches builtin manifest exactly', () => {
+  const registryIds = sortedIds(listIndicators().map((d) => d.id));
+  assert.deepEqual(registryIds, expectedRegistryIds);
+});
+
+test('builtin indicator manifest has no duplicate ids', () => {
+  const manifestIds = [...requiredCoreIds, ...extendedManifestIds];
+  const uniqueCount = new Set(manifestIds).size;
+  assert.equal(uniqueCount, manifestIds.length, 'duplicate indicator ids detected in expected manifest');
+});
+
 test('all expected indicator ids are registered', () => {
   const ids = new Set(listIndicators().map((d) => d.id));
   for (const id of addedIds) {
     assert.ok(ids.has(id), `missing indicator ${id}`);
   }
+});
+
+test('required indicator pane semantics are preserved', () => {
+  const volumeDef = getIndicator('volume');
+  assert.ok(volumeDef, 'missing definition: volume');
+  assert.ok(volumeDef!.outputs.length > 0, 'volume must expose at least one output series');
+  assert.ok(
+    volumeDef!.outputs.every((series) => series.pane === 'subpane'),
+    'volume outputs must render in subpane',
+  );
+
+  const smaDef = getIndicator('sma');
+  assert.ok(smaDef, 'missing definition: sma');
+  assert.ok(smaDef!.outputs.every((series) => series.pane === 'overlay'), 'sma outputs must remain overlay');
 });
 
 const cases: TestCase[] = [

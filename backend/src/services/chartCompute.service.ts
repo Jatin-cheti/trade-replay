@@ -15,6 +15,7 @@ type SourceRequest = {
   from?: string;
   to?: string;
   limit?: number;
+  dataMode?: "default" | "parity-live";
 };
 
 type IndicatorComputeInput = {
@@ -201,7 +202,11 @@ async function resolveCandles(candles?: ChartCandle[], source?: SourceRequest): 
   }
 
   if (source?.symbol) {
-    const payload = getLiveCandles({ symbol: source.symbol, limit: source.limit });
+    const payload = await getLiveCandles({
+      symbol: source.symbol,
+      limit: source.limit,
+      mode: source.dataMode,
+    });
     return payload.candles.map((row) => ({
       time: Math.floor(new Date(row.time).getTime() / 1000),
       open: row.open,

@@ -15,6 +15,7 @@ export {
   type ITimeScaleApi,
   type ChartOptions,
   type IChartApi,
+  type CrosshairMoveEvent,
 } from './lib/createChart';
 
 export { TimeIndex } from './lib/data/timeIndex';

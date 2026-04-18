@@ -6,6 +6,7 @@ export interface InitPayload {
   startDate?: string;
   endDate?: string;
   portfolioId?: string;
+  dataMode?: "default" | "parity-live";
 }
 
 export interface TradeInput {

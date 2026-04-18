@@ -1,4 +1,5 @@
 import { expect, test as base } from "@playwright/test";
+import { apiUrl } from "./test-env";
 
 const test = base;
 
@@ -7,7 +8,7 @@ test.beforeAll(async ({ request }) => {
 
 	while (Date.now() < deadline) {
 		try {
-			const response = await request.get("http://127.0.0.1:4000/api/health");
+			const response = await request.get(apiUrl("/api/health"));
 			if (response.status() === 200) {
 				return;
 			}

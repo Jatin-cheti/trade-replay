@@ -88,6 +88,61 @@ function toPagedResponse(url: URL): {
   };
 }
 
+function toTradingViewResponse(url: URL): {
+  symbols: AssetFixture[];
+  total: number;
+  nextCursor: string | null;
+  hasMore: boolean;
+} {
+  const text = (url.searchParams.get("text") ?? "").trim();
+  const exchange = (url.searchParams.get("exchange") ?? "").trim().toUpperCase();
+  const type = (url.searchParams.get("type") ?? url.searchParams.get("category") ?? "").trim().toLowerCase();
+
+  const start = Math.max(0, Number.parseInt(url.searchParams.get("start") ?? "0", 10) || 0);
+  const limit = Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50);
+
+  const filtered = fixture.assets.filter((item) => {
+    if (type && type !== "all") {
+      const itemType = (item.type ?? "").toLowerCase();
+      const itemCategory = (item.category ?? "").toLowerCase();
+      if (itemType !== type && itemCategory !== type) {
+        return false;
+      }
+    }
+
+    if (exchange) {
+      const itemExchange = (item.exchange ?? "").toUpperCase();
+      const itemSource = (item.source ?? "").toUpperCase();
+      if (itemExchange !== exchange && itemSource !== exchange && (item.country ?? "").toUpperCase() !== exchange) {
+        return false;
+      }
+    }
+
+    if (text) {
+      const queryMatched = includesNormalized(item.ticker, text)
+        || includesNormalized(item.symbol, text)
+        || includesNormalized(item.name, text)
+        || includesNormalized(item.exchange, text);
+      if (!queryMatched) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const symbols = filtered.slice(start, start + limit);
+  const consumed = start + symbols.length;
+  const hasMore = consumed < filtered.length;
+
+  return {
+    symbols,
+    total: filtered.length,
+    nextCursor: hasMore ? String(consumed) : null,
+    hasMore,
+  };
+}
+
 async function fulfillAssets(route: Route): Promise<void> {
   const url = new URL(route.request().url());
   const payload = toPagedResponse(url);
@@ -99,6 +154,18 @@ async function fulfillAssets(route: Route): Promise<void> {
   });
 }
 
+async function fulfillTradingViewSearch(route: Route): Promise<void> {
+  const url = new URL(route.request().url());
+  const payload = toTradingViewResponse(url);
+
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function installSymbolSearchMock(page: Page): Promise<void> {
   await page.route("**/api/simulation/assets**", fulfillAssets);
+  await page.route("**/api/symbol-search**", fulfillTradingViewSearch);
 }

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Activity, BarChart3, FolderOpen, List, Search, TrendingUp } from "lucide-react";
-import TradingChart from "@/components/chart/TradingChart";
+import ChartEngine from "@/components/chart/ChartEngine";
 import SymbolSearchModal from "@/components/simulation/SymbolSearchModal";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
@@ -26,6 +26,9 @@ const defaultWatchlist = ["SPY", "AAPL", "TSLA", "BTCUSDT", "EURUSD"];
 export default function LiveMarket() {
   const { isAuthenticated, formatCurrency } = useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const dataMode = searchParams.get("parityData") === "1" ? "parity-live" : undefined;
+  const parityMode = dataMode === "parity-live";
 
   const [viewMode, setViewMode] = useState<LiveViewMode>("symbol");
   const [selectedSymbol, setSelectedSymbol] = useState("SPY");
@@ -82,8 +85,9 @@ export default function LiveMarket() {
     mode: viewMode,
     symbol: selectedSymbol,
     holdings: portfolioHoldings,
-    quoteSymbols: watchlist,
-    pollMs: 2500,
+    quoteSymbols: parityMode ? [selectedSymbol] : watchlist,
+    pollMs: parityMode ? 7000 : 2500,
+    dataMode,
   });
 
   useEffect(() => {
@@ -140,7 +144,7 @@ export default function LiveMarket() {
   const selectedAssetName = selectedAssetMeta?.name || selectedSymbol;
 
   return (
-    <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
+    <div data-testid="live-market-page" className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
 
       <main className="px-3 pt-5 pb-8 relative z-10">
@@ -224,7 +228,14 @@ export default function LiveMarket() {
 
           <InteractiveSurface className="glass-strong rounded-2xl overflow-hidden gradient-border card-lift min-h-[68vh]">
             {chartData.length > 0 ? (
-              <TradingChart mode="live" data={chartData} visibleCount={chartData.length} symbol={chartSymbol} />
+              <ChartEngine
+                mode="live"
+                data={chartData}
+                visibleCount={chartData.length}
+                symbol={chartSymbol}
+                timeframe="1m"
+                parityMode={parityMode}
+              />
             ) : (
               <div className="h-full min-h-[460px] flex items-center justify-center text-sm text-muted-foreground">
                 Loading live chart...

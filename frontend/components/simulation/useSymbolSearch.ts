@@ -1,7 +1,7 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿﻿import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchAssetSearchFilters,
-  searchAssets,
+  searchAssetsTradingView,
   type AssetCategory,
   type AssetSearchFilterOption,
   type AssetSearchItem,
@@ -71,6 +71,8 @@ export function useSymbolSearch(
   const paginationInFlightRef = useRef(false);
   const firstPageAbortRef = useRef<AbortController | null>(null);
   const paginationAbortRef = useRef<AbortController | null>(null);
+  const firstPageRequestSeqRef = useRef(0);
+  const paginationRequestSeqRef = useRef(0);
 
   useEffect(() => {
     if (!open) return;
@@ -165,12 +167,15 @@ export function useSymbolSearch(
       }
 
       setLoading(true);
+      setLoadingMore(false);
+      paginationInFlightRef.current = false;
       firstPageAbortRef.current?.abort();
       paginationAbortRef.current?.abort();
       const controller = new AbortController();
       firstPageAbortRef.current = controller;
+      const requestSeq = ++firstPageRequestSeqRef.current;
       try {
-        const response = await searchAssets({
+        const response = await searchAssetsTradingView({
           q: query.trim(),
           category: category === "all" ? undefined : category,
           country: country === "all" ? undefined : country,
@@ -188,6 +193,8 @@ export function useSymbolSearch(
           signal: controller.signal,
         });
 
+        if (requestSeq !== firstPageRequestSeqRef.current) return;
+
         setRows(response.assets);
         setHasMore(response.hasMore);
         setTotal(response.total);
@@ -200,12 +207,15 @@ export function useSymbolSearch(
         });
       } catch (error) {
         if (isRequestCanceled(error)) return;
+        if (requestSeq !== firstPageRequestSeqRef.current) return;
         setRows([]);
         setHasMore(false);
         setTotal(0);
         setNextCursor(null);
       } finally {
-        setLoading(false);
+        if (requestSeq === firstPageRequestSeqRef.current) {
+          setLoading(false);
+        }
       }
     };
 
@@ -218,6 +228,8 @@ export function useSymbolSearch(
 
   useEffect(() => {
     return () => {
+      firstPageRequestSeqRef.current += 1;
+      paginationRequestSeqRef.current += 1;
       firstPageAbortRef.current?.abort();
       paginationAbortRef.current?.abort();
     };
@@ -228,20 +240,22 @@ export function useSymbolSearch(
     const container = listContainerRef.current;
     if (!container) return;
 
-    const onScroll = () => {
+    const loadMore = () => {
       if (loading || loadingMore || paginationInFlightRef.current || !hasMore || !nextCursor) return;
 
       const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom > 80) return;
+      if (distanceToBottom > 160) return;
 
       paginationInFlightRef.current = true;
       setLoadingMore(true);
       paginationAbortRef.current?.abort();
       const controller = new AbortController();
       paginationAbortRef.current = controller;
+      const requestSeq = ++paginationRequestSeqRef.current;
+
       void (async () => {
         try {
-          const response = await searchAssets({
+          const response = await searchAssetsTradingView({
             q: query.trim(),
             category: category === "all" ? undefined : category,
             country: country === "all" ? undefined : country,
@@ -259,6 +273,8 @@ export function useSymbolSearch(
             limit: 50,
             signal: controller.signal,
           });
+
+          if (requestSeq !== paginationRequestSeqRef.current) return;
 
           setRows((previous) => {
             const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
@@ -282,14 +298,17 @@ export function useSymbolSearch(
           if (isRequestCanceled(error)) return;
           // Keep existing list on pagination failures.
         } finally {
-          paginationInFlightRef.current = false;
-          setLoadingMore(false);
+          if (requestSeq === paginationRequestSeqRef.current) {
+            paginationInFlightRef.current = false;
+            setLoadingMore(false);
+          }
         }
       })();
     };
 
-    container.addEventListener("scroll", onScroll);
-    return () => container.removeEventListener("scroll", onScroll);
+    container.addEventListener("scroll", loadMore);
+    loadMore();
+    return () => container.removeEventListener("scroll", loadMore);
   }, [open, loading, loadingMore, hasMore, nextCursor, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, expiry, strike, underlyingAsset, sort, filterKey]);
 
   useEffect(() => {

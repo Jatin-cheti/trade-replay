@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { listIndicators, getGlobalPerfTelemetry } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
+import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
 import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory, type ToolVariant } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
-import { isPointOnlyVariant, isWizardVariant, nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
+import {
+  compareDrawingRenderOrder,
+  createDrawing,
+  DrawingSpatialIndex,
+  getHitTestTelemetrySnapshot,
+  isPointOnlyVariant,
+  isWizardVariant,
+  nearestCandleIndex,
+  normalizeDrawings,
+  resetHitTestTelemetry,
+  resolveNearestDrawingHit,
+  setHitTestTelemetryEnabled,
+} from '@/services/tools/toolEngine';
 import { catmullRomSmooth, getArrowheadPoints, getParallelChannelGeometry, getPitchforkGeometry, getRaySegment, getRegressionTrendGeometry, snapTrendAngleSegment, type CanvasPoint, type PitchforkVariant } from '@/services/tools/drawingGeometry';
 import { DrawingTimeIndex } from '@/services/tools/drawingTimeIndex';
 import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
@@ -26,6 +39,9 @@ interface TradingChartProps {
   visibleCount: number;
   symbol: string;
   mode?: 'simulation' | 'live';
+  syncBus?: ChartSyncBus;
+  syncId?: string;
+  parityMode?: boolean;
 }
 
 type TouchTooltipState = {
@@ -40,6 +56,30 @@ type PatternWizardHintState = {
   step: number;
   total: number;
 };
+
+type InteractionMetric = 'pointerdown' | 'pointermove' | 'pointerup' | 'hover';
+
+type InteractionMetricBucket = {
+  count: number;
+  totalMs: number;
+  maxMs: number;
+};
+
+type InteractionLatencyStore = {
+  pointerdown: InteractionMetricBucket;
+  pointermove: InteractionMetricBucket;
+  pointerup: InteractionMetricBucket;
+  hover: InteractionMetricBucket;
+};
+
+type InteractionLatencySnapshot = {
+  pointerdown: InteractionMetricBucket & { avgMs: number };
+  pointermove: InteractionMetricBucket & { avgMs: number };
+  pointerup: InteractionMetricBucket & { avgMs: number };
+  hover: InteractionMetricBucket & { avgMs: number };
+};
+
+const HOVER_SWITCH_MARGIN = 0.28;
 
 const TOP_INDICATOR_IDS = ['sma', 'ema', 'vwap', 'rsi', 'macd'] as const;
 
@@ -56,6 +96,41 @@ const PATTERN_LABELS_BY_VARIANT: Partial<Record<ToolVariant, string[]>> = {
   elliottDoubleCombo: ['W', 'X', 'Y'],
   elliottTripleCombo: ['W', 'X', 'Y', 'X', 'Z'],
 };
+
+function makeMetricBucket(): InteractionMetricBucket {
+  return {
+    count: 0,
+    totalMs: 0,
+    maxMs: 0,
+  };
+}
+
+function makeInteractionLatencyStore(): InteractionLatencyStore {
+  return {
+    pointerdown: makeMetricBucket(),
+    pointermove: makeMetricBucket(),
+    pointerup: makeMetricBucket(),
+    hover: makeMetricBucket(),
+  };
+}
+
+function bucketSnapshot(bucket: InteractionMetricBucket): InteractionMetricBucket & { avgMs: number } {
+  return {
+    count: bucket.count,
+    totalMs: bucket.totalMs,
+    maxMs: bucket.maxMs,
+    avgMs: bucket.count > 0 ? bucket.totalMs / bucket.count : 0,
+  };
+}
+
+function getInteractionLatencySnapshot(store: InteractionLatencyStore): InteractionLatencySnapshot {
+  return {
+    pointerdown: bucketSnapshot(store.pointerdown),
+    pointermove: bucketSnapshot(store.pointermove),
+    pointerup: bucketSnapshot(store.pointerup),
+    hover: bucketSnapshot(store.hover),
+  };
+}
 
 function makeIndicatorAcronym(name: string): string {
   return name
@@ -133,6 +208,15 @@ function formatExportTimestamp(date: Date): string {
   return `${y}${m}${d}-${hh}${mm}`;
 }
 
+function logicalRangeEquals(
+  left: SyncedLogicalRange | null | undefined,
+  right: SyncedLogicalRange | null | undefined,
+  epsilon = 0.01,
+): boolean {
+  if (!left || !right) return false;
+  return Math.abs(left.from - right.from) <= epsilon && Math.abs(left.to - right.to) <= epsilon;
+}
+
 function buildDotCursor(): string {
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none">',
@@ -153,9 +237,17 @@ function buildEraserCursor(): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 18, crosshair`;
 }
 
-export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
+export default function TradingChart({
+  data,
+  visibleCount,
+  symbol,
+  mode = 'simulation',
+  syncBus,
+  syncId,
+  parityMode = false,
+}: TradingChartProps) {
   const isMobile = useIsMobile();
-  const [chartType, setChartType] = useState<ChartType>('candlestick');
+  const [chartType, setChartType] = useState<ChartType>(() => (parityMode ? 'volumeCandles' : 'candlestick'));
   const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>(null);
   const [cursorMode, setCursorMode] = useState<CursorMode>('cross');
   const [valuesTooltip, setValuesTooltip] = useState<boolean>(() => {
@@ -194,7 +286,13 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   });
   const [fullView, setFullView] = useState(false);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [hoveredDrawingId, setHoveredDrawingId] = useState<string | null>(null);
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
+
+  useEffect(() => {
+    if (!parityMode) return;
+    setChartType((current) => (current === 'volumeCandles' ? current : 'volumeCandles'));
+  }, [parityMode]);
   const dragMoveRef = useRef<{ drawingId: string; startPoint: DrawPoint; currentPoint: DrawPoint; originalAnchors: DrawPoint[] } | null>(null);
   const dragAnchorMoveRef = useRef<{ drawingId: string; anchorIndex: number; currentPoint: DrawPoint; originalAnchors: DrawPoint[] } | null>(null);
   const [hoverPoint, setHoverPoint] = useState<DrawPoint | null>(null);
@@ -202,6 +300,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
   const touchRafRef = useRef<number | null>(null);
   const drawingIndexRef = useRef(new DrawingTimeIndex());
+  const drawingSpatialIndexRef = useRef(new DrawingSpatialIndex());
+  const orderedDrawingsRef = useRef<Drawing[]>([]);
+  const interactionLatencyRef = useRef<InteractionLatencyStore>(makeInteractionLatencyStore());
+  const syncedCrosshairRef = useRef<{ time: number; price: number | null } | null>(null);
+  const applyingSyncedRangeRef = useRef(false);
+  const lastEmittedSyncedRangeRef = useRef<SyncedLogicalRange | null>(null);
 
   /* ─ Prompt modal for text/emoji tools ─ */
   const [promptRequest, setPromptRequest] = useState<ChartPromptRequest | null>(null);
@@ -237,7 +341,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   } = useTools();
 
   const resizeCallbackRef = useRef<(() => void) | null>(null);
-  const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType, () => resizeCallbackRef.current?.(), fullView ? 'full' : 'normal');
+  const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(
+    data,
+    visibleCount,
+    chartType,
+    () => resizeCallbackRef.current?.(),
+    fullView ? 'full' : 'normal',
+    parityMode,
+    mode ?? null,
+  );
   const indicatorInstancesRef = useRef<Record<string, string>>({});
   const indicatorCatalog = useMemo(() => {
     return listIndicators()
@@ -432,21 +544,84 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     };
   }, [chartRef, transformedData.times]);
 
-  const updateHoverPoint = useCallback((clientX: number, clientY: number) => {
-    if (!hoverTrackingEnabled) {
-      setHoverPoint((prev) => (prev ? null : prev));
-      return;
-    }
+  const recordInteractionLatency = useCallback((metric: InteractionMetric, startedAt: number) => {
+    const elapsed = Math.max(0, performance.now() - startedAt);
+    const store = interactionLatencyRef.current;
+    const bucket = store[metric];
+    bucket.count += 1;
+    bucket.totalMs += elapsed;
+    bucket.maxMs = Math.max(bucket.maxMs, elapsed);
+    getGlobalPerfTelemetry()?.record(`event-latency:${metric}`, elapsed);
+  }, []);
 
-    const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), false) ?? fallbackPoint();
-    setHoverPoint((prev) => {
-      if (!point) return null;
-      if (!prev) return point;
-      const unchangedTime = Math.abs(Number(prev.time) - Number(point.time)) < 1;
-      const unchangedPrice = Math.abs(prev.price - point.price) < Math.max(0.01, Math.abs(point.price) * 0.0002);
-      return unchangedTime && unchangedPrice ? prev : point;
+  const resolveHitTarget = useCallback((
+    point: DrawPoint,
+    intent: 'select' | 'erase',
+    preferredIds: Array<string | null> = [],
+    restrictToVisible = true,
+  ) => {
+    const visibleRange = restrictToVisible ? getVisibleTimeRange() : null;
+    const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
+    const preferred = preferredIds.filter((id): id is string => Boolean(id));
+
+    const primary = resolveNearestDrawingHit(orderedDrawingsRef.current, point, {
+      intent,
+      spatialIndex: drawingSpatialIndexRef.current,
+      includeIds: visibleIds,
+      preferredIds: preferred,
     });
-  }, [fallbackPoint, hoverTrackingEnabled, pointerToDataPoint, resolvePointerSnapMode]);
+
+    if (primary.id || !visibleIds) return primary;
+
+    return resolveNearestDrawingHit(orderedDrawingsRef.current, point, {
+      intent,
+      spatialIndex: drawingSpatialIndexRef.current,
+      preferredIds: preferred,
+    });
+  }, [getVisibleTimeRange]);
+
+  const updateHoverPoint = useCallback((clientX: number, clientY: number) => {
+    const startedAt = performance.now();
+    try {
+      if (!hoverTrackingEnabled) {
+        setHoverPoint((prev) => (prev ? null : prev));
+        setHoveredDrawingId((prev) => (prev ? null : prev));
+        return;
+      }
+
+      const point = pointerToDataPoint(clientX, clientY, 'free', false) ?? fallbackPoint();
+      setHoverPoint((prev) => {
+        if (!point) return null;
+        if (!prev) return point;
+        const unchangedTime = Math.abs(Number(prev.time) - Number(point.time)) < 1;
+        const unchangedPrice = Math.abs(prev.price - point.price) < Math.max(0.01, Math.abs(point.price) * 0.0002);
+        return unchangedTime && unchangedPrice ? prev : point;
+      });
+
+      if (!point) {
+        setHoveredDrawingId((prev) => (prev ? null : prev));
+        return;
+      }
+
+      const nearest = resolveHitTarget(point, 'select', [], true);
+      let nextHovered = nearest.id;
+
+      if (hoveredDrawingId) {
+        const sticky = resolveHitTarget(point, 'select', [hoveredDrawingId], true);
+        if (sticky.id === hoveredDrawingId) {
+          if (!nearest.id || nearest.id === hoveredDrawingId) {
+            nextHovered = hoveredDrawingId;
+          } else if ((sticky.score - nearest.score) <= HOVER_SWITCH_MARGIN) {
+            nextHovered = hoveredDrawingId;
+          }
+        }
+      }
+
+      setHoveredDrawingId((prev) => (prev === nextHovered ? prev : nextHovered));
+    } finally {
+      recordInteractionLatency('hover', startedAt);
+    }
+  }, [fallbackPoint, hoverTrackingEnabled, hoveredDrawingId, pointerToDataPoint, recordInteractionLatency, resolveHitTarget]);
 
   useEffect(() => {
     try {
@@ -493,6 +668,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   useEffect(() => {
     setHoverPoint(null);
+    setHoveredDrawingId(null);
     setPatternWizardHint(null);
     if (touchTooltipTimerRef.current != null) {
       window.clearTimeout(touchTooltipTimerRef.current);
@@ -542,7 +718,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [chartRef, enabledIndicators, ready]);
 
   useEffect(() => {
-    drawingIndexRef.current.rebuild(toolState.drawings);
+    const normalized = normalizeDrawings(toolState.drawings);
+    const ordered = normalized.slice().sort(compareDrawingRenderOrder);
+    orderedDrawingsRef.current = ordered;
+    drawingIndexRef.current.rebuild(ordered);
+    drawingSpatialIndexRef.current.rebuild(ordered);
+    setHoveredDrawingId((prev) => {
+      if (!prev) return prev;
+      return ordered.some((drawing) => drawing.id === prev && drawing.visible !== false) ? prev : null;
+    });
   }, [toolState.drawings]);
 
   const rafRef = useRef<number | null>(null);
@@ -1834,13 +2018,41 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       };
 
       const visibleRange = getVisibleTimeRange();
+      const orderedDrawings = orderedDrawingsRef.current;
       const visibleIds = visibleRange
         ? new Set(drawingIndexRef.current.query(visibleRange))
-        : new Set(drawingsRef.current.map((drawing) => drawing.id));
+        : new Set(orderedDrawings.map((drawing) => drawing.id));
 
-      for (const drawing of drawingsRef.current) {
+      for (const drawing of orderedDrawings) {
         if (!visibleIds.has(drawing.id) && drawing.id !== selectedDrawingId) continue;
         drawTool(drawing);
+      }
+
+      const syncedCrosshair = syncedCrosshairRef.current;
+      if (syncedCrosshair) {
+        const x = chartRef.current?.timeScale().timeToCoordinate(syncedCrosshair.time);
+        if (x != null && Number.isFinite(x)) {
+          ctx.save();
+          ctx.setLineDash([5, 4]);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(255, 215, 64, 0.72)';
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, cssHeight);
+          ctx.stroke();
+
+          if (syncedCrosshair.price != null) {
+            const y = series.priceToCoordinate(syncedCrosshair.price);
+            if (y != null && Number.isFinite(y)) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(cssWidth, y);
+              ctx.stroke();
+            }
+          }
+
+          ctx.restore();
+        }
       }
 
       if (draftRef.current) drawTool(draftRef.current, true);
@@ -1869,6 +2081,16 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       getLastDrawCommitAt: () => lastDrawCommitAtRef.current,
       getHistoryLength: () => toolState.history.length,
       getDrawings: () => drawingsRef.current,
+      getDrawingById: (id: string) => drawingsRef.current.find((drawing) => drawing.id === id) ?? null,
+      getLatestDrawingId: () => drawingsRef.current[drawingsRef.current.length - 1]?.id ?? null,
+      getSelectedDrawingId: () => selectedDrawingId,
+      forceSelectDrawing: (id: string | null) => {
+        setSelectedDrawingId(id);
+        setHoveredDrawingId(id);
+        return id;
+      },
+      getHoveredDrawingId: () => hoveredDrawingId,
+      getHoverPoint: () => (hoverPoint ? { ...hoverPoint } : null),
       getMagnetMode: () => magnetMode,
       pointerToDataPoint: (clientX: number, clientY: number, snap: boolean) =>
         pointerToDataPoint(clientX, clientY, crosshairSnapMode, snap),
@@ -1890,12 +2112,107 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         const rect = overlay.getBoundingClientRect();
         return { x: rect.left + x, y: rect.top + y };
       },
+      getProjectedAnchors: (drawingId?: string) => {
+        const chart = chartRef.current;
+        const series = getActiveSeries();
+        const overlay = overlayRef.current;
+        if (!chart || !series || !overlay) return null;
+        const target = drawingId
+          ? drawingsRef.current.find((drawing) => drawing.id === drawingId)
+          : drawingsRef.current[drawingsRef.current.length - 1];
+        if (!target) return null;
+        const rect = overlay.getBoundingClientRect();
+        const points = target.anchors
+          .map((anchor) => {
+            const x = chart.timeScale().timeToCoordinate(anchor.time as DrawPoint['time']);
+            const y = series.priceToCoordinate(anchor.price);
+            if (x == null || y == null) return null;
+            return { x: rect.left + x, y: rect.top + y };
+          })
+          .filter((point): point is { x: number; y: number } => Boolean(point));
+        return {
+          id: target.id,
+          variant: target.variant,
+          anchors: points,
+        };
+      },
+      clearDrawingsFast: () => {
+        updateAllDrawings(() => [], false);
+        setSelectedDrawingId(null);
+        setHoveredDrawingId(null);
+        return 0;
+      },
+      addSyntheticDrawings: (count: number, variant: Exclude<ToolVariant, 'none'> = 'trend') => {
+        const normalizedCount = Math.max(0, Math.min(2_000, Math.floor(Number(count) || 0)));
+        if (normalizedCount === 0) return 0;
+
+        const toolDef = getToolDefinition(variant);
+        if (!toolDef) return 0;
+
+        const times = transformedData.times;
+        const rows = transformedData.ohlcRows;
+        if (!times.length || !rows.length) return 0;
+
+        const startIdx = Math.max(0, times.length - 900);
+        const span = Math.max(24, times.length - startIdx - 1);
+        const baseOptions = { ...toolState.options };
+        const created: Drawing[] = [];
+
+        for (let i = 0; i < normalizedCount; i += 1) {
+          const fromIdx = startIdx + ((i * 17) % span);
+          const toIdx = Math.min(times.length - 1, fromIdx + 6 + (i % 21));
+          const fromRow = rows[fromIdx] ?? rows[rows.length - 1];
+          const toRow = rows[toIdx] ?? fromRow;
+
+          const sourcePrice = Number.isFinite(fromRow.close) ? fromRow.close : fromRow.open;
+          const targetPrice = Number.isFinite(toRow.close) ? toRow.close : toRow.open;
+          const drift = 1 + (((i % 9) - 4) * 0.0035);
+
+          const p1: DrawPoint = { time: times[fromIdx], price: sourcePrice };
+          const p2: DrawPoint = { time: times[toIdx], price: targetPrice * drift };
+          created.push(createDrawing(variant, baseOptions, p1, p2));
+        }
+
+        updateAllDrawings((prev) => [...prev, ...created], false);
+        return created.length;
+      },
+      setHitTestTelemetryEnabled: (enabled: boolean) => {
+        setHitTestTelemetryEnabled(Boolean(enabled));
+        return getHitTestTelemetrySnapshot();
+      },
+      resetHitTestStats: () => {
+        resetHitTestTelemetry();
+        return getHitTestTelemetrySnapshot();
+      },
+      getHitTestStats: () => getHitTestTelemetrySnapshot(),
+      getSpatialHitTestStats: () => drawingSpatialIndexRef.current.getStats(),
+      getInteractionLatencyStats: () => getInteractionLatencySnapshot(interactionLatencyRef.current),
+      resetInteractionLatencyStats: () => {
+        interactionLatencyRef.current = makeInteractionLatencyStore();
+        return getInteractionLatencySnapshot(interactionLatencyRef.current);
+      },
     };
     (window as unknown as Record<string, unknown>).__chartDebug = debug;
     return () => {
       delete (window as unknown as Record<string, unknown>).__chartDebug;
     };
-  }, [chartRef, crosshairSnapMode, drawingsRef, getActiveSeries, magnetMode, overlayRef, pointerToDataPoint, toolState.history.length, toolState.options]);
+  }, [
+    chartRef,
+    crosshairSnapMode,
+    drawingsRef,
+    getActiveSeries,
+    hoverPoint,
+    hoveredDrawingId,
+    magnetMode,
+    overlayRef,
+    pointerToDataPoint,
+    selectedDrawingId,
+    toolState.history.length,
+    toolState.options,
+    transformedData.ohlcRows,
+    transformedData.times,
+    updateAllDrawings,
+  ]);
 
   useEffect(() => {
     renderOverlay();
@@ -1934,8 +2251,107 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [chartRef, renderOverlay, ready]);
 
   useEffect(() => {
+    if (!syncBus || !syncId) {
+      syncedCrosshairRef.current = null;
+      return;
+    }
+
+    return syncBus.subscribe((event) => {
+      if (event.sourceId === syncId) return;
+
+      if (event.type === 'crosshair') {
+        syncedCrosshairRef.current = event.payload
+          ? { time: event.payload.time, price: event.payload.price }
+          : null;
+        renderOverlay();
+        return;
+      }
+
+      const chart = chartRef.current;
+      if (!chart || !event.payload) return;
+
+      const currentRange = chart.timeScale().getVisibleLogicalRange();
+      if (logicalRangeEquals(currentRange, event.payload)) return;
+
+      applyingSyncedRangeRef.current = true;
+      chart.timeScale().setVisibleLogicalRange(event.payload);
+      void Promise.resolve().then(() => {
+        applyingSyncedRangeRef.current = false;
+      });
+    });
+  }, [chartRef, renderOverlay, syncBus, syncId]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !syncBus || !syncId) return;
+
+    const emitRange = () => {
+      if (applyingSyncedRangeRef.current) return;
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+      const payload = { from: range.from, to: range.to };
+      if (logicalRangeEquals(lastEmittedSyncedRangeRef.current, payload)) return;
+      lastEmittedSyncedRangeRef.current = payload;
+      syncBus.emit({ type: 'range', sourceId: syncId, payload });
+    };
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(emitRange);
+    return () => {
+      try {
+        chart.timeScale().unsubscribeVisibleTimeRangeChange(emitRange);
+      } catch {
+        // Chart may have been removed.
+      }
+    };
+  }, [chartRef, ready, syncBus, syncId]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !syncBus || !syncId) return;
+
+    const emitCrosshair = (param: unknown) => {
+      const payload = param as CrosshairMoveEvent;
+      if (!payload || payload.time == null || payload.source === 'leave') {
+        syncBus.emit({ type: 'crosshair', sourceId: syncId, payload: null });
+        return;
+      }
+
+      const time = Number(payload.time);
+      if (!Number.isFinite(time)) {
+        syncBus.emit({ type: 'crosshair', sourceId: syncId, payload: null });
+        return;
+      }
+
+      syncBus.emit({
+        type: 'crosshair',
+        sourceId: syncId,
+        payload: {
+          time,
+          price: typeof payload.price === 'number' ? payload.price : null,
+        },
+      });
+    };
+
+    chart.subscribeCrosshairMove(emitCrosshair);
+    return () => {
+      try {
+        chart.unsubscribeCrosshairMove(emitCrosshair);
+      } catch {
+        // Chart may have been removed.
+      }
+      syncBus.emit({ type: 'crosshair', sourceId: syncId, payload: null });
+    };
+  }, [chartRef, ready, syncBus, syncId]);
+
+  useEffect(() => {
+    syncedCrosshairRef.current = null;
+    lastEmittedSyncedRangeRef.current = null;
+  }, [syncId, symbol]);
+
+  useEffect(() => {
     resetForSymbol();
     setSelectedDrawingId(null);
+    setHoveredDrawingId(null);
     setPatternWizardHint(null);
   }, [resetForSymbol, symbol]);
 
@@ -1985,6 +2401,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         if (d?.locked) return;
         removeDrawing(selectedDrawingId);
         setSelectedDrawingId(null);
+        setHoveredDrawingId((prev) => (prev === selectedDrawingId ? null : prev));
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -2152,196 +2569,207 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
-    clearTouchTooltip();
-    draftPointerStartRef.current = null;
-    dragAnchorMoveRef.current = null;
-    const freePoint = pointerToDataPoint(event.clientX, event.clientY, 'free', false) || fallbackPoint();
+    const startedAt = performance.now();
+    try {
+      clearTouchTooltip();
+      draftPointerStartRef.current = null;
+      dragAnchorMoveRef.current = null;
+      const freePoint = pointerToDataPoint(event.clientX, event.clientY, 'free', false);
 
-    if (cursorMode === 'eraser' && toolState.variant === 'none') {
-      if (!freePoint) return;
+      if (cursorMode === 'eraser' && toolState.variant === 'none') {
+        const preferred = [selectedDrawingId, hoveredDrawingId].filter((id): id is string => Boolean(id));
+        const erasePoint = freePoint ?? hoverPoint ?? fallbackPoint();
+        const targetId = erasePoint
+          ? resolveHitTarget(erasePoint, 'erase', preferred).id ?? preferred[0] ?? null
+          : preferred[0] ?? null;
+        if (targetId) {
+          removeDrawing(targetId);
+          if (selectedDrawingId === targetId) {
+            setSelectedDrawingId(null);
+          }
+          if (hoveredDrawingId === targetId) {
+            setHoveredDrawingId(null);
+          }
+        }
+        renderOverlay();
+        return;
+      }
 
-      const visibleRange = getVisibleTimeRange();
-      const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
-      const candidates = visibleIds ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id)) : drawingsRef.current;
-      const targetId =
-        selectNearestDrawingId(candidates, freePoint, 'erase') ??
-        (visibleIds ? selectNearestDrawingId(drawingsRef.current, freePoint, 'erase') : null);
-      if (targetId) {
-        removeDrawing(targetId);
-        if (selectedDrawingId === targetId) {
-          setSelectedDrawingId(null);
+      if (toolState.variant === 'none') {
+        if (!freePoint) return;
+
+        const selected = resolveHitTarget(freePoint, 'select', [selectedDrawingId, hoveredDrawingId]).id;
+        setSelectedDrawingId(selected);
+        setHoveredDrawingId((prev) => (selected ? selected : (prev ? null : prev)));
+        if (selected) {
+          const drawing = drawingsRef.current.find((item) => item.id === selected);
+          const drawingDefinition = drawing ? getToolDefinition(drawing.variant) : null;
+
+          if (
+            drawing
+            && drawingDefinition?.family === 'text'
+            && drawingDefinition.capabilities.supportsText
+            && event.detail >= 2
+          ) {
+            pendingTextPointRef.current = drawing.anchors[0] || freePoint;
+            pendingTextVariantRef.current = drawing.variant as Exclude<ToolVariant, 'none'>;
+            editingDrawingIdRef.current = drawing.id;
+            setPromptRequest({
+              title: `Edit ${drawingDefinition.label}`,
+              label: 'Update text',
+              defaultValue: drawing.text || '',
+              preview: true,
+              allowStyleControls: true,
+              styleOptions: {
+                font: drawing.options.font,
+                textSize: drawing.options.textSize,
+                bold: drawing.options.bold,
+                italic: drawing.options.italic,
+                align: drawing.options.align,
+                textBackground: drawing.options.textBackground,
+                textBorder: drawing.options.textBorder,
+              },
+            });
+            renderOverlay();
+            return;
+          }
+
+          if (drawing && !drawing.locked) {
+            const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - freePoint.time) < 86400 && Math.abs(a.price - freePoint.price) < Math.max(0.2, freePoint.price * 0.02));
+            if (idx >= 0) {
+              setDragAnchor({ drawingId: selected, anchorIndex: idx });
+              dragAnchorMoveRef.current = {
+                drawingId: selected,
+                anchorIndex: idx,
+                currentPoint: freePoint,
+                originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })),
+              };
+            } else {
+              dragMoveRef.current = {
+                drawingId: selected,
+                startPoint: freePoint,
+                currentPoint: freePoint,
+                originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })),
+              };
+            }
+          }
+        }
+        if (event.currentTarget.setPointerCapture) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
+        renderOverlay();
+        return;
+      }
+
+      const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
+      if (!point) return;
+
+      const needsText = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText && toolState.variant !== 'priceLabel';
+      if (needsText) {
+        pendingTextPointRef.current = point;
+        const variant = toolState.variant as Exclude<typeof toolState.variant, 'none'>;
+        pendingTextVariantRef.current = variant;
+        editingDrawingIdRef.current = null;
+        const iconPreset = selectedIconPreset && selectedIconPreset.variant === variant ? selectedIconPreset : null;
+        const sharedStyle = {
+          allowStyleControls: true,
+          styleOptions: {
+            font: toolState.options.font,
+            textSize: toolState.options.textSize,
+            bold: toolState.options.bold,
+            italic: toolState.options.italic,
+            align: toolState.options.align,
+            textBackground: toolState.options.textBackground,
+            textBorder: toolState.options.textBorder,
+          },
+        } as const;
+        setPromptRequest(
+          iconPreset
+            ? { title: iconPreset.title, label: iconPreset.label, defaultValue: iconPreset.defaultValue, preview: iconPreset.preview ?? true, ...sharedStyle }
+            : variant === 'emoji'
+              ? { title: 'Emoji', label: 'Enter emoji', defaultValue: '🚀', preview: true, ...sharedStyle }
+              : variant === 'sticker'
+                ? { title: 'Sticker', label: 'Enter sticker text', defaultValue: 'WAGMI', preview: true, ...sharedStyle }
+                : variant === 'iconTool'
+                  ? { title: 'Icon', label: 'Enter symbol', defaultValue: '★', preview: true, ...sharedStyle }
+                  : {
+                      title: activeDefinition?.label || 'Text',
+                      label: 'Enter text',
+                      defaultValue: activeDefinition?.label === 'Note' ? 'Note' : 'Text',
+                      preview: true,
+                      ...sharedStyle,
+                    },
+        );
+        return;
+      }
+
+      const text = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText ? '' : undefined;
+      const activeVariant = toolState.variant as Exclude<ToolVariant, 'none'>;
+      if (!isPointOnlyVariant(activeVariant) && !isWizardVariant(activeVariant)) {
+        draftPointerStartRef.current = { x: event.clientX, y: event.clientY, variant: activeVariant };
+      } else {
+        draftPointerStartRef.current = null;
+      }
+      const result = startDraft(point, text);
+      syncPatternWizardHint();
+      if (result.kind === 'finalized') {
+        draftPointerStartRef.current = null;
+        setPatternWizardHint(null);
+        const d = drawingsRef.current[drawingsRef.current.length - 1];
+        if (d) {
+          setSelectedDrawingId(d.id);
+          setHoveredDrawingId(d.id);
+          exitDrawingModeIfNeeded(d.variant);
         }
       }
       renderOverlay();
-      return;
-    }
-
-    if (toolState.variant === 'none') {
-      if (!freePoint) return;
-      const visibleRange = getVisibleTimeRange();
-      const visibleIds = visibleRange
-        ? new Set(drawingIndexRef.current.query(visibleRange))
-        : null;
-      const candidates = visibleIds
-        ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id))
-        : drawingsRef.current;
-
-      const selected = selectNearestDrawingId(candidates, freePoint);
-      setSelectedDrawingId(selected);
-      if (selected) {
-        const drawing = drawingsRef.current.find((item) => item.id === selected);
-        const drawingDefinition = drawing ? getToolDefinition(drawing.variant) : null;
-
-        if (
-          drawing
-          && drawingDefinition?.family === 'text'
-          && drawingDefinition.capabilities.supportsText
-          && event.detail >= 2
-        ) {
-          pendingTextPointRef.current = drawing.anchors[0] || freePoint;
-          pendingTextVariantRef.current = drawing.variant as Exclude<ToolVariant, 'none'>;
-          editingDrawingIdRef.current = drawing.id;
-          setPromptRequest({
-            title: `Edit ${drawingDefinition.label}`,
-            label: 'Update text',
-            defaultValue: drawing.text || '',
-            preview: true,
-            allowStyleControls: true,
-            styleOptions: {
-              font: drawing.options.font,
-              textSize: drawing.options.textSize,
-              bold: drawing.options.bold,
-              italic: drawing.options.italic,
-              align: drawing.options.align,
-              textBackground: drawing.options.textBackground,
-              textBorder: drawing.options.textBorder,
-            },
-          });
-          renderOverlay();
-          return;
-        }
-
-        if (drawing && !drawing.locked) {
-          const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - freePoint.time) < 86400 && Math.abs(a.price - freePoint.price) < Math.max(0.2, freePoint.price * 0.02));
-          if (idx >= 0) {
-            setDragAnchor({ drawingId: selected, anchorIndex: idx });
-            dragAnchorMoveRef.current = {
-              drawingId: selected,
-              anchorIndex: idx,
-              currentPoint: freePoint,
-              originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })),
-            };
-          } else {
-            dragMoveRef.current = { drawingId: selected, startPoint: freePoint, currentPoint: freePoint, originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })) };
-          }
-        }
-      }
       if (event.currentTarget.setPointerCapture) {
         event.currentTarget.setPointerCapture(event.pointerId);
       }
-      renderOverlay();
-      return;
-    }
-
-    const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
-    if (!point) return;
-
-    const needsText = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText && toolState.variant !== 'priceLabel';
-    if (needsText) {
-      pendingTextPointRef.current = point;
-      const variant = toolState.variant as Exclude<typeof toolState.variant, 'none'>;
-      pendingTextVariantRef.current = variant;
-      editingDrawingIdRef.current = null;
-      const iconPreset = selectedIconPreset && selectedIconPreset.variant === variant ? selectedIconPreset : null;
-      const sharedStyle = {
-        allowStyleControls: true,
-        styleOptions: {
-          font: toolState.options.font,
-          textSize: toolState.options.textSize,
-          bold: toolState.options.bold,
-          italic: toolState.options.italic,
-          align: toolState.options.align,
-          textBackground: toolState.options.textBackground,
-          textBorder: toolState.options.textBorder,
-        },
-      } as const;
-      setPromptRequest(
-        iconPreset
-          ? { title: iconPreset.title, label: iconPreset.label, defaultValue: iconPreset.defaultValue, preview: iconPreset.preview ?? true, ...sharedStyle }
-          : variant === 'emoji'
-            ? { title: 'Emoji', label: 'Enter emoji', defaultValue: '🚀', preview: true, ...sharedStyle }
-            : variant === 'sticker'
-              ? { title: 'Sticker', label: 'Enter sticker text', defaultValue: 'WAGMI', preview: true, ...sharedStyle }
-              : variant === 'iconTool'
-                ? { title: 'Icon', label: 'Enter symbol', defaultValue: '★', preview: true, ...sharedStyle }
-                : {
-                    title: activeDefinition?.label || 'Text',
-                    label: 'Enter text',
-                    defaultValue: activeDefinition?.label === 'Note' ? 'Note' : 'Text',
-                    preview: true,
-                    ...sharedStyle,
-                  },
-      );
-      return;
-    }
-
-    const text = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText ? '' : undefined;
-    const activeVariant = toolState.variant as Exclude<ToolVariant, 'none'>;
-    if (!isPointOnlyVariant(activeVariant) && !isWizardVariant(activeVariant)) {
-      draftPointerStartRef.current = { x: event.clientX, y: event.clientY, variant: activeVariant };
-    } else {
-      draftPointerStartRef.current = null;
-    }
-    const result = startDraft(point, text);
-    syncPatternWizardHint();
-    if (result.kind === 'finalized') {
-      draftPointerStartRef.current = null;
-      setPatternWizardHint(null);
-      const d = drawingsRef.current[drawingsRef.current.length - 1];
-      if (d) {
-        setSelectedDrawingId(d.id);
-        exitDrawingModeIfNeeded(d.variant);
-      }
-    }
-    renderOverlay();
-    if (event.currentTarget.setPointerCapture) {
-      event.currentTarget.setPointerCapture(event.pointerId);
+    } finally {
+      recordInteractionLatency('pointerdown', startedAt);
     }
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    const isEditingDrawing = Boolean(dragMoveRef.current || dragAnchor || dragAnchorMoveRef.current || drawingActiveRef.current);
-    if (!isEditingDrawing) {
-      updateHoverPoint(event.clientX, event.clientY);
-    }
-
-    const shouldUseFreePointer = Boolean(dragMoveRef.current) || (Boolean(dragAnchor) && !magnetMode);
-    const point = pointerToDataPoint(
-      event.clientX,
-      event.clientY,
-      shouldUseFreePointer ? 'free' : resolvePointerSnapMode(),
-      shouldUseFreePointer ? false : magnetMode,
-    ) || fallbackPoint();
-    if (!point) return;
-
-    if (dragMoveRef.current) {
-      dragMoveRef.current = { ...dragMoveRef.current, currentPoint: point };
-      renderOverlay();
-      return;
-    }
-
-    if (dragAnchor) {
-      const move = dragAnchorMoveRef.current;
-      if (move && move.drawingId === dragAnchor.drawingId && move.anchorIndex === dragAnchor.anchorIndex) {
-        dragAnchorMoveRef.current = { ...move, currentPoint: point };
+    const startedAt = performance.now();
+    try {
+      const isEditingDrawing = Boolean(dragMoveRef.current || dragAnchor || dragAnchorMoveRef.current || drawingActiveRef.current);
+      if (!isEditingDrawing) {
+        updateHoverPoint(event.clientX, event.clientY);
       }
-      renderOverlay();
-      return;
-    }
 
-    if (!drawingActiveRef.current) return;
-    updateDraft(point);
-    renderOverlay();
+      const shouldUseFreePointer = Boolean(dragMoveRef.current || dragAnchor || dragAnchorMoveRef.current);
+      const pointerPoint = pointerToDataPoint(
+        event.clientX,
+        event.clientY,
+        shouldUseFreePointer ? 'free' : resolvePointerSnapMode(),
+        shouldUseFreePointer ? false : magnetMode,
+      );
+      const point = pointerPoint ?? (drawingActiveRef.current ? fallbackPoint() : null);
+      if (!point) return;
+
+      if (dragMoveRef.current) {
+        dragMoveRef.current = { ...dragMoveRef.current, currentPoint: point };
+        renderOverlay();
+        return;
+      }
+
+      if (dragAnchor) {
+        const move = dragAnchorMoveRef.current;
+        if (move && move.drawingId === dragAnchor.drawingId && move.anchorIndex === dragAnchor.anchorIndex) {
+          dragAnchorMoveRef.current = { ...move, currentPoint: point };
+        }
+        renderOverlay();
+        return;
+      }
+
+      if (!drawingActiveRef.current) return;
+      updateDraft(point);
+      renderOverlay();
+    } finally {
+      recordInteractionLatency('pointermove', startedAt);
+    }
   };
 
   const onChartContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -2349,13 +2777,11 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const point = pointerToDataPoint(event.clientX, event.clientY, 'free', false) || fallbackPoint();
     if (!point) return;
 
-    const visibleRange = getVisibleTimeRange();
-    const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
-    const candidates = visibleIds ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id)) : drawingsRef.current;
-    const selected = selectNearestDrawingId(candidates, point);
+    const selected = resolveHitTarget(point, 'select', [selectedDrawingId, hoveredDrawingId]).id;
     if (!selected) return;
 
     setSelectedDrawingId(selected);
+    setHoveredDrawingId(selected);
     const drawing = drawingsRef.current.find((item) => item.id === selected);
     if (!drawing) {
       renderOverlay();
@@ -2384,99 +2810,123 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
     const showCrosshair = toolState.variant !== 'none' || (cursorMode !== 'arrow' && cursorMode !== 'demo');
     const hiddenColor = 'rgba(0, 0, 0, 0)';
+    const crosshairPalette = parityMode
+      ? {
+          vertColor: 'rgba(120, 123, 134, 0.75)',
+          horzColor: 'rgba(120, 123, 134, 0.75)',
+          vertLabel: '#787b86',
+          horzLabel: '#787b86',
+        }
+      : {
+          vertColor: 'rgba(0, 209, 255, 0.72)',
+          horzColor: 'rgba(255, 0, 0, 0.65)',
+          vertLabel: '#00d1ff',
+          horzLabel: '#ff0000',
+        };
+
     chart.applyOptions({
       crosshair: {
         vertLine: {
-          color: showCrosshair ? 'rgba(0, 209, 255, 0.72)' : hiddenColor,
+          color: showCrosshair ? crosshairPalette.vertColor : hiddenColor,
           width: 1,
           style: 2,
-          labelBackgroundColor: showCrosshair ? '#00d1ff' : hiddenColor,
+          labelBackgroundColor: showCrosshair ? crosshairPalette.vertLabel : hiddenColor,
         },
         horzLine: {
-          color: showCrosshair ? 'rgba(255, 0, 0, 0.65)' : hiddenColor,
+          color: showCrosshair ? crosshairPalette.horzColor : hiddenColor,
           width: 1,
           style: 2,
-          labelBackgroundColor: showCrosshair ? '#ff0000' : hiddenColor,
+          labelBackgroundColor: showCrosshair ? crosshairPalette.horzLabel : hiddenColor,
         },
       },
     });
 
     if (!showCrosshair) {
       setHoverPoint(null);
+      setHoveredDrawingId(null);
     }
-  }, [chartRef, cursorMode, toolState.variant]);
+  }, [chartRef, cursorMode, parityMode, toolState.variant]);
 
   const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser';
   const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];
 
   const onPointerUp = (event: React.PointerEvent<HTMLElement>) => {
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (dragMoveRef.current) {
-      const move = dragMoveRef.current;
-      const moved = drawingsRef.current.find((drawing) => drawing.id === move.drawingId);
-      if (moved && !moved.locked) {
-        const translated = translateAnchors(move.originalAnchors, move.startPoint, move.currentPoint);
-        if (translated.some((anchor, index) => anchor.time !== moved.anchors[index]?.time || anchor.price !== moved.anchors[index]?.price)) {
-          updateDrawing(move.drawingId, (drawing) => ({ ...drawing, anchors: translated }));
+    const startedAt = performance.now();
+    try {
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      if (dragMoveRef.current) {
+        const move = dragMoveRef.current;
+        const moved = drawingsRef.current.find((drawing) => drawing.id === move.drawingId);
+        if (moved && !moved.locked) {
+          const translated = translateAnchors(move.originalAnchors, move.startPoint, move.currentPoint);
+          if (translated.some((anchor, index) => anchor.time !== moved.anchors[index]?.time || anchor.price !== moved.anchors[index]?.price)) {
+            updateDrawing(move.drawingId, (drawing) => ({ ...drawing, anchors: translated }));
+          }
         }
-      }
-      dragMoveRef.current = null;
-      dragAnchorMoveRef.current = null;
-      draftPointerStartRef.current = null;
-      renderOverlay();
-      return;
-    }
-
-    if (dragAnchor) {
-      const move = dragAnchorMoveRef.current;
-      if (move && move.drawingId === dragAnchor.drawingId && move.anchorIndex === dragAnchor.anchorIndex) {
-        updateDrawing(move.drawingId, (drawing) => {
-          const next = move.originalAnchors.map((anchor) => ({ ...anchor }));
-          next[move.anchorIndex] = move.currentPoint;
-          const changed = next.some((anchor, index) => {
-            const current = drawing.anchors[index];
-            return !current || current.time !== anchor.time || current.price !== anchor.price;
-          });
-          return changed ? { ...drawing, anchors: next } : drawing;
-        });
-      }
-      dragAnchorMoveRef.current = null;
-      setDragAnchor(null);
-      draftPointerStartRef.current = null;
-      renderOverlay();
-      return;
-    }
-
-    if (drawingActiveRef.current && draftRef.current && isWizardVariant(draftRef.current.variant)) {
-      syncPatternWizardHint();
-      renderOverlay();
-      return;
-    }
-
-    const committed = finalizeDraft();
-    const start = draftPointerStartRef.current;
-    draftPointerStartRef.current = null;
-    if (committed && start && committed.variant === start.variant) {
-      const pointerDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
-      if (pointerDistance < 3) {
-        removeDrawing(committed.id);
-        setSelectedDrawingId(null);
+        dragMoveRef.current = null;
+        dragAnchorMoveRef.current = null;
+        draftPointerStartRef.current = null;
         renderOverlay();
         return;
       }
+
+      if (dragAnchor) {
+        const move = dragAnchorMoveRef.current;
+        if (move && move.drawingId === dragAnchor.drawingId && move.anchorIndex === dragAnchor.anchorIndex) {
+          updateDrawing(move.drawingId, (drawing) => {
+            const next = move.originalAnchors.map((anchor) => ({ ...anchor }));
+            next[move.anchorIndex] = move.currentPoint;
+            const changed = next.some((anchor, index) => {
+              const current = drawing.anchors[index];
+              return !current || current.time !== anchor.time || current.price !== anchor.price;
+            });
+            return changed ? { ...drawing, anchors: next } : drawing;
+          });
+        }
+        dragAnchorMoveRef.current = null;
+        setDragAnchor(null);
+        draftPointerStartRef.current = null;
+        renderOverlay();
+        return;
+      }
+
+      if (drawingActiveRef.current && draftRef.current && isWizardVariant(draftRef.current.variant)) {
+        syncPatternWizardHint();
+        renderOverlay();
+        return;
+      }
+
+      const committed = finalizeDraft();
+      const start = draftPointerStartRef.current;
+      draftPointerStartRef.current = null;
+      if (committed && start && committed.variant === start.variant) {
+        const pointerDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+        if (pointerDistance < 3) {
+          removeDrawing(committed.id);
+          setSelectedDrawingId(null);
+          if (hoveredDrawingId === committed.id) {
+            setHoveredDrawingId(null);
+          }
+          renderOverlay();
+          return;
+        }
+      }
+      if (toolState.variant === 'zoom' && committed?.anchors[1]) {
+        zoomToRange(committed.anchors[0].time, committed.anchors[1].time);
+        removeDrawing(committed.id);
+        exitDrawingModeIfNeeded(committed.variant);
+      } else if (committed) {
+        setPatternWizardHint(null);
+        setSelectedDrawingId(committed.id);
+        setHoveredDrawingId(committed.id);
+        exitDrawingModeIfNeeded(committed.variant);
+      }
+      renderOverlay();
+    } finally {
+      recordInteractionLatency('pointerup', startedAt);
     }
-    if (toolState.variant === 'zoom' && committed?.anchors[1]) {
-      zoomToRange(committed.anchors[0].time, committed.anchors[1].time);
-      removeDrawing(committed.id);
-      exitDrawingModeIfNeeded(committed.variant);
-    } else if (committed) {
-      setPatternWizardHint(null);
-      setSelectedDrawingId(committed.id);
-      exitDrawingModeIfNeeded(committed.variant);
-    }
-    renderOverlay();
   };
 
   const currentLegendSourcePoint = touchTooltip?.point ?? hoverPoint ?? null;
@@ -2602,10 +3052,17 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     handleVariantSelect('forecasting', 'priceRange');
   }, [handleVariantSelect]);
 
+  const handleClearAll = useCallback(() => {
+    clearDrawings();
+    setSelectedDrawingId(null);
+    setHoveredDrawingId(null);
+  }, [clearDrawings]);
+
   const handleDelete = useCallback(() => {
     if (selectedDrawingId) {
       removeDrawing(selectedDrawingId);
       setSelectedDrawingId(null);
+      setHoveredDrawingId((prev) => (prev === selectedDrawingId ? null : prev));
     }
   }, [removeDrawing, selectedDrawingId]);
 
@@ -2646,7 +3103,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     >
       <div className="flex min-h-0 h-full w-full flex-col">
       {/* Top bar + rail + chart in a flex layout */}
-      <ChartTopBar chartType={chartType} setChartType={setChartType} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} indicatorsOpen={indicatorsOpen} setIndicatorsOpen={setIndicatorsOpen} activeIndicatorsCount={enabledIndicators.length} treeOpen={treeOpen} setTreeOpen={setTreeOpen} selectedDrawingVariant={selectedDrawing?.variant ?? null} isMobile={isMobile} isFullView={fullView} onToggleFullView={handleToggleFullView} modalZIndex={topBarModalZIndex} />
+      <ChartTopBar chartType={chartType} setChartType={setChartType} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={handleClearAll} onExportPng={onExportPng} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} indicatorsOpen={indicatorsOpen} setIndicatorsOpen={setIndicatorsOpen} activeIndicatorsCount={enabledIndicators.length} treeOpen={treeOpen} setTreeOpen={setTreeOpen} selectedDrawingVariant={selectedDrawing?.variant ?? null} isMobile={isMobile} isFullView={fullView} onToggleFullView={handleToggleFullView} modalZIndex={topBarModalZIndex} />
 
       <div className="flex min-h-0 flex-1">
         {/* Tool Rail — thin left icon bar */}
@@ -2697,6 +3154,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             }}
             onMouseLeave={() => {
               setHoverPoint(null);
+              setHoveredDrawingId(null);
             }}
           >
             <div className="chart-wrapper h-full w-full touch-pan-y">
@@ -2851,7 +3309,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       </div>
 
       <div data-testid="drawing-badge" className="mt-1 rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xl">
-        {symbol} · {mode} · {chartType} · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
+        {symbol} · {mode} · {chartType} · bars {transformedData.ohlcRows.length}/{data.length} (visible {visibleCount}) · {toolState.drawings.length} drawing{toolState.drawings.length === 1 ? '' : 's'} · tool: {toolState.variant} · magnet: {magnetMode ? 'on' : 'off'}
       </div>
       </div>
     </div>

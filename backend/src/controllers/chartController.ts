@@ -18,6 +18,7 @@ const sourceSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   limit: z.coerce.number().int().positive().optional(),
+  dataMode: z.enum(["default", "parity-live"]).optional(),
   authToken: z.string().optional(),
 });
 

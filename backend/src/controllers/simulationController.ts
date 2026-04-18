@@ -20,6 +20,7 @@ const initSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   portfolioId: z.string().optional(),
+  dataMode: z.enum(["default", "parity-live"]).optional(),
 });
 
 const controlSchema = z.object({

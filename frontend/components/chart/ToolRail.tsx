@@ -241,9 +241,9 @@ export default function ToolRail({
       });
     };
     const onScroll = (e: Event) => {
-      // Allow scrolling within the submenu itself
+      // Keep the popover open while users pan/scroll the chart; just re-anchor it.
       if (submenuRef.current?.contains(e.target as Node)) return;
-      setExpandedCategory(null);
+      throttledPosition();
     };
     window.addEventListener('resize', throttledPosition);
     window.addEventListener('scroll', onScroll, true);
