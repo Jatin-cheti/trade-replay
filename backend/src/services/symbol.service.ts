@@ -135,7 +135,8 @@ function prioritizeMarketDataCompleteness(items: SymbolRegistryItem[]): SymbolRe
 function toQueueCompatibleType(type: SymbolType): "stock" | "crypto" | "forex" | "index" {
   if (type === "etf") return "stock";
   if (type === "derivative") return "index";
-  return type;
+  if (type === "bond" || type === "economy") return "stock";
+  return type as "stock" | "crypto" | "forex" | "index";
 }
 
 function toQueueItems(items: SymbolRegistryItem[]): Array<{

@@ -1,4 +1,4 @@
-﻿import { connectDB } from "./config/db";
+import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
 import { env } from "./config/env";
 import { CONFIG } from "./config/index";
@@ -42,25 +42,31 @@ async function bootstrap() {
   logger.info("bootstrap_connect_mongodb");
   await connectDB();
   logger.info("bootstrap_connect_redis");
-  await connectRedis();
+  try {
+    await connectRedis();
+  } catch (redisErr) {
+    logger.warn("redis_skipped_local_dev", {
+      error: redisErr instanceof Error ? redisErr.message : String(redisErr),
+    });
+  }
   await ensureSymbolsIngested();
   void preloadHotSymbolLogos();
   await bootstrapKafkaProducerOnly();
   logger.info("bootstrap_alerts");
   await bootstrapAlerts();
 
-  // ── Performance infrastructure: filter cache (fast, blocking) ──
+  // -- Performance infrastructure: filter cache (fast, blocking) --
   logger.info("bootstrap_perf_infra_start");
   await initFilterCache();
   await startInvalidationListener();
   logger.info("bootstrap_perf_infra_done");
 
-  // ── Non-blocking trie build — server starts while trie loads in background ──
+  // -- Non-blocking trie build � server starts while trie loads in background --
   initTrieSearch().catch((err: unknown) => {
     logger.warn("trie_build_failed", { error: err instanceof Error ? err.message : String(err) });
   });
 
-  // ── Non-blocking cache warmup — eliminates cold-start penalty ──
+  // -- Non-blocking cache warmup � eliminates cold-start penalty --
   warmScreenerCache().catch((err: unknown) => {
     logger.warn("cache_warmup_failed", { error: err instanceof Error ? err.message : String(err) });
   });

@@ -7,6 +7,23 @@ interface AssetAvatarProps {
   imgClassName?: string;
 }
 
+function normalizeAvatarClasses(input?: string): string {
+  const base = input?.trim() || "h-5 w-5 rounded-full object-cover ring-1 ring-border/70";
+  const withoutCover = base.replace(/\bobject-cover\b/g, "").replace(/\s+/g, " ").trim();
+  const hasContain = /\bobject-contain\b/.test(withoutCover);
+  const hasBackground = /\bbg-/.test(withoutCover);
+  const hasPadding = /\bp-/.test(withoutCover);
+
+  return [
+    withoutCover,
+    hasContain ? "" : "object-contain",
+    hasBackground ? "" : "bg-white/90",
+    hasPadding ? "" : "p-1",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function extractDomainFromClearbitUrl(src: string): string | null {
   const marker = "logo.clearbit.com/";
   const markerIndex = src.indexOf(marker);
@@ -38,6 +55,10 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
   const imageCandidates = useMemo(() => buildImageCandidates(src), [src]);
   const fallbackIcon = "/icons/exchange/default.svg";
   const currentSrc = imageCandidates[candidateIndex] || fallbackIcon;
+  const normalizedClassName = useMemo(
+    () => normalizeAvatarClasses(imgClassName ?? className),
+    [imgClassName, className],
+  );
 
   useEffect(() => {
     setImageFailed(false);
@@ -62,7 +83,7 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
         }
       }}
       referrerPolicy="no-referrer"
-      className={imgClassName ?? className ?? "h-5 w-5 rounded-full object-cover ring-1 ring-border/70"}
+      className={normalizedClassName}
     />
   );
 }

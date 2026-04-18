@@ -37,26 +37,6 @@ export async function emitLogoEnriched(payload: {
   });
 }
 
-export async function emitLogoMapped(payload: {
-  fullSymbol: string;
-  symbol: string;
-  logoUrl: string;
-  s3Url: string;
-  source: string;
-}): Promise<void> {
-  if (!env.KAFKA_ENABLED || !producer) return;
-
-  await producer.send({
-    topic: "logo.mapped",
-    messages: [
-      {
-        key: payload.fullSymbol,
-        value: JSON.stringify({ ...payload, timestamp: Date.now() }),
-      },
-    ],
-  });
-}
-
 export async function shutdownKafka(): Promise<void> {
   if (!producer) return;
   await producer.disconnect();

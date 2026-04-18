@@ -20,7 +20,7 @@ type ExpansionConfig = {
 
 const DEFAULTS: ExpansionConfig = {
   targetPerCycle: 300000,
-  maxUniverseSymbols: 60000,
+  maxUniverseSymbols: 3500000,
   baseLimit: 25000,
 };
 
@@ -28,7 +28,7 @@ type IngestRow = {
   symbol: string;
   exchange: string;
   name: string;
-  type: "stock" | "etf" | "crypto" | "forex" | "index" | "derivative" | "bond" | "economy";
+  type: "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
   country: string;
   currency: string;
   source: string;
@@ -284,8 +284,6 @@ function addMonths(base: Date, offset: number): Date {
 }
 
 async function expandSyntheticUniverse(config: Partial<ExpansionConfig> = {}): Promise<number> {
-  if (process.env.DISABLE_SYNTHETIC_EXPANSION === "true") return 0;
-
   const effective = { ...DEFAULTS, ...config };
   const total = await SymbolModel.estimatedDocumentCount();
   if (total >= effective.maxUniverseSymbols) return 0;

@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { Queue } from "bullmq";
 import { connectDB } from "../config/db";
-import { connectRedis, redisConnectionOptions } from "../config/redis";
+import { connectRedis, redisQueueConnectionOptions } from "../config/redis";
 import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   await connectRedis();
 
   const queue = new Queue(QUEUE_NAME, {
-    connection: redisConnectionOptions,
+    connection: redisQueueConnectionOptions,
   });
 
   const totalAll = await SymbolModel.estimatedDocumentCount();

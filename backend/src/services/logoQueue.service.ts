@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
 import { isRedisReady, redisClient } from "../config/redis";
-import { redisConnectionOptions } from "../config/redis";
+import { redisQueueConnectionOptions } from "../config/redis";
 import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 import { clusterScopedKey } from "./redisKey.service";
@@ -53,7 +53,7 @@ function getLogoQueue(): Queue<QueueSymbol> {
   if (queue) return queue;
 
   queue = new Queue<QueueSymbol>(LOGO_QUEUE_NAME, {
-    connection: redisConnectionOptions,
+    connection: redisQueueConnectionOptions,
     defaultJobOptions: {
       attempts: 1,
       removeOnComplete: 5000,

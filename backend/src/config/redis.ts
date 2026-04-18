@@ -26,10 +26,26 @@ function parseRedisUrl(url: string): RedisOptions {
   };
 }
 
+// ── DB-separated connection options ──────────────────────────────────
+// DB 0: main cache/shards  |  DB 1: BullMQ queues  |  DB 2: pub/sub
 export const redisConnectionOptions = parseRedisUrl(env.REDIS_URL);
+export const redisQueueConnectionOptions = parseRedisUrl(env.REDIS_URL_QUEUE);
+export const redisPubsubConnectionOptions = parseRedisUrl(env.REDIS_URL_PUBSUB);
 
 const redisClientOptions: RedisOptions = {
   ...redisConnectionOptions,
+  lazyConnect: true,
+  maxRetriesPerRequest: 2,
+  enableReadyCheck: true,
+  enableOfflineQueue: false,
+  retryStrategy: (times: number) => {
+    if (times > REDIS_CONNECT_RETRIES) return null;
+    return Math.min(times * REDIS_RETRY_DELAY_MS, 5000);
+  },
+};
+
+const pubsubClientOptions: RedisOptions = {
+  ...redisPubsubConnectionOptions,
   lazyConnect: true,
   maxRetriesPerRequest: 2,
   enableReadyCheck: true,
@@ -45,8 +61,8 @@ function createRedisClient(): IORedis {
 }
 
 export const redisClient = createRedisClient();
-export const redisPublisher = redisClient.duplicate(redisClientOptions);
-export const redisSubscriber = redisClient.duplicate(redisClientOptions);
+export const redisPublisher = new IORedis(env.REDIS_URL_PUBSUB, { ...pubsubClientOptions });
+export const redisSubscriber = new IORedis(env.REDIS_URL_PUBSUB, { ...pubsubClientOptions });
 
 function logRedisErrorOnce(channel: string): void {
   if (hasLoggedRedisError) return;
@@ -177,7 +193,7 @@ async function configureRedisMemoryPolicy(): Promise<void> {
   if (!isRedisReady()) return;
   try {
     const maxmem = process.env.REDIS_MAXMEMORY || "256mb";
-    const policy = process.env.REDIS_MAXMEMORY_POLICY || "allkeys-lru";
+    const policy = process.env.REDIS_MAXMEMORY_POLICY || "noeviction";
     await redisClient.config("SET", "maxmemory", maxmem);
     await redisClient.config("SET", "maxmemory-policy", policy);
     logger.info("redis_memory_configured", { maxmemory: maxmem, policy });

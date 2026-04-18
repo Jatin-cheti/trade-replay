@@ -136,7 +136,7 @@ export function createSymbolController() {
             .select({ symbol: 1, fullSymbol: 1, name: 1, type: 1, exchange: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1, logoVerificationStatus: 1, logoQualityScore: 1 })
             .limit(10)
             .lean();
-          const results = docs.map((d) => verifySymbolLogo(d));
+          const results = docs.map((d) => verifySymbolLogo(d as any));
           res.json({ symbol, count: results.length, results });
           return;
         }

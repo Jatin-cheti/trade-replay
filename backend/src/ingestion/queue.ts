@@ -5,7 +5,7 @@
  * so rate-limiting doesn't block the rest of the pipeline.
  */
 import { Queue, type JobsOptions } from "bullmq";
-import { redisConnectionOptions } from "../config/redis";
+import { redisQueueConnectionOptions } from "../config/redis";
 import { logger } from "../utils/logger";
 
 export const INGESTION_QUEUE_NAME = "ingestion-jobs";
@@ -22,7 +22,7 @@ let ingestionQueue: Queue | null = null;
 export function getIngestionQueue(): Queue {
   if (ingestionQueue) return ingestionQueue;
   ingestionQueue = new Queue(INGESTION_QUEUE_NAME, {
-    connection: redisConnectionOptions,
+    connection: redisQueueConnectionOptions,
     defaultJobOptions: defaultJobOpts,
   });
   return ingestionQueue;

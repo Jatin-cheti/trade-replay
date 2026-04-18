@@ -389,6 +389,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     resetPortfolio();
   }, [resetPortfolio]);
 
+  useEffect(() => {
+    if (isAuthenticated && appReady) {
+      void initializeSimulation();
+    }
+  }, [isAuthenticated, appReady, initializeSimulation]);
+
   return (
     <AppContext.Provider value={{
       isAuthenticated, username, token, currency, balance, holdings, trades,

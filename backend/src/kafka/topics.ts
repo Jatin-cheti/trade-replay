@@ -12,12 +12,6 @@
   LOGO_RESOLVE: "logo.resolve",
   LOGO_RETRY: "logo.retry",
   LOGO_COMPLETED: "logo.completed",
-  // ── Asset + Logo lifecycle events ──────────────────────────────────
-  ASSET_CREATED: "asset.created",
-  ASSET_UPDATED: "asset.updated",
-  LOGO_MAPPED: "logo.mapped",
-  // ── Search behaviour events ────────────────────────────────────────
-  SEARCH_CLICK: "search.click",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
@@ -140,34 +134,4 @@ export interface LogoCompletedPayload {
   domain: string;
   source: string;
   confidence: number;
-}
-
-// ── Asset lifecycle payloads ─────────────────────────────────────────
-
-export interface AssetCreatedPayload {
-  fullSymbol: string;
-  symbol: string;
-  name: string;
-  exchange: string;
-  type: string;
-  source: string;
-}
-
-export interface AssetUpdatedPayload {
-  fullSymbol: string;
-  symbol: string;
-  fields: string[];
-  source: string;
-}
-
-// ── Search behaviour payloads ────────────────────────────────────────
-
-export interface SearchClickPayload {
-  eventId: string;
-  timestamp: number;
-  query: string;
-  symbol: string;
-  exchange: string;
-  position: number;
-  userId?: string;
 }

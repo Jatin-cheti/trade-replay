@@ -37,109 +37,56 @@ export interface FullSymbolData {
   changePercent: number;
   volume: number;
 
-  // Fundamentals
-  marketCap: number;
-  pe: number;
-  eps: number;
-  dividendYield: number;
-  netIncome: number;
-  revenue: number;
-  sharesFloat: number;
-  beta: number;
-  revenueGrowth: number;
-  roe: number;
+  // Fundamentals (null = data not available)
+  marketCap: number | null;
+  pe: number | null;
+  eps: number | null;
+  dividendYield: number | null;
+  netIncome: number | null;
+  revenue: number | null;
+  sharesFloat: number | null;
+  beta: number | null;
+  revenueGrowth: number | null;
+  roe: number | null;
 
   // Meta
   logoSource: string;
   isSynthetic: boolean;
 }
 
-/* ── Deterministic hash for consistent fundamentals ────────────────── */
-
-function symbolHash(str: string): number {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function seededRandom(seed: number, index: number): number {
-  const x = Math.sin(seed + index * 127.1) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-/* ── Fundamentals Generator ────────────────────────────────────────── */
+/* ── Fundamentals (real data only — no synthetic generation) ────────── */
 
 interface Fundamentals {
-  marketCap: number;
-  pe: number;
-  eps: number;
-  dividendYield: number;
-  netIncome: number;
-  revenue: number;
-  sharesFloat: number;
-  beta: number;
-  revenueGrowth: number;
-  roe: number;
+  marketCap: number | null;
+  pe: number | null;
+  eps: number | null;
+  dividendYield: number | null;
+  netIncome: number | null;
+  revenue: number | null;
+  sharesFloat: number | null;
+  beta: number | null;
+  revenueGrowth: number | null;
+  roe: number | null;
 }
 
-const TYPE_PROFILES: Record<string, {
-  mcapRange: [number, number];
-  peRange: [number, number];
-  divRange: [number, number];
-  betaRange: [number, number];
-}> = {
-  stock: { mcapRange: [50, 3_000_000], peRange: [5, 80], divRange: [0, 5], betaRange: [0.3, 2.5] },
-  etf: { mcapRange: [100, 500_000], peRange: [10, 40], divRange: [0.5, 8], betaRange: [0.5, 1.5] },
-  crypto: { mcapRange: [1, 1_200_000], peRange: [0, 0], divRange: [0, 0], betaRange: [1.0, 4.0] },
-  forex: { mcapRange: [0, 0], peRange: [0, 0], divRange: [0, 0], betaRange: [0.1, 1.0] },
-  index: { mcapRange: [0, 0], peRange: [12, 35], divRange: [1, 4], betaRange: [0.8, 1.2] },
-  bond: { mcapRange: [0, 0], peRange: [0, 0], divRange: [2, 7], betaRange: [0.05, 0.5] },
-  economy: { mcapRange: [0, 0], peRange: [0, 0], divRange: [0, 0], betaRange: [0, 0] },
-  futures: { mcapRange: [0, 0], peRange: [0, 0], divRange: [0, 0], betaRange: [0.5, 3.0] },
-};
-
-function generateFundamentals(symbol: string, type: string, price: number, existingMcap: number): Fundamentals {
-  const hash = symbolHash(symbol);
-  const profile = TYPE_PROFILES[type] || TYPE_PROFILES.stock;
-  const r = (i: number) => seededRandom(hash, i);
-
-  let marketCap = existingMcap;
-  if (marketCap <= 0 && profile.mcapRange[1] > 0) {
-    const logMin = Math.log(profile.mcapRange[0] * 1e6);
-    const logMax = Math.log(profile.mcapRange[1] * 1e6);
-    marketCap = Math.exp(logMin + r(0) * (logMax - logMin));
-  }
-
-  let pe = 0;
-  if (profile.peRange[1] > 0) {
-    pe = +(profile.peRange[0] + r(1) * (profile.peRange[1] - profile.peRange[0])).toFixed(2);
-  }
-
-  const eps = pe > 0 && price > 0 ? +(price / pe).toFixed(2) : 0;
-
-  let dividendYield = 0;
-  if (profile.divRange[1] > 0) {
-    dividendYield = +(profile.divRange[0] + r(2) * (profile.divRange[1] - profile.divRange[0])).toFixed(2);
-  }
-
-  const sharesFloat = price > 0 && marketCap > 0 ? Math.round(marketCap / price) : 0;
-
-  const pSales = 2 + r(3) * 6;
-  const revenue = marketCap > 0 ? Math.round(marketCap / pSales) : 0;
-  const netMargin = 0.05 + r(4) * 0.25;
-  const netIncome = revenue > 0 ? Math.round(revenue * netMargin) : 0;
-
-  let beta = 0;
-  if (profile.betaRange[1] > 0) {
-    beta = +(profile.betaRange[0] + r(5) * (profile.betaRange[1] - profile.betaRange[0])).toFixed(2);
-  }
-
-  const revenueGrowth = +(-0.10 + r(6) * 0.50).toFixed(2);
-  const roe = marketCap > 0 ? +(0.05 + r(7) * 0.30).toFixed(2) : 0;
-
-  return { marketCap, pe, eps, dividendYield, netIncome, revenue, sharesFloat, beta, revenueGrowth, roe };
+/**
+ * Extract fundamentals from the DB document.
+ * Only uses fields that actually exist in the data layer.
+ * Returns null for fields not available — never fabricates values.
+ */
+function extractFundamentals(doc: any): Fundamentals {
+  return {
+    marketCap: typeof doc.marketCap === "number" && doc.marketCap > 0 ? doc.marketCap : null,
+    pe: typeof doc.pe === "number" && doc.pe > 0 ? doc.pe : null,
+    eps: typeof doc.eps === "number" ? doc.eps : null,
+    dividendYield: typeof doc.dividendYield === "number" && doc.dividendYield > 0 ? doc.dividendYield : null,
+    netIncome: typeof doc.netIncome === "number" ? doc.netIncome : null,
+    revenue: typeof doc.revenue === "number" && doc.revenue > 0 ? doc.revenue : null,
+    sharesFloat: typeof doc.sharesFloat === "number" && doc.sharesFloat > 0 ? doc.sharesFloat : null,
+    beta: typeof doc.beta === "number" ? doc.beta : null,
+    revenueGrowth: typeof doc.revenueGrowth === "number" ? doc.revenueGrowth : null,
+    roe: typeof doc.roe === "number" ? doc.roe : null,
+  };
 }
 
 /* ── Price Resolution ──────────────────────────────────────────────── */
@@ -244,12 +191,11 @@ export async function getFullSymbolData(fullSymbol: string): Promise<FullSymbolD
       clearLogoFailure(doc.symbol).catch(() => {});
     }
 
-    const effectivePrice = priceData.price > 0 ? priceData.price : 100;
-    const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
+    const fundamentals = extractFundamentals(doc);
 
     const volume = priceData.volume > 0 ? priceData.volume
       : (doc.volume || 0) > 0 ? doc.volume
-      : Math.round(100_000 + symbolHash(doc.symbol) % 900_000);
+      : 0;
 
     return {
       symbol: doc.symbol,
@@ -345,11 +291,10 @@ export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]
         trackLogoFailure(doc.symbol, { name: doc.name, exchange: doc.exchange, type: doc.type, tier: logo.logoTier }).catch(() => {});
       }
 
-      const effectivePrice = priceData.price > 0 ? priceData.price : 100;
-      const fundamentals = generateFundamentals(doc.symbol, doc.type, effectivePrice, doc.marketCap || 0);
+      const fundamentals = extractFundamentals(doc);
       const volume = priceData.volume > 0 ? priceData.volume
         : (doc.volume || 0) > 0 ? doc.volume
-        : Math.round(100_000 + symbolHash(doc.symbol) % 900_000);
+        : 0;
 
       const entry: FullSymbolData = {
         symbol: doc.symbol,
