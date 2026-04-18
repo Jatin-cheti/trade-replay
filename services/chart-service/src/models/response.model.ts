@@ -1,0 +1,16 @@
+export interface ApiSuccess<T> {
+  ok: true;
+  data: T;
+  meta?: Record<string, unknown>;
+}
+
+export interface ApiError {
+  ok: false;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+export type ApiResponse<T> = ApiSuccess<T> | ApiError;
