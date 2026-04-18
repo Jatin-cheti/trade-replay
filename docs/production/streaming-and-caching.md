@@ -26,17 +26,22 @@ A request in SWR grace serves stale payload and schedules background refresh.
 
 ## Endpoints
 
-- `POST /compute/indicators`
-- `POST /transform`
-- `POST /bundle`
+- `POST /api/chart/compute/indicators`
+- `POST /api/chart/transform`
+- `POST /api/chart/bundle`
+- `GET /api/chart/candles`
+- `GET /api/chart/realtime/:symbol`
 - `GET /health`
-- `GET /metrics`
 
 Backend proxy routes:
 
 - `POST /api/chart/compute/indicators`
 - `POST /api/chart/transform`
 - `POST /api/chart/bundle`
+
+Public Nginx health route:
+
+- `GET /api/chart/health` (proxied to chart-service `/health`)
 
 ## Streaming
 
@@ -81,7 +86,7 @@ Backend variables:
 Compute indicators:
 
 ```bash
-curl -X POST http://localhost:4010/compute/indicators \
+curl -X POST http://localhost:4010/api/chart/compute/indicators \
   -H "content-type: application/json" \
   -d '{
     "source": {"symbol":"AAPL","timeframe":"1m","from":"2025-01-01T00:00:00.000Z","to":"2025-01-01T01:00:00.000Z"},
@@ -92,7 +97,7 @@ curl -X POST http://localhost:4010/compute/indicators \
 Compute bundle:
 
 ```bash
-curl -X POST http://localhost:4010/bundle \
+curl -X POST http://localhost:4010/api/chart/bundle \
   -H "content-type: application/json" \
   -d '{
     "source": {"symbol":"AAPL","timeframe":"1m","from":"2025-01-01T00:00:00.000Z","to":"2025-01-01T01:00:00.000Z"},

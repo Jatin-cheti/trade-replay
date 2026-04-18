@@ -1,4 +1,37 @@
 import { z } from "zod";
+import dotenv from "dotenv";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+function loadOptionalSecrets(): void {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const explicitPath = process.env.CHART_SERVICE_SECRETS_PATH;
+  const candidates = [
+    explicitPath,
+    path.resolve(here, "../../../../.env.secrets"),
+    path.resolve(here, "../../../.env.secrets"),
+    path.resolve(process.cwd(), ".env.secrets"),
+  ].filter((value): value is string => Boolean(value));
+
+  const visited = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = path.resolve(candidate);
+    if (visited.has(normalized)) {
+      continue;
+    }
+    visited.add(normalized);
+
+    if (!fs.existsSync(normalized)) {
+      continue;
+    }
+
+    dotenv.config({ path: normalized, override: false });
+    break;
+  }
+}
+
+loadOptionalSecrets();
 
 const boolFromEnv = z.preprocess((value) => {
   if (typeof value === "string") {
