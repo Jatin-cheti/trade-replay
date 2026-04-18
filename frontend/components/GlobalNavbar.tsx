@@ -145,15 +145,19 @@ export default function GlobalNavbar() {
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (!screenerOpen) return;
+      if (!screenerOpen || !screenerMenuRef.current) return;
       const target = event.target as Node;
-      if (screenerMenuRef.current && !screenerMenuRef.current.contains(target)) {
-        setScreenerOpen(false);
-      }
+      const button = screenerMenuRef.current.querySelector("button[type='button']");
+      if (button && button.contains(target)) return;
+      const submenu = screenerMenuRef.current.querySelector("div[class*='absolute']");
+      if (submenu && submenu.contains(target)) return;
+      setScreenerOpen(false);
     };
 
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    if (screenerOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      return () => document.removeEventListener("mousedown", handleOutsideClick);
+    }
   }, [screenerOpen]);
 
   const homeNavItem = useMemo<NavItem>(() => ({
