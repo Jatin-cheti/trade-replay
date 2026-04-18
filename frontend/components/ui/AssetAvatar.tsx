@@ -43,7 +43,7 @@ function extractDomainFromGoogleFavicon(src: string): string | null {
 function buildImageCandidates(src?: string): string[] {
   if (!src) return [];
 
-  // Extract domain from any known URL pattern
+  // Extract domain only from known logo-service URLs
   let domain: string | null = null;
 
   const clearbitDomain = extractDomainFromClearbitUrl(src);
@@ -54,24 +54,18 @@ function buildImageCandidates(src?: string): string[] {
     if (googleDomain) domain = googleDomain;
   }
 
-  if (!domain) {
-    try {
-      const parsed = new URL(src);
-      if (parsed.hostname !== "www.google.com" && parsed.hostname !== "icons.duckduckgo.com") {
-        domain = parsed.hostname;
-      }
-    } catch { /* not a URL */ }
+  // If domain was extracted from a logo service, build a fallback chain
+  if (domain) {
+    const encoded = encodeURIComponent(domain);
+    return [
+      src,
+      `https://www.google.com/s2/favicons?sz=128&domain=${encoded}`,
+      `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+    ];
   }
 
-  if (!domain) return [src];
-
-  const encoded = encodeURIComponent(domain);
-  return [
-    `https://logo.clearbit.com/${domain}?size=128`,
-    `https://www.google.com/s2/favicons?sz=128&domain=${encoded}`,
-    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-    src,
-  ];
+  // For direct image URLs (CloudFront, S3, etc.), use as-is
+  return [src];
 }
 
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {
