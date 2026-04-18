@@ -254,6 +254,48 @@
 }
 
 @layer components {
+  .screener-flash-up {
+    animation: screenerFlashGreen 1s ease-out;
+  }
+
+  .screener-flash-down {
+    animation: screenerFlashRed 1s ease-out;
+  }
+
+  @keyframes screenerFlashGreen {
+    0% { background-color: rgba(38, 166, 154, 0.35); }
+    100% { background-color: transparent; }
+  }
+
+  @keyframes screenerFlashRed {
+    0% { background-color: rgba(239, 83, 80, 0.35); }
+    100% { background-color: transparent; }
+  }
+
+  @media (max-width: 768px) {
+    .screener-filter-bar {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .screener-filter-bar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .screener-tab-bar {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .screener-tab-bar::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
   .vanta-transform {
     will-change: transform;
     transition: transform 0.2s ease-out;

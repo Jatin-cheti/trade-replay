@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -166,7 +167,12 @@ const DEFAULT_VISIBLE_COLUMNS = [
   "analystRating",
 ];
 
-const DEFAULT_FILTER_KEYS = ["marketCountries", "watchlists", "indices", "primaryListingOnly"];
+const DEFAULT_FILTER_KEYS = [
+  "marketCountries", "watchlists", "indices",
+  "price", "changePercent", "marketCap", "pe", "epsDilGrowth",
+  "divYieldPercent", "sector", "analystRating", "perfPercent", "revenueGrowth",
+  "peg", "roe", "beta", "recentEarningsDate", "upcomingEarningsDate",
+];
 const BATCH_SIZE = 50;
 
 const MULTI_FILTER_KEYS = ["marketCountries", "exchanges", "watchlists", "indices", "sector", "analystRating"];
@@ -235,6 +241,17 @@ const NUMERIC_COLUMNS = new Set([
   "sharesFloat",
 ]);
 
+const FALLBACK_FILTER_CATEGORY_LABELS: Record<string, string> = {
+  "security-info": "Security info",
+  "market-data": "Market data",
+  technicals: "Technicals",
+  financials: "Financials",
+  valuation: "Valuation",
+  growth: "Growth",
+  margins: "Margins",
+  dividends: "Dividends",
+};
+
 function parseCsv(value: string | null): string[] {
   if (!value) return [];
   return value
@@ -277,6 +294,44 @@ function formatDateValue(value?: string): string {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" });
+}
+
+/* ── Flag image helper (cross-platform, works on Windows) ── */
+function flagEmojiToCountryCode(flag: string): string {
+  const points = [...flag];
+  if (points.length !== 2) return "";
+  const a = (points[0].codePointAt(0) ?? 0) - 0x1F1E6 + 65;
+  const b = (points[1].codePointAt(0) ?? 0) - 0x1F1E6 + 65;
+  if (a < 65 || a > 90 || b < 65 || b > 90) return "";
+  return String.fromCharCode(a) + String.fromCharCode(b);
+}
+
+function CountryFlagImg({ code, size = 16 }: { code: string; size?: number }) {
+  let cc = code;
+  if (code.length > 2) {
+    const decoded = flagEmojiToCountryCode(code);
+    if (decoded) {
+      cc = decoded;
+    } else {
+      return <span className="inline-flex items-center justify-center" style={{ width: size, height: size, fontSize: size * 0.85 }}>{code}</span>;
+    }
+  }
+  if (!cc || cc === "WORLD" || cc === "OTHER") {
+    return <span className="inline-flex items-center justify-center" style={{ width: size, height: size, fontSize: size * 0.85 }}>{"\u{1F310}"}</span>;
+  }
+  const h = Math.round(size * 0.75);
+  return (
+    <img
+      src={`https://flagcdn.com/w40/${cc.toLowerCase()}.png`}
+      srcSet={`https://flagcdn.com/w80/${cc.toLowerCase()}.png 2x`}
+      alt={cc}
+      width={size}
+      height={h}
+      className="inline-block rounded-[2px] object-cover"
+      style={{ width: size, height: h, minWidth: size }}
+      loading="lazy"
+    />
+  );
 }
 
 function getMultiParamName(filterKey: string): string {
@@ -622,7 +677,7 @@ function CountryFilterEditor({
         }`}
       >
         <input type="checkbox" checked={checked} readOnly className="pointer-events-none h-3.5 w-3.5 rounded border-border accent-primary" />
-        <span className="text-sm">{flag}</span>
+        <CountryFlagImg code={value} size={18} />
         <span className="truncate">{name}</span>
       </button>
     );
@@ -827,7 +882,7 @@ function IndexFilterEditor({
               onClick={() => toggleCollapse(group.region)}
               className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 transition-colors hover:bg-secondary/30"
             >
-              <span className="text-sm">{group.flag}</span>
+              <CountryFlagImg code={group.flag} size={16} />
               <span>{group.region}</span>
               <ChevronDown className={`ml-auto h-3 w-3 transition-transform ${collapsed.has(group.region) ? "-rotate-90" : ""}`} />
             </button>
@@ -1126,6 +1181,7 @@ export default function Screener() {
   const [stats, setStats] = useState<ScreenerStatsResponse | null>(null);
 
   const [items, setItems] = useState<ScreenerItem[]>([]);
+  const [flashBySymbol, setFlashBySymbol] = useState<Record<string, "up" | "down">>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1154,6 +1210,8 @@ export default function Screener() {
   const offsetRef = useRef(0);
   const prefetchInFlightRef = useRef(false);
   const prefetchedRef = useRef<{ key: string; offset: number; payload: ScreenerListResponse } | null>(null);
+  const previousPricesRef = useRef<Map<string, number>>(new Map());
+  const flashClearTimerRef = useRef<number | null>(null);
 
   const typeMenuRef = useRef<HTMLDivElement | null>(null);
   const screenMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1540,7 +1598,32 @@ export default function Screener() {
       const payload = await fetchBatch(0);
       if (fetchCounterRef.current !== fetchId || fetchKeyRef.current !== key) return;
 
+      const nextPrices = new Map<string, number>();
+      const nextFlash: Record<string, "up" | "down"> = {};
+      payload.items.forEach((entry) => {
+        const symbolKey = entry.fullSymbol || entry.symbol;
+        const previousPrice = previousPricesRef.current.get(symbolKey);
+        if (typeof previousPrice === "number" && Number.isFinite(previousPrice) && Number.isFinite(entry.price) && entry.price !== previousPrice) {
+          nextFlash[symbolKey] = entry.price > previousPrice ? "up" : "down";
+        }
+        nextPrices.set(symbolKey, entry.price);
+      });
+
       setItems(payload.items);
+      previousPricesRef.current = nextPrices;
+
+      if (flashClearTimerRef.current !== null) {
+        window.clearTimeout(flashClearTimerRef.current);
+        flashClearTimerRef.current = null;
+      }
+      setFlashBySymbol(nextFlash);
+      if (Object.keys(nextFlash).length > 0) {
+        flashClearTimerRef.current = window.setTimeout(() => {
+          setFlashBySymbol({});
+          flashClearTimerRef.current = null;
+        }, 900);
+      }
+
       setTotal(payload.total);
       hasMoreRef.current = payload.hasMore;
       offsetRef.current = payload.offset + payload.items.length;
@@ -1567,6 +1650,22 @@ export default function Screener() {
   useEffect(() => {
     void refreshListRef.current();
   }, [requestKey]);
+
+  useEffect(() => {
+    const pollTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshListRef.current();
+      }
+    }, 12000);
+
+    return () => {
+      window.clearInterval(pollTimer);
+      if (flashClearTimerRef.current !== null) {
+        window.clearTimeout(flashClearTimerRef.current);
+        flashClearTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMoreRef.current) return;
@@ -1701,7 +1800,7 @@ export default function Screener() {
     [visibleColumns],
   );
 
-  const tableMinWidth = Math.max(920, visibleColumns.length * 130);
+  const tableMinWidth = Math.max(920, (visibleColumns.length * 130) + 36);
 
   const updateSelectedColumns = (nextColumns: string[]) => {
     const deduped = dedupe(nextColumns);
@@ -1719,6 +1818,44 @@ export default function Screener() {
       return field.label.toLowerCase().includes(needle) || field.category.toLowerCase().includes(needle);
     });
   }, [addFilterSearch, meta]);
+
+  const groupedAddFilterFields = useMemo(() => {
+    const categoryLabelLookup = new Map<string, string>();
+    (meta?.filterCategories || []).forEach((entry) => categoryLabelLookup.set(entry.key, entry.label));
+
+    const order = [
+      ...(meta?.filterCategories || []).map((entry) => entry.key),
+      ...Object.keys(FALLBACK_FILTER_CATEGORY_LABELS),
+    ];
+
+    const groups = new Map<string, ScreenerFilterField[]>();
+    availableAddFilterFields.forEach((field) => {
+      const key = field.category || "other";
+      const list = groups.get(key) || [];
+      list.push(field);
+      groups.set(key, list);
+      if (!categoryLabelLookup.has(key)) {
+        categoryLabelLookup.set(key, FALLBACK_FILTER_CATEGORY_LABELS[key] || key.replace(/-/g, " "));
+      }
+    });
+
+    const seen = new Set<string>();
+    const orderedKeys = order.filter((key) => {
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return groups.has(key);
+    });
+
+    for (const key of groups.keys()) {
+      if (!seen.has(key)) orderedKeys.push(key);
+    }
+
+    return orderedKeys.map((key) => ({
+      key,
+      label: categoryLabelLookup.get(key) || key,
+      fields: groups.get(key) || [],
+    }));
+  }, [availableAddFilterFields, meta]);
 
   const availableAddColumnFields = useMemo(() => {
     const needle = addColumnSearch.toLowerCase();
@@ -1814,15 +1951,40 @@ export default function Screener() {
       );
     }
 
-    if (columnKey === "changePercent" || columnKey === "perfPercent") {
+    if (columnKey === "changePercent" || columnKey === "perfPercent" || columnKey === "epsDilGrowth") {
       const raw = item[columnKey as keyof ScreenerItem];
       if (raw === null || raw === undefined) return <span className="text-xs text-muted-foreground">—</span>;
       const num = Number(raw);
+      if (!Number.isFinite(num) || num === 0) return <span className="text-xs text-muted-foreground">—</span>;
       const positive = num > 0;
       const negative = num < 0;
       return (
         <span className={`text-xs font-semibold tabular-nums ${positive ? "text-emerald-400" : ""} ${negative ? "text-red-400" : "text-muted-foreground"}`}>
           {formatPercent(num)}
+        </span>
+      );
+    }
+
+    if (columnKey === "analystRating") {
+      const rating = item.analystRating;
+      if (!rating) return <span className="text-xs text-muted-foreground">—</span>;
+      const ratingConfigs: Record<string, { icon: string; color: string; label: string }> = {
+        "strong-buy":  { icon: "↑", color: "#26a69a", label: "Strong buy" },
+        "Strong Buy":  { icon: "↑", color: "#26a69a", label: "Strong buy" },
+        "buy":         { icon: "↑", color: "#26a69a", label: "Buy" },
+        "Buy":         { icon: "↑", color: "#26a69a", label: "Buy" },
+        "neutral":     { icon: "—", color: "#9598a1", label: "Neutral" },
+        "Neutral":     { icon: "—", color: "#9598a1", label: "Neutral" },
+        "sell":        { icon: "↓", color: "#ef5350", label: "Sell" },
+        "Sell":        { icon: "↓", color: "#ef5350", label: "Sell" },
+        "strong-sell": { icon: "↓", color: "#ef5350", label: "Strong sell" },
+        "Strong Sell": { icon: "↓", color: "#ef5350", label: "Strong sell" },
+      };
+      const cfg = ratingConfigs[rating] ?? { icon: "—", color: "#9598a1", label: rating };
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs font-medium" style={{ color: cfg.color }}>
+          <span>{cfg.icon}</span>
+          <span>{cfg.label}</span>
         </span>
       );
     }
@@ -1842,11 +2004,25 @@ export default function Screener() {
       const num = Number(raw);
       if (!Number.isFinite(num) || num === 0) return <span className="text-xs text-muted-foreground">—</span>;
 
-      if (columnKey === "pe" || columnKey === "peg" || columnKey === "beta" || columnKey === "roe" || columnKey === "relVolume" || columnKey === "epsDilTtm" || columnKey === "epsDilGrowth" || columnKey === "divYieldPercent") {
+      if (columnKey === "pe" || columnKey === "peg" || columnKey === "beta" || columnKey === "roe" || columnKey === "relVolume" || columnKey === "epsDilTtm") {
         return <span className="text-xs tabular-nums text-foreground">{num.toFixed(2)}</span>;
       }
 
+      if (columnKey === "divYieldPercent") {
+        return <span className="text-xs tabular-nums text-foreground">{formatPercent(num)}</span>;
+      }
+
       return <span className="text-xs tabular-nums text-foreground">{formatCompactNumber(num)}</span>;
+    }
+
+    if (columnKey === "sector") {
+      let sector = item.sector;
+      if (!sector) return <span className="text-xs text-muted-foreground">—</span>;
+      // Strip asset type prefixes that aren't real sectors
+      if (sector.startsWith("Equity -") || sector.startsWith("equity -")) sector = "";
+      if (sector === "stock" || sector === "Stock" || sector === "crypto" || sector === "Crypto") sector = "";
+      if (!sector) return <span className="text-xs text-muted-foreground">—</span>;
+      return <span className="truncate text-xs text-foreground/85">{sector}</span>;
     }
 
     return <span className="truncate text-xs text-foreground/85">{raw ? String(raw) : "—"}</span>;
@@ -2045,7 +2221,7 @@ export default function Screener() {
           </div>
         </div>
 
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <div className="screener-filter-bar mb-2 flex flex-wrap items-center gap-1.5">
           {filterFields.map((field) => {
             const value = parsedFilters[field.key];
             const active = isFilterActiveValue(value);
@@ -2067,7 +2243,23 @@ export default function Screener() {
                       : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
                   }`}
                 >
-                  {buildFilterLabel(field, value)}
+                  {field.key === "marketCountries" ? (
+                    <span className="inline-flex items-center gap-1">
+                      {(() => {
+                        const countries = (value as string[] | undefined) || [];
+                        if (countries.length === 0) return <><CountryFlagImg code="WORLD" size={16} /><span>Entire world</span></>;
+                        if (countries.length === 1) return <><CountryFlagImg code={countries[0]} size={16} /><span>{countries[0]}</span></>;
+                        return (
+                          <>
+                            {countries.slice(0, 2).map((c) => <CountryFlagImg key={c} code={c} size={14} />)}
+                            {countries.length > 2 && <span>+{countries.length - 2}</span>}
+                          </>
+                        );
+                      })()}
+                    </span>
+                  ) : (
+                    buildFilterLabel(field, value)
+                  )}
                   <ChevronDown className="h-3 w-3" />
                 </button>
 
@@ -2125,79 +2317,33 @@ export default function Screener() {
                 </div>
 
                 <div className="max-h-72 overflow-auto pr-1">
-                  {availableAddFilterFields.map((field) => {
-                    const active = visibleFilterKeys.includes(field.key);
-                    return (
-                      <button
-                        key={field.key}
-                        type="button"
-                        onClick={() => {
-                          setManualFilterKeys((current) => dedupe([...current, field.key]));
-                          setEditingFilterKey(field.key);
-                          setAddFilterOpen(false);
-                        }}
-                        className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-                          active ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
-                        }`}
-                      >
-                        <span>{field.label}</span>
-                        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{field.category}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="relative" ref={addColumnRef}>
-            <button
-              type="button"
-              onClick={() => setAddColumnOpen((open) => !open)}
-              className="inline-flex items-center gap-1 rounded-lg border border-border/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-            >
-              <Columns3 className="h-3.5 w-3.5" />
-              Add column
-            </button>
-
-            {addColumnOpen && (
-              <div className="absolute right-0 top-full z-40 mt-1.5 w-[340px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
-                <div className="mb-2 border-b border-border/40 pb-2">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      value={addColumnSearch}
-                      onChange={(event) => setAddColumnSearch(event.target.value)}
-                      placeholder="Search columns"
-                      className="w-full rounded-md border border-border/50 bg-secondary/25 py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="max-h-72 overflow-auto pr-1">
-                  {availableAddColumnFields.map((column) => {
-                    const checked = visibleColumns.includes(column.key);
-                    return (
-                      <button
-                        key={column.key}
-                        type="button"
-                        onClick={() => {
-                          if (column.key === "symbol" && checked) return;
-                          if (checked) {
-                            updateSelectedColumns(visibleColumns.filter((entry) => entry !== column.key));
-                          } else {
-                            updateSelectedColumns([...visibleColumns, column.key]);
-                          }
-                        }}
-                        className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-                          checked ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
-                        }`}
-                      >
-                        <span>{column.label}</span>
-                        {checked ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
-                      </button>
-                    );
-                  })}
+                  {groupedAddFilterFields.map((group) => (
+                    <div key={group.key} className="mb-2">
+                      <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                        {group.label}
+                      </p>
+                      {group.fields.map((field) => {
+                        const active = visibleFilterKeys.includes(field.key);
+                        return (
+                          <button
+                            key={field.key}
+                            type="button"
+                            onClick={() => {
+                              setManualFilterKeys((current) => dedupe([...current, field.key]));
+                              setEditingFilterKey(field.key);
+                              setAddFilterOpen(false);
+                            }}
+                            className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                              active ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
+                            }`}
+                          >
+                            <span>{field.label}</span>
+                            {active ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -2234,6 +2380,15 @@ export default function Screener() {
           })}
 
           {/* Symbol count hidden until 600K+ symbols mapped */}
+
+          <button
+            type="button"
+            onClick={() => { void refreshList(); }}
+            className="ml-auto rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+            title="Refresh data"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
         {loading && items.length === 0 ? (
@@ -2300,18 +2455,19 @@ export default function Screener() {
               <div style={{ minWidth: tableMinWidth }}>
                 <div
                   className="sticky top-0 z-20 grid items-center gap-2 border-b border-border/35 bg-[hsl(var(--background))]/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm"
-                  style={{ gridTemplateColumns: tableGridTemplate }}
+                  style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
                 >
                   {visibleColumns.map((column) => {
                     const label = columnLookup.get(column)?.label || column;
                     const activeSort = sortField === column;
+                    const isSymbol = column === "symbol";
 
                     return (
                       <button
                         key={column}
                         type="button"
                         onClick={() => setSort(column)}
-                        className={`flex items-center gap-1 ${NUMERIC_COLUMNS.has(column) ? "justify-end" : "justify-start"} transition-colors hover:text-foreground`}
+                        className={`flex items-center gap-1 ${NUMERIC_COLUMNS.has(column) ? "justify-end" : "justify-start"} transition-colors hover:text-foreground ${isSymbol ? "sticky left-0 z-10 bg-[hsl(var(--background))]" : ""}`}
                       >
                         <span>{label}</span>
                         {activeSort ? (
@@ -2322,6 +2478,54 @@ export default function Screener() {
                       </button>
                     );
                   })}
+                  {/* Add Column button in table header */}
+                  <div className="relative flex items-center justify-center" ref={addColumnRef}>
+                    <button
+                      type="button"
+                      onClick={() => setAddColumnOpen((open) => !open)}
+                      className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-secondary/45 hover:text-foreground"
+                      title="Add column"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                    {addColumnOpen && (
+                      <div className="absolute right-0 top-full z-40 mt-1.5 w-[340px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
+                        <div className="mb-2 border-b border-border/40 pb-2">
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                              value={addColumnSearch}
+                              onChange={(event) => setAddColumnSearch(event.target.value)}
+                              placeholder="Search columns"
+                              className="w-full rounded-md border border-border/50 bg-secondary/25 py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-72 overflow-auto pr-1">
+                          {availableAddColumnFields.map((col) => {
+                            const checked = visibleColumns.includes(col.key);
+                            return (
+                              <button
+                                key={col.key}
+                                type="button"
+                                onClick={() => {
+                                  if (col.key === "symbol" && checked) return;
+                                  if (checked) updateSelectedColumns(visibleColumns.filter((e) => e !== col.key));
+                                  else updateSelectedColumns([...visibleColumns, col.key]);
+                                }}
+                                className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                                  checked ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
+                                }`}
+                              >
+                                <span>{col.label}</span>
+                                {checked ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <Virtuoso
@@ -2338,14 +2542,18 @@ export default function Screener() {
                       onClick={() => navigate(`/symbol/${encodeURIComponent(item.symbol)}`)}
                       className={`grid w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-secondary/30 ${
                         index > 0 ? "border-t border-border/20" : ""
-                      }`}
-                      style={{ gridTemplateColumns: tableGridTemplate }}
+                      } ${flashBySymbol[item.fullSymbol || item.symbol] === "up" ? "screener-flash-up" : ""} ${flashBySymbol[item.fullSymbol || item.symbol] === "down" ? "screener-flash-down" : ""}`}
+                      style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
                     >
-                      {visibleColumns.map((column) => (
-                        <div key={column} className={`${NUMERIC_COLUMNS.has(column) ? "text-right" : "text-left"} min-w-0`}>
-                          {renderCell(item, column)}
-                        </div>
-                      ))}
+                      {visibleColumns.map((column) => {
+                        const isSymbol = column === "symbol";
+                        return (
+                          <div key={column} className={`${NUMERIC_COLUMNS.has(column) ? "text-right" : "text-left"} min-w-0 ${isSymbol ? "sticky left-0 z-[5] bg-[hsl(var(--background))]" : ""}`}>
+                            {renderCell(item, column)}
+                          </div>
+                        );
+                      })}
+                      <div aria-hidden="true" />
                     </button>
                   )}
                   components={{
