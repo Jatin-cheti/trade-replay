@@ -5,23 +5,9 @@ const API_BASE_URL = frontendEnv.API_URL;
 let activeRequestCount = 0;
 const loadingListeners = new Set<(isLoading: boolean) => void>();
 
-type LoadingAwareRequestConfig = {
-  __tracksGlobalLoading?: boolean;
-  suppressGlobalLoading?: boolean;
-  method?: string;
-};
-
 function shouldTrackAsBlocking(method?: string): boolean {
   const normalized = (method || "get").toLowerCase();
   return normalized !== "get" && normalized !== "head" && normalized !== "options";
-}
-
-function shouldTrackRequest(config: LoadingAwareRequestConfig): boolean {
-  if (config.suppressGlobalLoading) {
-    return false;
-  }
-
-  return shouldTrackAsBlocking(config.method);
 }
 
 function notifyLoading(): void {
@@ -127,7 +113,7 @@ if (bootstrapToken) {
 
 api.interceptors.request.use(
   (config) => {
-    if (shouldTrackRequest(config as LoadingAwareRequestConfig)) {
+    if (shouldTrackAsBlocking(config.method)) {
       activeRequestCount += 1;
       notifyLoading();
       (config as typeof config & { __tracksGlobalLoading?: boolean }).__tracksGlobalLoading = true;

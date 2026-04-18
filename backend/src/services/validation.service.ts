@@ -286,11 +286,12 @@ async function validateTradingViewParity(): Promise<ValidationResult> {
     if (!doc) {
       results[check.symbol] = { found: false, match: false, actual: null };
     } else {
-      const exchangeMatch = check.exchanges.includes(doc.exchange);
+      const d = doc as any;
+      const exchangeMatch = check.exchanges.includes(d.exchange);
       results[check.symbol] = {
         found: true,
         match: exchangeMatch,
-        actual: doc.exchange,
+        actual: d.exchange,
       };
     }
   }

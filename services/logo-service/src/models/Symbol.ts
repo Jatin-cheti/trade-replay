@@ -14,8 +14,6 @@ const symbolSchema = new Schema(
     logoAttempts: { type: Number, required: true, default: 0 },
     lastLogoAttemptAt: { type: Number },
     logoValidatedAt: { type: Date },
-    logoStatus: { type: String, enum: ["pending", "mapped", "failed"], default: "pending" },
-    logoLastUpdated: { type: Date },
     popularity: { type: Number, required: true, default: 0 },
   },
   { timestamps: true, versionKey: false },

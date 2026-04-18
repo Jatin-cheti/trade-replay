@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { Queue } from "bullmq";
 import { connectDB } from "../src/config/db";
-import { connectRedis, redisConnectionOptions } from "../src/config/redis";
+import { connectRedis, redisQueueConnectionOptions } from "../src/config/redis";
 import { SymbolModel } from "../src/models/Symbol";
 import { logger } from "../src/utils/logger";
 
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     ]),
   ]);
 
-  const queue = new Queue("logo-enrichment", { connection: redisConnectionOptions });
+  const queue = new Queue("logo-enrichment", { connection: redisQueueConnectionOptions });
   const [waiting, active, delayed] = await Promise.all([
     queue.getWaitingCount(),
     queue.getActiveCount(),

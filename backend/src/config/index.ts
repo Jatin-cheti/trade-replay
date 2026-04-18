@@ -33,6 +33,9 @@ const EnvSchema = z.object({
   REDIS_URL_LOCAL: z.string().min(1),
   REDIS_URL_DOCKER: z.string().min(1),
   REDIS_URL_PRODUCTION: z.string().min(1),
+  REDIS_URL_QUEUE: z.string().optional(),
+  REDIS_URL_PUBSUB: z.string().optional(),
+  REDIS_URL_FALLBACK: z.string().optional(),
   KAFKA_ENABLED: z.enum(["true", "false"]),
   KAFKA_BROKER: z.string().min(1),
   KAFKA_BROKER_LOCAL: z.string().min(1),
@@ -175,6 +178,9 @@ export const CONFIG = {
   clientUrl: requiredEnv("CLIENT_URL"),
   mongoUri: envByAppMode("MONGO_URI"),
   redisUrl: envByAppMode("REDIS_URL"),
+  redisQueueUrl: process.env.REDIS_URL_QUEUE || envByAppMode("REDIS_URL"),
+  redisPubsubUrl: process.env.REDIS_URL_PUBSUB || envByAppMode("REDIS_URL"),
+  redisFallbackUrl: process.env.REDIS_URL_FALLBACK || "",
   kafkaEnabled: booleanEnv("KAFKA_ENABLED"),
   kafkaBroker: (() => {
     const resolved = envByAppMode("KAFKA_BROKER");

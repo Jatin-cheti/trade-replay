@@ -8,7 +8,6 @@ const ICON_CACHE_MAX_ENTRIES = 500;
 
 export type AssetMarketType = "Stocks" | "Funds" | "Futures" | "Forex" | "Crypto" | "Indices" | "Bonds" | "Economy" | "Options";
 export type AssetCategory = "stocks" | "funds" | "futures" | "forex" | "crypto" | "indices" | "bonds" | "economy" | "options";
-export type AssetSortOption = "relevance" | "name" | "symbol" | "volume" | "marketCap";
 
 export interface AssetSearchItem {
   ticker: string;
@@ -41,14 +40,10 @@ export interface AssetSearchItem {
   source: string;
   futureCategory?: string;
   economyCategory?: string;
-  expiry?: string;
-  strike?: string;
-  underlyingAsset?: string;
   contracts?: AssetSearchItem[];
 }
 
 export interface AssetSearchResponse {
-  queryKey?: string;
   assets: AssetSearchItem[];
   total: number;
   page: number;
@@ -73,9 +68,6 @@ export interface AssetSearchFiltersResponse {
   exchangeTypes: AssetSearchFilterOption[];
   futureCategories: AssetSearchFilterOption[];
   economyCategories: AssetSearchFilterOption[];
-  expiries: AssetSearchFilterOption[];
-  strikes: AssetSearchFilterOption[];
-  underlyingAssets: AssetSearchFilterOption[];
   sourceUiType?: "modal" | "dropdown";
 }
 
@@ -143,10 +135,6 @@ export async function searchAssets(params: {
   exchangeType?: string;
   futureCategory?: string;
   economyCategory?: string;
-  expiry?: string;
-  strike?: string;
-  underlyingAsset?: string;
-  sort?: AssetSortOption;
   page?: number;
   limit?: number;
   cursor?: string;
@@ -168,10 +156,6 @@ export async function searchAssets(params: {
       exchangeType: params.exchangeType,
       futureCategory: params.futureCategory,
       economyCategory: params.economyCategory,
-      expiry: params.expiry,
-      strike: params.strike,
-      underlyingAsset: params.underlyingAsset,
-      sort: params.sort,
       limit,
       cursor: params.cursor,
     },
@@ -179,6 +163,15 @@ export async function searchAssets(params: {
 
   const mappedAssets = response.data.assets
     .map((item) => mapSymbolItemToUi(item, requestedCategory))
+    .filter((item) => {
+      if (requestedCategory && requestedCategory !== "all" && item.category !== requestedCategory) return false;
+      return true;
+    })
+    .filter((item) => {
+      if (params.type && params.type !== "all" && item.type !== params.type) return false;
+      if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
+      return true;
+    })
     .map((item) => {
       const key = iconCacheKey(item);
       const effectiveIcon = item.displayIconUrl || item.logoUrl || item.iconUrl || "";
@@ -205,26 +198,9 @@ export async function searchAssets(params: {
 
   mappedAssets.forEach(reportMissingLogo);
 
-  const sortedAssets = params.sort && params.sort !== "relevance"
-    ? [...mappedAssets].sort((a, b) => {
-        switch (params.sort) {
-          case "name":
-            return (a.name || "").localeCompare(b.name || "");
-          case "symbol":
-            return (a.ticker || a.symbol || "").localeCompare(b.ticker || b.symbol || "");
-          case "volume":
-            return (b.volume ?? 0) - (a.volume ?? 0);
-          case "marketCap":
-            return (b.marketCap ?? 0) - (a.marketCap ?? 0);
-          default:
-            return 0;
-        }
-      })
-    : mappedAssets;
-
   return {
     ...response.data,
-    assets: sortedAssets,
+    assets: mappedAssets,
   };
 }
 

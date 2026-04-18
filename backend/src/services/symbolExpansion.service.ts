@@ -58,6 +58,12 @@ import {
   expandCryptoCom,
 } from "./symbolExpansion.altexchanges";
 
+import {
+  expandYahooFinance,
+  expandCoinMarketCap,
+  expandDukascopyForex,
+} from "./symbolExpansion.yahoo";
+
 // ── Sync GlobalMaster → Symbol table ────────────────────────────────────
 
 export async function syncGlobalMasterToSymbols(batchSize = 1000): Promise<{ synced: number }> {
@@ -201,6 +207,14 @@ export async function ingestGlobalSymbolsIncremental(): Promise<FullExpansionRep
   // Phase 4c: Stock listing from Alpha Vantage
   const avListing = await expandAlphaVantageListing();
   allResults.push(avListing);
+
+  // Phase 4d: Yahoo Finance + CoinMarketCap + Dukascopy
+  const [yahoo, cmc, dukascopy] = await Promise.all([
+    expandYahooFinance(),
+    expandCoinMarketCap(),
+    expandDukascopyForex(),
+  ]);
+  allResults.push(yahoo, cmc, dukascopy);
 
   // Phase 5: Curated (instant, no network)
   const [exoticForex, globalIndices] = await Promise.all([

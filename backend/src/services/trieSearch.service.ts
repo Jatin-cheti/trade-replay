@@ -264,7 +264,7 @@ export function upsertAsset(doc: any): void {
     exchange: doc.exchange || "",
     country: doc.country || "",
     type: doc.type || "unknown",
-    iconUrl: resolveLogo(doc),
+    iconUrl: resolveLogo(doc).iconUrl,
     priorityScore: doc.priorityScore ?? 0,
     isPrimaryListing: doc.isPrimaryListing ?? false,
     marketCap: doc.marketCap ?? 0,

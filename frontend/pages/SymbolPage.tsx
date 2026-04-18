@@ -54,6 +54,17 @@ function typeLabel(t: string): string {
   return { stock: "Stocks", etf: "ETFs", crypto: "Crypto", forex: "Forex", index: "Indices", bond: "Bonds", economy: "Economy" }[t] || t;
 }
 
+function toScreenerRouteType(type: string): string {
+  const normalized = type.toLowerCase();
+  if (normalized === "stock") return "stocks";
+  if (normalized === "etf") return "etfs";
+  if (normalized === "bond") return "bonds";
+  if (normalized === "crypto") return "crypto-coins";
+  if (normalized === "cex") return "cex-pairs";
+  if (normalized === "dex") return "dex-pairs";
+  return "stocks";
+}
+
 const FLAG: Record<string, string> = {
   US: "\u{1F1FA}\u{1F1F8}", IN: "\u{1F1EE}\u{1F1F3}", GB: "\u{1F1EC}\u{1F1E7}",
   DE: "\u{1F1E9}\u{1F1EA}", JP: "\u{1F1EF}\u{1F1F5}", CN: "\u{1F1E8}\u{1F1F3}",
@@ -83,7 +94,7 @@ const TIME_PERIODS = [
 
 /* ── Component ─────────────────────────────────────────────────────────── */
 export default function SymbolPage() {
-  const { fullSymbol } = useParams<{ fullSymbol: string }>();
+  const { symbol } = useParams<{ symbol: string }>();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<SymbolDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,14 +103,14 @@ export default function SymbolPage() {
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
 
   useEffect(() => {
-    if (!fullSymbol) return;
+    if (!symbol) return;
     setLoading(true);
     setError(null);
-    api.get(`/screener/symbol/${encodeURIComponent(fullSymbol)}`)
+    api.get(`/screener/symbol/${encodeURIComponent(symbol)}`)
       .then((res) => setDetail(res.data))
       .catch((err) => setError(err.response?.status === 404 ? "Symbol not found" : "Failed to load symbol"))
       .finally(() => setLoading(false));
-  }, [fullSymbol]);
+  }, [symbol]);
 
   if (loading) {
     return (
@@ -119,6 +130,7 @@ export default function SymbolPage() {
   }
 
   const countryName = COUNTRY_NAME[detail.country] || detail.country;
+  const screenerRouteType = toScreenerRouteType(detail.type);
 
   return (
     <div className="min-h-screen bg-background pt-4 pb-20">
@@ -126,23 +138,23 @@ export default function SymbolPage() {
 
         {/* ── Breadcrumb (TradingView exact) ────────────────────────────── */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 flex-wrap">
-          <Link to="/screener" className="hover:text-foreground transition-colors">Markets</Link>
+          <Link to="/screener/stocks" className="hover:text-foreground transition-colors">Markets</Link>
           <span className="text-muted-foreground/40">/</span>
           {detail.country && (
             <>
-              <Link to={`/screener?country=${detail.country}`} className="hover:text-foreground transition-colors">
+              <Link to={`/screener/stocks?marketCountries=${detail.country}`} className="hover:text-foreground transition-colors">
                 {countryName}
               </Link>
               <span className="text-muted-foreground/40">/</span>
             </>
           )}
-          <Link to={`/screener?type=${detail.type}`} className="hover:text-foreground transition-colors">
+          <Link to={`/screener/${screenerRouteType}`} className="hover:text-foreground transition-colors">
             {typeLabel(detail.type)}
           </Link>
           {detail.sector && (
             <>
               <span className="text-muted-foreground/40">/</span>
-              <Link to={`/screener?sector=${detail.sector}`} className="hover:text-foreground transition-colors">
+              <Link to={`/screener/${screenerRouteType}?sectors=${encodeURIComponent(detail.sector)}`} className="hover:text-foreground transition-colors">
                 {detail.sector}
               </Link>
             </>
@@ -299,20 +311,20 @@ export default function SymbolPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-12 gap-y-6">
                 {detail.sector && (
                   <AboutItem label="Sector">
-                    <Link to={`/screener?sector=${detail.sector}`}
+                    <Link to={`/screener/${screenerRouteType}?sectors=${encodeURIComponent(detail.sector)}`}
                       className="text-sm text-foreground hover:text-primary transition-colors flex items-center gap-1">
                       {detail.sector} <ChevronRight className="w-3 h-3" />
                     </Link>
                   </AboutItem>
                 )}
                 <AboutItem label="Country">
-                  <Link to={`/screener?country=${detail.country}`}
+                  <Link to={`/screener/stocks?marketCountries=${detail.country}`}
                     className="text-sm text-foreground hover:text-primary transition-colors flex items-center gap-1">
                     {FLAG[detail.country] || ""} {countryName}
                   </Link>
                 </AboutItem>
                 <AboutItem label="Exchange">
-                  <Link to={`/screener?exchange=${detail.exchange}`}
+                  <Link to={`/screener/${screenerRouteType}?exchanges=${encodeURIComponent(detail.exchange)}`}
                     className="text-sm text-foreground hover:text-primary transition-colors">
                     {detail.exchange}
                   </Link>
@@ -330,7 +342,7 @@ export default function SymbolPage() {
                   </AboutItem>
                 )}
                 <AboutItem label="Type">
-                  <Link to={`/screener?type=${detail.type}`}
+                  <Link to={`/screener/${screenerRouteType}`}
                     className="text-sm text-foreground hover:text-primary transition-colors">
                     {typeLabel(detail.type)}
                   </Link>
@@ -354,7 +366,7 @@ export default function SymbolPage() {
                 Open in Supercharts
               </button>
               <Link
-                to={`/screener?type=${detail.type}`}
+                to={`/screener/${screenerRouteType}`}
                 className="flex items-center gap-2 rounded-lg border border-border/40 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/30 transition-colors"
               >
                 View all {typeLabel(detail.type).toLowerCase()}

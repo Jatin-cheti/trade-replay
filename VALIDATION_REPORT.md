@@ -166,5 +166,110 @@ Multiple 404 errors seen for logo images. These are non-critical — logos fall 
 - [x] Infinite scroll loads more items
 - [x] 500 random symbols pass data quality check
 - [x] Performance targets met (all <100ms)
+- [x] Redis self-hosted (WSL) with DB separation
+- [x] Logo audit complete
 - [ ] **DEPLOY TO PRODUCTION**
 - [ ] **VALIDATE ON PRODUCTION**
+
+---
+
+## 11. Redis Infrastructure ✅ WORKING
+
+| Component | Config | Status |
+|-----------|--------|--------|
+| Cache (DB 0) | `redis://127.0.0.1:6379/0` | ✅ Connected |
+| BullMQ Queues (DB 1) | `redis://127.0.0.1:6379/1` | ✅ Connected |
+| Pub/Sub (DB 2) | `redis://127.0.0.1:6379/2` | ✅ Connected |
+| Memory policy | `noeviction` (BullMQ-safe) | ✅ Configured |
+| Max memory | 256mb | ✅ Set |
+| Fallback | Upstash (super-piranha-101131) | ⚠️ Prod only |
+
+**Key**: WSL2 Ubuntu redis-server 7.0.15, `bind 0.0.0.0`, `protected-mode no`.
+Keep-alive loop running to prevent WSL2 hibernation.
+
+---
+
+## 12. Logo Audit ✅ COMPLETE
+
+### Overall Coverage: **98.15%** (1,543,246 / 1,572,316)
+
+| Category | Mapped | Total | Coverage | Status |
+|----------|--------|-------|----------|--------|
+| derivative | 1,480,061 | 1,480,061 | 100.0% | ✅ |
+| bond | 102 | 102 | 100.0% | ✅ |
+| economy | 164 | 164 | 100.0% | ✅ |
+| stock | 32,552 | 34,825 | 93.5% | ⚠️ 2,273 missing |
+| index | 519 | 567 | 91.5% | ⚠️ 48 missing |
+| etf | 9,277 | 12,707 | 73.0% | ⚠️ 3,430 missing |
+| forex | 3,193 | 4,701 | 67.9% | ⚠️ 1,508 missing |
+| crypto | 17,378 | 39,189 | 44.3% | ❌ 21,811 missing |
+
+### Top Exchanges
+
+| Exchange | Mapped | Total | Coverage | Status |
+|----------|--------|-------|----------|--------|
+| OPT | 1,379,532 | 1,379,532 | 100.0% | ✅ |
+| DERIV | 92,796 | 92,796 | 100.0% | ✅ |
+| SEC | 10,488 | 10,488 | 100.0% | ✅ |
+| CFD | 7,733 | 7,733 | 100.0% | ✅ |
+| FX | 3,180 | 3,180 | 100.0% | ✅ |
+| COINGECKO | 13,475 | 13,623 | 98.9% | ✅ |
+| OTC | 3,202 | 3,207 | 99.8% | ✅ |
+| NYSE | 8,893 | 9,672 | 91.9% | ⚠️ |
+| NASDAQ | 8,644 | 9,322 | 92.7% | ⚠️ |
+| GLOBAL | 211 | 13,560 | 1.6% | ❌ |
+
+### Key Findings
+
+1. **GLOBAL exchange** is the biggest gap: 13,349 missing icons (mostly forex/crypto cross-pairs)
+2. **Crypto** has 21,811 missing icons — mostly small-cap CoinGecko tokens without known logos
+3. **S3 CDN-backed**: Only 263 icons are on S3 — rest are direct external URLs
+4. **Queue**: Empty (0 depth) — no active enrichment. All 29,070 unresolved have 0 attempts
+5. **Action needed**: Run `npm run enrich:logos:full` to attempt resolving the 29,070 remaining symbols
+
+---
+
+## 13. Symbol Data Mapping ✅ INGESTION COMPLETE
+
+### Ingestion Run Summary (2026-04-18)
+
+| Source | Fetched | New | Status |
+|--------|---------|-----|--------|
+| nasdaq-trader | 12,521 | 807 | ✅ done |
+| alpha-vantage | 13,207 | 651 | ✅ done |
+| binance | 1,408 | 0 | ✅ done (already had all) |
+| coinbase | 511 | 511 | ✅ done |
+| kraken | 1,510 | 2 | ✅ done |
+| okx | 1,204 | 1,204 | ✅ done |
+| gateio | 2,253 | 2,253 | ✅ done |
+| kucoin | 1,101 | 1,101 | ✅ done |
+| mexc | 2,424 | 7 | ✅ done |
+| nse | 2,258 | 1 | ✅ done |
+| bse | 0 | 0 | ❌ geo-blocked (HTML instead of JSON) |
+| bybit | 0 | 0 | ❌ 403 forbidden |
+| sec-edgar | — | — | ✅ done |
+| coingecko p1-3 | 750 | 0 | ✅ done |
+| coingecko p4-50 | — | — | ❌ 429 rate limited |
+| forex | 92 | 92 | ✅ done |
+| indices | 47 | 47 | ✅ done |
+| bonds-economy | 73 | 73 | ✅ done |
+| etfs | 123 | 23 | ✅ done |
+
+### Results
+
+| Metric | Before | After | Delta |
+|--------|--------|-------|-------|
+| Raw symbols | 1,572,316 | 1,586,204 | +13,888 |
+| Clean assets (screener) | 102,000 | 114,237 | +12,237 |
+| Stocks | 39,512 | 47,830 | +8,318 |
+| Crypto | 39,188 | 42,908 | +3,720 |
+| ETFs | 12,167 | 12,282 | +115 |
+| Bonds | 94 | 151 | +57 |
+| India | 3,238 | 3,239 | +1 |
+
+### India Coverage Gap
+
+- NSE: 2,258 actively listed equities (all ingested)
+- BSE: API geo-blocked from non-Indian IPs — returns HTML page
+- **Action needed**: Run BSE ingestion from an Indian server or VPN
+- Realistic India equity target: ~5,000-7,000 (NSE + BSE unique stocks)

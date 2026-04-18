@@ -49,8 +49,8 @@ function isValidExchange(exchange: string): boolean {
 
 function isValidName(name: string, type?: string): boolean {
   if (!name || name.length < 1) return false;
-  // For crypto, forex, index, bond, economy — short names like "BTC", "ETH" are valid
-  if (type && ["crypto", "forex", "index", "bond", "economy"].includes(type)) return true;
+  // For crypto, forex, index, bond, economy, options — short names like "BTC", "ETH", "AAPL250418C270" are valid
+  if (type && ["crypto", "forex", "index", "bond", "economy", "options"].includes(type)) return true;
   if (/^[A-Z0-9.\-:\/]+$/i.test(name) && name.length < 6) return false; // just a ticker
   return true;
 }
@@ -102,6 +102,7 @@ export async function buildCleanAssets(): Promise<{
     if (doc.type === "derivative") {
       if (doc.exchange === "CFD") cleanType = "stock";
       else if (doc.exchange === "DERIV") cleanType = "futures";
+      else if (doc.exchange === "OPT") cleanType = "options";
       else { skipped++; continue; }
     }
 

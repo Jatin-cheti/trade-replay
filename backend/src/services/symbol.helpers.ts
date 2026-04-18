@@ -3,8 +3,8 @@ import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { env } from "../config/env";
 
-export type SymbolType = "stock" | "etf" | "crypto" | "forex" | "index" | "derivative" | "bond" | "economy";
-export const SUPPORTED_TYPES: SymbolType[] = ["stock", "etf", "crypto", "forex", "index", "derivative", "bond", "economy"];
+export type SymbolType = "stock" | "etf" | "crypto" | "forex" | "index" | "derivative";
+export const SUPPORTED_TYPES: SymbolType[] = ["stock", "etf", "crypto", "forex", "index", "derivative"];
 export const CACHE_TTL_SECONDS = 45;
 export const SEARCH_PRECACHE_QUERIES = ["re", "hdfc", "btc", "a", "t", "USD", "EUR", "NASDAQ", "NSE"];
 

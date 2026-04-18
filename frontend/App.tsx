@@ -60,8 +60,9 @@ function AnimatedRoutes() {
             <Route path="/portfolio/edit/:portfolioId" element={<RequireAuth><EditPortfolio /></RequireAuth>} />
             <Route path="/simulation" element={<RequireAuth><Simulation /></RequireAuth>} />
             <Route path="/live-market" element={<RequireAuth><LiveMarket /></RequireAuth>} />
-            <Route path="/screener" element={<Screener />} />
-            <Route path="/symbol/:fullSymbol" element={<SymbolPage />} />
+            <Route path="/screener" element={<Navigate to="/screener/stocks" replace />} />
+            <Route path="/screener/:type" element={<Screener />} />
+            <Route path="/symbol/:symbol" element={<SymbolPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>

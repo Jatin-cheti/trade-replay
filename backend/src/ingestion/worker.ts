@@ -5,7 +5,7 @@
  * into MongoDB, and records progress via checkpoint.
  */
 import { Worker, type Job } from "bullmq";
-import { redisConnectionOptions } from "../config/redis";
+import { redisQueueConnectionOptions } from "../config/redis";
 import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
 import { INGESTION_QUEUE_NAME, type IngestionJobData } from "./queue";
@@ -207,7 +207,7 @@ export function startIngestionWorker(): Worker {
     INGESTION_QUEUE_NAME,
     async (job) => processJob(job),
     {
-      connection: redisConnectionOptions,
+      connection: redisQueueConnectionOptions,
       concurrency: 3,
       limiter: {
         max: 5,

@@ -38,15 +38,11 @@ function inferCategory(item: AssetSearchItem): KnownCategory {
   const exchange = (item.exchange || "").toUpperCase();
   const instrumentType = (item.instrumentType || item.type || "").toLowerCase();
 
-  if (exchange === "OPT" || /-\d{6}-[CP]-/.test(symbol) || /\b(OPTION|CALL|PUT)\b/.test(name)) {
+  if (instrumentType === "derivative" || exchange === "OPT" || /-\d{6}-[CP]-/.test(symbol) || /\b(OPTION|CALL|PUT)\b/.test(name)) {
     return "options";
   }
 
-  if (symbol.includes("-FUT") || symbol.includes("-PERP") || /\b(FUTURE|FUTURES|PERP|PERPETUAL)\b/.test(name)) {
-    return "futures";
-  }
-
-  if (instrumentType === "derivative") {
+  if (instrumentType === "derivative" || symbol.includes("-FUT") || symbol.includes("-PERP") || /\b(FUTURE|FUTURES|PERP|PERPETUAL)\b/.test(name)) {
     return "futures";
   }
 
@@ -92,20 +88,7 @@ function inferFundType(item: AssetSearchItem): { value: string; label: string } 
 }
 
 function inferSector(item: AssetSearchItem): string {
-  if (item.sector && item.sector !== "") {
-    // Map legacy sector names to TradingView-standard values
-    const legacy: Record<string, string> = {
-      technology: "electronic_technology",
-      healthcare: "health_technology",
-      energy: "energy_minerals",
-      consumer_cyclical: "consumer_durables",
-      consumer_defensive: "consumer_non_durables",
-      industrials: "producer_manufacturing",
-      real_estate: "finance",
-      communication_services: "communications",
-    };
-    return legacy[item.sector] ?? item.sector;
-  }
+  if (item.sector && item.sector !== "") return item.sector;
   const seed = (item.symbol || item.ticker || item.name || "").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return STOCK_SECTORS[seed % STOCK_SECTORS.length];
 }
@@ -123,11 +106,7 @@ function categoryMarket(category: KnownCategory): AssetSearchItem["market"] {
 }
 
 export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: string): AssetSearchItem {
-  const inferredCategory = inferCategory(item);
-  const shouldPinCategory = requestedCategory
-    && requestedCategory !== "all"
-    && (requestedCategory === "futures" || requestedCategory === "options" || requestedCategory === "bonds" || requestedCategory === "economy" || requestedCategory === "funds");
-  const category = shouldPinCategory ? (requestedCategory as KnownCategory) : inferredCategory;
+  const category = inferCategory(item);
   const normalized = {
     ...item,
     logoUrl: item.displayIconUrl || item.logoUrl || item.iconUrl,
@@ -137,15 +116,15 @@ export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: str
   const fundType = inferFundType(item);
 
   const typeValue = category === "stocks"
-    ? (item.type || stockType.value)
+    ? stockType.value
     : category === "funds"
-      ? (item.type || fundType.value)
+      ? fundType.value
       : item.type || "";
 
   const instrumentType = category === "stocks"
-    ? (item.instrumentType || stockType.label)
+    ? stockType.label
     : category === "funds"
-      ? (item.instrumentType || fundType.label)
+      ? fundType.label
       : item.instrumentType || item.type;
 
   return {

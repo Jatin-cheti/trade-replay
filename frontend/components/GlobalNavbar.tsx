@@ -14,26 +14,26 @@ const MARKETS_SECTIONS = [
   {
     label: "\u{1F1EE}\u{1F1F3} India",
     items: [
-      { label: "Stocks", path: "/screener?type=stock&country=IN" },
-      { label: "Indices", path: "/screener?type=index&country=IN" },
-      { label: "ETFs", path: "/screener?type=etf&country=IN" },
+      { label: "Stocks", path: "/screener/stocks?marketCountries=IN" },
+      { label: "Indices", path: "/screener/stocks?indices=NIFTY" },
+      { label: "ETFs", path: "/screener/etfs?marketCountries=IN" },
     ],
   },
   {
     label: "\u{1F1FA}\u{1F1F8} United States",
     items: [
-      { label: "Stocks", path: "/screener?type=stock&country=US" },
-      { label: "ETFs", path: "/screener?type=etf&country=US" },
-      { label: "Indices", path: "/screener?type=index&country=US" },
+      { label: "Stocks", path: "/screener/stocks?marketCountries=US" },
+      { label: "ETFs", path: "/screener/etfs?marketCountries=US" },
+      { label: "Indices", path: "/screener/stocks?indices=SPX" },
     ],
   },
   {
     label: "Global",
     items: [
-      { label: "Crypto", path: "/screener?type=crypto" },
-      { label: "Forex", path: "/screener?type=forex" },
-      { label: "Bonds", path: "/screener?type=bond" },
-      { label: "Economy", path: "/screener?type=economy" },
+      { label: "Crypto coins", path: "/screener/crypto-coins" },
+      { label: "CEX pairs", path: "/screener/cex-pairs" },
+      { label: "DEX pairs", path: "/screener/dex-pairs" },
+      { label: "Bonds", path: "/screener/bonds" },
     ],
   },
 ];
@@ -46,10 +46,12 @@ export default function GlobalNavbar() {
   const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
+  const [screenerOpen, setScreenerOpen] = useState(false);
   const [marketsOpen, setMarketsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileFeaturesOpen, setMobileFeaturesOpen] = useState(false);
   const navRef = useRef<HTMLElement | null>(null);
+  const screenerMenuRef = useRef<HTMLDivElement | null>(null);
 
   const goToAuthGate = useCallback((targetPath: string, mode: "login" | "signup" = "login") => {
     const redirect = encodeURIComponent(targetPath);
@@ -104,8 +106,28 @@ export default function GlobalNavbar() {
     setMobileMenuOpen(false);
     setMobileFeaturesOpen(false);
     setProductsOpen(false);
+    setScreenerOpen(false);
     setMarketsOpen(false);
   }, [location.pathname, location.hash]);
+
+  useEffect(() => {
+    if (!productsOpen) {
+      setScreenerOpen(false);
+    }
+  }, [productsOpen]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!screenerOpen) return;
+      const target = event.target as Node;
+      if (screenerMenuRef.current && !screenerMenuRef.current.contains(target)) {
+        setScreenerOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [screenerOpen]);
 
   const homeNavItem = useMemo<NavItem>(() => ({
     label: "Home",
@@ -117,7 +139,6 @@ export default function GlobalNavbar() {
 
   const featureMenuItems: FeatureMenuItem[] = useMemo(() => ([
     { label: "Supercharts", path: "/simulation" },
-    { label: "Screener", path: "/screener" },
     { label: "Portfolio", path: "/portfolio/create" },
     { label: "Dashboard", path: "/dashboard" },
     { label: "Live Market", path: "/live-market" },
@@ -130,6 +151,7 @@ export default function GlobalNavbar() {
 
   const runFeatureMenuAction = useCallback((targetPath: string) => {
     setProductsOpen(false);
+    setScreenerOpen(false);
     setMarketsOpen(false);
     setMobileFeaturesOpen(false);
     setMobileMenuOpen(false);
@@ -214,11 +236,54 @@ export default function GlobalNavbar() {
 
                     <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Individual Tools</p>
 
-                    <button type="button" onClick={() => runFeatureMenuAction("/screener")}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground/90 transition-colors hover:bg-secondary/45">
-                      <span className="flex items-center gap-3"><Search size={16} className="text-muted-foreground shrink-0" />Screeners</span>
-                      <ChevronRight size={14} className="text-muted-foreground/50" />
-                    </button>
+                    <div className="relative" ref={screenerMenuRef}>
+                      <button
+                        type="button"
+                        onClick={() => setScreenerOpen((open) => !open)}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground/90 transition-colors hover:bg-secondary/45"
+                      >
+                        <span className="flex items-center gap-3"><Search size={16} className="text-muted-foreground shrink-0" />Screeners</span>
+                        <ChevronRight size={14} className={`transition-transform duration-200 ${screenerOpen ? "rotate-90" : ""} text-muted-foreground/50`} />
+                      </button>
+
+                      {screenerOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute left-full top-0 z-50 ml-1 w-64 rounded-lg border border-primary/30 bg-background/95 p-2 backdrop-blur-xl"
+                        >
+                          <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Screeners</p>
+                          {[
+                            { label: "Stocks", path: "/screener/stocks" },
+                            { label: "ETFs", path: "/screener/etfs" },
+                            { label: "Bonds", path: "/screener/bonds" },
+                            { label: "Crypto coins", path: "/screener/crypto-coins" },
+                            { label: "CEX pairs", path: "/screener/cex-pairs" },
+                            { label: "DEX pairs", path: "/screener/dex-pairs" },
+                          ].map((item) => (
+                            <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
+                              className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
+                              {item.label}
+                            </button>
+                          ))}
+
+                          <div className="my-2 h-px bg-border/40" />
+
+                          <p className="px-2 pb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Heat Maps</p>
+                          {[
+                            { label: "Stocks", path: "/heatmap?type=stock" },
+                            { label: "ETFs", path: "/heatmap?type=etf" },
+                            { label: "Crypto coins", path: "/heatmap?type=crypto" },
+                          ].map((item) => (
+                            <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
+                              className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
+                              {item.label}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </div>
                     {[
                       { label: "Portfolio", icon: Briefcase, path: "/portfolio/create" },
                       { label: "Dashboard", icon: LayoutGrid, path: "/dashboard" },
@@ -236,14 +301,14 @@ export default function GlobalNavbar() {
                   <div className="w-[200px] p-3">
                     <p className="px-2 pb-2 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Screeners</p>
                     {[
-                      { label: "Stocks", type: "stock" },
-                      { label: "ETFs", type: "etf" },
-                      { label: "Bonds", type: "bond" },
-                      { label: "Crypto coins", type: "crypto" },
-                      { label: "Forex", type: "forex" },
-                      { label: "Indices", type: "index" },
+                      { label: "Stocks", path: "/screener/stocks" },
+                      { label: "ETFs", path: "/screener/etfs" },
+                      { label: "Bonds", path: "/screener/bonds" },
+                      { label: "Crypto coins", path: "/screener/crypto-coins" },
+                      { label: "CEX pairs", path: "/screener/cex-pairs" },
+                      { label: "DEX pairs", path: "/screener/dex-pairs" },
                     ].map((item) => (
-                      <button key={item.label} type="button" onClick={() => runFeatureMenuAction(`/screener?type=${item.type}`)}
+                      <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
                         className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
                         {item.label}
                       </button>

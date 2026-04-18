@@ -203,7 +203,6 @@ export function markExternalCallFailure(): void {
 
 export async function validateLogoUrl(url: string): Promise<boolean> {
   if (isCircuitOpen()) return false;
-  if (url.includes("logo.clearbit.com")) return false;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
@@ -237,9 +236,6 @@ export async function validateLogoUrl(url: string): Promise<boolean> {
 export async function validateLogoUrlDetailed(url: string): Promise<{ ok: boolean; failureReason?: FailureReason }> {
   if (isCircuitOpen()) {
     return { ok: false, failureReason: FailureReason.RATE_LIMIT };
-  }
-  if (url.includes("logo.clearbit.com")) {
-    return { ok: false, failureReason: FailureReason.API_404 };
   }
 
   const controller = new AbortController();

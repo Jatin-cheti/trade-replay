@@ -10,7 +10,7 @@ import { createBullBoard } from "@bull-board/api";
 import { ExpressAdapter } from "@bull-board/express";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { env } from "./config/env";
-import { isRedisMockMode, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
+import { isRedisMockMode, isRedisReady, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
 import { verifyJwt } from "./utils/jwt";
 import { logger } from "./utils/logger";
 import authRoutes from "./routes/authRoutes";
@@ -27,6 +27,7 @@ import { createPortfolioController } from "./controllers/portfolioController";
 import { createSymbolController } from "./controllers/symbolController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
+import { startLogoQueueWorker } from "./jobs/logoQueue.worker";
 import { getIngestionQueue } from "./ingestion/queue";
 import { createIngestionRoutes } from "./ingestion/routes";
 import { startIngestionWorker } from "./ingestion/worker";
@@ -49,9 +50,10 @@ export function createApp() {
   let lastCompletedCount = 0;
   let lastMetricsSampleAt = Date.now();
   app.set("trust proxy", 1);
+  const isLocalDev = process.env.APP_ENV !== "production";
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: Math.max(100, env.API_RATE_LIMIT_MAX),
+    max: isLocalDev ? 0 : Math.max(500, env.API_RATE_LIMIT_MAX),
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => Boolean(req.headers.authorization),
@@ -63,7 +65,7 @@ export function createApp() {
     },
   });
 
-  if (!isRedisMockMode()) {
+  if (!isRedisMockMode() && isRedisReady()) {
     io.adapter(createAdapter(redisPublisher, redisSubscriber));
   }
 
@@ -126,6 +128,8 @@ export function createApp() {
 
   // Start ingestion worker so it processes jobs immediately
   startIngestionWorker();
+  // Start logo queue worker so full-sweep/batch logo jobs are consumed.
+  startLogoQueueWorker();
   app.use("/admin/queues", serverAdapter.getRouter());
 
   const portfolioController = createPortfolioController();
@@ -319,7 +323,9 @@ export function createApp() {
     res.send(`${lines.join("\n")}\n`);
   });
 
-  app.use("/api", apiLimiter);
+  if (!isLocalDev) {
+    app.use("/api", apiLimiter);
+  }
 
   // ── Validation & gold layer endpoints ──────────────────────────────
   app.get("/api/validate", async (_req, res) => {
