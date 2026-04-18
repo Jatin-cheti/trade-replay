@@ -1,9 +1,12 @@
+import http from "node:http";
 import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
 import { env } from "./config/env";
 import { CONFIG } from "./config/index";
 import { connectKafkaProducer, shutdownKafka } from "./config/kafka";
 import { startLogoWorker } from "./services/logoWorker.service";
+
+const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 3003;
 
 async function bootstrap(): Promise<void> {
   console.log(JSON.stringify({ message: "logo_service_bootstrap_start" }));
@@ -20,6 +23,14 @@ async function bootstrap(): Promise<void> {
   await connectKafkaProducer();
 
   const worker = startLogoWorker();
+
+  // Health endpoint for service discovery
+  http.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, service: "logo-service" }));
+  }).listen(HEALTH_PORT, () => {
+    console.log(JSON.stringify({ message: "logo_service_health_endpoint", port: HEALTH_PORT }));
+  });
 
   const stop = async () => {
     console.log(JSON.stringify({ message: "logo_service_shutdown_start" }));

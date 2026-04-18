@@ -18,9 +18,13 @@ services:
     image: redis:7
     container_name: tradereplay-redis
     restart: always
-    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
     ports:
       - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -38,7 +42,7 @@ services:
       - --smp
       - "1"
       - --memory
-      - "1G"
+      - "512M"
       - --reserve-memory
       - "0M"
       - --check=false
@@ -204,32 +208,158 @@ services:
       prometheus:
         condition: service_started
 
-  global-expansion:
+  # global-expansion: REMOVED from always-on containers.
+  # Run manually: docker-compose run --rm backend npm run ingest:global:infinite
+
+  # ─── Microservices ─────────────────────────────────────
+
+  asset-service:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: tradereplay-global-expansion
+      context: ./services/asset-service
+    container_name: tradereplay-asset-service
     restart: unless-stopped
-    command: npm run ingest:global:infinite
     env_file:
       - ./.env
       - ./.env.secrets
     environment:
       APP_ENV: docker
-      KAFKA_ENABLED: "true"
+      PORT: 3002
+    ports:
+      - "3002:3002"
     depends_on:
       mongodb:
         condition: service_healthy
       redis:
         condition: service_healthy
-      backend:
-        condition: service_started
     healthcheck:
-      test: ["CMD", "node", "-e", "process.exit(0)"]
-      interval: 60s
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3002/health"]
+      interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 15s
+
+  screener-service:
+    build:
+      context: ./services/screener-service
+    container_name: tradereplay-screener-service
+    restart: unless-stopped
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    environment:
+      APP_ENV: docker
+      PORT: 3004
+    ports:
+      - "3004:3004"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  alert-service:
+    build:
+      context: ./services/alert-service
+    container_name: tradereplay-alert-service
+    restart: unless-stopped
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    environment:
+      APP_ENV: docker
+      PORT: 3005
+    ports:
+      - "3005:3005"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  portfolio-service:
+    build:
+      context: ./services/portfolio-service
+    container_name: tradereplay-portfolio-service
+    restart: unless-stopped
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    environment:
+      APP_ENV: docker
+      PORT: 3006
+    ports:
+      - "3006:3006"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  simulation-service:
+    build:
+      context: ./services/simulation-service
+    container_name: tradereplay-simulation-service
+    restart: unless-stopped
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    environment:
+      APP_ENV: docker
+      PORT: 3007
+    ports:
+      - "3007:3007"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  datafeed-service:
+    build:
+      context: ./services/datafeed-service
+    container_name: tradereplay-datafeed-service
+    restart: unless-stopped
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    environment:
+      APP_ENV: docker
+      PORT: 3008
+    ports:
+      - "3008:3008"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
 
 volumes:
   mongo_data:

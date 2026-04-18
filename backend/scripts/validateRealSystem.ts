@@ -75,12 +75,13 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<{ status: 
 
 async function registerTempUser(): Promise<string> {
   const email = `real-validate-${Date.now()}@example.com`;
+  const testPassword = process.env.VALIDATE_TEST_PASSWORD ?? "Test@Validator1";
   const { status, data } = await fetchJson<{ token?: string }>(`${API_BASE_URL}/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       email,
-      password: "Real#12345",
+      password: testPassword,
       name: "Real Validator",
     }),
   });

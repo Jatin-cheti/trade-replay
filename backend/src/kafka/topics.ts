@@ -12,6 +12,9 @@
   LOGO_RESOLVE: "logo.resolve",
   LOGO_RETRY: "logo.retry",
   LOGO_COMPLETED: "logo.completed",
+  // ── Asset lifecycle topics ─────────────────────────────────────────
+  ASSET_CREATED: "asset.created",
+  ASSET_UPDATED: "asset.updated",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
@@ -134,4 +137,14 @@ export interface LogoCompletedPayload {
   domain: string;
   source: string;
   confidence: number;
+}
+
+export interface AssetCreatedPayload {
+  count: number;
+  batch: number;
+}
+
+export interface AssetUpdatedPayload {
+  count: number;
+  batch: number;
 }

@@ -52,7 +52,7 @@ export async function updateScreen(req: AuthReq, res: Response, next: NextFuncti
     const userId = req.user?.userId;
     if (!userId) { next(new AppError(401, "UNAUTHORIZED", "Auth required")); return; }
 
-    const { id } = req.params;
+    const id = String(req.params.id);
     if (!mongoose.Types.ObjectId.isValid(id)) {
       next(new AppError(400, "INVALID_ID", "Invalid screen ID"));
       return;
@@ -92,7 +92,7 @@ export async function deleteScreen(req: AuthReq, res: Response, next: NextFuncti
     const userId = req.user?.userId;
     if (!userId) { next(new AppError(401, "UNAUTHORIZED", "Auth required")); return; }
 
-    const { id } = req.params;
+    const id = String(req.params.id);
     if (!mongoose.Types.ObjectId.isValid(id)) {
       next(new AppError(400, "INVALID_ID", "Invalid screen ID"));
       return;
@@ -115,13 +115,13 @@ export async function copyScreen(req: AuthReq, res: Response, next: NextFunction
     const userId = req.user?.userId;
     if (!userId) { next(new AppError(401, "UNAUTHORIZED", "Auth required")); return; }
 
-    const { id } = req.params;
+    const id = String(req.params.id);
     if (!mongoose.Types.ObjectId.isValid(id)) {
       next(new AppError(400, "INVALID_ID", "Invalid screen ID"));
       return;
     }
 
-    const original = await ScreenModel.findOne({ _id: id, userId }).lean();
+    const original = await ScreenModel.findOne({ _id: id, userId }).lean() as Record<string, unknown> | null;
     if (!original) {
       next(new AppError(404, "NOT_FOUND", "Screen not found"));
       return;
@@ -129,7 +129,7 @@ export async function copyScreen(req: AuthReq, res: Response, next: NextFunction
 
     const copy = await ScreenModel.create({
       userId,
-      name: `${original.name} (copy)`,
+      name: `${String(original.name)} (copy)`,
       screenerType: original.screenerType,
       tab: original.tab,
       columns: original.columns,
