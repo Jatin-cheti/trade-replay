@@ -46,10 +46,15 @@ function loadEnvFile() {
 
 loadEnvFile();
 
-const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
+const ALPHA_KEYS = [
+  process.env.ALPHA_VANTAGE_KEY,
+  process.env.ALPHA_VANTAGE_KEY_1,
+  process.env.ALPHA_VANTAGE_KEY_2,
+].filter(Boolean);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/tradereplay";
 const LIMIT = Number(process.env.ALPHA_US_LIMIT || 300);
 const DELAY_MS = Number(process.env.ALPHA_US_DELAY_MS || 1200);
+let alphaKeyIndex = 0;
 const argSymbols = process.argv
   .find((arg) => arg.startsWith("--symbols="))
   ?.slice("--symbols=".length);
@@ -59,18 +64,24 @@ const TARGET_SYMBOLS = (argSymbols || process.env.ALPHA_US_SYMBOLS || "")
   .map((value) => value.trim().toUpperCase())
   .filter(Boolean);
 
-if (!ALPHA_VANTAGE_KEY) {
-  console.error("Missing ALPHA_VANTAGE_KEY");
+if (ALPHA_KEYS.length === 0) {
+  console.error("Missing Alpha Vantage key(s). Set ALPHA_VANTAGE_KEY and/or ALPHA_VANTAGE_KEY_1/2.");
   process.exit(1);
+}
+
+function nextAlphaKey() {
+  const key = ALPHA_KEYS[alphaKeyIndex % ALPHA_KEYS.length];
+  alphaKeyIndex += 1;
+  return key;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function fetchOverview(symbol) {
+async function fetchOverview(symbol, apiKey) {
   const url = new URL("https://www.alphavantage.co/query");
   url.searchParams.set("function", "OVERVIEW");
   url.searchParams.set("symbol", symbol);
-  url.searchParams.set("apikey", ALPHA_VANTAGE_KEY);
+  url.searchParams.set("apikey", apiKey);
 
   const response = await fetch(url.toString(), {
     headers: { Accept: "application/json" },
@@ -84,14 +95,15 @@ async function fetchOverview(symbol) {
   return response.json();
 }
 
-async function fetchOverviewWithRetry(symbol, maxAttempts = 4) {
+async function fetchOverviewWithRetry(symbol, maxAttempts = 6) {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const key = nextAlphaKey();
     try {
-      const payload = await fetchOverview(symbol);
+      const payload = await fetchOverview(symbol, key);
 
       if (payload?.Note || payload?.Information) {
-        const waitMs = 5000 * attempt;
-        console.log(`  Rate limited on ${symbol}; waiting ${waitMs}ms before retry ${attempt}/${maxAttempts}`);
+        const waitMs = 1500 * attempt;
+        console.log(`  Rate limit on ${symbol} key ...${key.slice(-4)}; waiting ${waitMs}ms (${attempt}/${maxAttempts})`);
         await sleep(waitMs);
         continue;
       }
@@ -105,7 +117,7 @@ async function fetchOverviewWithRetry(symbol, maxAttempts = 4) {
       if (attempt === maxAttempts) {
         throw error;
       }
-      await sleep(3000 * attempt);
+      await sleep(2000 * attempt);
     }
   }
 
@@ -113,6 +125,8 @@ async function fetchOverviewWithRetry(symbol, maxAttempts = 4) {
 }
 
 async function main() {
+  console.log(`Using ${ALPHA_KEYS.length} Alpha Vantage key(s) in rotation.`);
+
   const client = new MongoClient(MONGO_URI);
   await client.connect();
 

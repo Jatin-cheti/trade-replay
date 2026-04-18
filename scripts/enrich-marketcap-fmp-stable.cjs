@@ -146,7 +146,10 @@ async function main() {
     console.log(`Targeting ${TARGET_SYMBOLS.length} specific symbols.`);
   } else {
     query = {
-      "profile.country": "US",
+      country: "US",
+      type: "stock",
+      source: { $ne: "synthetic-derivatives" },
+      isPrimaryListing: { $ne: false },
       $or: [
         { marketCap: { $exists: false } },
         { marketCap: null },
