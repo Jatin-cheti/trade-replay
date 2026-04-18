@@ -50,7 +50,11 @@ const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/tradereplay";
 const LIMIT = Number(process.env.ALPHA_US_LIMIT || 300);
 const DELAY_MS = Number(process.env.ALPHA_US_DELAY_MS || 1200);
-const TARGET_SYMBOLS = (process.env.ALPHA_US_SYMBOLS || "")
+const argSymbols = process.argv
+  .find((arg) => arg.startsWith("--symbols="))
+  ?.slice("--symbols=".length);
+
+const TARGET_SYMBOLS = (argSymbols || process.env.ALPHA_US_SYMBOLS || "")
   .split(",")
   .map((value) => value.trim().toUpperCase())
   .filter(Boolean);
