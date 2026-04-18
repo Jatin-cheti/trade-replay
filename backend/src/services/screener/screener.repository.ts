@@ -26,7 +26,7 @@ export interface ScreenerAssetDoc {
 }
 
 const DEFAULT_SELECT_FIELDS =
-  "symbol fullSymbol name exchange country type currency s3Icon iconUrl companyDomain sector source popularity priorityScore marketCap volume liquidityScore isPrimaryListing isSynthetic";
+  "symbol fullSymbol name exchange country type currency s3Icon iconUrl companyDomain sector source popularity priorityScore marketCap volume liquidityScore isPrimaryListing isSynthetic pe eps dividendYield netIncome revenue sharesFloat beta revenueGrowth roe epsGrowth analystRating volAvg avgVolume averageVolume";
 
 function buildRegexQuery(input?: string): RegExp | null {
   if (!input) return null;
