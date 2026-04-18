@@ -254,7 +254,3 @@ export default function ScreenerTable({
     </div>
   );
 }
-      </div>
-    </div>
-  );
-}
