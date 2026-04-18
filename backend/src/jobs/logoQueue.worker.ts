@@ -3,6 +3,7 @@ import { redisQueueConnectionOptions } from "../config/redis";
 import { SymbolModel } from "../models/Symbol";
 import { resolveLogoForSymbol } from "../services/logo.service";
 import { validateLogoImage } from "../services/logoAudit.service";
+import { getLogoQueue } from "../services/logoQueue.service";
 import { logger } from "../utils/logger";
 
 const LOGO_QUEUE_NAME = "logo-enrichment";
@@ -117,7 +118,7 @@ async function processLogoQueueJob(job: Job<LogoQueueJob>): Promise<void> {
       },
     );
     failedSymbols += 1;
-    const queueDepth = await job.queue.getWaitingCount();
+    const queueDepth = await getLogoQueue().getWaitingCount();
     logProgress(queueDepth);
     return;
   }
@@ -160,7 +161,7 @@ async function processLogoQueueJob(job: Job<LogoQueueJob>): Promise<void> {
     mappedSymbols += 1;
   }
 
-  const queueDepth = await job.queue.getWaitingCount();
+  const queueDepth = await getLogoQueue().getWaitingCount();
   logProgress(queueDepth);
 }
 
@@ -180,8 +181,8 @@ export function startLogoQueueWorker(): Worker<LogoQueueJob> {
     },
   );
 
-  logoQueueWorker.on("completed", (job) => {
-    logger.debug("logo_queue_job_completed", { fullSymbol: job.data.fullSymbol });
+  logoQueueWorker.on("completed", (_job) => {
+    // completed event — no action needed
   });
 
   logoQueueWorker.on("failed", (job, err) => {

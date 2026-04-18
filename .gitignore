@@ -1,22 +1,39 @@
 # Dependencies
 node_modules/
+**/node_modules/
 .pnp
 .pnp.js
 
 # Build outputs
+dist/
+build/
+**/dist/
+**/build/
 backend/dist/
 frontend/dist/
 *.tsbuildinfo
 
-# Environment files (contain secrets — NEVER commit)
+# ============================
+# SECRETS — NEVER COMMIT THESE
+# ============================
 .env
 .env.*
 !.env.example
 deploy/env/.env.secrets*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+.secrets/
+secrets/
+**/credentials.json
+**/serviceAccountKey.json
 
 # Logs
 *.log
 logs/
+**/logs/
 
 # OS
 .DS_Store
