@@ -7,10 +7,14 @@ import {
   Check,
   ChevronDown,
   Columns3,
+  Copy,
   Filter,
   MoreHorizontal,
+  Pencil,
   Plus,
+  Save,
   Search,
+  Trash2,
   TrendingDown,
   TrendingUp,
   X,
@@ -19,6 +23,7 @@ import { api } from "@/lib/api";
 import { isSpreadExpression } from "@/lib/spreadOperator";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useApp } from "@/context/AppContext";
 
 interface ScreenerOption {
   value: string;
@@ -70,6 +75,19 @@ interface ScreenerMetaResponse {
 interface ScreenerStatsResponse {
   total: number;
   byType: Record<string, number>;
+}
+
+interface SavedScreen {
+  _id: string;
+  name: string;
+  screenerType: string;
+  tab: string;
+  columns: string[];
+  filters: Record<string, unknown>;
+  sort: string;
+  order: string;
+  query: string;
+  updatedAt: string;
 }
 
 interface ScreenerItem {
@@ -603,6 +621,7 @@ export default function Screener() {
   const { type } = useParams<{ type: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isMobile } = useResponsive();
+  const { isAuthenticated } = useApp();
 
   const [meta, setMeta] = useState<ScreenerMetaResponse | null>(null);
   const [stats, setStats] = useState<ScreenerStatsResponse | null>(null);
@@ -622,6 +641,13 @@ export default function Screener() {
   const [manualFilterKeys, setManualFilterKeys] = useState<string[]>([]);
   const [addFilterSearch, setAddFilterSearch] = useState("");
   const [addColumnSearch, setAddColumnSearch] = useState("");
+
+  /* ── Saved screens state ── */
+  const [savedScreens, setSavedScreens] = useState<SavedScreen[]>([]);
+  const [activeScreenId, setActiveScreenId] = useState<string | null>(null);
+  const [renamingScreenId, setRenamingScreenId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [screenDirty, setScreenDirty] = useState(false);
 
   const fetchKeyRef = useRef("");
   const fetchCounterRef = useRef(0);
@@ -688,6 +714,112 @@ export default function Screener() {
 
     void loadMeta();
   }, []);
+
+  /* ── Saved screens CRUD ── */
+  const loadScreens = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await api.get<{ screens: SavedScreen[] }>("/screens");
+      setSavedScreens(res.data.screens);
+    } catch { /* ignore for unauth */ }
+  }, [isAuthenticated]);
+
+  useEffect(() => { void loadScreens(); }, [loadScreens]);
+
+  const saveScreen = useCallback(async (name?: string) => {
+    if (!isAuthenticated) return;
+    const payload = {
+      name: name || "Unnamed screen",
+      screenerType: routeType,
+      tab: searchParams.get("tab") || "overview",
+      columns: parseCsv(searchParams.get("columns") || ""),
+      filters: parseFiltersFromSearch(searchParams),
+      sort: searchParams.get("sort") || "marketCap",
+      order: searchParams.get("order") || "desc",
+      query: searchParams.get("q") || "",
+    };
+    try {
+      if (activeScreenId) {
+        await api.put(`/screens/${activeScreenId}`, payload);
+      } else {
+        const res = await api.post<{ screen: SavedScreen }>("/screens", payload);
+        setActiveScreenId(res.data.screen._id);
+      }
+      setScreenDirty(false);
+      void loadScreens();
+    } catch { /* ignore */ }
+  }, [isAuthenticated, routeType, searchParams, activeScreenId, loadScreens]);
+
+  const deleteScreenById = useCallback(async (id: string) => {
+    try {
+      await api.delete(`/screens/${id}`);
+      if (activeScreenId === id) setActiveScreenId(null);
+      void loadScreens();
+    } catch { /* ignore */ }
+  }, [activeScreenId, loadScreens]);
+
+  const copyScreenById = useCallback(async (id: string) => {
+    try {
+      await api.post(`/screens/${id}/copy`);
+      void loadScreens();
+    } catch { /* ignore */ }
+  }, [loadScreens]);
+
+  const renameScreenById = useCallback(async (id: string, newName: string) => {
+    try {
+      await api.put(`/screens/${id}`, { name: newName });
+      void loadScreens();
+    } catch { /* ignore */ }
+  }, [loadScreens]);
+
+  const loadScreenState = useCallback((screen: SavedScreen) => {
+    setActiveScreenId(screen._id);
+    setScreenDirty(false);
+    const params = new URLSearchParams();
+    params.set("tab", screen.tab || "overview");
+    if (screen.columns?.length) params.set("columns", screen.columns.join(","));
+    if (screen.sort) params.set("sort", screen.sort);
+    if (screen.order) params.set("order", screen.order);
+    if (screen.query) params.set("q", screen.query);
+
+    const filters = screen.filters || {};
+    for (const [key, val] of Object.entries(filters)) {
+      if (Array.isArray(val) && val.length > 0) {
+        params.set(getMultiParamName(key), val.join(","));
+      } else if (typeof val === "boolean" && val) {
+        if (key === "primaryListingOnly") params.set("primaryListing", "true");
+      } else if (val && typeof val === "object") {
+        const obj = val as Record<string, unknown>;
+        if ("min" in obj && obj.min !== undefined) params.set(`${key}Min`, String(obj.min));
+        if ("max" in obj && obj.max !== undefined) params.set(`${key}Max`, String(obj.max));
+        if ("from" in obj && obj.from) {
+          const names = getDateParamNames(key);
+          params.set(names.from, String(obj.from));
+        }
+        if ("to" in obj && obj.to) {
+          const names = getDateParamNames(key);
+          params.set(names.to, String(obj.to));
+        }
+      }
+    }
+
+    if (screen.screenerType !== routeType) {
+      navigate(`/screener/${screen.screenerType}?${params.toString()}`);
+    } else {
+      setSearchParams(params, { replace: true });
+    }
+  }, [navigate, routeType, setSearchParams]);
+
+  // Mark dirty when URL changes and a screen is active
+  useEffect(() => {
+    if (activeScreenId) setScreenDirty(true);
+  }, [searchParams, activeScreenId]);
+
+  const activeScreenName = useMemo(() => {
+    if (!activeScreenId) return "Unnamed screen";
+    const found = savedScreens.find((s) => s._id === activeScreenId);
+    return found?.name || "Unnamed screen";
+  }, [activeScreenId, savedScreens]);
 
   const parsedFilters = useMemo(() => parseFiltersFromSearch(searchParams), [searchParams]);
 
@@ -1142,7 +1274,7 @@ export default function Screener() {
           <AssetAvatar
             src={item.iconUrl}
             label={item.symbol}
-            className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-border/40"
+            className="h-7 w-7 shrink-0 rounded-full object-contain bg-white/90 p-0.5 ring-1 ring-border/40"
           />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{item.symbol}</p>
@@ -1238,22 +1370,115 @@ export default function Screener() {
               onClick={() => setScreenMenuOpen((open) => !open)}
               className="inline-flex items-center gap-2 rounded-lg border border-border/55 bg-secondary/25 px-3 py-2 text-sm text-foreground transition-colors hover:border-border"
             >
-              Unnamed screen
+              {activeScreenName}
+              {screenDirty && activeScreenId && <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Unsaved changes" />}
               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
             </button>
 
             {screenMenuOpen && (
-              <div className="absolute left-0 top-full z-40 mt-1.5 w-[220px] rounded-xl border border-border/60 bg-background/95 p-1.5 shadow-xl backdrop-blur-xl">
-                {(meta?.screenMenuOptions || []).map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setScreenMenuOpen(false)}
-                    className="flex w-full items-center rounded-lg px-2.5 py-2 text-left text-sm text-foreground/85 transition-colors hover:bg-secondary/45"
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="absolute left-0 top-full z-40 mt-1.5 w-[280px] rounded-xl border border-border/60 bg-background/95 p-1.5 shadow-xl backdrop-blur-xl">
+                {/* Save / Save As */}
+                {isAuthenticated && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void saveScreen(activeScreenId ? activeScreenName : undefined);
+                        setScreenMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-foreground/85 transition-colors hover:bg-secondary/45"
+                    >
+                      <Save className="h-3.5 w-3.5 text-muted-foreground" />
+                      {activeScreenId ? "Save" : "Save screen"}
+                    </button>
+                    {activeScreenId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveScreenId(null);
+                          void saveScreen("Unnamed screen");
+                          setScreenMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-foreground/85 transition-colors hover:bg-secondary/45"
+                      >
+                        <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                        Save as new
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* Saved screens list */}
+                {savedScreens.length > 0 && (
+                  <>
+                    <div className="my-1.5 h-px bg-border/40" />
+                    <p className="px-2.5 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Saved Screens</p>
+                    <div className="max-h-48 overflow-auto">
+                      {savedScreens.map((screen) => (
+                        <div
+                          key={screen._id}
+                          className={`group flex items-center justify-between rounded-lg px-2.5 py-2 transition-colors hover:bg-secondary/45 ${
+                            screen._id === activeScreenId ? "bg-primary/12" : ""
+                          }`}
+                        >
+                          {renamingScreenId === screen._id ? (
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onBlur={() => {
+                                if (renameValue.trim()) {
+                                  void renameScreenById(screen._id, renameValue.trim());
+                                }
+                                setRenamingScreenId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  if (renameValue.trim()) {
+                                    void renameScreenById(screen._id, renameValue.trim());
+                                  }
+                                  setRenamingScreenId(null);
+                                }
+                                if (e.key === "Escape") setRenamingScreenId(null);
+                              }}
+                              className="mr-2 flex-1 rounded border border-primary/40 bg-secondary/25 px-1.5 py-0.5 text-xs text-foreground focus:outline-none"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                loadScreenState(screen);
+                                setScreenMenuOpen(false);
+                              }}
+                              className="flex-1 truncate text-left text-sm text-foreground/85"
+                            >
+                              {screen.name}
+                            </button>
+                          )}
+
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button type="button" onClick={() => { setRenamingScreenId(screen._id); setRenameValue(screen.name); }}
+                              className="rounded p-1 text-muted-foreground hover:text-foreground" title="Rename">
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button type="button" onClick={() => void copyScreenById(screen._id)}
+                              className="rounded p-1 text-muted-foreground hover:text-foreground" title="Duplicate">
+                              <Copy className="h-3 w-3" />
+                            </button>
+                            <button type="button" onClick={() => void deleteScreenById(screen._id)}
+                              className="rounded p-1 text-muted-foreground hover:text-red-400" title="Delete">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {!isAuthenticated && (
+                  <p className="px-2.5 py-2 text-xs text-muted-foreground">Log in to save screens</p>
+                )}
               </div>
             )}
           </div>
@@ -1605,7 +1830,15 @@ export default function Screener() {
           </div>
         )}
 
-        {/* Counts and stats hidden until 600K+ symbols mapped */}
+        {total > 0 && (
+          <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Showing {items.length.toLocaleString()} of {total.toLocaleString()} matches
+              {stats?.total ? ` (${stats.total.toLocaleString()} total symbols)` : ""}
+            </span>
+            {loadingMore && <span className="text-primary">Loading more...</span>}
+          </div>
+        )}
       </div>
     </div>
   );
