@@ -1814,7 +1814,17 @@ export default function Screener() {
     [visibleColumns],
   );
 
-  const tableMinWidth = Math.max(920, (visibleColumns.length * 130) + 36);
+  const tableMinWidth = useMemo(() => {
+    const minContentWidth = visibleColumns.reduce((total, column) => {
+      const widthDef = COLUMN_WIDTHS[column] || "minmax(110px, 1fr)";
+      const match = /minmax\((\d+)px/i.exec(widthDef);
+      const minWidth = match ? Number(match[1]) : 110;
+      return total + minWidth;
+    }, 0);
+
+    // +36 keeps the trailing add-column slot visible without clipping the last header.
+    return Math.max(920, minContentWidth + 36);
+  }, [visibleColumns]);
 
   const updateSelectedColumns = (nextColumns: string[]) => {
     const deduped = dedupe(nextColumns);
@@ -2466,7 +2476,7 @@ export default function Screener() {
         ) : (
           <div className="rounded-xl border border-border/30 bg-background/40">
             <div style={{ overflowX: "auto", minWidth: 0 }}>
-              <div style={{ minWidth: tableMinWidth, overflowX: "hidden" }}>
+              <div style={{ minWidth: tableMinWidth }}>
                 <div
                   className="sticky top-0 z-20 grid items-center gap-2 border-b border-border/35 bg-[hsl(var(--background))]/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm"
                   style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
@@ -2544,7 +2554,7 @@ export default function Screener() {
 
                 <Virtuoso
                   data={items}
-                  style={{ height: "calc(100vh - 350px)", minHeight: 420, overflowX: "hidden" }}
+                  style={{ height: "calc(100vh - 350px)", minHeight: 420, overflowX: "visible", scrollbarGutter: "stable" }}
                   endReached={() => {
                     void loadMore();
                   }}
