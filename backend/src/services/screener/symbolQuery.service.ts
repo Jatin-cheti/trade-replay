@@ -94,7 +94,7 @@ function deriveAnalystRating(base: { analystRating?: string }): string {
  */
 function mapRow(base: Awaited<ReturnType<typeof enrichScreenerBatch>>[number]): ScreenerRow {
   const perfPercent = Number((base.changePercent || 0).toFixed(2));
-  const epsDilGrowth = base.revenueGrowth != null ? Number(toPercent(base.revenueGrowth).toFixed(2)) : null;
+  const epsDilGrowth = (base as Record<string, unknown>).epsGrowth != null ? Number(toPercent(((base as Record<string, unknown>).epsGrowth) as number).toFixed(2)) : null;
   const revenueGrowth = base.revenueGrowth != null ? Number(toPercent(base.revenueGrowth).toFixed(2)) : null;
   const divYieldPercent = base.dividendYield != null ? Number(base.dividendYield.toFixed(2)) : null;
   const pe = base.pe;
