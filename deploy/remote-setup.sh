@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+
 echo "=== Completing droplet setup ==="
 
 # ---- Kafka (use archive URL) ----
@@ -80,9 +82,34 @@ if [ ! -d "/opt/tradereplay/.git" ]; then
   git clone https://github.com/Jatin-cheti/trade-replay.git /opt/tradereplay
 fi
 
-# ---- Install backend deps ----
+cd /opt/tradereplay
+git fetch origin "${DEPLOY_BRANCH}"
+if git show-ref --verify --quiet "refs/heads/${DEPLOY_BRANCH}"; then
+  git checkout "${DEPLOY_BRANCH}"
+else
+  git checkout -b "${DEPLOY_BRANCH}" "origin/${DEPLOY_BRANCH}"
+fi
+git pull --ff-only origin "${DEPLOY_BRANCH}"
+
+# ---- Install service deps ----
 cd /opt/tradereplay/backend
-npm ci --omit=dev
+npm ci
+cd /opt/tradereplay/services/logo-service
+npm ci
+cd /opt/tradereplay/services/asset-service
+npm ci
+cd /opt/tradereplay/services/screener-service
+npm ci
+cd /opt/tradereplay/services/alert-service
+npm ci
+cd /opt/tradereplay/services/portfolio-service
+npm ci
+cd /opt/tradereplay/services/simulation-service
+npm ci
+cd /opt/tradereplay/services/datafeed-service
+npm ci
+cd /opt/tradereplay/services/chart-service
+npm ci
 
 # ---- Nginx ----
 cp /opt/tradereplay/deploy/nginx/tradereplay.conf /etc/nginx/sites-available/tradereplay

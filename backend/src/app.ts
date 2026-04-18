@@ -19,6 +19,7 @@ import { createLiveMarketRoutes } from "./routes/liveMarketRoutes";
 import { createPortfolioRoutes } from "./routes/portfolioRoutes";
 import { createTradeRoutes } from "./routes/tradeRoutes";
 import { createSymbolRoutes } from "./routes/symbolRoutes";
+import { createChartRoutes } from "./routes/chartRoutes";
 import { createAlertsRoutes } from "./routes/alertsRoutes";
 import { createDatafeedRoutes } from "./routes/datafeedRoutes";
 import { createScreenerRoutes } from "./routes/screenerRoutes";
@@ -34,6 +35,7 @@ import { createIngestionRoutes } from "./ingestion/routes";
 import { startIngestionWorker } from "./ingestion/worker";
 import { warmSymbolSearchCache } from "./services/symbol.service";
 import { startSearchIndexService } from "./services/searchIndex.service";
+import { getChartServiceHealthStatus } from "./services/chartCompute.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
 import { getFullCoverageReport, runTailEliminationOnce, startTailOrchestrator, stopTailOrchestrator, isOrchestratorRunning } from "./services/tailOrchestrator.service";
 import { startScalingOrchestrator, stopScalingOrchestrator, isScalingOrchestratorRunning, getLiveScalingReport, runExpansionOnce, runSyncOnce, getScalingStatus } from "./services/scalingOrchestrator.service";
@@ -135,8 +137,48 @@ export function createApp() {
 
   const portfolioController = createPortfolioController();
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ ok: true });
+  app.get("/api/health", async (_req, res) => {
+    const local = getChartServiceHealthStatus();
+    let remote: {
+      reachable: boolean;
+      statusCode: number | null;
+      error: string | null;
+    } = {
+      reachable: false,
+      statusCode: null,
+      error: null,
+    };
+
+    if (local.enabled) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(300, env.CHART_SERVICE_TIMEOUT_MS));
+
+      try {
+        const target = `${env.CHART_SERVICE_URL.replace(/\/$/, "")}/health`;
+        const response = await fetch(target, { method: "GET", signal: controller.signal });
+        remote = {
+          reachable: response.ok,
+          statusCode: response.status,
+          error: response.ok ? null : `HTTP_${response.status}`,
+        };
+      } catch (error) {
+        remote = {
+          reachable: false,
+          statusCode: null,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    res.json({
+      ok: true,
+      chartService: {
+        local,
+        remote,
+      },
+    });
   });
 
   // ── Logo coverage & tail elimination endpoints ───────────────────────
@@ -355,6 +397,7 @@ export function createApp() {
   app.use("/api/portfolio", createPortfolioRoutes());
   app.use("/api/trade", createTradeRoutes(engine));
   app.use("/api/symbols", createSymbolRoutes());
+  app.use("/api/chart", createChartRoutes());
   app.use("/api/screener", createScreenerRoutes());
   app.use("/api/screens", createScreenRoutes());
   app.use("/api/alerts", createAlertsRoutes());

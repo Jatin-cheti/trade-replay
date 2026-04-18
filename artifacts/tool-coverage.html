@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool Coverage Report — Phase 1</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; }
+    .header h1 { font-size: 24px; margin-bottom: 4px; }
+    .header p { color: #94a3b8; font-size: 14px; }
+    .score { font-size: 64px; font-weight: 900; color: #22c55e; margin: 8px 0; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: white; border-radius: 8px; padding: 16px; border: 1px solid #e2e8f0; }
+    .stat-card .value { font-size: 28px; font-weight: 700; }
+    .stat-card .label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .stat-card.green .value { color: #22c55e; }
+    .stat-card.red .value { color: #ef4444; }
+    .stat-card.yellow .value { color: #f59e0b; }
+    .stat-card.blue .value { color: #3b82f6; }
+    .section { background: white; border-radius: 8px; padding: 20px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+    .section h2 { font-size: 18px; margin-bottom: 16px; color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+    .cat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .cat-card { border-radius: 8px; padding: 14px; border: 1px solid #e2e8f0; }
+    .cat-card h4 { font-size: 14px; font-weight: 700; text-transform: capitalize; margin-bottom: 8px; }
+    .bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+    .bar-fill { height: 100%; border-radius: 4px; }
+    .scenario-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+    .scenario-row:last-child { border-bottom: none; }
+    .scenario-name { font-weight: 600; font-size: 14px; }
+    table tr:hover { background: #f8fafc !important; }
+    .badge-success { background: #dcfce7; color: #166534; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+    .badge-fail { background: #fee2e2; color: #991b1b; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+    .badge-skip { background: #f1f5f9; color: #475569; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🛠️ Tool Coverage Report — Phase 1</h1>
+      <p>Generated: 16/4/2026, 9:12:42 am &nbsp;|&nbsp; Matrix ran: 2026-04-16T03:42:41.162Z</p>
+      <div class="score">100.0%</div>
+      <div style="color:#94a3b8;font-size:14px">85/85 tools passing &nbsp;·&nbsp; 100.0% of 85 tools covered</div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card green">
+        <div class="value">85</div>
+        <div class="label">Tools Passing</div>
+      </div>
+      <div class="stat-card red">
+        <div class="value">0</div>
+        <div class="label">Tools Failing</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="value">0</div>
+        <div class="label">Not Tested</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="value">85</div>
+        <div class="label">Tested (100.0%)</div>
+      </div>
+      <div class="stat-card">
+        <div class="value">3294</div>
+        <div class="label">Total Test Cases</div>
+      </div>
+      <div class="stat-card">
+        <div class="value">1091s</div>
+        <div class="label">Total Duration</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Scenario Breakdown</h2>
+      
+        <div class="scenario-row">
+          <div class="scenario-name">[smoke]</div>
+          <div>
+            <span class="badge-success">100% &nbsp; 85/85</span>
+          </div>
+        </div>
+        <div class="scenario-row">
+          <div class="scenario-name">[multi-5]</div>
+          <div>
+            <span class="badge-skip">0% &nbsp; 0/0</span>
+          </div>
+        </div>
+        <div class="scenario-row">
+          <div class="scenario-name">[fullscreen]</div>
+          <div>
+            <span class="badge-skip">0% &nbsp; 0/0</span>
+          </div>
+        </div>
+        <div class="scenario-row">
+          <div class="scenario-name">[option]</div>
+          <div>
+            <span class="badge-success">100% &nbsp; 3209/3209</span>
+          </div>
+        </div>
+        <div class="scenario-row">
+          <div class="scenario-name">[header]</div>
+          <div>
+            <span class="badge-skip">0% &nbsp; 0/0</span>
+          </div>
+        </div>
+        <div class="scenario-row">
+          <div class="scenario-name">[mixed]</div>
+          <div>
+            <span class="badge-skip">0% &nbsp; 0/0</span>
+          </div>
+        </div>
+    </div>
+
+    <div class="section">
+      <h2>Category Coverage</h2>
+      <div class="cat-grid">
+        
+          <div class="cat-card">
+            <h4>lines (17 tools)</h4>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#3b82f6"></div></div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">Coverage: 100.0% (17/17)</div>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#22c55e"></div></div>
+            <div style="font-size:12px;color:#64748b">Pass rate: <strong style="color:#22c55e">100.0%</strong> (17/17)</div>
+            
+          </div>
+          <div class="cat-card">
+            <h4>fib (15 tools)</h4>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#3b82f6"></div></div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">Coverage: 100.0% (15/15)</div>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#22c55e"></div></div>
+            <div style="font-size:12px;color:#64748b">Pass rate: <strong style="color:#22c55e">100.0%</strong> (15/15)</div>
+            
+          </div>
+          <div class="cat-card">
+            <h4>patterns (14 tools)</h4>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#3b82f6"></div></div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">Coverage: 100.0% (14/14)</div>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#22c55e"></div></div>
+            <div style="font-size:12px;color:#64748b">Pass rate: <strong style="color:#22c55e">100.0%</strong> (14/14)</div>
+            
+          </div>
+          <div class="cat-card">
+            <h4>forecasting (12 tools)</h4>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#3b82f6"></div></div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">Coverage: 100.0% (12/12)</div>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#22c55e"></div></div>
+            <div style="font-size:12px;color:#64748b">Pass rate: <strong style="color:#22c55e">100.0%</strong> (12/12)</div>
+            
+          </div>
+          <div class="cat-card">
+            <h4>brush (16 tools)</h4>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#3b82f6"></div></div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">Coverage: 100.0% (16/16)</div>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#22c55e"></div></div>
+            <div style="font-size:12px;color:#64748b">Pass rate: <strong style="color:#22c55e">100.0%</strong> (16/16)</div>
+            
+          </div>
+          <div class="cat-card">
+            <h4>text (11 tools)</h4>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#3b82f6"></div></div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">Coverage: 100.0% (11/11)</div>
+            <div class="bar"><div class="bar-fill" style="width:100.0%;background:#22c55e"></div></div>
+            <div style="font-size:12px;color:#64748b">Pass rate: <strong style="color:#22c55e">100.0%</strong> (11/11)</div>
+            
+          </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Tool-by-Tool Results</h2>
+      
+  <h3 style="margin:20px 0 8px;color:#1e40af;text-transform:capitalize">lines</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="background:#f1f5f9">
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Tool ID</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Name</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Family</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Anchors</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Error</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ trend</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Trend line</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">20926ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ ray</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Ray</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11096ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ infoLine</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Info line</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">12817ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ extendedLine</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Extended line</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">12495ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ trendAngle</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Trend angle</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13019ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ hline</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Horizontal line</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10516ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ horizontalRay</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Horizontal ray</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8381ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ vline</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Vertical line</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">7964ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ crossLine</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Cross line</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8602ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ channel</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Parallel channel</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15814ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ regressionTrend</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Regression trend</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15000ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ flatTopBottom</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Flat top/bottom</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13367ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ disjointChannel</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Disjoint channel</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">4</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">16112ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ pitchfork</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Pitchfork</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">17162ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ schiffPitchfork</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Schiff pitchfork</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">17079ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ modifiedSchiffPitchfork</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Modified Schiff pitchfork</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13733ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ insidePitchfork</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Inside pitchfork</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8300ms</td>
+    </tr>
+    </tbody>
+  </table>
+  <h3 style="margin:20px 0 8px;color:#1e40af;text-transform:capitalize">fib</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="background:#f1f5f9">
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Tool ID</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Name</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Family</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Anchors</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Error</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibRetracement</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib retracement</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">18221ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibExtension</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib extension</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">16484ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibChannel</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib channel</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15482ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibTimeZone</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib time zone</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14795ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibSpeedResistFan</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib speed resistance fan</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14933ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibTrendTime</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib trend time</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">16230ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibCircles</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib circles</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11934ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibSpiral</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib spiral</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">12905ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibSpeedResistArcs</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib speed resistance arcs</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13077ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fibWedge</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fib wedge</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11535ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ pitchfan</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Pitchfan</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13732ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ gannBox</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Gann box</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13166ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ gannSquareFixed</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Gann square fixed</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14161ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ gannSquare</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Gann square</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15834ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ gannFan</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Gann fan</td>
+      <td style="padding:6px 8px;font-size:12px">fib</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15458ms</td>
+    </tr>
+    </tbody>
+  </table>
+  <h3 style="margin:20px 0 8px;color:#1e40af;text-transform:capitalize">patterns</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="background:#f1f5f9">
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Tool ID</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Name</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Family</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Anchors</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Error</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ xabcd</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">XABCD pattern</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">5</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10534ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ cypherPattern</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Cypher pattern</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">5</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8385ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ headAndShoulders</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Head and shoulders</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">5</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8114ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ abcdPattern</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">ABCD pattern</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">4</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10082ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ trianglePattern</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Triangle pattern</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8166ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ threeDrives</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Three drives</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">7</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11633ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ elliottImpulse</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Elliott impulse 1-2-3-4-5</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">5</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10029ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ elliottCorrection</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Elliott correction A-B-C</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8718ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ elliottTriangle</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Elliott triangle A-B-C-D-E</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">5</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9331ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ elliottDoubleCombo</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Elliott double combo W-X-Y</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8184ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ elliottTripleCombo</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Elliott triple combo W-X-Y-X-Z</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">5</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10782ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ cyclicLines</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Cyclic lines</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13916ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ timeCycles</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Time cycles</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15815ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ sineLine</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Sine line</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11987ms</td>
+    </tr>
+    </tbody>
+  </table>
+  <h3 style="margin:20px 0 8px;color:#1e40af;text-transform:capitalize">forecasting</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="background:#f1f5f9">
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Tool ID</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Name</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Family</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Anchors</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Error</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ longPosition</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Long position</td>
+      <td style="padding:6px 8px;font-size:12px">position</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">20234ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ shortPosition</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Short position</td>
+      <td style="padding:6px 8px;font-size:12px">position</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">12431ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ positionForecast</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Position forecast</td>
+      <td style="padding:6px 8px;font-size:12px">position</td>
+      <td style="padding:6px 8px;font-size:12px">3</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11245ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ barPattern</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Bar pattern</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">17659ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ ghostFeed</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Ghost feed</td>
+      <td style="padding:6px 8px;font-size:12px">pattern</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">7882ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ sector</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Sector</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13386ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ anchoredVwap</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Anchored VWAP</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9599ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ fixedRangeVolumeProfile</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Fixed range volume profile</td>
+      <td style="padding:6px 8px;font-size:12px">measure</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">24051ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ anchoredVolumeProfile</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Anchored volume profile</td>
+      <td style="padding:6px 8px;font-size:12px">measure</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9814ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ priceRange</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Price range</td>
+      <td style="padding:6px 8px;font-size:12px">measure</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13147ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ dateRange</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Date range</td>
+      <td style="padding:6px 8px;font-size:12px">measure</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13730ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ dateAndPriceRange</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Date and price range</td>
+      <td style="padding:6px 8px;font-size:12px">measure</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14687ms</td>
+    </tr>
+    </tbody>
+  </table>
+  <h3 style="margin:20px 0 8px;color:#1e40af;text-transform:capitalize">brush</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="background:#f1f5f9">
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Tool ID</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Name</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Family</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Anchors</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Error</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ brush</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Brush</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15545ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ highlighter</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Highlighter</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10646ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ arrowMarker</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Arrow marker</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">7554ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ arrowTool</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Arrow</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">20779ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ arrowMarkUp</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Arrow mark up</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">8579ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ arrowMarkDown</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Arrow mark down</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">7683ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ rectangle</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Rectangle</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10330ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ rotatedRectangle</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Rotated rectangle</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9552ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ path</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Path</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">11819ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ circle</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Circle</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9281ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ ellipse</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Ellipse</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9366ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ polyline</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Polyline</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13544ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ triangle</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Triangle</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10114ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ arc</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Arc</td>
+      <td style="padding:6px 8px;font-size:12px">shape</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13651ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ curveTool</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Curve</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">17458ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ doubleCurve</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Double curve</td>
+      <td style="padding:6px 8px;font-size:12px">line</td>
+      <td style="padding:6px 8px;font-size:12px">2</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">16415ms</td>
+    </tr>
+    </tbody>
+  </table>
+  <h3 style="margin:20px 0 8px;color:#1e40af;text-transform:capitalize">text</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="background:#f1f5f9">
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Tool ID</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Name</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Family</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Anchors</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Error</th>
+        <th style="text-align:left;padding:6px 8px;font-size:12px;color:#475569">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ plainText</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Text</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13323ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ anchoredText</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Anchored text</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">12060ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ note</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Note</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">9688ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ priceNote</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Price note</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15429ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ pin</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Pin</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14218ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ table</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Table</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">15530ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ callout</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Callout</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">13789ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ comment</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Comment</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14511ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ priceLabel</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Price label</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">10048ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ signpost</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Signpost</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">14146ms</td>
+    </tr>
+    <tr >
+      <td style="padding:6px 8px;font-family:monospace;font-size:12px">✅ flagMark</td>
+      <td style="padding:6px 8px;color:#666;font-size:12px">Flag mark</td>
+      <td style="padding:6px 8px;font-size:12px">text</td>
+      <td style="padding:6px 8px;font-size:12px">1</td>
+      <td style="padding:6px 8px;font-size:12px;color:#ef4444"></td>
+      <td style="padding:6px 8px;font-size:12px;color:#888">12363ms</td>
+    </tr>
+    </tbody>
+  </table>
+    </div>
+
+    
+    <div class="section" style="background:#f0fdf4;border-color:#86efac">
+      <h2 style="color:#166534">🎉 All Tested Tools Passing!</h2>
+      <p style="color:#15803d;margin-top:8px">No failures detected. Phase 1 is green.</p>
+    </div>
+
+    
+
+    <div style="text-align:center;color:#94a3b8;font-size:12px;margin-top:24px;padding:16px">
+      Phase 1 Tool Coverage Report &nbsp;·&nbsp; trade-replay-custom-charts &nbsp;·&nbsp; 2026-04-16T03:42:42.619Z
+    </div>
+  </div>
+</body>
+</html>
