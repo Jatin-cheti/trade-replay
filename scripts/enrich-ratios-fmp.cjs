@@ -142,17 +142,29 @@ async function main() {
       if (!ratio) { failed++; continue; }
 
       const update = {};
-      if (ratio.peRatioTTM != null) update.pe = Number(ratio.peRatioTTM);
-      else if (ratio.priceEarningsRatioTTM != null) update.pe = Number(ratio.priceEarningsRatioTTM);
-      else if (ratio.peRatio != null) update.pe = Number(ratio.peRatio);
+      // FMP stable/ratios field names (confirmed 2025)
+      const peVal = ratio.priceToEarningsRatio ?? ratio.peRatioTTM ?? ratio.priceEarningsRatioTTM ?? ratio.peRatio ?? null;
+      if (peVal != null) update.pe = Number(peVal);
 
-      if (ratio.dividendYieldTTM != null) update.dividendYield = Number(ratio.dividendYieldTTM);
-      else if (ratio.dividendYield != null) update.dividendYield = Number(ratio.dividendYield);
+      const divYield = ratio.dividendYield ?? ratio.dividendYieldTTM ?? null;
+      if (divYield != null) update.dividendYield = Number(divYield);
 
-      if (ratio.returnOnEquityTTM != null) update.roe = Number(ratio.returnOnEquityTTM);
-      else if (ratio.returnOnEquity != null) update.roe = Number(ratio.returnOnEquity);
+      // Revenue growth not in stable/ratios — skip here (not in this endpoint)
+      // Also capture PEG ratio while available
+      const pegVal = ratio.priceToEarningsGrowthRatio ?? ratio.forwardPriceToEarningsGrowthRatio ?? null;
+      if (pegVal != null) update.peg = Number(pegVal);
 
-      if (ratio.revenueGrowth != null) update.revenueGrowth = Number(ratio.revenueGrowth);
+      // Fetch key-metrics for ROE (returnOnEquity is only in key-metrics)
+      const kmKey = nextKey();
+      const kmUrl = `https://financialmodelingprep.com/stable/key-metrics?symbol=${encodeURIComponent(sym)}&apikey=${kmKey}`;
+      try {
+        const kmData = await fetchJSON(kmUrl);
+        const km = Array.isArray(kmData) ? kmData[0] : null;
+        if (km) {
+          const roeVal = km.returnOnEquity ?? null;
+          if (roeVal != null) update.roe = Number(roeVal);
+        }
+      } catch { /* ROE optional */ }
 
       if (Object.keys(update).length === 0) { failed++; continue; }
 
