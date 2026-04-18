@@ -137,15 +137,20 @@ async function main() {
       .find(stockTypeQuery, { projection: { symbol: 1, fullSymbol: 1 } })
       .limit(Math.max(LIMIT * 10, 5000))
       .toArray();
+    const allClean = await cleanColl
+      .find(stockTypeQuery, { projection: { symbol: 1, fullSymbol: 1 } })
+      .limit(Math.max(LIMIT * 10, 5000))
+      .toArray();
+    const merged = [...all, ...allClean];
     const wanted = new Set(TARGET_SYMBOLS.map(s => s.toUpperCase()));
-    docs = all.filter((d) => {
+    docs = merged.filter((d) => {
       const sym = String(d.symbol || "").toUpperCase();
       const full = String(d.fullSymbol || "").toUpperCase();
       const base = baseSymbol(sym);
       return wanted.has(sym) || wanted.has(full) || wanted.has(base);
     }).slice(0, LIMIT);
   } else {
-    docs = await symbolsColl
+    docs = await cleanColl
       .find({ ...stockTypeQuery, analystRating: { $exists: false } }, { projection: { symbol: 1, fullSymbol: 1 } })
       .limit(LIMIT)
       .toArray();
@@ -187,9 +192,18 @@ async function main() {
 
       if (!rating) { failed++; continue; }
 
-      const filter = doc.fullSymbol ? { fullSymbol: doc.fullSymbol } : { symbol: doc.symbol };
-      await symbolsColl.updateOne(filter, { $set: { analystRating: rating } });
       const escaped = sym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await symbolsColl.updateMany(
+        {
+          $or: [
+            { symbol: sym },
+            { fullSymbol: sym },
+            { symbol: { $regex: `(^|:)${escaped}$`, $options: "i" } },
+            { fullSymbol: { $regex: `(^|:)${escaped}$`, $options: "i" } },
+          ],
+        },
+        { $set: { analystRating: rating } },
+      );
       await cleanColl.updateMany(
         {
           $or: [
