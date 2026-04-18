@@ -40,6 +40,11 @@ function extractDomainFromGoogleFavicon(src: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function extractDomainFromLogoDevUrl(src: string): string | null {
+  const match = src.match(/img\.logo\.dev\/([^?/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function buildImageCandidates(src?: string): string[] {
   if (!src) return [];
 
@@ -52,6 +57,11 @@ function buildImageCandidates(src?: string): string[] {
   if (!domain) {
     const googleDomain = extractDomainFromGoogleFavicon(src);
     if (googleDomain) domain = googleDomain;
+  }
+
+  if (!domain) {
+    const logoDevDomain = extractDomainFromLogoDevUrl(src);
+    if (logoDevDomain) domain = logoDevDomain;
   }
 
   // If domain was extracted from a logo service, build a fallback chain
