@@ -491,6 +491,505 @@ function MultiSelectEditor({
   );
 }
 
+/* ── Country Filter (specialized) ── */
+const POPULAR_COUNTRIES = [
+  { flag: "🌐", name: "Entire world", value: "WORLD" },
+  { flag: "🇮🇳", name: "India", value: "IN" },
+  { flag: "🇺🇸", name: "USA", value: "US" },
+  { flag: "🇩🇪", name: "Germany", value: "DE" },
+  { flag: "🇯🇵", name: "Japan", value: "JP" },
+  { flag: "🇨🇦", name: "Canada", value: "CA" },
+  { flag: "🇭🇰", name: "Hong Kong, China", value: "HK" },
+  { flag: "🇬🇧", name: "United Kingdom", value: "GB" },
+];
+
+const ALL_COUNTRIES = [
+  { flag: "🇦🇷", name: "Argentina", value: "AR" },
+  { flag: "🇦🇺", name: "Australia", value: "AU" },
+  { flag: "🇦🇹", name: "Austria", value: "AT" },
+  { flag: "🇧🇭", name: "Bahrain", value: "BH" },
+  { flag: "🇧🇩", name: "Bangladesh", value: "BD" },
+  { flag: "🇧🇪", name: "Belgium", value: "BE" },
+  { flag: "🇧🇷", name: "Brazil", value: "BR" },
+  { flag: "🇧🇬", name: "Bulgaria", value: "BG" },
+  { flag: "🇨🇦", name: "Canada", value: "CA" },
+  { flag: "🇨🇱", name: "Chile", value: "CL" },
+  { flag: "🇨🇳", name: "Mainland China", value: "CN" },
+  { flag: "🇨🇴", name: "Colombia", value: "CO" },
+  { flag: "🇭🇷", name: "Croatia", value: "HR" },
+  { flag: "🇨🇾", name: "Cyprus", value: "CY" },
+  { flag: "🇨🇿", name: "Czech Republic", value: "CZ" },
+  { flag: "🇩🇰", name: "Denmark", value: "DK" },
+  { flag: "🇪🇬", name: "Egypt", value: "EG" },
+  { flag: "🇪🇪", name: "Estonia", value: "EE" },
+  { flag: "🇫🇮", name: "Finland", value: "FI" },
+  { flag: "🇫🇷", name: "France", value: "FR" },
+  { flag: "🇩🇪", name: "Germany", value: "DE" },
+  { flag: "🇬🇷", name: "Greece", value: "GR" },
+  { flag: "🇭🇰", name: "Hong Kong, China", value: "HK" },
+  { flag: "🇭🇺", name: "Hungary", value: "HU" },
+  { flag: "🇮🇸", name: "Iceland", value: "IS" },
+  { flag: "🇮🇳", name: "India", value: "IN" },
+  { flag: "🇮🇩", name: "Indonesia", value: "ID" },
+  { flag: "🇮🇪", name: "Ireland", value: "IE" },
+  { flag: "🇮🇱", name: "Israel", value: "IL" },
+  { flag: "🇮🇹", name: "Italy", value: "IT" },
+  { flag: "🇯🇵", name: "Japan", value: "JP" },
+  { flag: "🇰🇪", name: "Kenya", value: "KE" },
+  { flag: "🇰🇼", name: "Kuwait", value: "KW" },
+  { flag: "🇱🇻", name: "Latvia", value: "LV" },
+  { flag: "🇱🇹", name: "Lithuania", value: "LT" },
+  { flag: "🇱🇺", name: "Luxembourg", value: "LU" },
+  { flag: "🇲🇾", name: "Malaysia", value: "MY" },
+  { flag: "🇲🇽", name: "Mexico", value: "MX" },
+  { flag: "🇲🇦", name: "Morocco", value: "MA" },
+  { flag: "🇳🇱", name: "Netherlands", value: "NL" },
+  { flag: "🇳🇿", name: "New Zealand", value: "NZ" },
+  { flag: "🇳🇬", name: "Nigeria", value: "NG" },
+  { flag: "🇳🇴", name: "Norway", value: "NO" },
+  { flag: "🇵🇰", name: "Pakistan", value: "PK" },
+  { flag: "🇵🇪", name: "Peru", value: "PE" },
+  { flag: "🇵🇭", name: "Philippines", value: "PH" },
+  { flag: "🇵🇱", name: "Poland", value: "PL" },
+  { flag: "🇵🇹", name: "Portugal", value: "PT" },
+  { flag: "🇶🇦", name: "Qatar", value: "QA" },
+  { flag: "🇷🇴", name: "Romania", value: "RO" },
+  { flag: "🇷🇺", name: "Russia", value: "RU" },
+  { flag: "🇸🇦", name: "Saudi Arabia", value: "SA" },
+  { flag: "🇷🇸", name: "Serbia", value: "RS" },
+  { flag: "🇸🇬", name: "Singapore", value: "SG" },
+  { flag: "🇸🇰", name: "Slovakia", value: "SK" },
+  { flag: "🇸🇮", name: "Slovenia", value: "SI" },
+  { flag: "🇿🇦", name: "South Africa", value: "ZA" },
+  { flag: "🇰🇷", name: "South Korea", value: "KR" },
+  { flag: "🇪🇸", name: "Spain", value: "ES" },
+  { flag: "🇱🇰", name: "Sri Lanka", value: "LK" },
+  { flag: "🇸🇪", name: "Sweden", value: "SE" },
+  { flag: "🇨🇭", name: "Switzerland", value: "CH" },
+  { flag: "🇹🇼", name: "Taiwan, China", value: "TW" },
+  { flag: "🇹🇭", name: "Thailand", value: "TH" },
+  { flag: "🇹🇳", name: "Tunisia", value: "TN" },
+  { flag: "🇹🇷", name: "Turkey", value: "TR" },
+  { flag: "🇦🇪", name: "UAE", value: "AE" },
+  { flag: "🇬🇧", name: "United Kingdom", value: "GB" },
+  { flag: "🇺🇸", name: "USA", value: "US" },
+  { flag: "🇻🇪", name: "Venezuela", value: "VE" },
+  { flag: "🇻🇳", name: "Vietnam", value: "VN" },
+  { flag: "🌐", name: "Other", value: "OTHER" },
+];
+
+function CountryFilterEditor({
+  selected,
+  onChange,
+  primaryOnly,
+  onPrimaryChange,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+  primaryOnly: boolean;
+  onPrimaryChange: (next: boolean) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const needle = search.toLowerCase();
+
+  const filteredPopular = useMemo(
+    () => POPULAR_COUNTRIES.filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.value.toLowerCase().includes(needle)),
+    [needle],
+  );
+  const filteredAll = useMemo(
+    () => ALL_COUNTRIES.filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.value.toLowerCase().includes(needle)),
+    [needle],
+  );
+
+  const toggle = (value: string) => {
+    if (value === "WORLD") {
+      onChange([]);
+      return;
+    }
+    if (selectedSet.has(value)) onChange(selected.filter((v) => v !== value));
+    else onChange([...selected, value]);
+  };
+
+  const CountryRow = ({ flag, name, value }: { flag: string; name: string; value: string }) => {
+    const checked = value === "WORLD" ? selected.length === 0 : selectedSet.has(value);
+    return (
+      <button
+        type="button"
+        onClick={() => toggle(value)}
+        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+          checked ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
+        }`}
+      >
+        <input type="checkbox" checked={checked} readOnly className="pointer-events-none h-3.5 w-3.5 rounded border-border accent-primary" />
+        <span className="text-sm">{flag}</span>
+        <span className="truncate">{name}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="w-[320px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
+      <div className="mb-2 border-b border-border/40 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 Search countries..."
+            className="w-full rounded-md border border-border/50 bg-secondary/25 py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="max-h-72 overflow-auto pr-1">
+        {filteredPopular.length > 0 && (
+          <>
+            <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">⭐ Popular</p>
+            {filteredPopular.map((c) => <CountryRow key={`pop-${c.value}`} {...c} />)}
+            <div className="my-1.5 h-px bg-border/40" />
+          </>
+        )}
+
+        <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">All Countries</p>
+        {filteredAll.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">No results</p>}
+        {filteredAll.map((c) => <CountryRow key={`all-${c.value}`} {...c} />)}
+      </div>
+
+      <div className="mt-2 border-t border-border/40 pt-2">
+        <button
+          type="button"
+          onClick={() => onPrimaryChange(!primaryOnly)}
+          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs transition-colors ${
+            primaryOnly ? "bg-primary/12 text-primary" : "text-foreground/85 hover:bg-secondary/45"
+          }`}
+        >
+          <span>Primary listing only</span>
+          <div className={`h-4 w-7 rounded-full transition-colors ${primaryOnly ? "bg-primary" : "bg-border"}`}>
+            <div className={`h-3 w-3 translate-y-0.5 rounded-full bg-white transition-transform ${primaryOnly ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </div>
+        </button>
+      </div>
+
+      {selected.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="mt-1.5 w-full rounded-md border border-border/50 px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Clear selection
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Index Filter (specialized) ── */
+interface IndexGroupDef {
+  flag: string;
+  region: string;
+  indices: Array<{ ticker: string; name: string }>;
+}
+
+const INDEX_GROUPS: IndexGroupDef[] = [
+  { flag: "🇺🇸", region: "US INDICES", indices: [
+    { ticker: "SPX", name: "S&P 500" },
+    { ticker: "IXIC", name: "US Composite Index" },
+    { ticker: "DJI", name: "Dow Jones Industrial Average" },
+    { ticker: "VIX", name: "CBOE Volatility Index" },
+    { ticker: "RUT", name: "US Small Cap 2000" },
+    { ticker: "RUA", name: "US Small Cap 3000" },
+    { ticker: "RUI", name: "US Small Cap 1000" },
+    { ticker: "NYA", name: "NYSE Composite" },
+    { ticker: "XAX", name: "NYSE American Composite" },
+  ]},
+  { flag: "🇨🇦", region: "CANADA", indices: [{ ticker: "TSX", name: "S&P/TSX Composite" }] },
+  { flag: "🇬🇧", region: "UK", indices: [{ ticker: "UKX", name: "UK 100" }] },
+  { flag: "🇩🇪", region: "GERMANY", indices: [{ ticker: "DAX", name: "German Index (DAX)" }] },
+  { flag: "🇫🇷", region: "FRANCE", indices: [{ ticker: "CAC40", name: "CAC 40" }] },
+  { flag: "🇪🇺", region: "EUROPE", indices: [
+    { ticker: "SX5E", name: "STOXX 50" },
+    { ticker: "SXXP", name: "STOXX 600" },
+  ]},
+  { flag: "🇳🇱", region: "NETHERLANDS", indices: [{ ticker: "AEX", name: "AEX Index" }] },
+  { flag: "🇧🇪", region: "BELGIUM", indices: [{ ticker: "BEL20", name: "BEL 20" }] },
+  { flag: "🇪🇸", region: "SPAIN", indices: [{ ticker: "IBEX35", name: "IBEX 35" }] },
+  { flag: "🇨🇭", region: "SWITZERLAND", indices: [{ ticker: "SMI", name: "Swiss Market Index" }] },
+  { flag: "🇫🇮", region: "FINLAND", indices: [{ ticker: "OMXH25", name: "OMX Helsinki 25" }] },
+  { flag: "🇸🇪", region: "SWEDEN", indices: [{ ticker: "OMXS30", name: "OMX Stockholm 30" }] },
+  { flag: "🇩🇰", region: "DENMARK", indices: [{ ticker: "OMXC25", name: "OMX Copenhagen 25" }] },
+  { flag: "🇮🇹", region: "ITALY", indices: [{ ticker: "FTMIB", name: "Milano Italia Borsa" }] },
+  { flag: "🇵🇱", region: "POLAND", indices: [{ ticker: "WIG20", name: "Poland Index" }] },
+  { flag: "🇷🇴", region: "ROMANIA", indices: [{ ticker: "BET", name: "Bucharest Index" }] },
+  { flag: "🇬🇷", region: "GREECE", indices: [{ ticker: "GD", name: "ATHEX Composite" }] },
+  { flag: "🇭🇺", region: "HUNGARY", indices: [{ ticker: "BUX", name: "Budapest Index" }] },
+  { flag: "🇷🇸", region: "SERBIA", indices: [{ ticker: "BELEX15", name: "Serbia Index" }] },
+  { flag: "🇯🇵", region: "JAPAN", indices: [{ ticker: "NI225", name: "Japan 225" }] },
+  { flag: "🇰🇷", region: "SOUTH KOREA", indices: [{ ticker: "KOSPI", name: "Korea Composite" }] },
+  { flag: "🇨🇳", region: "CHINA", indices: [
+    { ticker: "000001", name: "SSE Composite" },
+    { ticker: "399001", name: "Shenzhen Index" },
+  ]},
+  { flag: "🇭🇰", region: "HONG KONG", indices: [
+    { ticker: "HSI", name: "Hang Seng" },
+    { ticker: "HK33HKD", name: "Hong Kong 33" },
+  ]},
+  { flag: "🇸🇬", region: "SINGAPORE", indices: [{ ticker: "STI", name: "Straits Times Index" }] },
+  { flag: "🇮🇩", region: "INDONESIA", indices: [
+    { ticker: "COMPOSITE", name: "IDX Composite" },
+    { ticker: "IDX30", name: "IDX 30" },
+  ]},
+  { flag: "🇲🇾", region: "MALAYSIA", indices: [{ ticker: "FBMKLCI", name: "Malaysia Index" }] },
+  { flag: "🇹🇭", region: "THAILAND", indices: [{ ticker: "SET", name: "Thailand Index" }] },
+  { flag: "🇮🇳", region: "INDIA", indices: [
+    { ticker: "NIFTY", name: "Nifty 50" },
+    { ticker: "SENSEX", name: "BSE Sensex" },
+  ]},
+  { flag: "🇦🇺", region: "AUSTRALIA", indices: [{ ticker: "XJO", name: "Australia 200" }] },
+  { flag: "🇳🇿", region: "NEW ZEALAND", indices: [{ ticker: "NZ50G", name: "NZX 50" }] },
+  { flag: "🇸🇦", region: "SAUDI ARABIA", indices: [{ ticker: "TASI", name: "Saudi Index" }] },
+  { flag: "🇦🇪", region: "UAE", indices: [{ ticker: "DFMGI", name: "Dubai Index" }] },
+  { flag: "🇶🇦", region: "QATAR", indices: [{ ticker: "GNRI", name: "Qatar Index" }] },
+  { flag: "🇮🇱", region: "ISRAEL", indices: [{ ticker: "TA35", name: "Israel Index" }] },
+  { flag: "🇪🇬", region: "EGYPT", indices: [{ ticker: "EGX30", name: "Egypt Index" }] },
+  { flag: "🇿🇦", region: "SOUTH AFRICA", indices: [{ ticker: "SA40", name: "South Africa Top 40" }] },
+  { flag: "🇧🇷", region: "BRAZIL", indices: [{ ticker: "IBOV", name: "Bovespa" }] },
+  { flag: "🇦🇷", region: "ARGENTINA", indices: [{ ticker: "IMV", name: "MERVAL" }] },
+  { flag: "🇨🇴", region: "COLOMBIA", indices: [{ ticker: "ICAP", name: "COLCAP" }] },
+  { flag: "🇨🇱", region: "CHILE", indices: [{ ticker: "SP_IPSA", name: "IPSA Chile" }] },
+  { flag: "🇵🇪", region: "PERU", indices: [{ ticker: "MXNUAMPEGEN", name: "Peru Index" }] },
+  { flag: "🧪", region: "SECTOR INDICES", indices: [
+    { ticker: "SOX", name: "PHLX Semiconductor" },
+    { ticker: "HGX", name: "PHLX Housing" },
+    { ticker: "OSX", name: "PHLX Oil Service" },
+    { ticker: "XAU", name: "Gold/Silver Sector" },
+    { ticker: "TRJEFFCRB", name: "Commodity Index" },
+    { ticker: "MOVE", name: "Bond Volatility Index" },
+  ]},
+];
+
+function IndexFilterEditor({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const needle = search.toLowerCase();
+
+  const filteredGroups = useMemo(() => {
+    if (!needle) return INDEX_GROUPS;
+    return INDEX_GROUPS.map((g) => ({
+      ...g,
+      indices: g.indices.filter(
+        (i) => i.ticker.toLowerCase().includes(needle) || i.name.toLowerCase().includes(needle) || g.region.toLowerCase().includes(needle),
+      ),
+    })).filter((g) => g.indices.length > 0);
+  }, [needle]);
+
+  const toggle = (ticker: string) => {
+    if (selectedSet.has(ticker)) onChange(selected.filter((v) => v !== ticker));
+    else onChange([...selected, ticker]);
+  };
+
+  const toggleCollapse = (region: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(region)) next.delete(region);
+      else next.add(region);
+      return next;
+    });
+  };
+
+  return (
+    <div className="w-[360px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
+      <div className="mb-2 border-b border-border/40 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 Search indices..."
+            className="w-full rounded-md border border-border/50 bg-secondary/25 py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="max-h-80 overflow-auto pr-1">
+        {filteredGroups.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">No results</p>}
+        {filteredGroups.map((group) => (
+          <div key={group.region} className="mb-1">
+            <button
+              type="button"
+              onClick={() => toggleCollapse(group.region)}
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 transition-colors hover:bg-secondary/30"
+            >
+              <span className="text-sm">{group.flag}</span>
+              <span>{group.region}</span>
+              <ChevronDown className={`ml-auto h-3 w-3 transition-transform ${collapsed.has(group.region) ? "-rotate-90" : ""}`} />
+            </button>
+            {!collapsed.has(group.region) && group.indices.map((idx) => {
+              const checked = selectedSet.has(idx.ticker);
+              return (
+                <button
+                  key={idx.ticker}
+                  type="button"
+                  onClick={() => toggle(idx.ticker)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 pl-6 text-left text-xs transition-colors ${
+                    checked ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
+                  }`}
+                >
+                  <input type="checkbox" checked={checked} readOnly className="pointer-events-none h-3.5 w-3.5 rounded border-border accent-primary" />
+                  <span className="font-mono text-[10px] text-muted-foreground">{idx.ticker}</span>
+                  <span className="text-muted-foreground/50">—</span>
+                  <span className="truncate">{idx.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {selected.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="mt-2 w-full rounded-md border border-border/50 px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Clear selection
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Watchlist Filter (specialized) ── */
+function WatchlistFilterEditor({
+  selected,
+  onChange,
+  watchlists,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+  watchlists: ScreenerOption[];
+}) {
+  const [search, setSearch] = useState("");
+  const [creatingNew, setCreatingNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const needle = search.toLowerCase();
+
+  const defaultWatchlists: Array<{ id: string; icon: string; name: string }> = [
+    { id: "red_list", icon: "🔴", name: "Red list" },
+    { id: "daftar_pantau", icon: "📋", name: "Daftar Pantau" },
+  ];
+
+  const allWatchlists = useMemo(() => {
+    const fromServer = watchlists.map((w) => ({ id: w.value, icon: "📋", name: w.label }));
+    const serverIds = new Set(fromServer.map((w) => w.id));
+    const defaults = defaultWatchlists.filter((d) => !serverIds.has(d.id));
+    return [...fromServer, ...defaults];
+  }, [watchlists]);
+
+  const filtered = useMemo(
+    () => allWatchlists.filter((w) => !needle || w.name.toLowerCase().includes(needle)),
+    [allWatchlists, needle],
+  );
+
+  const toggle = (id: string) => {
+    if (selectedSet.has(id)) onChange(selected.filter((v) => v !== id));
+    else onChange([...selected, id]);
+  };
+
+  return (
+    <div className="w-[320px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
+      <div className="mb-2 border-b border-border/40 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 Search watchlists..."
+            className="w-full rounded-md border border-border/50 bg-secondary/25 py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="max-h-64 overflow-auto pr-1">
+        {filtered.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">No watchlists found</p>}
+        {filtered.map((wl) => {
+          const checked = selectedSet.has(wl.id);
+          return (
+            <button
+              key={wl.id}
+              type="button"
+              onClick={() => toggle(wl.id)}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                checked ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"
+              }`}
+            >
+              <input type="checkbox" checked={checked} readOnly className="pointer-events-none h-3.5 w-3.5 rounded border-border accent-primary" />
+              <span className="text-sm">{wl.icon}</span>
+              <span className="flex-1 truncate">{wl.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-1.5 border-t border-border/40 pt-1.5">
+        {creatingNew ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newName.trim()) {
+                  onChange([...selected, newName.trim()]);
+                  setCreatingNew(false);
+                  setNewName("");
+                }
+                if (e.key === "Escape") setCreatingNew(false);
+              }}
+              placeholder="Watchlist name..."
+              className="flex-1 rounded-md border border-border/50 bg-secondary/25 px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => { setCreatingNew(false); setNewName(""); }}
+              className="rounded p-1 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setCreatingNew(true)}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Create new watchlist
+          </button>
+        )}
+      </div>
+
+      {selected.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="mt-1.5 w-full rounded-md border border-border/50 px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Clear selection
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RangeEditor({
   value,
   onChange,
@@ -1232,6 +1731,37 @@ export default function Screener() {
   const renderFilterEditor = (field: ScreenerFilterField) => {
     if (field.inputType === "multiselect") {
       const selected = (parsedFilters[field.key] as string[] | undefined) || [];
+
+      if (field.key === "marketCountries") {
+        return (
+          <CountryFilterEditor
+            selected={selected}
+            onChange={(next) => setMultiFilter(field.key, next)}
+            primaryOnly={parsedFilters.primaryListingOnly === true}
+            onPrimaryChange={(next) => setToggleFilter("primaryListingOnly", next)}
+          />
+        );
+      }
+
+      if (field.key === "indices") {
+        return (
+          <IndexFilterEditor
+            selected={selected}
+            onChange={(next) => setMultiFilter(field.key, next)}
+          />
+        );
+      }
+
+      if (field.key === "watchlists") {
+        return (
+          <WatchlistFilterEditor
+            selected={selected}
+            onChange={(next) => setMultiFilter(field.key, next)}
+            watchlists={meta?.watchlists || []}
+          />
+        );
+      }
+
       return (
         <MultiSelectEditor
           options={field.options || []}
@@ -1765,80 +2295,74 @@ export default function Screener() {
             />
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border/30 bg-background/40">
-            <div style={{ minWidth: tableMinWidth }}>
-              <div
-                className="sticky top-[var(--navbar-height,64px)] z-20 grid items-center gap-2 border-b border-border/35 bg-secondary/35 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm"
-                style={{ gridTemplateColumns: tableGridTemplate }}
-              >
-                {visibleColumns.map((column) => {
-                  const label = columnLookup.get(column)?.label || column;
-                  const activeSort = sortField === column;
+          <div className="rounded-xl border border-border/30 bg-background/40">
+            <div className="overflow-x-auto" style={{ minWidth: 0 }}>
+              <div style={{ minWidth: tableMinWidth }}>
+                <div
+                  className="sticky top-0 z-20 grid items-center gap-2 border-b border-border/35 bg-[hsl(var(--background))]/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur-sm"
+                  style={{ gridTemplateColumns: tableGridTemplate }}
+                >
+                  {visibleColumns.map((column) => {
+                    const label = columnLookup.get(column)?.label || column;
+                    const activeSort = sortField === column;
 
-                  return (
+                    return (
+                      <button
+                        key={column}
+                        type="button"
+                        onClick={() => setSort(column)}
+                        className={`flex items-center gap-1 ${NUMERIC_COLUMNS.has(column) ? "justify-end" : "justify-start"} transition-colors hover:text-foreground`}
+                      >
+                        <span>{label}</span>
+                        {activeSort ? (
+                          sortOrder === "desc" ? <TrendingDown className="h-3.5 w-3.5 text-primary" /> : <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="h-3 w-3 text-muted-foreground/70" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <Virtuoso
+                  data={items}
+                  style={{ height: "calc(100vh - 350px)", minHeight: 420 }}
+                  endReached={() => {
+                    void loadMore();
+                  }}
+                  overscan={450}
+                  itemContent={(index, item) => (
                     <button
-                      key={column}
+                      key={`${item.fullSymbol}-${index}`}
                       type="button"
-                      onClick={() => setSort(column)}
-                      className={`flex items-center gap-1 ${NUMERIC_COLUMNS.has(column) ? "justify-end" : "justify-start"} transition-colors hover:text-foreground`}
+                      onClick={() => navigate(`/symbol/${encodeURIComponent(item.symbol)}`)}
+                      className={`grid w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-secondary/30 ${
+                        index > 0 ? "border-t border-border/20" : ""
+                      }`}
+                      style={{ gridTemplateColumns: tableGridTemplate }}
                     >
-                      <span>{label}</span>
-                      {activeSort ? (
-                        sortOrder === "desc" ? <TrendingDown className="h-3.5 w-3.5 text-primary" /> : <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                      ) : (
-                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/70" />
-                      )}
+                      {visibleColumns.map((column) => (
+                        <div key={column} className={`${NUMERIC_COLUMNS.has(column) ? "text-right" : "text-left"} min-w-0`}>
+                          {renderCell(item, column)}
+                        </div>
+                      ))}
                     </button>
-                  );
-                })}
-              </div>
-
-              <Virtuoso
-                data={items}
-                style={{ height: "calc(100vh - 350px)", minHeight: 420 }}
-                endReached={() => {
-                  void loadMore();
-                }}
-                overscan={450}
-                itemContent={(index, item) => (
-                  <button
-                    key={`${item.fullSymbol}-${index}`}
-                    type="button"
-                    onClick={() => navigate(`/symbol/${encodeURIComponent(item.symbol)}`)}
-                    className={`grid w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-secondary/30 ${
-                      index > 0 ? "border-t border-border/20" : ""
-                    }`}
-                    style={{ gridTemplateColumns: tableGridTemplate }}
-                  >
-                    {visibleColumns.map((column) => (
-                      <div key={column} className={`${NUMERIC_COLUMNS.has(column) ? "text-right" : "text-left"} min-w-0`}>
-                        {renderCell(item, column)}
+                  )}
+                  components={{
+                    Footer: () => loadingMore ? (
+                      <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        Loading more symbols...
                       </div>
-                    ))}
-                  </button>
-                )}
-                components={{
-                  Footer: () => loadingMore ? (
-                    <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
-                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      Loading more symbols...
-                    </div>
-                  ) : null,
-                }}
-              />
+                    ) : null,
+                  }}
+                />
+              </div>
             </div>
           </div>
         )}
 
-        {total > 0 && (
-          <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              Showing {items.length.toLocaleString()} of {total.toLocaleString()} matches
-              {stats?.total ? ` (${stats.total.toLocaleString()} total symbols)` : ""}
-            </span>
-            {loadingMore && <span className="text-primary">Loading more...</span>}
-          </div>
-        )}
+
       </div>
     </div>
   );
