@@ -1,0 +1,178 @@
+/**
+ * Enrich market caps for high-priority US equities using Alpha Vantage.
+ *
+ * This is intentionally scoped to the symbols the screener is most likely to
+ * serve first. Yahoo is blocking server-side crumb acquisition and the current
+ * FMP key is rejected by stable endpoints, while Alpha Vantage OVERVIEW returns
+ * real MarketCapitalization values for US equities.
+ *
+ * Usage:
+ *   node scripts/enrich-marketcap-alpha-us.cjs
+ *
+ * Optional env vars:
+ *   ALPHA_US_LIMIT=300
+ *   ALPHA_US_DELAY_MS=1200
+ */
+const fs = require("fs");
+const path = require("path");
+const { MongoClient } = require("mongodb");
+
+function loadEnvFile() {
+  const envPath = path.join(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const equalsIndex = line.indexOf("=");
+    if (equalsIndex === -1) continue;
+
+    const key = line.slice(0, equalsIndex).trim();
+    if (!key || process.env[key]) continue;
+
+    let value = line.slice(equalsIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
+}
+
+loadEnvFile();
+
+const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
+const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/tradereplay";
+const LIMIT = Number(process.env.ALPHA_US_LIMIT || 300);
+const DELAY_MS = Number(process.env.ALPHA_US_DELAY_MS || 1200);
+
+if (!ALPHA_VANTAGE_KEY) {
+  console.error("Missing ALPHA_VANTAGE_KEY");
+  process.exit(1);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchOverview(symbol) {
+  const url = new URL("https://www.alphavantage.co/query");
+  url.searchParams.set("function", "OVERVIEW");
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("apikey", ALPHA_VANTAGE_KEY);
+
+  const response = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP_${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function fetchOverviewWithRetry(symbol, maxAttempts = 4) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const payload = await fetchOverview(symbol);
+
+      if (payload?.Note || payload?.Information) {
+        const waitMs = 5000 * attempt;
+        console.log(`  Rate limited on ${symbol}; waiting ${waitMs}ms before retry ${attempt}/${maxAttempts}`);
+        await sleep(waitMs);
+        continue;
+      }
+
+      if (payload?.["Error Message"]) {
+        return null;
+      }
+
+      return payload;
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      await sleep(3000 * attempt);
+    }
+  }
+
+  return null;
+}
+
+async function main() {
+  const client = new MongoClient(MONGO_URI);
+  await client.connect();
+
+  const db = client.db();
+  const symbols = db.collection("symbols");
+  const cleanassets = db.collection("cleanassets");
+
+  const query = {
+    country: "US",
+    type: "stock",
+    source: { $ne: "synthetic-derivatives" },
+    isPrimaryListing: { $ne: false },
+    $or: [
+      { marketCap: { $exists: false } },
+      { marketCap: null },
+      { marketCap: 0 },
+    ],
+  };
+
+  const docs = await symbols
+    .find(query, {
+      projection: {
+        _id: 1,
+        symbol: 1,
+        fullSymbol: 1,
+        exchange: 1,
+        priorityScore: 1,
+        searchFrequency: 1,
+        popularity: 1,
+      },
+    })
+    .sort({ priorityScore: -1, searchFrequency: -1, popularity: -1, symbol: 1 })
+    .limit(LIMIT)
+    .toArray();
+
+  console.log(`Found ${docs.length} high-priority US symbols needing marketCap enrichment`);
+
+  let updated = 0;
+  let failed = 0;
+
+  for (let index = 0; index < docs.length; index += 1) {
+    const doc = docs[index];
+    const payload = await fetchOverviewWithRetry(doc.symbol);
+    const marketCap = Number(payload?.MarketCapitalization || 0);
+
+    if (marketCap > 0) {
+      await symbols.updateOne({ _id: doc._id }, { $set: { marketCap } });
+      await cleanassets.updateOne({ fullSymbol: doc.fullSymbol }, { $set: { marketCap } });
+      updated += 1;
+    } else {
+      failed += 1;
+    }
+
+    if ((index + 1) % 25 === 0 || index === docs.length - 1) {
+      console.log(`  Processed ${index + 1} / ${docs.length} | updated=${updated} failed=${failed}`);
+    }
+
+    await sleep(DELAY_MS);
+  }
+
+  console.log("\n=== Alpha US Market Cap Enrichment Complete ===");
+  console.log(`Updated: ${updated}`);
+  console.log(`Failed: ${failed}`);
+
+  await client.close();
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
