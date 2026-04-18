@@ -6,17 +6,15 @@
  * Enriches marketCap + volume for symbols where marketCap is 0/null.
  */
 const { MongoClient } = require("mongodb");
-const yahooFinance = require("yahoo-finance2").default;
+const YahooFinance = require("yahoo-finance2").default;
+// v3 API: must instantiate
+const yahooFinance = typeof YahooFinance === "function" ? new YahooFinance() : YahooFinance;
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/tradereplay";
 const BATCH_SIZE = 20;
 const DELAY_MS = 500;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Suppress yahoo-finance2 validation warnings
-try { yahooFinance.suppressNotices(["yahooSurvey"]); } catch {}
-try { yahooFinance.setGlobalConfig({ validation: { logErrors: false } }); } catch {}
 
 // Map exchange codes to Yahoo Finance suffix
 const EXCHANGE_SUFFIX = {
