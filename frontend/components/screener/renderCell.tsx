@@ -24,14 +24,15 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
   if (columnKey === "analystRating") {
     const rating = item.analystRating;
     if (!rating) return <span className="text-xs text-muted-foreground">—</span>;
+    const key = rating.toLowerCase().replace(/\s+/g, "-");
     const cfgs: Record<string, { icon: string; color: string; label: string }> = {
-      "strong-buy": { icon: "↑", color: "#26a69a", label: "Strong buy" }, "Strong Buy": { icon: "↑", color: "#26a69a", label: "Strong buy" },
-      buy: { icon: "↑", color: "#26a69a", label: "Buy" }, Buy: { icon: "↑", color: "#26a69a", label: "Buy" },
-      neutral: { icon: "—", color: "#9598a1", label: "Neutral" }, Neutral: { icon: "—", color: "#9598a1", label: "Neutral" },
-      sell: { icon: "↓", color: "#ef5350", label: "Sell" }, Sell: { icon: "↓", color: "#ef5350", label: "Sell" },
-      "strong-sell": { icon: "↓", color: "#ef5350", label: "Strong sell" }, "Strong Sell": { icon: "↓", color: "#ef5350", label: "Strong sell" },
+      "strong-buy": { icon: "↑", color: "#26a69a", label: "Strong buy" },
+      buy: { icon: "↑", color: "#26a69a", label: "Buy" },
+      neutral: { icon: "—", color: "#9598a1", label: "Neutral" },
+      sell: { icon: "↓", color: "#ef5350", label: "Sell" },
+      "strong-sell": { icon: "↓", color: "#ef5350", label: "Strong sell" },
     };
-    const cfg = cfgs[rating] ?? { icon: "—", color: "#9598a1", label: rating };
+    const cfg = cfgs[key] ?? { icon: "—", color: "#9598a1", label: rating };
     return <span className="inline-flex items-center gap-0.5 text-xs font-medium" style={{ color: cfg.color }}><span>{cfg.icon}</span><span>{cfg.label}</span></span>;
   }
   if (columnKey === "price") return <span className="text-xs tabular-nums text-foreground">{formatPrice(item.price)}</span>;
