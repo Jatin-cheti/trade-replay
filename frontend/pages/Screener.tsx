@@ -153,7 +153,12 @@ export default function Screener() {
           <ScreenerTable items={data.items} flashBySymbol={data.flashBySymbol} visibleColumns={visibleColumns} columnLookup={columnLookup} sortField={data.sortField} sortOrder={data.sortOrder} loadingMore={data.loadingMore} onSort={setSort} onNavigate={(sym: string) => navigate(`/symbol/${encodeURIComponent(sym)}`)} onLoadMore={data.loadMore} addColumnOpen={addColumnOpen} setAddColumnOpen={setAddColumnOpen} addColumnSearch={addColumnSearch} setAddColumnSearch={setAddColumnSearch} availableAddColumnFields={availableAddColumnFields} updateSelectedColumns={updateSelectedColumns} addColumnRef={addColumnRef} />
         )}
         {!data.loading && data.items.length === 0 && <div className="py-16 text-center text-sm text-muted-foreground">No results found. Try adjusting your filters.</div>}
-        {!data.loading && data.total > 0 && <p className="mt-2 text-center text-xs text-muted-foreground">{data.total.toLocaleString()} results</p>}
+        {!data.loading && data.total > 0 && (
+          <div className="mt-3 flex items-center justify-between px-1">
+            <p className="text-xs text-muted-foreground">{data.total.toLocaleString()} matches</p>
+            <p className="text-xs text-muted-foreground">Showing {Math.min(data.items.length, data.total).toLocaleString()} of {data.total.toLocaleString()}</p>
+          </div>
+        )}
       </div>
     </div>
   );

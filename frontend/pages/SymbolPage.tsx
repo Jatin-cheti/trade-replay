@@ -613,13 +613,19 @@ export default function SymbolPage() {
                   value={fmt(detail.marketCap || 0, detail.currency)}
                   clickable
                 />
-                <KeyStat label="Dividend yield (indicated)" value={detail.dividendYield && detail.dividendYield > 0 ? `${detail.dividendYield.toFixed(2)}%` : "\u2014"} clickable />
                 <KeyStat label="Price to earnings Ratio (TTM)" value={detail.pe && detail.pe > 0 ? detail.pe.toFixed(2) : "\u2014"} clickable />
-                <KeyStat label="Basic EPS (TTM)" value={detail.eps && detail.eps > 0 ? detail.eps.toFixed(2) : "\u2014"} />
-                <KeyStat label="Net income (FY)" value={fmt(detail.netIncome || 0, detail.currency)} clickable />
                 <KeyStat label="Revenue (FY)" value={fmt(detail.revenue || 0, detail.currency)} clickable />
+                <KeyStat label="Net income (FY)" value={fmt(detail.netIncome || 0, detail.currency)} clickable />
+                <KeyStat label="Basic EPS (TTM)" value={detail.eps && detail.eps > 0 ? detail.eps.toFixed(2) : "\u2014"} />
+                <KeyStat label="Dividend yield (indicated)" value={detail.dividendYield && detail.dividendYield > 0 ? `${detail.dividendYield.toFixed(2)}%` : "\u2014"} clickable />
                 <KeyStat label="Shares float" value={fmt(detail.sharesFloat || 0)} clickable />
                 <KeyStat label="Beta (1Y)" value={detail.beta && detail.beta > 0 ? detail.beta.toFixed(2) : "\u2014"} />
+                <KeyStat label="Volume" value={fmt(detail.volume || 0)} />
+                <KeyStat label="Average volume (30D)" value={fmt(detail.avgVolume || 0)} />
+                {detail.relVolume != null && detail.relVolume > 0 && <KeyStat label="Relative volume" value={detail.relVolume.toFixed(2)} />}
+                {detail.peg != null && detail.peg > 0 && <KeyStat label="PEG Ratio" value={detail.peg.toFixed(2)} />}
+                {detail.roe != null && detail.roe !== 0 && <KeyStat label="Return on equity (TTM)" value={`${detail.roe.toFixed(2)}%`} />}
+                {detail.revenueGrowth != null && detail.revenueGrowth !== 0 && <KeyStat label="Revenue growth (YoY)" value={`${detail.revenueGrowth.toFixed(2)}%`} />}
               </div>
             </div>
 
