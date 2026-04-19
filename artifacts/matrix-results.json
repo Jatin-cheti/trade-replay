@@ -1,0 +1,117 @@
+{
+  "generatedAt": "2026-04-17T08:19:36.735Z",
+  "summary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "passRate": "0%",
+    "totalDurationMs": 75647
+  },
+  "byScenario": {
+    "smoke": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "multi-5": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "fullscreen": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "option": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "header": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "mixed": {
+      "total": 2,
+      "passed": 1,
+      "failed": 1
+    }
+  },
+  "byCategory": {
+    "lines": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "fib": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "patterns": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "forecasting": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "brush": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "text": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "icon": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    }
+  },
+  "results": [
+    {
+      "scenario": "header",
+      "toolId": "indicators-panel",
+      "toolName": "Indicators Panel",
+      "category": "indicator",
+      "passed": false,
+      "drawingCount": 0,
+      "undoVerified": false,
+      "redoVerified": false,
+      "error": "No indicators found after searching 'SMA'",
+      "durationMs": 2361
+    },
+    {
+      "scenario": "mixed",
+      "toolId": "trend+fib+rect",
+      "toolName": "Trend + Fib + Rectangle",
+      "category": "mixed",
+      "passed": true,
+      "drawingCount": 3,
+      "undoVerified": true,
+      "redoVerified": false,
+      "durationMs": 43245
+    },
+    {
+      "scenario": "mixed",
+      "toolId": "hline×10-undo-all",
+      "toolName": "10× Horizontal lines + undo-all",
+      "category": "mixed",
+      "passed": false,
+      "drawingCount": 1,
+      "undoVerified": false,
+      "redoVerified": false,
+      "error": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: >= \u001b[32m8\u001b[39m\nReceived:    \u001b[31m1\u001b[39m",
+      "durationMs": 30041
+    }
+  ],
+  "failedTools": []
+}
