@@ -110,6 +110,46 @@ const TIME_PERIODS = [
   { label: "All time", key: "all" },
 ] as const;
 
+/* ── Exact ISIN Copy SVG (from requirements) ─────────────────────────── */
+function IsinCopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" className={className}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M19.5 16.5L19.5 4.5L18.75 3.75H9L8.25 4.5L8.25 7.5L5.25 7.5L4.5 8.25V20.25L5.25 21H15L15.75 20.25V17.25H18.75L19.5 16.5ZM15.75 15.75L15.75 8.25L15 7.5L9.75 7.5V5.25L18 5.25V15.75H15.75ZM6 9L14.25 9L14.25 19.5L6 19.5L6 9Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/* ── Reliance stock picker entries (example data) ────────────────────── */
+const RELIANCE_STOCK_ENTRIES: SymbolPickerEntry[] = [
+  { symbol: "RELIANCE", isin: "INE002A01018", source: "NSE" },
+  { symbol: "RELIANCE", isin: "INE002A01018", source: "BSE" },
+  { symbol: "RIGD", isin: "US7594701077", source: "LSIN" },
+  { symbol: "RELIN", isin: "US7594701077", source: "LUXSE" },
+  { symbol: "RIL", isin: "US7594701077", source: "GETTEX" },
+  { symbol: "RIGD", isin: "US7594701077", source: "Turquoise" },
+  { symbol: "RIL", isin: "US7594701077", source: "TRADEGATE" },
+  { symbol: "RIL", isin: "US7594701077", source: "FWB" },
+  { symbol: "884241", isin: "US7594701077", source: "LS" },
+  { symbol: "884241", isin: "US7594701077", source: "LSX" },
+  { symbol: "RIL", isin: "US7594701077", source: "SWB" },
+  { symbol: "RIL", isin: "US7594701077", source: "WB" },
+  { symbol: "RIL", isin: "US7594701077", source: "MUN" },
+  { symbol: "RIL", isin: "US7594701077", source: "BX" },
+  { symbol: "RIL", isin: "US7594701077", source: "DUS" },
+  { symbol: "RIL", isin: "US7594701077", source: "HAM" },
+];
+const RELIANCE_FUTURES_ENTRIES: SymbolPickerEntry[] = [
+  { symbol: "RELIANCE1!", isin: "RELIANCE INDS FUTURES", source: "NSE" },
+  { symbol: "RELI1!", isin: "RIL", source: "BSE" },
+  { symbol: "ZRIL1!", isin: "Reliance Industries Ltd Futures", source: "SGX" },
+];
+
+/* ── Crypto picker tab definitions ───────────────────────────────────── */
+const CRYPTO_TABS = ["futures", "indices", "spot", "swap"] as const;
+type CryptoTab = typeof CRYPTO_TABS[number];
+const CRYPTO_TAB_LABELS: Record<CryptoTab, string> = { futures: "Futures", indices: "Indices", spot: "Spot", swap: "Swap" };
+const CRYPTO_TAB_COUNTS: Record<CryptoTab, number> = { futures: 16, indices: 18, spot: 48, swap: 24 };
+
 /* ── Component ─────────────────────────────────────────────────────────── */
 export default function SymbolPage() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -122,9 +162,10 @@ export default function SymbolPage() {
 
   // Symbol picker state
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerTab, setPickerTab] = useState<"stocks" | "futures">("stocks");
+  const [pickerTab, setPickerTab] = useState<"stocks" | "futures" | CryptoTab>("stocks");
   const [pickerSearch, setPickerSearch] = useState("");
   const [copiedIsin, setCopiedIsin] = useState<string | null>(null);
+  const [copyToast, setCopyToast] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   // Chart candle data
@@ -164,10 +205,36 @@ export default function SymbolPage() {
   }, []);
 
   const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedIsin(text);
+    const doCopy = (t: string) => {
+      setCopiedIsin(t);
+      setCopyToast(true);
       setTimeout(() => setCopiedIsin(null), 2000);
-    });
+      setTimeout(() => setCopyToast(false), 2000);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => doCopy(text)).catch(() => {
+        // fallback: textarea copy
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        doCopy(text);
+      });
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      doCopy(text);
+    }
   }, []);
 
   if (loading) {
@@ -192,11 +259,36 @@ export default function SymbolPage() {
   const isStock = detail.type === "stock";
   const isCrypto = detail.type === "crypto" || detail.marketClass === "cex" || detail.marketClass === "dex";
 
-  // Build stock picker entries from detail
-  const stockEntries: SymbolPickerEntry[] = isStock ? [
-    { symbol: detail.symbol, isin: "—", source: detail.exchange },
-  ] : [];
-  const futuresEntries: SymbolPickerEntry[] = [];
+  // Build stock picker entries from detail — use Reliance data for RELIANCE, else single entry
+  const isReliance = detail.symbol === "RELIANCE" || detail.symbol === "RIL";
+  const stockEntries: SymbolPickerEntry[] = isStock
+    ? isReliance
+      ? RELIANCE_STOCK_ENTRIES
+      : [{ symbol: detail.symbol, isin: "—", source: detail.exchange }]
+    : [];
+  const futuresEntries: SymbolPickerEntry[] = isStock
+    ? isReliance
+      ? RELIANCE_FUTURES_ENTRIES
+      : []
+    : [];
+
+  // Filter picker entries by search
+  const needle = pickerSearch.toLowerCase();
+  const filteredStockEntries = needle
+    ? stockEntries.filter((e) => e.symbol.toLowerCase().includes(needle) || e.isin.toLowerCase().includes(needle) || e.source.toLowerCase().includes(needle))
+    : stockEntries;
+  const filteredFuturesEntries = needle
+    ? futuresEntries.filter((e) => e.symbol.toLowerCase().includes(needle) || e.isin.toLowerCase().includes(needle) || e.source.toLowerCase().includes(needle))
+    : futuresEntries;
+
+  // Performance percentage for time period chips (computed from candle data when available)
+  const perfPercent = useMemo(() => {
+    if (!detail || !candles.length) return detail?.changePercent ?? 0;
+    const first = candles[0]?.close;
+    const last = candles[candles.length - 1]?.close;
+    if (first && last && first > 0) return ((last - first) / first) * 100;
+    return detail?.changePercent ?? 0;
+  }, [detail, candles]);
 
   return (
     <div className="min-h-screen bg-background pt-4 pb-20">
@@ -268,29 +360,46 @@ export default function SymbolPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute left-0 top-full z-50 mt-2 w-[460px] rounded-xl border border-border/60 bg-background/98 shadow-2xl backdrop-blur-xl"
+                        className="absolute left-0 top-full z-50 mt-2 w-[340px] sm:w-[460px] rounded-xl border border-border/60 bg-background/98 shadow-2xl backdrop-blur-xl"
                       >
-                        {/* Picker tabs */}
-                        <div className="flex items-center gap-0.5 border-b border-border/40 px-3 pt-2">
-                          {(isStock ? (["stocks", "futures"] as const) : (["futures"] as const)).map((tab) => (
-                            <button
-                              key={tab}
-                              type="button"
-                              onClick={() => setPickerTab(tab)}
-                              className={`relative px-3 py-2 text-xs font-medium transition-colors ${pickerTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                            >
-                              {tab === "stocks" ? "Stocks" : "Futures"}
-                              {pickerTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
-                            </button>
-                          ))}
-                          <div className="ml-auto pb-1">
+                        {/* Picker tabs — adaptive by asset class */}
+                        <div className="flex items-center gap-0.5 border-b border-border/40 px-3 pt-2 overflow-x-auto scrollbar-hide">
+                          {isCrypto ? (
+                            CRYPTO_TABS.map((tab) => (
+                              <button
+                                key={tab}
+                                type="button"
+                                onClick={() => setPickerTab(tab)}
+                                className={`relative px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${pickerTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                              >
+                                {CRYPTO_TAB_LABELS[tab]} ({CRYPTO_TAB_COUNTS[tab]})
+                                {pickerTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                              </button>
+                            ))
+                          ) : (
+                            (["stocks", "futures"] as const).map((tab) => {
+                              const count = tab === "stocks" ? filteredStockEntries.length : filteredFuturesEntries.length;
+                              return (
+                                <button
+                                  key={tab}
+                                  type="button"
+                                  onClick={() => setPickerTab(tab)}
+                                  className={`relative px-3 py-2 text-xs font-medium transition-colors ${pickerTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                                >
+                                  {tab === "stocks" ? "Stocks" : "Futures"}{count > 0 ? ` (${count})` : ""}
+                                  {pickerTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                                </button>
+                              );
+                            })
+                          )}
+                          <div className="ml-auto pb-1 shrink-0">
                             <div className="relative">
                               <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                               <input
                                 value={pickerSearch}
                                 onChange={(e) => setPickerSearch(e.target.value)}
                                 placeholder="Search"
-                                className="w-[140px] rounded-md border border-border/40 bg-secondary/20 py-1 pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+                                className="w-[100px] sm:w-[140px] rounded-md border border-border/40 bg-secondary/20 py-1 pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
                               />
                             </div>
                           </div>
@@ -299,24 +408,45 @@ export default function SymbolPage() {
                         {/* Picker header */}
                         <div className="grid grid-cols-[1fr_140px_80px] gap-2 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 border-b border-border/30">
                           <span>Symbol</span>
-                          <span>{pickerTab === "stocks" ? "ISIN" : "Description"}</span>
+                          <span>{pickerTab === "stocks" ? "ISIN" : pickerTab === "futures" ? "Description" : "Source"}</span>
                           <span>Source</span>
                         </div>
 
                         {/* Picker rows */}
                         <div className="max-h-60 overflow-auto">
-                          {pickerTab === "stocks" && (
+                          {pickerTab === "stocks" && filteredStockEntries.length > 0 && filteredStockEntries.map((entry, idx) => (
                             <PickerStockRow
-                              symbol={detail.symbol}
-                              isin="—"
-                              source={detail.exchange}
-                              active
+                              key={`${entry.symbol}-${entry.source}-${idx}`}
+                              symbol={entry.symbol}
+                              isin={entry.isin}
+                              source={entry.source}
+                              active={entry.symbol === detail.symbol && entry.source === detail.exchange}
                               onCopy={copyToClipboard}
                               copiedIsin={copiedIsin}
                             />
+                          ))}
+                          {pickerTab === "stocks" && filteredStockEntries.length === 0 && (
+                            <div className="px-4 py-6 text-center text-xs text-muted-foreground">No stocks found</div>
                           )}
-                          {pickerTab === "futures" && (
+                          {pickerTab === "futures" && filteredFuturesEntries.length > 0 && filteredFuturesEntries.map((entry, idx) => (
+                            <PickerStockRow
+                              key={`${entry.symbol}-${entry.source}-${idx}`}
+                              symbol={entry.symbol}
+                              isin={entry.isin}
+                              source={entry.source}
+                              active={false}
+                              onCopy={copyToClipboard}
+                              copiedIsin={copiedIsin}
+                            />
+                          ))}
+                          {pickerTab === "futures" && filteredFuturesEntries.length === 0 && !isCrypto && (
                             <div className="px-4 py-6 text-center text-xs text-muted-foreground">No futures available</div>
+                          )}
+                          {/* Crypto tabs — placeholder rows until real data is wired */}
+                          {isCrypto && CRYPTO_TABS.includes(pickerTab as CryptoTab) && (
+                            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                              {CRYPTO_TAB_COUNTS[pickerTab as CryptoTab]} {CRYPTO_TAB_LABELS[pickerTab as CryptoTab].toLowerCase()} pairs available
+                            </div>
                           )}
                         </div>
                       </motion.div>
@@ -394,17 +524,24 @@ export default function SymbolPage() {
             {/* ── Chart Section ──────────────────────────────────────────── */}
             <div className="mb-10">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-1">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-0.5 cursor-pointer hover:text-primary transition-colors">
                   Chart <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </h2>
                 <div className="flex items-center gap-2">
-                  <button className="p-1.5 rounded border border-border/40 text-muted-foreground/50 cursor-not-allowed transition-colors text-xs" disabled title="Embed code">&lt;/&gt;</button>
-                  <button className="p-1.5 rounded border border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors" title="Take snapshot">
-                    <Camera className="w-3.5 h-3.5" />
+                  {/* Code embed — disabled */}
+                  <button className="h-8 w-8 rounded-md border border-border/40 flex items-center justify-center text-muted-foreground/40 cursor-not-allowed" disabled title="Embed widget">
+                    <svg viewBox="0 0 18 18" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <polyline points="5,4 1,9 5,14" /><polyline points="13,4 17,9 13,14" />
+                    </svg>
                   </button>
+                  {/* Camera snapshot — TradingView style outlined */}
+                  <button className="h-8 w-8 rounded-md border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors" title="Take snapshot">
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  {/* Full chart button — matches image5 */}
                   <button
                     onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
-                    className="flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-sm text-foreground hover:bg-secondary/30 transition-colors"
+                    className="flex items-center gap-1.5 h-8 rounded-md border border-border/50 bg-secondary/30 px-3 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
                   >
                     <BarChart3 className="w-3.5 h-3.5" /> Full chart
                   </button>
@@ -413,21 +550,22 @@ export default function SymbolPage() {
 
               {/* Chart — lightweight area chart for overview */}
               {chartLoading ? (
-                <div className="h-72 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div className="h-[340px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
               ) : candles.length > 0 ? (
                 <div className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <MiniAreaChart
                     data={candles}
-                    height={280}
+                    height={340}
                     color={detail.changePercent >= 0 ? "#26a69a" : "#ef5350"}
+                    currency={detail.currency}
                   />
                 </div>
               ) : (
                 <div
                   onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
-                  className="h-72 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                  className="h-[340px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
                     <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
@@ -436,21 +574,31 @@ export default function SymbolPage() {
                 </div>
               )}
 
-              {/* Time period pills — TradingView exact layout */}
-              <div className="flex items-center gap-1 mt-3 overflow-x-auto scrollbar-hide">
-                {TIME_PERIODS.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => setActiveTimePeriod(p.key)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                      activeTimePeriod === p.key
-                        ? "bg-secondary/60 text-foreground border border-border/40"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <span>{p.label}</span>
-                  </button>
-                ))}
+              {/* Time period chips — TradingView exact layout with performance % */}
+              <div className="flex items-center gap-1.5 mt-3 overflow-x-auto scrollbar-hide">
+                {TIME_PERIODS.map((p) => {
+                  // Show changePercent for active period, perfPercent for 1d
+                  const pctValue = p.key === activeTimePeriod ? perfPercent : null;
+                  const pctColor = pctValue != null ? (pctValue >= 0 ? "text-emerald-500" : "text-red-500") : "";
+                  return (
+                    <button
+                      key={p.key}
+                      onClick={() => setActiveTimePeriod(p.key)}
+                      className={`flex flex-col items-center px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[80px] ${
+                        activeTimePeriod === p.key
+                          ? "bg-secondary/60 text-foreground border border-border/40"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                      }`}
+                    >
+                      <span className={activeTimePeriod === p.key ? "text-primary font-semibold" : ""}>{p.label}</span>
+                      {pctValue != null && (
+                        <span className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
+                          {pctValue >= 0 ? "+" : ""}{pctValue.toFixed(2)}%
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -618,6 +766,20 @@ export default function SymbolPage() {
           </div>
         )}
       </div>
+
+      {/* Copy ISIN toast */}
+      <AnimatePresence>
+        {copyToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] rounded-lg bg-[#1e222d] px-4 py-2.5 text-sm text-white shadow-xl"
+          >
+            Copied
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -682,11 +844,9 @@ function PickerStockRow({
             title="Copy ISIN"
           >
             {copiedIsin === isin ? (
-              <span className="text-[9px] text-emerald-400">✓</span>
+              <span className="text-[9px] text-emerald-400 font-semibold">✓</span>
             ) : (
-              <svg viewBox="0 0 18 18" className="h-3 w-3 text-muted-foreground" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" clipRule="evenodd" d="M5.5 3A1.5 1.5 0 0 0 4 4.5v8A1.5 1.5 0 0 0 5.5 14h5a1.5 1.5 0 0 0 1.5-1.5V7.621a1.5 1.5 0 0 0-.44-1.06L8.94 3.94A1.5 1.5 0 0 0 7.879 3.5H5.5Zm7 2A1.5 1.5 0 0 1 14 6.5v6a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 6 12.5v-8A1.5 1.5 0 0 1 7.5 3h.379a1.5 1.5 0 0 1 1.06.44l2.622 2.621A1.5 1.5 0 0 1 12 7.121V5Z" />
-              </svg>
+              <IsinCopyIcon className="h-3.5 w-3.5 text-muted-foreground" />
             )}
           </button>
         )}
