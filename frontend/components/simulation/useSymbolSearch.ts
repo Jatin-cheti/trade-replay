@@ -58,6 +58,11 @@ export function useSymbolSearch(
 
   const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
 
+  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number; nextCursor: string | null }>());
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
+  const paginationInFlightRef = useRef(false);
+  const firstPageAbortRef = useRef<AbortController | null>(null);
+  const paginationAbortRef = useRef<AbortController | null>(null);
   const loadingTriggerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

@@ -12,7 +12,7 @@ import BrandLottie from '@/components/BrandLottie';
 import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
 import ScrollReveal from '@/components/ScrollReveal';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
-import { BarChart3, History, Wallet, LineChart } from 'lucide-react';
+import { ArrowLeft, BarChart3, History, Wallet, LineChart } from 'lucide-react';
 
 export default function Simulation() {
   const {
@@ -24,6 +24,8 @@ export default function Simulation() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [mobileTab, setMobileTab] = useState<'chart' | 'trade' | 'portfolio' | 'history'>('chart');
+  const layoutParam = (searchParams.get('layout') || '').toLowerCase();
+  const isFullChartLayout = layoutParam === 'chart' || layoutParam === 'full';
 
   useEffect(() => {
     if (!isAuthenticated) navigate('/');
@@ -33,8 +35,9 @@ export default function Simulation() {
     if (isAuthenticated) {
       const portfolioId = searchParams.get('portfolioId') ?? undefined;
       const nextScenarioId = searchParams.get('scenarioId') ?? scenarioId;
+      const requestedSymbol = searchParams.get('symbol')?.trim().toUpperCase();
       const scenario = scenarios.find(s => s.id === nextScenarioId);
-      const nextSymbol = scenario?.stocks[0]?.symbol ?? selectedStock;
+      const nextSymbol = requestedSymbol || scenario?.stocks[0]?.symbol || selectedStock;
 
       if (portfolioId) {
         setActivePortfolioId(portfolioId);
@@ -94,93 +97,124 @@ export default function Simulation() {
         </div>
       )}
 
-      {/* Desktop Layout */}
-      <motion.div
-        className="flex-1 hidden md:flex gap-3 p-3 relative z-10"
-        initial="hidden"
-        animate="show"
-        variants={{
-          hidden: { opacity: 0 },
-          show: { opacity: 1, transition: { staggerChildren: 0.11 } },
-        }}
-      >
-        {/* Chart */}
-        <motion.div
-          variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}
-          className="flex-[7]"
-        >
-          <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
-            <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+      {isFullChartLayout ? (
+        <div data-testid="simulation-full-chart" className="px-3 pb-3 relative z-10">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <button
+              data-testid="simulation-exit-full-chart"
+              type="button"
+              onClick={() => navigate(`/symbol/${encodeURIComponent(selectedStock)}`)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-secondary/35 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/55 hover:text-foreground"
+            >
+              <ArrowLeft size={14} />
+              Back to Symbol
+            </button>
+
+            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+              Full Chart · {selectedStock}
+            </p>
+          </div>
+
+          <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-[calc(100vh-var(--navbar-height,64px)-156px)] min-h-[560px]">
+            <TradingChart
+              data={candles}
+              visibleCount={currentCandleIndex + 1}
+              symbol={selectedStock}
+              forceExpandedUi
+            />
           </InteractiveSurface>
-        </motion.div>
-
-        {/* Right panels */}
-        <div className="flex-[3] flex flex-col gap-3 min-w-[280px]">
-          <motion.div
-            variants={{ hidden: { opacity: 0, x: 18 }, show: { opacity: 1, x: 0 } }}
-            className="gradient-border rounded-xl overflow-hidden"
-          >
-            <TradingPanel currentCandle={currentCandle} />
-          </motion.div>
-          <motion.div
-            variants={{ hidden: { opacity: 0, x: 18 }, show: { opacity: 1, x: 0 } }}
-            className="gradient-border rounded-xl overflow-hidden"
-          >
-            <PortfolioPanel stockCandles={allStockCandles} candleIndex={currentCandleIndex} />
-          </motion.div>
         </div>
-      </motion.div>
-
-      {/* Trade History - Desktop */}
-      <div className="hidden md:block px-3 pb-3 relative z-10 section-enter-delayed">
-        <ScrollReveal delay={0.14}>
-          <TradeHistory />
-        </ScrollReveal>
-      </div>
-
-      {/* Mobile Layout */}
-      <div className="flex-1 md:hidden p-3 relative z-10">
-        {mobileTab === 'chart' && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
-            <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
-              <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
-            </InteractiveSurface>
-          </motion.div>
-        )}
-        {mobileTab === 'trade' && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="gradient-border rounded-xl overflow-hidden">
-            <TradingPanel currentCandle={currentCandle} />
-          </motion.div>
-        )}
-        {mobileTab === 'portfolio' && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="gradient-border rounded-xl overflow-hidden">
-            <PortfolioPanel stockCandles={allStockCandles} candleIndex={currentCandleIndex} />
-          </motion.div>
-        )}
-        {mobileTab === 'history' && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <TradeHistory />
-          </motion.div>
-        )}
-      </div>
-
-      {/* Mobile Bottom Navigation */}
-      <div className="md:hidden glass sticky bottom-0 flex justify-around py-2 px-2 border-t border-border/70">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setMobileTab(tab.id)}
-            className={`px-3 py-2 rounded-lg text-sm transition-all min-w-[78px] interactive-cta ${
-              mobileTab === tab.id
-                ? 'bg-primary/20 glow-blue text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+      ) : (
+        <>
+          {/* Desktop Layout */}
+          <motion.div
+            className="flex-1 hidden md:flex gap-3 p-3 relative z-10"
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: { opacity: 0 },
+              show: { opacity: 1, transition: { staggerChildren: 0.11 } },
+            }}
           >
-            <span className="flex justify-center leading-none"><tab.icon size={16} /></span>
-            <span className="block mt-1 text-[11px] uppercase tracking-wide">{tab.label}</span>
-          </button>
-        ))}
-      </div>
+            {/* Chart */}
+            <motion.div
+              variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}
+              className="flex-[7]"
+            >
+              <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
+                <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+              </InteractiveSurface>
+            </motion.div>
+
+            {/* Right panels */}
+            <div className="flex-[3] flex flex-col gap-3 min-w-[280px]">
+              <motion.div
+                variants={{ hidden: { opacity: 0, x: 18 }, show: { opacity: 1, x: 0 } }}
+                className="gradient-border rounded-xl overflow-hidden"
+              >
+                <TradingPanel currentCandle={currentCandle} />
+              </motion.div>
+              <motion.div
+                variants={{ hidden: { opacity: 0, x: 18 }, show: { opacity: 1, x: 0 } }}
+                className="gradient-border rounded-xl overflow-hidden"
+              >
+                <PortfolioPanel stockCandles={allStockCandles} candleIndex={currentCandleIndex} />
+              </motion.div>
+            </div>
+          </motion.div>
+
+          {/* Trade History - Desktop */}
+          <div className="hidden md:block px-3 pb-3 relative z-10 section-enter-delayed">
+            <ScrollReveal delay={0.14}>
+              <TradeHistory />
+            </ScrollReveal>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="flex-1 md:hidden p-3 relative z-10">
+            {mobileTab === 'chart' && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
+                <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
+                  <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+                </InteractiveSurface>
+              </motion.div>
+            )}
+            {mobileTab === 'trade' && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="gradient-border rounded-xl overflow-hidden">
+                <TradingPanel currentCandle={currentCandle} />
+              </motion.div>
+            )}
+            {mobileTab === 'portfolio' && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="gradient-border rounded-xl overflow-hidden">
+                <PortfolioPanel stockCandles={allStockCandles} candleIndex={currentCandleIndex} />
+              </motion.div>
+            )}
+            {mobileTab === 'history' && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <TradeHistory />
+              </motion.div>
+            )}
+          </div>
+
+          {/* Mobile Bottom Navigation */}
+          <div className="md:hidden glass sticky bottom-0 flex justify-around py-2 px-2 border-t border-border/70">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setMobileTab(tab.id)}
+                className={`px-3 py-2 rounded-lg text-sm transition-all min-w-[78px] interactive-cta ${
+                  mobileTab === tab.id
+                    ? 'bg-primary/20 glow-blue text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span className="flex justify-center leading-none"><tab.icon size={16} /></span>
+                <span className="block mt-1 text-[11px] uppercase tracking-wide">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       </main>
     </div>
   );
