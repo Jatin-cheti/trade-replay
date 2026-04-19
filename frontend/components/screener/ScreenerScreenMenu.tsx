@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   Clock,
@@ -58,6 +58,13 @@ export default function ScreenerScreenMenu({
   const [renameTarget, setRenameTarget] = useState<SavedScreen | null>(null);
   const [renameInput, setRenameInput] = useState("");
 
+  // Toast feedback
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2000);
+  }, []);
+
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<SavedScreen | null>(null);
 
@@ -68,6 +75,16 @@ export default function ScreenerScreenMenu({
     setShareExpanded(false);
   };
 
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
   const openSaveModal = useCallback((asNew: boolean) => {
     setSaveAsNew(asNew);
     setSaveInput(asNew ? "New screen" : activeScreenName);
@@ -77,13 +94,10 @@ export default function ScreenerScreenMenu({
 
   const handleSave = useCallback(() => {
     if (!saveInput.trim()) return;
-    if (saveAsNew || !activeScreenId) {
-      saveScreen(saveInput.trim());
-    } else {
-      saveScreen(saveInput.trim());
-    }
+    saveScreen(saveInput.trim());
     setSaveModalOpen(false);
-  }, [saveInput, saveAsNew, activeScreenId, saveScreen]);
+    showToast(saveAsNew ? "Screen created" : "Screen saved");
+  }, [saveInput, saveAsNew, saveScreen, showToast]);
 
   const openRenameModal = useCallback((screen: SavedScreen) => {
     setRenameTarget(screen);
@@ -97,14 +111,32 @@ export default function ScreenerScreenMenu({
     renameScreenById(renameTarget._id, renameInput.trim());
     setRenameModalOpen(false);
     setRenameTarget(null);
-  }, [renameInput, renameTarget, renameScreenById]);
+    showToast("Screen renamed");
+  }, [renameInput, renameTarget, renameScreenById, showToast]);
 
   const handleCopyShareLink = useCallback(() => {
     const url = window.location.href;
-    navigator.clipboard.writeText(url).then(() => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setShareLinkCopied(true);
+        setTimeout(() => setShareLinkCopied(false), 2000);
+      }).catch(() => {
+        // fallback: textarea
+        const ta = document.createElement("textarea");
+        ta.value = url; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+        document.body.removeChild(ta);
+        setShareLinkCopied(true);
+        setTimeout(() => setShareLinkCopied(false), 2000);
+      });
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = url; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+      document.body.removeChild(ta);
       setShareLinkCopied(true);
       setTimeout(() => setShareLinkCopied(false), 2000);
-    });
+    }
   }, []);
 
   const recentScreens = savedScreens.slice(0, 5);
@@ -164,7 +196,7 @@ export default function ScreenerScreenMenu({
                   {activeScreenId && (
                     <button
                       type="button"
-                      onClick={() => { copyScreenById(activeScreenId); close(); }}
+                      onClick={() => { copyScreenById(activeScreenId); close(); showToast("Screen copied"); }}
                       className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground/85 transition-colors hover:bg-secondary/50 hover:text-foreground"
                     >
                       <Copy className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -415,13 +447,20 @@ export default function ScreenerScreenMenu({
               </button>
               <button
                 type="button"
-                onClick={() => { deleteScreenById(deleteTarget._id); setDeleteTarget(null); }}
+                onClick={() => { deleteScreenById(deleteTarget._id); setDeleteTarget(null); showToast("Screen deleted"); }}
                 className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
               >
                 Delete
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast feedback */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-[#1e222d] px-4 py-2.5 text-sm text-white shadow-xl">
+          {toast}
         </div>
       )}
     </>

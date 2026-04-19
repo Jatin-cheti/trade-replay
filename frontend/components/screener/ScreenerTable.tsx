@@ -199,7 +199,7 @@ export default function ScreenerTable({
               height: "calc(100vh - 350px)",
               minHeight: 420,
               overflowX: "hidden",
-              scrollbarGutter: "stable",
+              overflowY: "auto",
             }}
             endReached={onLoadMore}
             overscan={450}
@@ -208,7 +208,7 @@ export default function ScreenerTable({
                 key={`${item.fullSymbol}-${index}`}
                 type="button"
                 onClick={() => onNavigate(item.symbol)}
-                className={`grid w-full items-center gap-2 py-2 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 md:py-2.5 ${
+                className={`grid w-full items-center gap-2 py-2 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 group md:py-2.5 ${
                   index > 0 ? "border-t border-border/20" : ""
                 } ${
                   flashBySymbol[item.fullSymbol || item.symbol] === "up"
@@ -229,7 +229,7 @@ export default function ScreenerTable({
                       className={`${
                         NUMERIC_COLUMNS.has(column) ? "text-right" : "text-left"
                       } min-w-0 ${
-                        isSymbol ? "sticky left-0 z-[5] bg-[hsl(var(--background))]" : ""
+                        isSymbol ? "sticky left-0 z-[5] bg-[hsl(var(--background))] group-hover:bg-[hsl(var(--secondary)/0.3)]" : ""
                       }`}
                     >
                       {renderCell(item, column)}

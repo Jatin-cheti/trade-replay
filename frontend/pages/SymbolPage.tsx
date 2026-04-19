@@ -171,6 +171,7 @@ export default function SymbolPage() {
   // Chart candle data
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState(false);
 
   useEffect(() => {
     if (!symbol) return;
@@ -183,17 +184,21 @@ export default function SymbolPage() {
   }, [symbol]);
 
   // Fetch candle data for chart
-  useEffect(() => {
+  const loadCandles = useCallback(() => {
     if (!detail?.symbol) return;
     setChartLoading(true);
+    setChartError(false);
     fetchLiveSnapshot({ symbols: [detail.symbol], candleSymbols: [detail.symbol], candleLimit: 240 })
       .then((snap) => {
         const c = snap.candlesBySymbol?.[detail.symbol];
         if (c?.length) setCandles(c);
+        else setChartError(true);
       })
-      .catch(() => {})
+      .catch(() => setChartError(true))
       .finally(() => setChartLoading(false));
   }, [detail?.symbol]);
+
+  useEffect(() => { loadCandles(); }, [loadCandles]);
 
   // Close picker on outside click
   useEffect(() => {
@@ -340,15 +345,16 @@ export default function SymbolPage() {
                   {detail.symbol}
                 </span>
                 <span className="text-xs text-muted-foreground">&middot;</span>
-                {/* Exchange badge with picker trigger */}
+                {/* Exchange badge with market status + picker trigger */}
                 <div className="relative" ref={pickerRef}>
                   <button
                     type="button"
                     onClick={() => setPickerOpen((v) => !v)}
-                    className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-                    {detail.exchange}
+                    {/* Market status dot (red=closed, green=open) */}
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500" title="Market closed" />
+                    <span className="font-medium">{detail.exchange}</span>
                     <ChevronDown className={`h-3 w-3 transition-transform ${pickerOpen ? "rotate-180" : ""}`} />
                   </button>
 
@@ -465,9 +471,23 @@ export default function SymbolPage() {
                 )}
 
                 {/* Watchlist / portfolio action buttons */}
-                <span className="inline-flex gap-1">
-                  <span className="w-5 h-5 rounded-md bg-blue-500/80 flex items-center justify-center text-white text-[10px] font-bold cursor-pointer" title="Add to watchlist">&bull;</span>
-                  <span className="w-5 h-5 rounded-md bg-teal-500/80 flex items-center justify-center text-white text-[10px] font-bold cursor-pointer" title="Add to portfolio">+</span>
+                <span className="inline-flex gap-1.5">
+                  <button
+                    className="h-7 w-7 rounded-md bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 hover:bg-blue-500/25 transition-colors"
+                    title="Add to watchlist"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2}>
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+                    </svg>
+                  </button>
+                  <button
+                    className="h-7 w-7 rounded-md bg-teal-500/15 border border-teal-500/30 flex items-center justify-center text-teal-400 hover:bg-teal-500/25 transition-colors"
+                    title="Add to portfolio"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2}>
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
                 </span>
               </div>
 
@@ -477,16 +497,19 @@ export default function SymbolPage() {
                   {detail.price > 0 ? detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "\u2014"}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground">{detail.currency}</span>
-                {detail.changePercent !== 0 && (
-                  <span className={`text-lg font-semibold ${detail.changePercent > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {detail.change > 0 ? "+" : ""}{detail.change.toFixed(2)}{" "}
-                    {detail.changePercent > 0 ? "+" : ""}{detail.changePercent.toFixed(2)}%
-                  </span>
-                )}
+                <span className={`text-lg font-semibold ${detail.changePercent > 0 ? "text-emerald-400" : detail.changePercent < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                  {detail.change > 0 ? "+" : ""}{detail.change.toFixed(2)}{" "}
+                  ({detail.changePercent > 0 ? "+" : ""}{detail.changePercent.toFixed(2)}%)
+                </span>
               </div>
-              {/* Timestamp like TradingView */}
+              {/* Timestamp like TradingView — timezone-aware */}
               <p className="text-xs text-muted-foreground">
-                At close at {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}, {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} {Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ")}
+                {(() => {
+                  const now = new Date();
+                  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                  const tzShort = now.toLocaleTimeString("en-US", { timeZoneName: "short" }).split(" ").pop();
+                  return `At close · ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · ${now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} ${tzShort || tz.replace(/_/g, " ")}`;
+                })()}
               </p>
             </div>
           </div>
@@ -552,6 +575,18 @@ export default function SymbolPage() {
               {chartLoading ? (
                 <div className="h-[340px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+                </div>
+              ) : chartError && candles.length === 0 ? (
+                <div className="h-[340px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
+                    <button
+                      onClick={loadCandles}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               ) : candles.length > 0 ? (
                 <div className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">

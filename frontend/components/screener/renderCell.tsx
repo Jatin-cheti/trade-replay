@@ -18,7 +18,9 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
     const raw = item[columnKey as keyof ScreenerItem];
     if (raw === null || raw === undefined) return <span className="text-xs text-muted-foreground">—</span>;
     const num = Number(raw);
-    if (!Number.isFinite(num) || num === 0) return <span className="text-xs text-muted-foreground">—</span>;
+    if (!Number.isFinite(num)) return <span className="text-xs text-muted-foreground">—</span>;
+    // Show "0.00%" for genuine zero (flat movement) — don't treat as missing
+    if (num === 0) return <span className="text-xs text-muted-foreground">{formatPercent(0)}</span>;
     return <span className={`text-xs font-semibold tabular-nums ${num > 0 ? "text-emerald-400" : ""} ${num < 0 ? "text-red-400" : "text-muted-foreground"}`}>{formatPercent(num)}</span>;
   }
   if (columnKey === "analystRating") {
@@ -41,7 +43,11 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
   if (NUMERIC_COLUMNS.has(columnKey)) {
     if (raw === null || raw === undefined) return <span className="text-xs text-muted-foreground">—</span>;
     const num = Number(raw);
-    if (!Number.isFinite(num) || num === 0) return <span className="text-xs text-muted-foreground">—</span>;
+    if (!Number.isFinite(num)) return <span className="text-xs text-muted-foreground">—</span>;
+    // For valuation ratios, 0 genuinely means "not available"
+    if (num === 0 && (columnKey === "pe" || columnKey === "peg" || columnKey === "beta" || columnKey === "roe" || columnKey === "epsDilTtm" || columnKey === "relVolume")) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
     if (columnKey === "pe" || columnKey === "peg" || columnKey === "beta" || columnKey === "roe" || columnKey === "relVolume" || columnKey === "epsDilTtm") return <span className="text-xs tabular-nums text-foreground">{num.toFixed(2)}</span>;
     if (columnKey === "divYieldPercent") return <span className="text-xs tabular-nums text-foreground">{formatPercent(num)}</span>;
     return <span className="text-xs tabular-nums text-foreground">{formatCompactNumber(num)}</span>;
@@ -49,8 +55,9 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
   if (columnKey === "sector") {
     let sector = item.sector;
     if (!sector) return <span className="text-xs text-muted-foreground">—</span>;
-    if (sector.startsWith("Equity -") || sector.startsWith("equity -")) sector = "";
-    if (sector === "stock" || sector === "Stock" || sector === "crypto" || sector === "Crypto") sector = "";
+    // Clean up known bad prefixes from data providers
+    if (sector.toLowerCase().startsWith("equity -")) sector = sector.slice(9).trim();
+    if (sector.toLowerCase().startsWith("equity -")) sector = sector.slice(8).trim();
     if (!sector) return <span className="text-xs text-muted-foreground">—</span>;
     return <span className="truncate text-xs text-foreground/85">{sector}</span>;
   }
