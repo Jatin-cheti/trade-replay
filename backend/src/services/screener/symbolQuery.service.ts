@@ -119,14 +119,12 @@ function mapRow(base: Awaited<ReturnType<typeof enrichScreenerBatch>>[number]): 
   const avgVolume = base.avgVolume;
   const relVolume: number | null =
     typeof avgVolume === "number" && Number.isFinite(avgVolume) && avgVolume > 0 && base.volume > 0
-      ? Number((base.volume / avgVolume).toFixed(2))
+      ? Number((base.volume / avgVolume).toFixed(3))
       : null;
 
   const marketClass = isDexExchange(base.exchange)
     ? "dex"
-    : isCexExchange(base.exchange)
-      ? "cex"
-      : "cex";
+    : "cex";
 
   return {
     ...base,

@@ -24,9 +24,24 @@ export default function WatchlistFilterEditor({
 
   const allWatchlists = useMemo(() => {
     const fromServer = watchlists.map((w) => ({ id: w.value, icon: "📋", name: w.label }));
-    const serverIds = new Set(fromServer.map((w) => w.id));
-    const defaults = defaultWatchlists.filter((d) => !serverIds.has(d.id));
-    return [...fromServer, ...defaults];
+    // Deduplicate by normalized ID (handle _ vs - variants)
+    const seen = new Set<string>();
+    const deduped: Array<{ id: string; icon: string; name: string }> = [];
+    for (const w of fromServer) {
+      const norm = w.id.toLowerCase().replace(/[-_]/g, "");
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      deduped.push(w);
+    }
+    // Add defaults only if not already present from server
+    for (const d of defaultWatchlists) {
+      const norm = d.id.toLowerCase().replace(/[-_]/g, "");
+      if (!seen.has(norm)) {
+        seen.add(norm);
+        deduped.push(d);
+      }
+    }
+    return deduped;
   }, [watchlists]);
 
   const filtered = useMemo(
