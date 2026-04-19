@@ -15,10 +15,8 @@ interface SymbolDetail {
   currency: string;
   iconUrl: string;
   companyDomain: string;
-  marketCap: number;
+  marketCap: number | null;
   volume: number;
-  liquidityScore: number;
-  priorityScore: number;
   sector: string;
   source: string;
   popularity: number;
@@ -26,17 +24,31 @@ interface SymbolDetail {
   price: number;
   change: number;
   changePercent: number;
-  // Fundamentals
-  pe: number;
-  eps: number;
-  dividendYield: number;
-  netIncome: number;
-  revenue: number;
-  sharesFloat: number;
-  beta: number;
-  revenueGrowth: number;
-  roe: number;
+  // Fundamentals (nullable per API)
+  pe: number | null;
+  eps: number | null;
+  epsGrowth: number | null;
+  dividendYield: number | null;
+  netIncome: number | null;
+  revenue: number | null;
+  sharesFloat: number | null;
+  beta: number | null;
+  revenueGrowth: number | null;
+  roe: number | null;
+  avgVolume: number | null;
+  analystRating: string;
   logoSource: string;
+  isPrimaryListing: boolean;
+  // Additional screener-specific fields
+  relVolume: number | null;
+  epsDilTtm: number | null;
+  epsDilGrowth: number | null;
+  divYieldPercent: number | null;
+  perfPercent: number;
+  peg: number | null;
+  recentEarningsDate: string;
+  upcomingEarningsDate: string;
+  marketClass: "cex" | "dex";
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -292,16 +304,16 @@ export default function SymbolPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-12 gap-y-6">
                 <KeyStat
                   label="Market capitalization"
-                  value={fmt(detail.marketCap, detail.currency)}
+                  value={fmt(detail.marketCap || 0, detail.currency)}
                   clickable
                 />
-                <KeyStat label="Dividend yield (indicated)" value={detail.dividendYield > 0 ? `${detail.dividendYield.toFixed(2)}%` : "\u2014"} clickable />
-                <KeyStat label="Price to earnings Ratio (TTM)" value={detail.pe > 0 ? detail.pe.toFixed(2) : "\u2014"} clickable />
-                <KeyStat label="Basic EPS (TTM)" value={detail.eps > 0 ? detail.eps.toFixed(2) : "\u2014"} />
-                <KeyStat label="Net income (FY)" value={fmt(detail.netIncome, detail.currency)} clickable />
-                <KeyStat label="Revenue (FY)" value={fmt(detail.revenue, detail.currency)} clickable />
-                <KeyStat label="Shares float" value={fmt(detail.sharesFloat)} clickable />
-                <KeyStat label="Beta (1Y)" value={detail.beta > 0 ? detail.beta.toFixed(2) : "\u2014"} />
+                <KeyStat label="Dividend yield (indicated)" value={detail.dividendYield && detail.dividendYield > 0 ? `${detail.dividendYield.toFixed(2)}%` : "\u2014"} clickable />
+                <KeyStat label="Price to earnings Ratio (TTM)" value={detail.pe && detail.pe > 0 ? detail.pe.toFixed(2) : "\u2014"} clickable />
+                <KeyStat label="Basic EPS (TTM)" value={detail.eps && detail.eps > 0 ? detail.eps.toFixed(2) : "\u2014"} />
+                <KeyStat label="Net income (FY)" value={fmt(detail.netIncome || 0, detail.currency)} clickable />
+                <KeyStat label="Revenue (FY)" value={fmt(detail.revenue || 0, detail.currency)} clickable />
+                <KeyStat label="Shares float" value={fmt(detail.sharesFloat || 0)} clickable />
+                <KeyStat label="Beta (1Y)" value={detail.beta && detail.beta > 0 ? detail.beta.toFixed(2) : "\u2014"} />
               </div>
             </div>
 

@@ -7,6 +7,7 @@ import { useScreenerFilters } from "@/hooks/useScreenerFilters";
 import { useScreenerScreens } from "@/hooks/useScreenerScreens";
 import type { ScreenerColumnField, ScreenerMetaResponse, ScreenerStatsResponse, ScreenerTabDefinition } from "@/lib/screener";
 import { DEFAULT_VISIBLE_COLUMNS, FALLBACK_SCREENER_TYPES, dedupe, normalizeRouteType, parseCsv, getMultiParamName, getDateParamNames } from "@/lib/screener";
+import { COMPLETE_SCREENER_META_FALLBACK } from "@/lib/screener/fallback";
 import ScreenerToolbar from "@/components/screener/ScreenerToolbar";
 import ScreenerFilterBar from "@/components/screener/ScreenerFilterBar";
 import ScreenerTabBar from "@/components/screener/ScreenerTabBar";
@@ -47,9 +48,12 @@ export default function Screener() {
     (async () => {
       try {
         const [mRes, sRes] = await Promise.all([api.get<ScreenerMetaResponse>("/screener/meta"), api.get<ScreenerStatsResponse>("/screener/stats")]);
-        setMeta(mRes.data); setStats(sRes.data);
-      } catch {
-        setMeta((c) => c ?? { screenerTypes: FALLBACK_SCREENER_TYPES, heatmapTypes: [], tabs: [{ key: "overview", label: "Overview", defaultColumns: DEFAULT_VISIBLE_COLUMNS }], filterCategories: [], filterFields: [], columnFields: DEFAULT_VISIBLE_COLUMNS.map((k) => ({ key: k, label: k, category: "market-data" })), screenMenuOptions: [], countries: [], indices: [], watchlists: [], sectors: [], exchanges: [] } as ScreenerMetaResponse);
+        setMeta(mRes.data); 
+        setStats(sRes.data);
+      } catch (err) {
+        // Use complete fallback when API fails - includes all filters and columns
+        console.warn("Failed to load screener meta, using fallback:", err);
+        setMeta(COMPLETE_SCREENER_META_FALLBACK);
       }
     })();
   }, []);

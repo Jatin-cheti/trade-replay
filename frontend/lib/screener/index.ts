@@ -2,3 +2,4 @@ export { type ScreenerOption, type ScreenerTypeDefinition, type ScreenerTabDefin
 export { FALLBACK_SCREENER_TYPES, DEFAULT_VISIBLE_COLUMNS, DEFAULT_FILTER_KEYS, BATCH_SIZE, MULTI_FILTER_KEYS, RANGE_FILTER_KEYS, DATE_FILTER_KEYS, TOGGLE_FILTER_KEYS, COLUMN_WIDTHS, NUMERIC_COLUMNS, FALLBACK_FILTER_CATEGORY_LABELS } from "./constants";
 export { POPULAR_COUNTRIES, ALL_COUNTRIES, INDEX_GROUPS, type IndexGroupDef } from "./data";
 export { parseCsv, parseFiniteNumber, formatCompactNumber, formatPrice, formatPercent, formatDateValue, flagEmojiToCountryCode, getMultiParamName, getDateParamNames, parseFiltersFromSearch, isFilterActiveValue, buildFilterLabel, dedupe, normalizeRouteType, toStatsTypeKey } from "./utils";
+export { COMPLETE_SCREENER_META_FALLBACK } from "./fallback";
