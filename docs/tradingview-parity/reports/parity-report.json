@@ -1,0 +1,144 @@
+{
+  "generatedAt": "2026-04-18T06:54:29.288Z",
+  "config": {
+    "maxPixelRatio": 0.06,
+    "maxAvgChannelDelta": 14,
+    "oursDir": "docs/tradingview-parity/ours",
+    "referenceDir": "docs/tradingview-parity/tradingview",
+    "diffsDir": "docs/tradingview-parity/diffs"
+  },
+  "summary": {
+    "comparedCount": 12,
+    "passedCount": 2,
+    "failedCount": 10,
+    "unmatchedOursCount": 0,
+    "unmatchedReferenceCount": 0,
+    "passed": false
+  },
+  "unmatched": {
+    "onlyOurs": [],
+    "onlyReference": []
+  },
+  "results": [
+    {
+      "file": "SPY_1m_live-market_full_1440x900.png",
+      "width": 1414,
+      "height": 828,
+      "diffPixels": 68878,
+      "diffPixelRatio": 0.058830261908178395,
+      "avgChannelDelta": 4.918666167859022,
+      "passed": true,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_live-market_full_1920x1080.png",
+      "width": 1894,
+      "height": 1008,
+      "diffPixels": 129664,
+      "diffPixelRatio": 0.06791706474916612,
+      "avgChannelDelta": 5.406890336652085,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_live-market_full_390x844.png",
+      "width": 372,
+      "height": 780,
+      "diffPixels": 28307,
+      "diffPixelRatio": 0.0975565205403915,
+      "avgChannelDelta": 7.717321477805349,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_live-market_normal_1440x900.png",
+      "width": 802,
+      "height": 565,
+      "diffPixels": 49613,
+      "diffPixelRatio": 0.10948955046013285,
+      "avgChannelDelta": 8.918205592214155,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_live-market_normal_1920x1080.png",
+      "width": 1282,
+      "height": 687,
+      "diffPixels": 66826,
+      "diffPixelRatio": 0.07587534942445733,
+      "avgChannelDelta": 6.16310912261818,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_live-market_normal_390x844.png",
+      "width": 364,
+      "height": 526,
+      "diffPixels": 20619,
+      "diffPixelRatio": 0.10769126310951406,
+      "avgChannelDelta": 8.309892460201395,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_simulation_full_1440x900.png",
+      "width": 1414,
+      "height": 828,
+      "diffPixels": 68916,
+      "diffPixelRatio": 0.058862718569993644,
+      "avgChannelDelta": 4.928655986716684,
+      "passed": true,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_simulation_full_1920x1080.png",
+      "width": 1894,
+      "height": 1008,
+      "diffPixels": 123174,
+      "diffPixelRatio": 0.06451764972092322,
+      "avgChannelDelta": 5.128095091433265,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_simulation_full_390x844.png",
+      "width": 372,
+      "height": 780,
+      "diffPixels": 28310,
+      "diffPixelRatio": 0.09756685966363386,
+      "avgChannelDelta": 7.717523952302178,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_simulation_normal_1440x900.png",
+      "width": 981,
+      "height": 564,
+      "diffPixels": 54889,
+      "diffPixelRatio": 0.09920583280919022,
+      "avgChannelDelta": 7.813485027580772,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_simulation_normal_1920x1080.png",
+      "width": 1317,
+      "height": 564,
+      "diffPixels": 56361,
+      "diffPixelRatio": 0.07587763938028078,
+      "avgChannelDelta": 5.96948119786534,
+      "passed": false,
+      "reason": null
+    },
+    {
+      "file": "SPY_1m_simulation_normal_390x844.png",
+      "width": 364,
+      "height": 458,
+      "diffPixels": 18016,
+      "diffPixelRatio": 0.10806660588319977,
+      "avgChannelDelta": 8.529144572676232,
+      "passed": false,
+      "reason": null
+    }
+  ]
+}

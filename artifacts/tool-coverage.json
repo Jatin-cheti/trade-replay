@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-04-16T03:42:42.603Z",
+  "matrixRanAt": "2026-04-16T03:42:41.162Z",
+  "summary": {
+    "totalDrawableTools": 85,
+    "testedTools": 85,
+    "passedTools": 85,
+    "failedTools": 0,
+    "notTestedTools": 0,
+    "coveragePercent": 100,
+    "passRatePercent": 100,
+    "overallPassed": 85,
+    "overallFailed": 0
+  },
+  "byScenario": {
+    "smoke": {
+      "total": 85,
+      "passed": 85,
+      "failed": 0
+    },
+    "multi-5": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "fullscreen": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "option": {
+      "total": 3209,
+      "passed": 3209,
+      "failed": 0
+    },
+    "header": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "mixed": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0
+    }
+  },
+  "byCategory": [
+    {
+      "category": "lines",
+      "total": 17,
+      "tested": 17,
+      "passed": 17,
+      "failed": 0,
+      "notTested": 0,
+      "coveragePct": "100.0",
+      "passRatePct": "100.0",
+      "failedTools": []
+    },
+    {
+      "category": "fib",
+      "total": 15,
+      "tested": 15,
+      "passed": 15,
+      "failed": 0,
+      "notTested": 0,
+      "coveragePct": "100.0",
+      "passRatePct": "100.0",
+      "failedTools": []
+    },
+    {
+      "category": "patterns",
+      "total": 14,
+      "tested": 14,
+      "passed": 14,
+      "failed": 0,
+      "notTested": 0,
+      "coveragePct": "100.0",
+      "passRatePct": "100.0",
+      "failedTools": []
+    },
+    {
+      "category": "forecasting",
+      "total": 12,
+      "tested": 12,
+      "passed": 12,
+      "failed": 0,
+      "notTested": 0,
+      "coveragePct": "100.0",
+      "passRatePct": "100.0",
+      "failedTools": []
+    },
+    {
+      "category": "brush",
+      "total": 16,
+      "tested": 16,
+      "passed": 16,
+      "failed": 0,
+      "notTested": 0,
+      "coveragePct": "100.0",
+      "passRatePct": "100.0",
+      "failedTools": []
+    },
+    {
+      "category": "text",
+      "total": 11,
+      "tested": 11,
+      "passed": 11,
+      "failed": 0,
+      "notTested": 0,
+      "coveragePct": "100.0",
+      "passRatePct": "100.0",
+      "failedTools": []
+    }
+  ],
+  "optionCoverage": {
+    "testedTools": 85,
+    "totalOptionTests": 3124,
+    "passedOptionTests": 3124,
+    "totalOptionValueCombos": 3124,
+    "testedOptionValueCombos": 3124,
+    "passedOptionValueCombos": 3124,
+    "coveragePercent": 100,
+    "passRatePercent": 100
+  },
+  "headerCoverage": {
+    "totalTests": 0,
+    "passed": 0
+  },
+  "fullscreenCoverage": {
+    "totalTests": 0,
+    "passed": 0
+  },
+  "multiObjectCoverage": {
+    "totalTests": 0,
+    "passed": 0
+  },
+  "notTestedTools": [],
+  "failedToolsDetail": []
+}
