@@ -1,9 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ExternalLink, BarChart3, ChevronRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ExternalLink, BarChart3, ChevronRight, ChevronDown, Camera, Copy,
+  Search, X,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import AssetAvatar from "@/components/ui/AssetAvatar";
+import TradingChart from "@/components/chart/TradingChart";
+import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
+import type { CandleData } from "@/data/stockData";
 
 interface SymbolDetail {
   symbol: string;
@@ -91,7 +97,7 @@ const COUNTRY_NAME: Record<string, string> = {
   KR: "South Korea", HK: "Hong Kong", SG: "Singapore", BR: "Brazil", CH: "Switzerland",
 };
 
-const TABS = ["Overview", "Financials", "News", "Documents", "Technicals", "Forecasts", "Seasonals"] as const;
+const TABS = ["Overview", "Financials", "News", "Documents", "Community", "Technicals", "Forecasts", "Seasonals", "Options", "Bonds", "ETFs"] as const;
 const TIME_PERIODS = [
   { label: "1 day", key: "1d" },
   { label: "5 days", key: "5d" },
@@ -114,6 +120,17 @@ export default function SymbolPage() {
   const [activeTab, setActiveTab] = useState<string>("Overview");
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
 
+  // Symbol picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTab, setPickerTab] = useState<"stocks" | "futures">("stocks");
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [copiedIsin, setCopiedIsin] = useState<string | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Chart candle data
+  const [candles, setCandles] = useState<CandleData[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+
   useEffect(() => {
     if (!symbol) return;
     setLoading(true);
@@ -123,6 +140,35 @@ export default function SymbolPage() {
       .catch((err) => setError(err.response?.status === 404 ? "Symbol not found" : "Failed to load symbol"))
       .finally(() => setLoading(false));
   }, [symbol]);
+
+  // Fetch candle data for chart
+  useEffect(() => {
+    if (!detail?.symbol) return;
+    setChartLoading(true);
+    fetchLiveSnapshot({ symbols: [detail.symbol], candleSymbols: [detail.symbol], candleLimit: 240 })
+      .then((snap) => {
+        const c = snap.candlesBySymbol?.[detail.symbol];
+        if (c?.length) setCandles(c);
+      })
+      .catch(() => {})
+      .finally(() => setChartLoading(false));
+  }, [detail?.symbol]);
+
+  // Close picker on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const copyToClipboard = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIsin(text);
+      setTimeout(() => setCopiedIsin(null), 2000);
+    });
+  }, []);
 
   if (loading) {
     return (
@@ -143,21 +189,29 @@ export default function SymbolPage() {
 
   const countryName = COUNTRY_NAME[detail.country] || detail.country;
   const screenerRouteType = toScreenerRouteType(detail.type);
+  const isStock = detail.type === "stock";
+  const isCrypto = detail.type === "crypto" || detail.marketClass === "cex" || detail.marketClass === "dex";
+
+  // Build stock picker entries from detail
+  const stockEntries: SymbolPickerEntry[] = isStock ? [
+    { symbol: detail.symbol, isin: "—", source: detail.exchange },
+  ] : [];
+  const futuresEntries: SymbolPickerEntry[] = [];
 
   return (
     <div className="min-h-screen bg-background pt-4 pb-20">
       <div className="mx-auto max-w-[1200px] px-4 md:px-6">
 
         {/* ── Breadcrumb (TradingView exact) ────────────────────────────── */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5 flex-wrap">
           <Link to="/screener/stocks" className="hover:text-foreground transition-colors">Markets</Link>
-          <span className="text-muted-foreground/40">/</span>
+          <span className="text-muted-foreground/40">&rsaquo;</span>
           {detail.country && (
             <>
               <Link to={`/screener/stocks?marketCountries=${detail.country}`} className="hover:text-foreground transition-colors">
                 {countryName}
               </Link>
-              <span className="text-muted-foreground/40">/</span>
+              <span className="text-muted-foreground/40">&rsaquo;</span>
             </>
           )}
           <Link to={`/screener/${screenerRouteType}`} className="hover:text-foreground transition-colors">
@@ -165,48 +219,130 @@ export default function SymbolPage() {
           </Link>
           {detail.sector && (
             <>
-              <span className="text-muted-foreground/40">/</span>
+              <span className="text-muted-foreground/40">&rsaquo;</span>
               <Link to={`/screener/${screenerRouteType}?sectors=${encodeURIComponent(detail.sector)}`} className="hover:text-foreground transition-colors">
                 {detail.sector}
               </Link>
             </>
           )}
-          <span className="text-muted-foreground/40">/</span>
-          <span className="text-foreground font-medium">{detail.symbol}</span>
+          <span className="text-muted-foreground/40">&rsaquo;</span>
+          <span className="text-foreground/50">{detail.symbol}</span>
         </div>
 
-        {/* ── Symbol Header (TradingView exact: logo + name + badges + price) */}
+        {/* ── Symbol Header (TradingView parity) ───────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <div className="flex items-start gap-6">
+          <div className="flex items-start gap-5">
             {/* Large circular logo */}
             <AssetAvatar
               src={detail.iconUrl}
               label={detail.symbol}
-              className="h-24 w-24 md:h-28 md:w-28 rounded-full border-2 border-border/20 shadow-lg object-cover shrink-0"
+              className="h-20 w-20 md:h-24 md:w-24 rounded-full border-2 border-border/20 shadow-lg object-cover shrink-0"
             />
-            <div className="flex-1 min-w-0 pt-1">
-              {/* Name */}
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3 leading-tight">{detail.name}</h1>
+            <div className="flex-1 min-w-0 pt-0.5">
+              {/* Company name */}
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2 leading-tight">{detail.name}</h1>
 
-              {/* Symbol badge line: RELIANCE · ⊕ NSE ▼ */}
+              {/* Symbol badge line: RELIANCE · ⊕ NSE ▼ · icons */}
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <span className="text-sm font-semibold text-foreground bg-secondary/50 rounded px-2 py-0.5 border border-border/30">
                   {detail.symbol}
                 </span>
-                <span className="text-sm text-muted-foreground">&middot;</span>
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-                  {detail.exchange}
-                </span>
-                {/* Colored action dots */}
+                <span className="text-xs text-muted-foreground">&middot;</span>
+                {/* Exchange badge with picker trigger */}
+                <div className="relative" ref={pickerRef}>
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+                    {detail.exchange}
+                    <ChevronDown className={`h-3 w-3 transition-transform ${pickerOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {/* Symbol Picker Dropdown */}
+                  <AnimatePresence>
+                    {pickerOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute left-0 top-full z-50 mt-2 w-[460px] rounded-xl border border-border/60 bg-background/98 shadow-2xl backdrop-blur-xl"
+                      >
+                        {/* Picker tabs */}
+                        <div className="flex items-center gap-0.5 border-b border-border/40 px-3 pt-2">
+                          {(isStock ? (["stocks", "futures"] as const) : (["futures"] as const)).map((tab) => (
+                            <button
+                              key={tab}
+                              type="button"
+                              onClick={() => setPickerTab(tab)}
+                              className={`relative px-3 py-2 text-xs font-medium transition-colors ${pickerTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                            >
+                              {tab === "stocks" ? "Stocks" : "Futures"}
+                              {pickerTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                            </button>
+                          ))}
+                          <div className="ml-auto pb-1">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                              <input
+                                value={pickerSearch}
+                                onChange={(e) => setPickerSearch(e.target.value)}
+                                placeholder="Search"
+                                className="w-[140px] rounded-md border border-border/40 bg-secondary/20 py-1 pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Picker header */}
+                        <div className="grid grid-cols-[1fr_140px_80px] gap-2 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 border-b border-border/30">
+                          <span>Symbol</span>
+                          <span>{pickerTab === "stocks" ? "ISIN" : "Description"}</span>
+                          <span>Source</span>
+                        </div>
+
+                        {/* Picker rows */}
+                        <div className="max-h-60 overflow-auto">
+                          {pickerTab === "stocks" && (
+                            <PickerStockRow
+                              symbol={detail.symbol}
+                              isin="—"
+                              source={detail.exchange}
+                              active
+                              onCopy={copyToClipboard}
+                              copiedIsin={copiedIsin}
+                            />
+                          )}
+                          {pickerTab === "futures" && (
+                            <div className="px-4 py-6 text-center text-xs text-muted-foreground">No futures available</div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Primary listing icon SVG */}
+                {detail.isPrimaryListing && (
+                  <span title="Primary listing" className="inline-flex shrink-0">
+                    <svg viewBox="0 0 48 48" fill="none" className="h-5 w-5" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="24" cy="24" r="20" fill="#006064" stroke="#006064" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M13 29V19L19 22L24 15L29 22L35 19V29H13Z" fill="#006064" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                )}
+
+                {/* Watchlist / portfolio action buttons */}
                 <span className="inline-flex gap-1">
                   <span className="w-5 h-5 rounded-md bg-blue-500/80 flex items-center justify-center text-white text-[10px] font-bold cursor-pointer" title="Add to watchlist">&bull;</span>
                   <span className="w-5 h-5 rounded-md bg-teal-500/80 flex items-center justify-center text-white text-[10px] font-bold cursor-pointer" title="Add to portfolio">+</span>
                 </span>
               </div>
 
-              {/* Price line — live data from priceCache */}
-              <div className="flex items-baseline gap-3 mb-1">
+              {/* Price line — live data */}
+              <div className="flex items-baseline gap-3 mb-0.5">
                 <span className="text-4xl md:text-5xl font-bold text-foreground tabular-nums">
                   {detail.price > 0 ? detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "\u2014"}
                 </span>
@@ -218,34 +354,39 @@ export default function SymbolPage() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">As of today</p>
+              {/* Timestamp like TradingView */}
+              <p className="text-xs text-muted-foreground">
+                At close at {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}, {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} {Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ")}
+              </p>
             </div>
           </div>
         </motion.div>
 
         {/* ── Tabs (TradingView exact) ──────────────────────────────────── */}
-        <div className="flex items-center border-b border-border/30 mb-6 overflow-x-auto scrollbar-hide">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`relative px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
+        <div className="relative mb-8 border-b border-border/30 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-0.5">
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`relative px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab}
+                {activeTab === tab && (
+                  <motion.div layoutId="symbol-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" transition={{ type: "spring", stiffness: 450, damping: 30 }} />
+                )}
+              </button>
+            ))}
+            {/* See on Supercharts — TradingView style right-aligned link */}
+            <Link
+              to={`/simulation?symbol=${detail.symbol}`}
+              className="ml-auto shrink-0 flex items-center gap-1.5 rounded-lg border border-border/40 px-3 py-1.5 text-sm text-foreground hover:bg-secondary/30 transition-colors whitespace-nowrap"
             >
-              {tab}
-              {activeTab === tab && (
-                <motion.div layoutId="symbol-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" transition={{ duration: 0.2 }} />
-              )}
-            </button>
-          ))}
-          {/* See on Supercharts — TradingView style right-aligned link */}
-          <button
-            onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
-            className="ml-auto flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors whitespace-nowrap px-3"
-          >
-            <BarChart3 className="w-4 h-4" /> See on Supercharts
-          </button>
+              <BarChart3 className="w-3.5 h-3.5" /> See on Supercharts
+            </Link>
+          </div>
         </div>
 
         {activeTab === "Overview" && (
@@ -267,16 +408,26 @@ export default function SymbolPage() {
                 </div>
               </div>
 
-              {/* Chart placeholder */}
-              <div
-                onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
-                className="h-80 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
-              >
-                <div className="text-center">
-                  <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
-                  <p className="text-muted-foreground text-sm">Click to open interactive chart</p>
+              {/* Chart — real TradingChart or loading fallback */}
+              {chartLoading ? (
+                <div className="h-80 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
-              </div>
+              ) : candles.length > 0 ? (
+                <div className="h-80 rounded-xl border border-border/30 bg-background/40 overflow-hidden">
+                  <TradingChart data={candles} visibleCount={candles.length} symbol={detail.symbol} />
+                </div>
+              ) : (
+                <div
+                  onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
+                  className="h-80 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                >
+                  <div className="text-center">
+                    <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
+                    <p className="text-muted-foreground text-sm">Click to open interactive chart</p>
+                  </div>
+                </div>
+              )}
 
               {/* Time period pills — TradingView exact layout */}
               <div className="flex items-center gap-1 mt-3 overflow-x-auto scrollbar-hide">
@@ -416,6 +567,58 @@ function AboutItem({ label, children }: { label: string; children: React.ReactNo
     <div>
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       {children}
+    </div>
+  );
+}
+
+/* ── Symbol Picker types & row ─────────────────────────────────────────── */
+interface SymbolPickerEntry {
+  symbol: string;
+  isin: string;
+  source: string;
+}
+
+function PickerStockRow({
+  symbol,
+  isin,
+  source,
+  active,
+  onCopy,
+  copiedIsin,
+}: {
+  symbol: string;
+  isin: string;
+  source: string;
+  active?: boolean;
+  onCopy: (text: string) => void;
+  copiedIsin: string | null;
+}) {
+  return (
+    <div className={`grid grid-cols-[1fr_140px_80px] gap-2 px-4 py-2 text-xs transition-colors ${active ? "bg-primary/8" : "hover:bg-secondary/30"} border-b border-border/15`}>
+      <span className="font-medium text-foreground flex items-center gap-1.5">
+        {active && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+        {symbol}
+      </span>
+      <span className="text-muted-foreground flex items-center gap-1">
+        {isin}
+        {isin !== "—" && (
+          <button
+            type="button"
+            onClick={() => onCopy(isin)}
+            className="p-0.5 rounded hover:bg-secondary/40 transition-colors"
+            title="Copy ISIN"
+          >
+            {copiedIsin === isin ? (
+              <span className="text-[9px] text-emerald-400">✓</span>
+            ) : (
+              <svg viewBox="0 0 18 18" className="h-3 w-3 text-muted-foreground" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" clipRule="evenodd" d="M5.5 3A1.5 1.5 0 0 0 4 4.5v8A1.5 1.5 0 0 0 5.5 14h5a1.5 1.5 0 0 0 1.5-1.5V7.621a1.5 1.5 0 0 0-.44-1.06L8.94 3.94A1.5 1.5 0 0 0 7.879 3.5H5.5Zm7 2A1.5 1.5 0 0 1 14 6.5v6a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 6 12.5v-8A1.5 1.5 0 0 1 7.5 3h.379a1.5 1.5 0 0 1 1.06.44l2.622 2.621A1.5 1.5 0 0 1 12 7.121V5Z" />
+              </svg>
+            )}
+          </button>
+        )}
+      </span>
+      <span className="text-muted-foreground">{source}</span>
     </div>
   );
 }

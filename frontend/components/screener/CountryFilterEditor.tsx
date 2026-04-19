@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, CheckSquare, XSquare } from "lucide-react";
 import { POPULAR_COUNTRIES, ALL_COUNTRIES } from "@/lib/screener";
 import CountryFlagImg from "./CountryFlagImg";
 
@@ -33,6 +33,13 @@ export default function CountryFilterEditor({
     else onChange([...selected, value]);
   };
 
+  const selectAll = () => {
+    const all = ALL_COUNTRIES.filter((c) => c.value !== "WORLD").map((c) => c.value);
+    onChange(all);
+  };
+
+  const clearAll = () => onChange([]);
+
   const CountryRow = ({ flag, name, value }: { flag: string; name: string; value: string }) => {
     const checked = value === "WORLD" ? selected.length === 0 : selectedSet.has(value);
     return (
@@ -61,6 +68,28 @@ export default function CountryFilterEditor({
             placeholder="🔍 Search countries..."
             className="w-full rounded-md border border-border/50 bg-secondary/25 py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none"
           />
+        </div>
+        {/* Select All / Clear All / Count */}
+        <div className="mt-1.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={selectAll}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary transition-colors hover:bg-primary/12"
+            >
+              <CheckSquare className="h-3 w-3" /> Select all
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+            >
+              <XSquare className="h-3 w-3" /> Clear all
+            </button>
+          </div>
+          {selected.length > 0 && (
+            <span className="text-[10px] font-medium text-muted-foreground">{selected.length} selected</span>
+          )}
         </div>
       </div>
 
