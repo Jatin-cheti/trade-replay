@@ -26,11 +26,9 @@ export default function Screener() {
   const [stats, setStats] = useState<ScreenerStatsResponse | null>(null);
   const [queryInput, setQueryInput] = useState(searchParams.get("q") || "");
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
-  const [screenMenuOpen, setScreenMenuOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addColumnSearch, setAddColumnSearch] = useState("");
   const typeMenuRef = useRef<HTMLDivElement | null>(null);
-  const screenMenuRef = useRef<HTMLDivElement | null>(null);
   const addColumnRef = useRef<HTMLDivElement | null>(null);
 
   /* ── Route ── */
@@ -85,22 +83,41 @@ export default function Screener() {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (typeMenuOpen && typeMenuRef.current && !typeMenuRef.current.contains(t)) setTypeMenuOpen(false);
-      if (screenMenuOpen && screenMenuRef.current && !screenMenuRef.current.contains(t)) setScreenMenuOpen(false);
       if (filters.addFilterOpen && filters.addFilterRef.current && !filters.addFilterRef.current.contains(t)) filters.setAddFilterOpen(false);
       if (addColumnOpen && addColumnRef.current && !addColumnRef.current.contains(t)) setAddColumnOpen(false);
       if (filters.editingFilterKey) { const r = filters.filterChipRefs.current[filters.editingFilterKey]; if (r && !r.contains(t)) filters.setEditingFilterKey(null); }
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [addColumnOpen, filters, screenMenuOpen, typeMenuOpen]);
+  }, [addColumnOpen, filters, typeMenuOpen]);
 
-  useEffect(() => { setTypeMenuOpen(false); setScreenMenuOpen(false); filters.setAddFilterOpen(false); setAddColumnOpen(false); filters.setEditingFilterKey(null); }, [location.pathname, location.search]);
+  useEffect(() => { setTypeMenuOpen(false); filters.setAddFilterOpen(false); setAddColumnOpen(false); filters.setEditingFilterKey(null); }, [location.pathname, location.search]);
 
   /* ── Callbacks ── */
   const currentType = useMemo(() => (meta?.screenerTypes || FALLBACK_SCREENER_TYPES).find((e) => e.routeType === routeType) || (meta?.screenerTypes || FALLBACK_SCREENER_TYPES)[0], [meta, routeType]);
   const setSort = useCallback((field: string) => { updateSearch((n) => { if ((n.get("sort") || "marketCap") === field) n.set("order", (n.get("order") || "desc") === "desc" ? "asc" : "desc"); else { n.set("sort", field); n.set("order", "desc"); } }); }, [updateSearch]);
   const onTypeSelect = useCallback((nextType: string) => { setTypeMenuOpen(false); navigate(`/screener/${nextType}${location.search}`); }, [location.search, navigate]);
   const onTabSelect = useCallback((tab: ScreenerTabDefinition) => { updateSearch((n) => { n.set("tab", tab.key); n.set("columns", tab.defaultColumns.join(",")); }); }, [updateSearch]);
+
+  const downloadCSV = useCallback(() => {
+    const headers = visibleColumns.join(",");
+    const rows = data.items.map((item) =>
+      visibleColumns.map((col) => {
+        const val = item[col as keyof typeof item];
+        if (val === null || val === undefined) return "";
+        const str = String(val);
+        return str.includes(",") ? `"${str.replace(/"/g, '""')}"` : str;
+      }).join(",")
+    );
+    const csv = [headers, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `screener-${routeType}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [visibleColumns, data.items, routeType]);
 
   const loadScreenState = useCallback((screen: any) => {
     screens.setActiveScreenId(screen._id); screens.setScreenDirty(false);
@@ -125,7 +142,7 @@ export default function Screener() {
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           <span>Screener</span><span className="text-muted-foreground/35">/</span><span>{currentType?.label || "Stock Screener"}</span>
         </div>
-        <ScreenerToolbar meta={meta} routeType={routeType} currentType={currentType} typeMenuOpen={typeMenuOpen} setTypeMenuOpen={setTypeMenuOpen} typeMenuRef={typeMenuRef} onTypeSelect={onTypeSelect} screenMenuOpen={screenMenuOpen} setScreenMenuOpen={setScreenMenuOpen} screenMenuRef={screenMenuRef} activeScreenName={screens.activeScreenName} activeScreenId={screens.activeScreenId} screenDirty={screens.screenDirty} isAuthenticated={screens.isAuthenticated} savedScreens={screens.savedScreens} renamingScreenId={screens.renamingScreenId} setRenamingScreenId={screens.setRenamingScreenId} renameValue={screens.renameValue} setRenameValue={screens.setRenameValue} saveScreen={screens.saveScreen} deleteScreenById={screens.deleteScreenById} copyScreenById={screens.copyScreenById} renameScreenById={screens.renameScreenById} loadScreenState={loadScreenState} queryInput={queryInput} setQueryInput={setQueryInput} onSpreadChart={(sym) => navigate(`/simulation?symbol=${encodeURIComponent(sym)}`)} />
+        <ScreenerToolbar meta={meta} routeType={routeType} currentType={currentType} typeMenuOpen={typeMenuOpen} setTypeMenuOpen={setTypeMenuOpen} typeMenuRef={typeMenuRef} onTypeSelect={onTypeSelect} activeScreenName={screens.activeScreenName} activeScreenId={screens.activeScreenId} screenDirty={screens.screenDirty} isAuthenticated={screens.isAuthenticated} savedScreens={screens.savedScreens} saveScreen={screens.saveScreen} deleteScreenById={screens.deleteScreenById} copyScreenById={screens.copyScreenById} renameScreenById={screens.renameScreenById} loadScreenState={loadScreenState} onDownloadCSV={downloadCSV} queryInput={queryInput} setQueryInput={setQueryInput} onSpreadChart={(sym) => navigate(`/simulation?symbol=${encodeURIComponent(sym)}`)} />
         <ScreenerFilterBar meta={meta} parsedFilters={data.parsedFilters} filterFields={filters.filterFields} visibleFilterKeys={filters.visibleFilterKeys} filterCount={filters.filterCount} editingFilterKey={filters.editingFilterKey} setEditingFilterKey={filters.setEditingFilterKey} addFilterOpen={filters.addFilterOpen} setAddFilterOpen={filters.setAddFilterOpen} addFilterSearch={filters.addFilterSearch} setAddFilterSearch={filters.setAddFilterSearch} filterChipRefs={filters.filterChipRefs} addFilterRef={filters.addFilterRef} manualFilterKeys={filters.manualFilterKeys} setManualFilterKeys={filters.setManualFilterKeys} setMultiFilter={filters.setMultiFilter} setRangeFilter={filters.setRangeFilter} setDateFilter={filters.setDateFilter} setToggleFilter={filters.setToggleFilter} clearAllFilters={filters.clearAllFilters} />
         <ScreenerTabBar tabs={meta?.tabs || []} activeTab={activeTab} loading={data.loading} onTabSelect={onTabSelect} onRefresh={data.refreshList} />
         {data.loading && data.items.length === 0 ? (
