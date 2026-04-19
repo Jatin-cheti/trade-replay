@@ -242,6 +242,16 @@ export default function SymbolPage() {
     }
   }, []);
 
+  // Performance percentage for time period chips (computed from candle data when available)
+  // NOTE: must be before early returns to satisfy React's rules of hooks
+  const perfPercent = useMemo(() => {
+    if (!detail || !candles.length) return detail?.changePercent ?? 0;
+    const first = candles[0]?.close;
+    const last = candles[candles.length - 1]?.close;
+    if (first && last && first > 0) return ((last - first) / first) * 100;
+    return detail?.changePercent ?? 0;
+  }, [detail, candles]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -285,15 +295,6 @@ export default function SymbolPage() {
   const filteredFuturesEntries = needle
     ? futuresEntries.filter((e) => e.symbol.toLowerCase().includes(needle) || e.isin.toLowerCase().includes(needle) || e.source.toLowerCase().includes(needle))
     : futuresEntries;
-
-  // Performance percentage for time period chips (computed from candle data when available)
-  const perfPercent = useMemo(() => {
-    if (!detail || !candles.length) return detail?.changePercent ?? 0;
-    const first = candles[0]?.close;
-    const last = candles[candles.length - 1]?.close;
-    if (first && last && first > 0) return ((last - first) / first) * 100;
-    return detail?.changePercent ?? 0;
-  }, [detail, candles]);
 
   return (
     <div className="min-h-screen bg-background pt-4 pb-20">
