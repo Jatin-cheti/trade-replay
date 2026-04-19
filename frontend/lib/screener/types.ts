@@ -98,6 +98,14 @@ export interface ScreenerItem {
   beta?: number | null;
   recentEarningsDate?: string;
   upcomingEarningsDate?: string;
+  netIncome?: number | null;
+  revenue?: number | null;
+  sharesFloat?: number | null;
+  eps?: number | null;
+  epsGrowth?: number | null;
+  dividendYield?: number | null;
+  avgVolume?: number | null;
+  marketClass?: string;
 }
 
 export interface ScreenerListResponse {

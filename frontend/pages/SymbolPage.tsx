@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import AssetAvatar from "@/components/ui/AssetAvatar";
-import TradingChart from "@/components/chart/TradingChart";
+import MiniAreaChart from "@/components/chart/MiniAreaChart";
 import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
 import type { CandleData } from "@/data/stockData";
 
@@ -398,7 +398,10 @@ export default function SymbolPage() {
                   Chart <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </h2>
                 <div className="flex items-center gap-2">
-                  <button className="p-1.5 rounded border border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors text-xs">&lt;/&gt;</button>
+                  <button className="p-1.5 rounded border border-border/40 text-muted-foreground/50 cursor-not-allowed transition-colors text-xs" disabled title="Embed code">&lt;/&gt;</button>
+                  <button className="p-1.5 rounded border border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors" title="Take snapshot">
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
                     className="flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-sm text-foreground hover:bg-secondary/30 transition-colors"
@@ -408,19 +411,23 @@ export default function SymbolPage() {
                 </div>
               </div>
 
-              {/* Chart — real TradingChart or loading fallback */}
+              {/* Chart — lightweight area chart for overview */}
               {chartLoading ? (
-                <div className="h-80 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div className="h-72 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
               ) : candles.length > 0 ? (
-                <div className="h-80 rounded-xl border border-border/30 bg-background/40 overflow-hidden">
-                  <TradingChart data={candles} visibleCount={candles.length} symbol={detail.symbol} />
+                <div className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
+                  <MiniAreaChart
+                    data={candles}
+                    height={280}
+                    color={detail.changePercent >= 0 ? "#26a69a" : "#ef5350"}
+                  />
                 </div>
               ) : (
                 <div
                   onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
-                  className="h-80 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                  className="h-72 rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
                     <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
@@ -516,6 +523,72 @@ export default function SymbolPage() {
                 <AboutItem label="Source">
                   <span className="text-sm text-foreground">{detail.source}</span>
                 </AboutItem>
+              </div>
+            </div>
+
+            {/* ── Upcoming Earnings ────────────────────────────────────── */}
+            {(detail.upcomingEarningsDate || detail.recentEarningsDate) && (
+              <div className="mb-10">
+                <h2 className="text-lg font-semibold text-foreground mb-5 flex items-center gap-1">
+                  Earnings <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-12 gap-y-6">
+                  {detail.recentEarningsDate && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Recent earnings date</p>
+                      <p className="text-sm font-semibold text-foreground">{detail.recentEarningsDate}</p>
+                    </div>
+                  )}
+                  {detail.upcomingEarningsDate && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Upcoming earnings date</p>
+                      <p className="text-sm font-semibold text-foreground">{detail.upcomingEarningsDate}</p>
+                    </div>
+                  )}
+                  {detail.eps != null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">EPS estimate</p>
+                      <p className="text-sm font-semibold text-foreground">{detail.eps.toFixed(2)}</p>
+                    </div>
+                  )}
+                  {detail.revenue != null && detail.revenue > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Revenue estimate</p>
+                      <p className="text-sm font-semibold text-foreground">{fmt(detail.revenue, detail.currency)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── FAQ Section ───────────────────────────────────────────── */}
+            <div className="mb-10">
+              <h2 className="text-lg font-semibold text-foreground mb-5">Frequently asked questions</h2>
+              <div className="space-y-3">
+                <FaqItem
+                  q={`What is the current price of ${detail.name}?`}
+                  a={detail.price > 0
+                    ? `The last known price of ${detail.name} (${detail.symbol}) stock is ${detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${detail.currency}. It changed by ${detail.changePercent >= 0 ? "+" : ""}${detail.changePercent.toFixed(2)}% in the latest trading session.`
+                    : "Price data is currently unavailable."}
+                />
+                {detail.marketCap != null && detail.marketCap > 0 && (
+                  <FaqItem
+                    q={`What is the market capitalization of ${detail.name}?`}
+                    a={`The market cap of ${detail.name} is ${fmt(detail.marketCap, detail.currency)}.`}
+                  />
+                )}
+                {detail.pe != null && detail.pe > 0 && (
+                  <FaqItem
+                    q={`What is the P/E ratio of ${detail.name}?`}
+                    a={`The trailing twelve-month P/E ratio of ${detail.name} is ${detail.pe.toFixed(2)}.`}
+                  />
+                )}
+                {detail.dividendYield != null && detail.dividendYield > 0 && (
+                  <FaqItem
+                    q={`Does ${detail.name} pay dividends?`}
+                    a={`Yes. The indicated annual dividend yield of ${detail.name} is ${detail.dividendYield.toFixed(2)}%.`}
+                  />
+                )}
               </div>
             </div>
 
@@ -619,6 +692,35 @@ function PickerStockRow({
         )}
       </span>
       <span className="text-muted-foreground">{source}</span>
+    </div>
+  );
+}
+
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-border/30 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-secondary/15 transition-colors text-left"
+      >
+        {q}
+        <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <p className="px-4 pb-3 text-sm text-muted-foreground leading-relaxed">{a}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
