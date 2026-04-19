@@ -256,7 +256,7 @@ export default function MiniAreaChart({
           }}
         >
           <div className="font-bold text-white tabular-nums text-sm">
-            {hovered.value.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {hovered.value.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{currency ? ` ${currency}` : ""}
           </div>
           <div className="text-[#787b86] text-[10px] mt-0.5">{fmtTooltipDate(hovered.time)}</div>
           <div className="text-[#787b86] text-[10px]">{fmtTooltipTime(hovered.time)}</div>
