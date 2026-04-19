@@ -259,6 +259,15 @@ export default function LiveMarket() {
                 </div>
               </div>
 
+              <button
+                data-testid="live-market-open-symbol-page"
+                type="button"
+                onClick={() => navigate(`/symbol/${encodeURIComponent(selectedSymbol)}`)}
+                className="mt-3 w-full rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-primary/20"
+              >
+                Open Symbol Page
+              </button>
+
               {liveData.error ? (
                 <p className="mt-3 text-xs text-loss">{liveData.error}</p>
               ) : null}

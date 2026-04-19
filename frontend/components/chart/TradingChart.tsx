@@ -18,6 +18,7 @@ interface TradingChartProps {
   visibleCount: number;
   symbol: string;
   mode?: 'simulation' | 'live';
+  forceExpandedUi?: boolean;
 }
 
 function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y: number, text: string) {
@@ -43,7 +44,7 @@ function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y:
   ctx.fillText(text, x, y);
 }
 
-export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
+export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation', forceExpandedUi = false }: TradingChartProps) {
   const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>('candlestick');
   const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('trend');
@@ -305,6 +306,14 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     applyTouchMode('scroll');
     setTouchMode('scroll');
   }, [applyTouchMode, isMobile]);
+
+  useEffect(() => {
+    if (!forceExpandedUi || isMobile) return;
+    setToolboxMinimized(false);
+    setToolbarCollapsed(false);
+    setTreeOpen(true);
+    setExpandedCategory((current) => current ?? 'trend');
+  }, [forceExpandedUi, isMobile]);
 
   useEffect(() => {
     return () => {
