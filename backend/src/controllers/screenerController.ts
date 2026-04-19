@@ -271,20 +271,28 @@ export async function symbolDetail(req: Request, res: Response) {
 
 export async function filterOptions(_req: Request, res: Response) {
   try {
+    console.log("[FILTER-OPTIONS] Handler called");
     const payload = await getScreenerFilterOptions();
+    console.log("[FILTER-OPTIONS] Success");
     return res.json(payload);
   } catch (err) {
-    logger.error("screener_filter_options_error", { error: (err as Error).message });
+    const errMsg = (err as Error).message;
+    console.log("[FILTER-OPTIONS] Error:", errMsg);
+    logger.error("screener_filter_options_error", { error: errMsg });
     return res.status(500).json({ error: "Internal server error" });
   }
 }
 
 export async function meta(_req: Request, res: Response) {
   try {
+    console.log("[META] Handler called");
     const payload = await getScreenerMeta();
+    console.log("[META] Success, keys:", Object.keys(payload));
     return res.json(payload);
   } catch (err) {
-    logger.error("screener_meta_error", { error: (err as Error).message });
+    const errMsg = (err as Error).message;
+    console.log("[META] Error:", errMsg);
+    logger.error("screener_meta_error", { error: errMsg });
     return res.status(500).json({ error: "Internal server error" });
   }
 }
