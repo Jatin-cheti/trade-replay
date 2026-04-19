@@ -9,10 +9,12 @@ DROPLET_A_IP="64.227.184.166"
 DROPLET_B_IP="159.89.163.155"
 DROPLET_A_PRIVATE="10.122.0.5"
 DROPLET_B_PRIVATE="10.122.0.2"
-SSH_KEY_B="$HOME/.ssh/id_ed25519_trade_replay"
 
-SSH_A="ssh root@${DROPLET_A_IP}"
-SSH_B="ssh -i ${SSH_KEY_B} root@${DROPLET_B_IP}"
+# SSH key: use DEPLOY_SSH_KEY_PATH env var, fallback to default key
+SSH_KEY="${DEPLOY_SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
+
+SSH_A="ssh -i ${SSH_KEY} root@${DROPLET_A_IP}"
+SSH_B="ssh -i ${SSH_KEY} root@${DROPLET_B_IP}"
 
 PASS=0
 FAIL=0

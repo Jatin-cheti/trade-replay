@@ -73,7 +73,23 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
   }, [activeTab, parsedFilters, routeType, searchParams, selectedColumns, sortField, sortOrder]);
 
   const fetchBatch = useCallback(async (offset: number): Promise<ScreenerListResponse> => {
-    const response = await api.get<ScreenerListResponse>("/screener/list", { params: buildRequestParams(offset) });
+    const params = buildRequestParams(offset);
+    const response = await api.get<ScreenerListResponse>("/screener/list", { params });
+
+    // Dev-only diagnostics for data mapping
+    if (import.meta.env.DEV && response.data.items.length > 0) {
+      const sample = response.data.items[0];
+      const requestedCols = (params.columns as string || "").split(",").filter(Boolean);
+      const missingFields = requestedCols.filter((col: string) => col !== "symbol" && (sample as any)[col] === undefined);
+      if (missingFields.length > 0) {
+        console.warn("[Screener] Fields requested but undefined in response:", missingFields, "| Sample keys:", Object.keys(sample));
+      }
+      const nullFields = requestedCols.filter((col: string) => (sample as any)[col] === null);
+      if (nullFields.length > 0) {
+        console.debug("[Screener] Fields with null value (genuinely unavailable):", nullFields);
+      }
+    }
+
     return response.data;
   }, [buildRequestParams]);
 

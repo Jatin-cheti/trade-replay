@@ -11,11 +11,13 @@ DROPLET_B_IP="159.89.163.155"         # Infrastructure (public IP)
 DROPLET_A_PRIVATE="10.122.0.5"        # Private IP
 DROPLET_B_PRIVATE="10.122.0.2"        # Private IP
 REMOTE_DIR="/opt/tradereplay"
-SSH_KEY_B="$HOME/.ssh/id_ed25519_trade_replay"
 
-# SSH shortcuts
-SSH_A="ssh root@${DROPLET_A_IP}"
-SSH_B="ssh -i ${SSH_KEY_B} root@${DROPLET_B_IP}"
+# SSH key: use DEPLOY_SSH_KEY_PATH env var, fallback to default key
+SSH_KEY="${DEPLOY_SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
+
+# SSH shortcuts (both droplets use same key)
+SSH_A="ssh -i ${SSH_KEY} root@${DROPLET_A_IP}"
+SSH_B="ssh -i ${SSH_KEY} root@${DROPLET_B_IP}"
 
 echo "================================================="
 echo "  Two-Droplet Deployment"
