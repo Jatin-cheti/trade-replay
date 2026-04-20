@@ -44,17 +44,25 @@ export default function Screener() {
 
   /* ── Meta ── */
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      try {
-        const [mRes, sRes] = await Promise.all([api.get<ScreenerMetaResponse>("/screener/meta"), api.get<ScreenerStatsResponse>("/screener/stats")]);
-        setMeta(mRes.data); 
-        setStats(sRes.data);
-      } catch (err) {
-        // Use complete fallback when API fails - includes all filters and columns
-        console.warn("Failed to load screener meta, using fallback:", err);
+      // Fetch meta and stats independently so one failure doesn't block the other
+      const [metaResult, statsResult] = await Promise.allSettled([
+        api.get<ScreenerMetaResponse>("/screener/meta"),
+        api.get<ScreenerStatsResponse>("/screener/stats"),
+      ]);
+      if (cancelled) return;
+      if (metaResult.status === "fulfilled") {
+        setMeta(metaResult.value.data);
+      } else {
+        console.warn("Failed to load screener meta, using fallback:", metaResult.reason);
         setMeta(COMPLETE_SCREENER_META_FALLBACK);
       }
+      if (statsResult.status === "fulfilled") {
+        setStats(statsResult.value.data);
+      }
     })();
+    return () => { cancelled = true; };
   }, []);
 
   /* ── Columns ── */

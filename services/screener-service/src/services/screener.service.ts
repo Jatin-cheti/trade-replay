@@ -1,7 +1,59 @@
 import { CleanAssetModel } from "../models/CleanAsset.js";
 import { getRedis } from "../config/redis.js";
+import type { PipelineStage } from "mongoose";
 
 const CACHE_TTL_S = 8;
+
+/* ── Field mapping: frontend column key → DB field name ── */
+const FIELD_TO_DB: Record<string, string> = {
+  epsDilTtm: "eps",
+  epsDilGrowth: "earningsGrowth",
+  divYieldPercent: "dividendYield",
+  price: "currentPrice",
+};
+const DB_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(FIELD_TO_DB).map(([k, v]) => [v, k]),
+);
+function toDbField(frontendKey: string): string { return FIELD_TO_DB[frontendKey] || frontendKey; }
+
+/** Map a raw DB doc to screener-friendly shape */
+function mapItem(doc: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...doc };
+  // Computed fields
+  if (typeof out.volume === "number" && typeof out.avgVolume === "number" && (out.avgVolume as number) > 0)
+    out.relVolume = (out.volume as number) / (out.avgVolume as number);
+  // Alias DB fields → frontend column names
+  for (const [dbKey, feKey] of Object.entries(DB_TO_FIELD)) {
+    if (out[dbKey] !== undefined && out[feKey] === undefined) out[feKey] = out[dbKey];
+  }
+  // Ensure price alias
+  if (out.currentPrice !== undefined && (out.price === undefined || out.price === 0))
+    out.price = out.currentPrice;
+  return out;
+}
+
+/* ── Dedup: prefer NSE over BSE for India stocks ── */
+const EXCHANGE_PRIORITY: Record<string, number> = { NSE: 10, BSE: 5 };
+function dedupItems(items: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Map<string, Record<string, unknown>>();
+  for (const item of items) {
+    const sym = item.symbol as string;
+    const country = item.country as string;
+    // Only dedup Indian stocks that share a symbol
+    if (country === "IN") {
+      const existing = seen.get(sym);
+      if (existing) {
+        const existPrio = EXCHANGE_PRIORITY[existing.exchange as string] || 1;
+        const newPrio = EXCHANGE_PRIORITY[item.exchange as string] || 1;
+        if (newPrio > existPrio) seen.set(sym, item);
+        continue;
+      }
+    }
+    const key = country === "IN" ? sym : (item.fullSymbol as string);
+    if (!seen.has(key)) seen.set(key, item);
+  }
+  return Array.from(seen.values());
+}
 
 interface ListParams {
   type: string;
@@ -10,8 +62,7 @@ interface ListParams {
   exchanges: string[];
   sectors: string[];
   primaryOnly: boolean;
-  marketCapMin?: number;
-  marketCapMax?: number;
+  ranges: Record<string, { min?: number; max?: number }>;
   sort: string;
   order: "asc" | "desc";
   limit: number;
@@ -41,11 +92,14 @@ export async function listScreenerAssets(params: ListParams) {
   if (params.exchanges.length) filter.exchange = { $in: params.exchanges.map((e) => e.toUpperCase()) };
   if (params.sectors.length) filter.sector = { $in: params.sectors };
   if (params.primaryOnly) filter.isPrimaryListing = true;
-  if (params.marketCapMin || params.marketCapMax) {
-    const mc: Record<string, number> = {};
-    if (params.marketCapMin) mc.$gte = params.marketCapMin;
-    if (params.marketCapMax) mc.$lte = params.marketCapMax;
-    filter.marketCap = mc;
+
+  // Apply all range filters (marketCap, pe, price, beta, etc.)
+  for (const [feKey, range] of Object.entries(params.ranges)) {
+    const dbKey = toDbField(feKey);
+    const cond: Record<string, number> = {};
+    if (range.min !== undefined) cond.$gte = range.min;
+    if (range.max !== undefined) cond.$lte = range.max;
+    if (Object.keys(cond).length) filter[dbKey] = cond;
   }
 
   if (params.query) {
@@ -56,14 +110,53 @@ export async function listScreenerAssets(params: ListParams) {
     ];
   }
 
-  const sortObj: Record<string, 1 | -1> = { [params.sort]: params.order === "asc" ? 1 : -1 };
+  const dbSortField = toDbField(params.sort);
+  const sortObj: Record<string, 1 | -1> = { [dbSortField]: params.order === "asc" ? 1 : -1 };
 
-  const [items, total] = await Promise.all([
-    CleanAssetModel.find(filter).sort(sortObj).skip(params.offset).limit(params.limit).lean(),
-    CleanAssetModel.countDocuments(filter),
-  ]);
+  // For India dedup: fetch extra to account for duplicates we'll remove
+  const needsDedup = params.countries.length > 0 && params.countries.includes("IN") && assetTypes.includes("stock");
+  const fetchLimit = needsDedup ? params.limit * 2 : params.limit;
+  const fetchOffset = needsDedup ? 0 : params.offset;
 
-  const result = { items, total, returned: items.length, limit: params.limit, offset: params.offset, hasMore: params.offset + params.limit < total };
+  let items: Record<string, unknown>[];
+  let total: number;
+
+  if (needsDedup) {
+    // Use aggregation with dedup for India stocks
+    const pipeline: PipelineStage[] = [
+      { $match: filter },
+      { $sort: sortObj },
+      // Group by symbol to pick the best exchange per symbol
+      { $group: {
+        _id: "$symbol",
+        doc: { $first: "$$ROOT" },
+        exchanges: { $push: "$exchange" },
+        count: { $sum: 1 },
+      }},
+      { $replaceRoot: { newRoot: "$doc" } },
+      { $sort: sortObj },
+    ];
+    const countPipeline: PipelineStage[] = [...pipeline, { $count: "total" }];
+    const dataPipeline: PipelineStage[] = [...pipeline, { $skip: params.offset }, { $limit: params.limit }];
+    const [dataResult, countResult] = await Promise.all([
+      CleanAssetModel.aggregate(dataPipeline),
+      CleanAssetModel.aggregate(countPipeline),
+    ]);
+    items = dataResult;
+    total = countResult[0]?.total || 0;
+  } else {
+    const [rawItems, rawTotal] = await Promise.all([
+      CleanAssetModel.find(filter).sort(sortObj).skip(params.offset).limit(params.limit).lean(),
+      CleanAssetModel.countDocuments(filter),
+    ]);
+    items = rawItems as Record<string, unknown>[];
+    total = rawTotal;
+  }
+
+  // Map fields
+  const mapped = items.map(mapItem);
+
+  const result = { items: mapped, total, returned: mapped.length, limit: params.limit, offset: params.offset, hasMore: params.offset + params.limit < total };
 
   try { await redis.setex(cacheKey, CACHE_TTL_S, JSON.stringify(result)); } catch {}
 
@@ -109,10 +202,89 @@ export async function fastSearchAssets(query: string, limit: number) {
 }
 
 export async function getSymbolDetail(symbol: string) {
-  return CleanAssetModel.findOne({
+  const doc = await CleanAssetModel.findOne({
     $or: [
       { symbol: symbol.toUpperCase() },
       { fullSymbol: symbol.toUpperCase() },
     ],
   }).lean();
+  return doc ? mapItem(doc as Record<string, unknown>) : null;
+}
+
+/* ── Screener Meta ── */
+export async function getScreenerMeta() {
+  const redis = getRedis();
+  const cacheKey = "scr:meta";
+  try { const c = await redis.get(cacheKey); if (c) return JSON.parse(c); } catch {}
+
+  const [sectorAgg, exchangeAgg, countryAgg] = await Promise.all([
+    CleanAssetModel.aggregate([{ $match: { sector: { $ne: "" } } }, { $group: { _id: "$sector", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    CleanAssetModel.aggregate([{ $group: { _id: "$exchange", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 50 }]),
+    CleanAssetModel.aggregate([{ $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 50 }]),
+  ]);
+
+  const result = {
+    screenerTypes: [
+      { routeType: "stocks", label: "Stock Screener" },
+      { routeType: "etfs", label: "ETF Screener" },
+      { routeType: "bonds", label: "Bond Screener" },
+      { routeType: "crypto-coins", label: "Crypto Coins Screener" },
+      { routeType: "options", label: "Options Screener" },
+      { routeType: "futures", label: "Futures Screener" },
+      { routeType: "forex", label: "Forex Screener" },
+      { routeType: "indices", label: "Indices Screener" },
+    ],
+    tabs: [
+      { key: "overview", label: "Overview", defaultColumns: ["symbol","price","changePercent","volume","relVolume","marketCap","pe","epsDilTtm","epsDilGrowth","divYieldPercent","sector","analystRating"] },
+      { key: "performance", label: "Performance", defaultColumns: ["symbol","price","changePercent","perfPercent","volume","relVolume","marketCap","beta"] },
+      { key: "valuation", label: "Valuation", defaultColumns: ["symbol","price","marketCap","pe","peg","priceToBook","epsDilTtm","divYieldPercent","revenue","revenueGrowth"] },
+      { key: "dividends", label: "Dividends", defaultColumns: ["symbol","price","divYieldPercent","marketCap","sector"] },
+      { key: "profitability", label: "Profitability", defaultColumns: ["symbol","price","grossMargin","operatingMargin","profitMargin","roe","revenue"] },
+    ],
+    columnFields: [
+      { key: "symbol", label: "Symbol", category: "security-info" },
+      { key: "price", label: "Price", category: "market-data" },
+      { key: "changePercent", label: "Change %", category: "market-data" },
+      { key: "volume", label: "Volume", category: "market-data" },
+      { key: "relVolume", label: "Rel Volume", category: "market-data" },
+      { key: "marketCap", label: "Market cap", category: "market-data" },
+      { key: "pe", label: "P/E", category: "valuation" },
+      { key: "epsDilTtm", label: "EPS dil TTM", category: "valuation" },
+      { key: "epsDilGrowth", label: "EPS dil growth", category: "growth" },
+      { key: "divYieldPercent", label: "Div yield %", category: "dividends" },
+      { key: "sector", label: "Sector", category: "security-info" },
+      { key: "analystRating", label: "Analyst Rating", category: "valuation" },
+      { key: "perfPercent", label: "Perf %", category: "market-data" },
+      { key: "revenueGrowth", label: "Revenue growth", category: "growth" },
+      { key: "peg", label: "PEG", category: "valuation" },
+      { key: "roe", label: "ROE", category: "profitability" },
+      { key: "beta", label: "Beta", category: "market-data" },
+      { key: "recentEarningsDate", label: "Recent earnings date", category: "financials" },
+      { key: "upcomingEarningsDate", label: "Upcoming earnings date", category: "financials" },
+      { key: "exchange", label: "Exchange", category: "security-info" },
+      { key: "country", label: "Country", category: "security-info" },
+      { key: "currency", label: "Currency", category: "security-info" },
+      { key: "revenue", label: "Revenue", category: "financials" },
+      { key: "grossMargin", label: "Gross margin", category: "profitability" },
+      { key: "operatingMargin", label: "Operating margin", category: "profitability" },
+      { key: "profitMargin", label: "Profit margin", category: "profitability" },
+      { key: "priceToBook", label: "Price to book", category: "valuation" },
+    ],
+    filterFields: [
+      { key: "marketCountries", label: "Country", category: "security-info", type: "multi", options: countryAgg.map((r: any) => r._id) },
+      { key: "exchanges", label: "Exchange", category: "security-info", type: "multi", options: exchangeAgg.map((r: any) => r._id) },
+      { key: "sector", label: "Sector", category: "security-info", type: "multi", options: sectorAgg.map((r: any) => r._id) },
+      { key: "marketCap", label: "Market cap", category: "market-data", type: "range" },
+      { key: "price", label: "Price", category: "market-data", type: "range" },
+      { key: "pe", label: "P/E", category: "valuation", type: "range" },
+      { key: "beta", label: "Beta", category: "market-data", type: "range" },
+      { key: "divYieldPercent", label: "Div yield %", category: "dividends", type: "range" },
+      { key: "revenueGrowth", label: "Revenue growth", category: "growth", type: "range" },
+      { key: "changePercent", label: "Change %", category: "market-data", type: "range" },
+    ],
+    lastUpdated: new Date().toISOString(),
+  };
+
+  try { await redis.setex(cacheKey, 300, JSON.stringify(result)); } catch {}
+  return result;
 }
