@@ -71,29 +71,6 @@ function AnimatedRoutes() {
   );
 }
 
-function AppShell() {
-  const location = useLocation();
-  const simulationLayout = new URLSearchParams(location.search).get("layout");
-  const hideNavbar = location.pathname === "/simulation" && (simulationLayout === "chart" || simulationLayout === "full");
-
-  return (
-    <div
-      className="futuristic-shell"
-      onMouseMove={(e) => {
-        document.documentElement.style.setProperty("--pointer-x", `${e.clientX}px`);
-        document.documentElement.style.setProperty("--pointer-y", `${e.clientY}px`);
-      }}
-    >
-      {!hideNavbar ? <GlobalNavbar /> : null}
-      <div className="ambient-layer ambient-layer--one" aria-hidden="true" />
-      <div className="ambient-layer ambient-layer--two" aria-hidden="true" />
-      <div className="ambient-layer ambient-layer--three" aria-hidden="true" />
-      <div className="noise-layer" aria-hidden="true" />
-      <AnimatedRoutes />
-    </div>
-  );
-}
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -114,7 +91,20 @@ const App = () => (
             v7_relativeSplatPath: true,
           }}
         >
-          <AppShell />
+          <div
+            className="futuristic-shell"
+            onMouseMove={(e) => {
+              document.documentElement.style.setProperty("--pointer-x", `${e.clientX}px`);
+              document.documentElement.style.setProperty("--pointer-y", `${e.clientY}px`);
+            }}
+          >
+            <GlobalNavbar />
+            <div className="ambient-layer ambient-layer--one" aria-hidden="true" />
+            <div className="ambient-layer ambient-layer--two" aria-hidden="true" />
+            <div className="ambient-layer ambient-layer--three" aria-hidden="true" />
+            <div className="noise-layer" aria-hidden="true" />
+            <AnimatedRoutes />
+          </div>
         </BrowserRouter>
       </TooltipProvider>
     </AppProvider>
