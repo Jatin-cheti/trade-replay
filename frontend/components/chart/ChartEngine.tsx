@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CandleData } from "@/data/stockData";
-import { frontendEnv } from "@/lib/env";
 import TradingChart from "./TradingChart";
 import { globalChartManager } from "./ChartManager";
 
@@ -92,8 +91,7 @@ export default function ChartEngine({
   const hasFiredReady = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const chartApiBase = (import.meta.env.VITE_CHART_SERVICE_URL as string | undefined)
-    ?? `${frontendEnv.API_URL.replace(/\/$/, "")}/chart`;
+  const chartApiBase = (import.meta.env.VITE_CHART_SERVICE_URL as string | undefined) ?? "http://localhost:3001/api/chart";
   const chartWsBase = (import.meta.env.VITE_CHART_SERVICE_WS_URL as string | undefined)
     ?? chartApiBase.replace(/^http/i, "ws");
 

@@ -201,7 +201,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
                   shape="rectangular"
                   size="large"
                   logo_alignment="left"
-                  width="100%"
+                  width="320"
                 />
               </div>
             </div>

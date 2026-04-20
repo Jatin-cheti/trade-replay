@@ -27,6 +27,8 @@ export default function LiveMarket() {
   const { isAuthenticated, formatCurrency } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const dataMode = searchParams.get("parityData") === "1" ? "parity-live" : undefined;
+  const parityMode = dataMode === "parity-live";
 
   const [viewMode, setViewMode] = useState<LiveViewMode>("symbol");
   const [selectedSymbol, setSelectedSymbol] = useState("SPY");
@@ -83,8 +85,9 @@ export default function LiveMarket() {
     mode: viewMode,
     symbol: selectedSymbol,
     holdings: portfolioHoldings,
-    quoteSymbols: watchlist,
-    pollMs: 2500,
+    quoteSymbols: parityMode ? [selectedSymbol] : watchlist,
+    pollMs: parityMode ? 7000 : 2500,
+    dataMode,
   });
 
   useEffect(() => {
@@ -110,13 +113,15 @@ export default function LiveMarket() {
       if (cancelled) return;
 
       setWatchlistAssetMetaBySymbol((prev) => {
+        let changed = false;
         const next = { ...prev };
         result.forEach((entry) => {
           if (entry.asset) {
             next[entry.symbol] = entry.asset;
+            changed = true;
           }
         });
-        return next;
+        return changed ? next : prev;
       });
     };
 
@@ -131,7 +136,6 @@ export default function LiveMarket() {
   const chartSymbol = viewMode === "portfolio"
     ? (selectedPortfolio ? `PORT-${selectedPortfolio.name}` : "PORTFOLIO")
     : selectedSymbol;
-  const parityMode = searchParams.get("parityData") === "1";
 
   const priceValue = viewMode === "portfolio" ? liveData.portfolioValue : (liveData.symbolQuote?.price ?? 0);
   const changePercent = viewMode === "portfolio" ? liveData.portfolioChangePercent : (liveData.symbolQuote?.changePercent ?? 0);
@@ -140,7 +144,7 @@ export default function LiveMarket() {
   const selectedAssetName = selectedAssetMeta?.name || selectedSymbol;
 
   return (
-    <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
+    <div data-testid="live-market-page" className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
 
       <main className="px-3 pt-5 pb-8 relative z-10">
@@ -225,11 +229,11 @@ export default function LiveMarket() {
           <InteractiveSurface className="glass-strong rounded-2xl overflow-hidden gradient-border card-lift min-h-[68vh]">
             {chartData.length > 0 ? (
               <ChartEngine
-                symbol={chartSymbol}
-                timeframe="1m"
                 mode="live"
                 data={chartData}
                 visibleCount={chartData.length}
+                symbol={chartSymbol}
+                timeframe="1m"
                 parityMode={parityMode}
               />
             ) : (
@@ -267,15 +271,6 @@ export default function LiveMarket() {
                   <span className="font-mono">{quoteVolume.toLocaleString()}</span>
                 </div>
               </div>
-
-              <button
-                data-testid="live-market-open-symbol-page"
-                type="button"
-                onClick={() => navigate(`/symbol/${encodeURIComponent(selectedSymbol)}`)}
-                className="mt-3 w-full rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-primary/20"
-              >
-                Open Symbol Page
-              </button>
 
               {liveData.error ? (
                 <p className="mt-3 text-xs text-loss">{liveData.error}</p>

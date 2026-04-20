@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-chart-engine}"
 
 echo "=== Completing droplet setup ==="
 
@@ -95,18 +95,6 @@ git pull --ff-only origin "${DEPLOY_BRANCH}"
 cd /opt/tradereplay/backend
 npm ci
 cd /opt/tradereplay/services/logo-service
-npm ci
-cd /opt/tradereplay/services/asset-service
-npm ci
-cd /opt/tradereplay/services/screener-service
-npm ci
-cd /opt/tradereplay/services/alert-service
-npm ci
-cd /opt/tradereplay/services/portfolio-service
-npm ci
-cd /opt/tradereplay/services/simulation-service
-npm ci
-cd /opt/tradereplay/services/datafeed-service
 npm ci
 cd /opt/tradereplay/services/chart-service
 npm ci

@@ -1,21 +1,81 @@
-﻿import dotenv from "dotenv";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { loadEnv } from "./loadEnv.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Load .env and .env.secrets deterministically (must be first)
+const envStatus = loadEnv();
 
-const envPath = path.resolve(__dirname, "../../../.env");
-const secretsPath = path.resolve(__dirname, "../../../.env.secrets");
-
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath, override: false });
+function setIfMissing(name: string, value: string | undefined): void {
+  if (value === undefined) return;
+  if (process.env[name] === undefined || process.env[name] === "") {
+    process.env[name] = value;
+  }
 }
-if (fs.existsSync(secretsPath)) {
-  dotenv.config({ path: secretsPath, override: true });
+
+function normalizeLocalEnv(): void {
+  const localMongo = process.env.LOCAL_MONGO_URL
+    ?? process.env.LOCAL_MONGODB_URI
+    ?? process.env.LOCAL_MONGO_URI;
+  const localRedisRaw = process.env.LOCAL_REDIS_URL;
+  const localKafkaRaw = process.env.LOCAL_KAFKA_BROKERS;
+  const localRedis = localRedisRaw && /redis:\/\/redis[:/]/i.test(localRedisRaw)
+    ? "redis://127.0.0.1:6379"
+    : (localRedisRaw ?? "redis://127.0.0.1:6379");
+  const localKafkaBrokers = localKafkaRaw && /(^|,)\s*kafka:\d+/i.test(localKafkaRaw)
+    ? "localhost:19092"
+    : (localKafkaRaw ?? "localhost:19092");
+
+  setIfMissing("PORT", process.env.LOCAL_PORT);
+  setIfMissing("CLIENT_URL", process.env.LOCAL_CLIENT_URL);
+  setIfMissing("CLIENT_URLS", process.env.LOCAL_CLIENT_URLS);
+  setIfMissing("API_RATE_LIMIT_MAX", "2000");
+
+  setIfMissing("MONGO_URI", localMongo);
+  setIfMissing("MONGO_URI_LOCAL", localMongo);
+  setIfMissing("MONGO_URI_DOCKER", localMongo);
+  setIfMissing("MONGO_URI_PRODUCTION", localMongo);
+
+  setIfMissing("REDIS_URL", localRedis);
+  setIfMissing("REDIS_URL_LOCAL", localRedis);
+  setIfMissing("REDIS_URL_DOCKER", localRedis);
+  setIfMissing("REDIS_URL_PRODUCTION", localRedis);
+  setIfMissing("REDIS_ENABLED", process.env.LOCAL_REDIS_ENABLED ?? "false");
+
+  setIfMissing("KAFKA_ENABLED", process.env.LOCAL_KAFKA_ENABLED ?? "false");
+  setIfMissing("KAFKA_BROKER", localKafkaBrokers);
+  setIfMissing("KAFKA_BROKER_LOCAL", localKafkaBrokers);
+  setIfMissing("KAFKA_BROKER_DOCKER", localKafkaBrokers);
+  setIfMissing("KAFKA_BROKER_PRODUCTION", localKafkaBrokers);
+  setIfMissing("KAFKA_DEFAULT_PARTITIONS", "3");
+  setIfMissing("KAFKA_SYMBOL_EVENT_PARTITIONS", "6");
+  setIfMissing("KAFKA_PORTFOLIO_EVENT_PARTITIONS", "6");
+  setIfMissing("ANALYTICS_CONSUMER_GROUP", "tradereplay-analytics-processor");
+  setIfMissing("KAFKA_SASL_MECHANISM", process.env.LOCAL_KAFKA_SASL_MECHANISM ?? "plain");
+  setIfMissing("KAFKA_SASL_USERNAME", process.env.LOCAL_KAFKA_SASL_USERNAME ?? "");
+  setIfMissing("KAFKA_SASL_PASSWORD", process.env.LOCAL_KAFKA_SASL_PASSWORD ?? "");
+
+  setIfMissing("JWT_SECRET", process.env.LOCAL_JWT_SECRET);
+  setIfMissing("CURSOR_SIGNING_SECRET", process.env.LOCAL_JWT_SECRET);
+  setIfMissing("ALPHA_VANTAGE_KEY", process.env.LOCAL_ALPHA_VANTAGE_KEY ?? "");
+  setIfMissing("GOOGLE_CLIENT_ID", process.env.LOCAL_GOOGLE_CLIENT_ID ?? "");
+
+  setIfMissing("LOG_REQUEST_SAMPLE_RATE", "0.1");
+  setIfMissing("LOGO_ENRICHMENT_ENABLED", "false");
+  setIfMissing("LOGO_ENRICHMENT_INTERVAL_MS", "21600000");
+  setIfMissing("LOGO_FALLBACK_TARGET_RATIO", "0.05");
+  setIfMissing("LOGO_SERVICE_ENABLED", (process.env.APP_ENV ?? "local") === "local" ? "false" : "true");
+  setIfMissing("LOGO_SERVICE_MODE", (process.env.APP_ENV ?? "local") === "local" ? "remote" : "local");
+  setIfMissing("LOGO_SERVICE_URL", process.env.LOCAL_LOGO_SERVICE_URL ?? "");
+  setIfMissing("DEV_AUTO_START_INFRA", "true");
+  setIfMissing("DEV_ALLOW_MEMORY_DB", "true");
+  setIfMissing("DEV_ALLOW_MOCK_REDIS", "true");
+  setIfMissing("DEV_DISABLE_KAFKA_IF_UNAVAILABLE", "true");
+  setIfMissing("E2E_USE_MEMORY_MONGO", "false");
+  setIfMissing("E2E_USE_MOCK_REDIS", "false");
+  setIfMissing("E2E", process.env.PLAYWRIGHT_TEST ? "1" : "0");
+  setIfMissing("USD_TO_INR", process.env.LOCAL_USD_TO_INR ?? "83.5");
 }
+
+normalizeLocalEnv();
 
 const appEnv = (process.env.APP_ENV ?? "local").toLowerCase();
 
@@ -33,9 +93,7 @@ const EnvSchema = z.object({
   REDIS_URL_LOCAL: z.string().min(1),
   REDIS_URL_DOCKER: z.string().min(1),
   REDIS_URL_PRODUCTION: z.string().min(1),
-  REDIS_URL_QUEUE: z.string().optional(),
-  REDIS_URL_PUBSUB: z.string().optional(),
-  REDIS_URL_FALLBACK: z.string().optional(),
+  REDIS_ENABLED: z.enum(["true", "false"]),
   KAFKA_ENABLED: z.enum(["true", "false"]),
   KAFKA_BROKER: z.string().min(1),
   KAFKA_BROKER_LOCAL: z.string().min(1),
@@ -60,9 +118,11 @@ const EnvSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   AWS_CDN_BASE_URL: z.string().optional(),
-  ASSET_SERVICE_URL: z.string().optional(),
-  ASSET_SERVICE_INTERNAL_PORT: z.string().optional(),
-  ASSET_SERVICE_INTERNAL_TOKEN: z.string().optional(),
+  LOG_REQUEST_SAMPLE_RATE: z.string().min(1),
+  LOGO_ENRICHMENT_ENABLED: z.enum(["true", "false"]),
+  LOGO_ENRICHMENT_INTERVAL_MS: z.string().min(1),
+  LOGO_FALLBACK_TARGET_RATIO: z.string().min(1),
+  CLIENT_URLS: z.string().optional(),
   CHART_SERVICE_ENABLED: z.enum(["true", "false"]).optional(),
   CHART_SERVICE_URL: z.string().optional(),
   CHART_SERVICE_AUTH_ENABLED: z.enum(["true", "false"]).optional(),
@@ -73,12 +133,17 @@ const EnvSchema = z.object({
   CHART_SERVICE_BREAKER_FAILURE_THRESHOLD: z.string().optional(),
   CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS: z.string().optional(),
   CHART_SERVICE_BREAKER_COOLDOWN_MS: z.string().optional(),
-  LOG_REQUEST_SAMPLE_RATE: z.string().min(1),
-  LOGO_ENRICHMENT_ENABLED: z.enum(["true", "false"]),
-  LOGO_ENRICHMENT_INTERVAL_MS: z.string().min(1),
-  LOGO_FALLBACK_TARGET_RATIO: z.string().min(1),
+  LOGO_SERVICE_ENABLED: z.enum(["true", "false"]).optional(),
+  LOGO_SERVICE_MODE: z.enum(["local", "remote", "disabled"]).optional(),
+  LOGO_SERVICE_URL: z.string().optional(),
+  DEV_AUTO_START_INFRA: z.enum(["true", "false"]).optional(),
+  DEV_ALLOW_MEMORY_DB: z.enum(["true", "false"]).optional(),
+  DEV_ALLOW_MOCK_REDIS: z.enum(["true", "false"]).optional(),
+  DEV_DISABLE_KAFKA_IF_UNAVAILABLE: z.enum(["true", "false"]).optional(),
+  E2E_USE_MEMORY_MONGO: z.enum(["true", "false"]).optional(),
+  E2E_USE_MOCK_REDIS: z.enum(["true", "false"]).optional(),
+  E2E: z.enum(["0", "1"]).optional(),
   USD_TO_INR: z.string().min(1),
-  GEMINI_API_KEY: z.string().optional(),
 });
 
 EnvSchema.parse(process.env);
@@ -165,7 +230,7 @@ function readAwsConfigByMode(mode: string): {
     throw new Error("Production mode requires AWS_REGION, AWS_S3_BUCKET, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY");
   }
 
-  if (hasAny && !hasAll) {
+  if (mode === "production" && hasAny && !hasAll) {
     throw new Error("AWS config must provide all required fields or none");
   }
 
@@ -188,9 +253,7 @@ export const CONFIG = {
   clientUrl: requiredEnv("CLIENT_URL"),
   mongoUri: envByAppMode("MONGO_URI"),
   redisUrl: envByAppMode("REDIS_URL"),
-  redisQueueUrl: process.env.REDIS_URL_QUEUE || envByAppMode("REDIS_URL"),
-  redisPubsubUrl: process.env.REDIS_URL_PUBSUB || envByAppMode("REDIS_URL"),
-  redisFallbackUrl: process.env.REDIS_URL_FALLBACK || "",
+  redisEnabled: booleanEnv("REDIS_ENABLED"),
   kafkaEnabled: booleanEnv("KAFKA_ENABLED"),
   kafkaBroker: (() => {
     const resolved = envByAppMode("KAFKA_BROKER");
@@ -216,11 +279,16 @@ export const CONFIG = {
   awsAccessKeyId: awsConfig.awsAccessKeyId,
   awsSecretAccessKey: awsConfig.awsSecretAccessKey,
   awsCdnBaseUrl: awsConfig.awsCdnBaseUrl,
-  assetServiceUrl: process.env.ASSET_SERVICE_URL || `http://127.0.0.1:${process.env.ASSET_SERVICE_INTERNAL_PORT || "4011"}`,
-  assetServiceInternalPort: Number(process.env.ASSET_SERVICE_INTERNAL_PORT || "4011"),
-  assetServiceInternalToken: process.env.ASSET_SERVICE_INTERNAL_TOKEN || requiredEnv("CURSOR_SIGNING_SECRET"),
+  logRequestSampleRate: numberEnv("LOG_REQUEST_SAMPLE_RATE"),
+  logoEnrichmentEnabled: booleanEnv("LOGO_ENRICHMENT_ENABLED"),
+  logoEnrichmentIntervalMs: numberEnv("LOGO_ENRICHMENT_INTERVAL_MS"),
+  logoFallbackTargetRatio: numberEnv("LOGO_FALLBACK_TARGET_RATIO"),
+  clientUrls: (() => {
+    const raw = optionalEnv("CLIENT_URLS");
+    return raw ? raw.split(",").map(origin => origin.trim()).filter(Boolean) : [requiredEnv("CLIENT_URL")];
+  })(),
   chartServiceEnabled: optionalEnv("CHART_SERVICE_ENABLED") === "true",
-  chartServiceUrl: optionalEnv("CHART_SERVICE_URL") || "http://127.0.0.1:3009",
+  chartServiceUrl: optionalEnv("CHART_SERVICE_URL") || "http://127.0.0.1:4010",
   chartServiceAuthEnabled: optionalEnv("CHART_SERVICE_AUTH_ENABLED") === "true",
   chartServiceAuthToken: optionalEnv("CHART_SERVICE_AUTH_TOKEN"),
   chartServiceTimeoutMs: optionalEnv("CHART_SERVICE_TIMEOUT_MS") ? Number(optionalEnv("CHART_SERVICE_TIMEOUT_MS")) : 1500,
@@ -229,12 +297,23 @@ export const CONFIG = {
   chartServiceBreakerFailureThreshold: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_THRESHOLD") ? Math.max(1, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_THRESHOLD"))) : 5,
   chartServiceBreakerFailureWindowMs: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS"))) : 30000,
   chartServiceBreakerCooldownMs: optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS"))) : 30000,
-  logRequestSampleRate: numberEnv("LOG_REQUEST_SAMPLE_RATE"),
-  logoEnrichmentEnabled: booleanEnv("LOGO_ENRICHMENT_ENABLED"),
-  logoEnrichmentIntervalMs: numberEnv("LOGO_ENRICHMENT_INTERVAL_MS"),
-  logoFallbackTargetRatio: numberEnv("LOGO_FALLBACK_TARGET_RATIO"),
+  logoServiceEnabled: optionalEnv("LOGO_SERVICE_ENABLED") !== "false",
+  logoServiceMode: (() => {
+    const raw = optionalEnv("LOGO_SERVICE_MODE").toLowerCase();
+    if (raw === "local" || raw === "remote" || raw === "disabled") {
+      return raw;
+    }
+    return appEnv === "local" ? "remote" : "local";
+  })(),
+  logoServiceUrl: optionalEnv("LOGO_SERVICE_URL"),
+  devAutoStartInfra: optionalEnv("DEV_AUTO_START_INFRA") !== "false",
+  devAllowMemoryDb: optionalEnv("DEV_ALLOW_MEMORY_DB") !== "false",
+  devAllowMockRedis: optionalEnv("DEV_ALLOW_MOCK_REDIS") !== "false",
+  devDisableKafkaIfUnavailable: optionalEnv("DEV_DISABLE_KAFKA_IF_UNAVAILABLE") !== "false",
+  e2eUseMemoryMongo: optionalEnv("E2E_USE_MEMORY_MONGO") === "true",
+  e2eUseMockRedis: optionalEnv("E2E_USE_MOCK_REDIS") === "true",
+  e2e: optionalEnv("E2E") === "1",
   usdToInr: numberEnv("USD_TO_INR"),
-  geminiApiKey: optionalEnv("GEMINI_API_KEY"),
 };
 
 

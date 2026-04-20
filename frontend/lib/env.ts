@@ -21,5 +21,5 @@ function readProfileVar(key: string, fallback: string): string {
 
 export const frontendEnv = {
   API_URL: readProfileVar("API_URL", "http://localhost:4000/api"),
-  GOOGLE_CLIENT_ID: readProfileVar("GOOGLE_CLIENT_ID", ""),
+  GOOGLE_CLIENT_ID: readProfileVar("GOOGLE_CLIENT_ID", "519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com"),
 };

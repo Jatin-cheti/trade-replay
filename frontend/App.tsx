@@ -20,6 +20,7 @@ import Homepage from "./pages/Homepage";
 import Screener from "./pages/Screener";
 import SymbolPage from "./pages/SymbolPage";
 import NotFound from "./pages/NotFound";
+import ChartPerformanceBench from "./pages/ChartPerformanceBench";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,16 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 function AnimatedRoutes() {
   const location = useLocation();
+  const isBenchRoute = location.pathname.startsWith("/__bench");
+
+  if (isBenchRoute) {
+    return (
+      <Routes location={location}>
+        <Route path="/__bench/chart-performance" element={<ChartPerformanceBench />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    );
+  }
 
   return (
     <>

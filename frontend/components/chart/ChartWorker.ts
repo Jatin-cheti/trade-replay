@@ -7,14 +7,12 @@ let ctx: OffscreenCanvasRenderingContext2D | null = null;
 let paused = false;
 
 function drawFallback(candles: Array<{ close: number }>): void {
-  const localCtx = ctx;
-  const localCanvas = canvas;
-  if (!localCtx || !localCanvas || paused) {
+  if (!ctx || !canvas || paused) {
     return;
   }
-  localCtx.clearRect(0, 0, localCanvas.width, localCanvas.height);
-  localCtx.strokeStyle = "#1f7a8c";
-  localCtx.lineWidth = 1.5;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#1f7a8c";
+  ctx.lineWidth = 1.5;
 
   if (candles.length < 2) {
     return;
@@ -25,17 +23,17 @@ function drawFallback(candles: Array<{ close: number }>): void {
   const max = Math.max(...closes);
   const span = Math.max(1e-6, max - min);
 
-  localCtx.beginPath();
+  ctx.beginPath();
   closes.forEach((value, index) => {
-    const x = (index / (closes.length - 1)) * localCanvas.width;
-    const y = localCanvas.height - ((value - min) / span) * localCanvas.height;
+    const x = (index / (closes.length - 1)) * canvas.width;
+    const y = canvas.height - ((value - min) / span) * canvas.height;
     if (index === 0) {
-      localCtx.moveTo(x, y);
+      ctx.moveTo(x, y);
     } else {
-      localCtx.lineTo(x, y);
+      ctx.lineTo(x, y);
     }
   });
-  localCtx.stroke();
+  ctx.stroke();
 }
 
 self.onmessage = (event: MessageEvent<WorkerMessage>): void => {

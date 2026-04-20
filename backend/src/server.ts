@@ -17,6 +17,11 @@ import { warmScreenerCache } from "./services/cacheWarmup.service";
 type NodeErrorWithCode = Error & { code?: string };
 
 async function ensureSymbolsIngested(): Promise<void> {
+  if (env.E2E) {
+    logger.info("symbol_ingestion_skip_e2e");
+    return;
+  }
+
   const symbolCount = await SymbolModel.estimatedDocumentCount();
   if (symbolCount > 0) {
     logger.info("symbol_ingestion_skip_existing", { count: symbolCount });

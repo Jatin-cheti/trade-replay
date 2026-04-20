@@ -2,12 +2,11 @@ import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "../utils/appError";
 import { AuthenticatedRequest } from "../types/auth";
-import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../services/symbol.service";
-import { buildCountryFilterInput } from "../services/symbol.helpers";
+import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols, toAssetSearchItem } from "../services/symbol.service";
+import { buildCountryFilterInput, coerceSymbolType } from "../services/symbol.helpers";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
-import { verifySymbolLogo } from "../services/logoAuthority.service";
-import { SymbolModel } from "../models/Symbol";
+import { reportMissingLogoToRemote } from "../services/logoServiceMode.service";
 
 const searchSchema = z.object({
   query: z.string().default(""),
@@ -29,6 +28,42 @@ const missingLogoSchema = z.object({
   country: z.string().min(1),
   fallbackType: z.string().min(1),
 });
+
+const tradingViewSearchSchema = z.object({
+  text: z.string().default(""),
+  exchange: z.string().optional(),
+  type: z.string().optional(),
+  category: z.string().optional(),
+  start: z.union([z.string(), z.number()]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+const TRADINGVIEW_MAX_WINDOW = 1000;
+
+function parseStartOffset(start: unknown): number {
+  if (typeof start === "number" && Number.isFinite(start)) {
+    return Math.max(0, Math.floor(start));
+  }
+
+  if (typeof start === "string") {
+    const parsed = Number.parseInt(start, 10);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+  }
+
+  return 0;
+}
+
+function resolveSearchType(type?: string, category?: string): string | undefined {
+  const mapped = mapCategoryToSymbolType(type) ?? mapCategoryToSymbolType(category);
+  if (mapped) return mapped;
+
+  const direct = coerceSymbolType(type);
+  if (direct) return direct;
+
+  return undefined;
+}
 
 export function createSymbolController() {
   return {
@@ -78,6 +113,81 @@ export function createSymbolController() {
       }
     },
 
+    searchTradingView: async (req: Request, res: Response, next: NextFunction) => {
+      const parsed = tradingViewSearchSchema.safeParse(req.query);
+      if (!parsed.success) {
+        next(new AppError(400, "INVALID_SYMBOL_SEARCH_QUERY", "Invalid symbol search query"));
+        return;
+      }
+
+      try {
+        const start = Math.min(TRADINGVIEW_MAX_WINDOW, parseStartOffset(parsed.data.start));
+        const pageLimit = parsed.data.limit;
+        const fetchLimit = Math.min(TRADINGVIEW_MAX_WINDOW, Math.max(pageLimit, start + pageLimit));
+
+        const exchangeToken = parsed.data.exchange?.trim().toUpperCase();
+        const exchangeCountry = buildCountryFilterInput(exchangeToken);
+        const shouldUseCountryFilter = Boolean(
+          exchangeToken
+          && exchangeCountry
+          && (exchangeCountry.code.length === 2 || exchangeCountry.exchanges.length > 0),
+        );
+
+        const userId = (req as AuthenticatedRequest).user?.userId;
+        const resolvedType = resolveSearchType(parsed.data.type, parsed.data.category);
+
+        // Extract user country from proxy headers (Vercel, Cloudflare, nginx, or explicit)
+        const userCountryRaw = (
+          req.headers["x-user-country"]
+          || req.headers["x-vercel-ip-country"]
+          || req.headers["cf-ipcountry"]
+          || req.headers["x-country"]
+        ) as string | undefined;
+        const userCountry = buildCountryFilterInput(userCountryRaw)?.code ?? (
+          req.headers["x-vercel-ip-country"]
+          || req.headers["cf-ipcountry"]
+          || req.headers["x-country"]
+        ) as string | undefined;
+
+        const payload = await searchSymbols({
+          query: parsed.data.text,
+          type: resolvedType,
+          country: shouldUseCountryFilter ? exchangeCountry?.code : undefined,
+          limit: fetchLimit,
+          userId,
+          userCountry,
+        });
+
+        let symbols = payload.items.map((item) => toAssetSearchItem(item));
+        if (exchangeToken && !shouldUseCountryFilter) {
+          symbols = symbols.filter((item) => {
+            const exchange = String(item.exchange || "").toUpperCase();
+            const source = String(item.source || "").toUpperCase();
+            return exchange === exchangeToken || source === exchangeToken;
+          });
+        }
+
+        const pagedSymbols = symbols.slice(start, start + pageLimit);
+        const consumed = start + pagedSymbols.length;
+        const reachedWindowCap = consumed >= TRADINGVIEW_MAX_WINDOW;
+        const knownTotal = payload.total >= 0 ? payload.total : symbols.length;
+
+        const hasMore = !reachedWindowCap && (
+          consumed < knownTotal
+          || (payload.hasMore && consumed <= symbols.length)
+        );
+
+        res.json({
+          symbols: pagedSymbols,
+          total: knownTotal,
+          nextCursor: hasMore ? String(consumed) : null,
+          hasMore,
+        });
+      } catch (error) {
+        next(mapServiceError(error, "SYMBOL_SEARCH_FAILED", "Could not search symbols"));
+      }
+    },
+
     filters: async (req: Request, res: Response, next: NextFunction) => {
       try {
         const type = typeof req.query.type === "string" ? req.query.type : undefined;
@@ -96,6 +206,8 @@ export function createSymbolController() {
       }
 
       try {
+        await reportMissingLogoToRemote(parsed.data);
+
         await MissingLogoModel.updateOne(
           { fullSymbol: parsed.data.fullSymbol.toUpperCase() },
           {
@@ -123,44 +235,6 @@ export function createSymbolController() {
         res.status(204).send();
       } catch (error) {
         next(mapServiceError(error, "MISSING_LOGO_REPORT_FAILED", "Could not report missing logo"));
-      }
-    },
-
-    logoAudit: async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const symbol = typeof req.query.symbol === "string" ? req.query.symbol.toUpperCase() : undefined;
-        const limit = Math.min(Number(req.query.limit) || 25, 100);
-
-        if (symbol) {
-          const docs = await SymbolModel.find({ symbol })
-            .select({ symbol: 1, fullSymbol: 1, name: 1, type: 1, exchange: 1, iconUrl: 1, s3Icon: 1, companyDomain: 1, logoVerificationStatus: 1, logoQualityScore: 1 })
-            .limit(10)
-            .lean();
-          const results = docs.map((d) => verifySymbolLogo(d as any));
-          res.json({ symbol, count: results.length, results });
-          return;
-        }
-
-        const [total, withIcon, validated, repaired, apiKeyLeaks, wrongDomain] = await Promise.all([
-          SymbolModel.estimatedDocumentCount(),
-          SymbolModel.countDocuments({ iconUrl: { $ne: "", $exists: true } }),
-          SymbolModel.countDocuments({ logoVerificationStatus: "validated" }),
-          SymbolModel.countDocuments({ logoVerificationStatus: "repaired" }),
-          SymbolModel.countDocuments({ iconUrl: /apikey=/i }),
-          SymbolModel.countDocuments({ companyDomain: { $in: ["financialmodelingprep.com", "clearbit.com"] } }),
-        ]);
-
-        res.json({
-          total,
-          withIcon,
-          coverage: total > 0 ? `${((withIcon / total) * 100).toFixed(1)}%` : "0%",
-          validated,
-          repaired,
-          apiKeyLeaks,
-          wrongDomain,
-        });
-      } catch (error) {
-        next(mapServiceError(error, "LOGO_AUDIT_FAILED", "Logo audit failed"));
       }
     },
   };

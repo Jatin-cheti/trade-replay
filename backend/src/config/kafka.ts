@@ -30,9 +30,11 @@ function buildKafka(): Kafka {
 export const kafka = buildKafka();
 
 let kafkaReady = false;
+let kafkaRuntimeDisabled = false;
+let kafkaRuntimeDisableReason: string | null = null;
 
 export function isKafkaEnabled(): boolean {
-  return env.KAFKA_ENABLED;
+  return env.KAFKA_ENABLED && !kafkaRuntimeDisabled;
 }
 
 export function isKafkaReady(): boolean {
@@ -42,4 +44,31 @@ export function isKafkaReady(): boolean {
 export function setKafkaReady(ready: boolean): void {
   kafkaReady = ready;
   logger.info("kafka_ready_state", { ready });
+}
+
+export function disableKafkaRuntime(reason: string): void {
+  kafkaRuntimeDisabled = true;
+  kafkaRuntimeDisableReason = reason;
+  kafkaReady = false;
+  logger.warn("kafka_runtime_disabled", { reason });
+}
+
+export function getKafkaHealthStatus(): {
+  enabledByConfig: boolean;
+  runtimeEnabled: boolean;
+  ready: boolean;
+  degraded: boolean;
+  reason: string | null;
+  optional: boolean;
+  brokers: string[];
+} {
+  return {
+    enabledByConfig: env.KAFKA_ENABLED,
+    runtimeEnabled: env.KAFKA_ENABLED && !kafkaRuntimeDisabled,
+    ready: kafkaReady,
+    degraded: kafkaRuntimeDisabled,
+    reason: kafkaRuntimeDisableReason,
+    optional: env.APP_ENV !== "production",
+    brokers: env.KAFKA_BROKERS.split(",").map((broker) => broker.trim()).filter(Boolean),
+  };
 }

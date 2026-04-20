@@ -3,7 +3,7 @@ import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { resolveStaticIcon } from "../config/staticIconMap";
 import { isRedisReady } from "../config/redis";
 import { getOrSetCachedJsonWithLock } from "./cache.service";
-import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
+import { enqueueSymbolLogoEnrichmentBatch, isLogoQueueEnabled } from "./logoQueue.service";
 import { clusterScopedKey, stableHash } from "./redisKey.service";
 import { recordSymbolIconResult, recordSymbolSearchLatency } from "./metrics.service";
 import { intelligentSearch, trackRecentSymbol, type ScoredSymbol } from "./searchIntelligence.service";
@@ -442,7 +442,7 @@ export async function searchSymbols(params: {
 }): Promise<SymbolSearchResult> {
   const startedAt = Date.now();
   const query = normalizeQuery(params.query);
-  const limit = Math.max(1, Math.min(100, params.limit ?? 50));
+  const limit = Math.max(1, Math.min(1000, params.limit ?? 50));
   const offset = Math.max(0, params.offset ?? 0);
   const normalizedCountry = buildCountryFilterInput(params.country)?.code;
   const normalizedUserCountry = buildCountryFilterInput(params.userCountry)?.code ?? params.userCountry?.toUpperCase();
@@ -1029,7 +1029,7 @@ export async function searchSymbols(params: {
     response.items = prioritizeMarketDataCompleteness(await enrichWithRealtimePrices(response.items));
   }
 
-  if (!params.skipLogoEnrichment && isRedisReady()) {
+  if (!params.skipLogoEnrichment && isRedisReady() && isLogoQueueEnabled()) {
     enqueueSymbolLogoEnrichmentBatch(toQueueItems(response.items.slice(0, 20)));
   }
 
