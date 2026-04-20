@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CandleData } from "@/data/stockData";
 import TradingChart from "./TradingChart";
 import { globalChartManager } from "./ChartManager";
+import { frontendEnv } from "@/lib/env";
 
 type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1D" | "1W" | "1M";
 
@@ -91,7 +92,8 @@ export default function ChartEngine({
   const hasFiredReady = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const chartApiBase = (import.meta.env.VITE_CHART_SERVICE_URL as string | undefined) ?? "http://localhost:3001/api/chart";
+  const chartApiBase = (import.meta.env.VITE_CHART_SERVICE_URL as string | undefined)
+    ?? `${frontendEnv.API_URL}/chart`;
   const chartWsBase = (import.meta.env.VITE_CHART_SERVICE_WS_URL as string | undefined)
     ?? chartApiBase.replace(/^http/i, "ws");
 
