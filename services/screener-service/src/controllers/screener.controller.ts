@@ -13,7 +13,9 @@ const listSchema = z.object({
   marketCountries: z.string().optional(),
   exchanges: z.string().optional(),
   sectors: z.string().optional(),
+  sector: z.string().optional(), // legacy singular alias
   analystRatings: z.string().optional(),
+  analystRating: z.string().optional(), // legacy singular alias
   primaryListing: z.coerce.boolean().optional(),
   // Range filters — all optional min/max pairs
   marketCapMin: z.coerce.number().optional(),
@@ -64,7 +66,9 @@ export async function list(req: Request, res: Response, next: NextFunction) {
     }
     const result = await listScreenerAssets({
       type: d.type, query: d.q || d.query, countries: csv(d.marketCountries),
-      exchanges: csv(d.exchanges), sectors: csv(d.sectors), analystRatings: csv(d.analystRatings),
+      exchanges: csv(d.exchanges),
+      sectors: csv(d.sectors).length > 0 ? csv(d.sectors) : csv(d.sector),
+      analystRatings: csv(d.analystRatings).length > 0 ? csv(d.analystRatings) : csv(d.analystRating),
       primaryOnly: d.primaryListing || false,
       ranges,
       sort: d.sort, order: d.order, limit: d.limit, offset: d.offset,
