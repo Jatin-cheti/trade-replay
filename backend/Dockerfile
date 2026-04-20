@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig*.json ./
 
-RUN npm ci || npm install
+RUN npm install
 
 COPY . .
 

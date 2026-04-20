@@ -44,7 +44,7 @@ const boolFromEnv = z.preprocess((value) => {
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.string().default("local"),
-  PORT: z.coerce.number().int().positive().default(3009),
+  PORT: z.coerce.number().int().positive().default(3001),
   BACKEND_URL: z.string().url().default("http://127.0.0.1:4000"),
   REDIS_URL: z.string().default("redis://127.0.0.1:6379"),
   KAFKA_BROKERS: z.string().default("localhost:19092"),

@@ -1,41 +1,28 @@
 # Dependencies
 node_modules/
-**/node_modules/
 .pnp
 .pnp.js
 
 # Build outputs
-dist/
-build/
-**/dist/
-**/build/
 backend/dist/
 frontend/dist/
 *.tsbuildinfo
 
-# ============================
-# SECRETS — NEVER COMMIT THESE
-# ============================
+# Environment files (contain secrets — NEVER commit)
 .env
 .env.*
 !.env.example
 deploy/env/.env.secrets*
-deploy/env/ssh/
-deploy/update-env-droplet-a.sh
 *.pem
 *.key
 *.p12
 *.pfx
-*.crt
 .secrets/
 secrets/
-**/credentials.json
-**/serviceAccountKey.json
 
 # Logs
 *.log
 logs/
-**/logs/
 
 # OS
 .DS_Store
@@ -49,15 +36,25 @@ desktop.ini
 *.swo
 
 # Test artifacts
-test-results/
-playwright-report/
+test-results/**
+playwright-report/**
 debug-screenshots/
+artifacts/**
+!artifacts/.gitkeep
+!artifacts/baselines/
+!artifacts/baselines/**
+docs/tradingview-parity/ours/**
+!docs/tradingview-parity/ours/.gitkeep
+docs/tradingview-parity/diffs/**
+!docs/tradingview-parity/diffs/.gitkeep
+docs/tradingview-parity/reports/**
+!docs/tradingview-parity/reports/.gitkeep
+docs/tradingview-parity/tradingview/**
+!docs/tradingview-parity/tradingview/.gitkeep
 
 # Misc
 tmp-*
 tmp/
-_*.cjs
-_*.js
 *.tgz
 .vercel
 

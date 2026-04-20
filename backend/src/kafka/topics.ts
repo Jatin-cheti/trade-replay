@@ -5,6 +5,7 @@
   SIMULATION_EVENTS: "simulation.events",
   USER_ACTIVITY: "user.activity",
   SYMBOL_LOGO_ENRICHED: "symbol.logo.enriched",
+  CHART_CANDLE_UPDATED: "chart.candle.updated",
   MARKET_TICK: "market.tick",
   ALERT_FIRED: "alert.fired",
   // ── Scaling pipeline topics ────────────────────────────────────────
@@ -82,6 +83,17 @@ export interface SymbolLogoEnrichedPayload {
   domain?: string;
   logoUrl: string;
   source: "cdn" | "remote";
+}
+
+export interface ChartCandleUpdatedPayload {
+  symbol: string;
+  timeframe: string;
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
 export interface MarketTickPayload {

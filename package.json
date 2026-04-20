@@ -3,13 +3,19 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "app": "concurrently -n backend,worker,logo-service,kafka,chart-service,frontend -c green,yellow,magenta,blue,white,cyan \"npm --prefix backend run dev\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix services/chart-service run dev\" \"npm --prefix frontend run dev\"",
-    "start": "npm --prefix backend run start",
-    "start:worker": "npm --prefix backend run start:worker",
-    "start:asset-service": "npm --prefix backend exec tsx src/assetService.ts",
-    "start:logo-service": "npm --prefix services/logo-service run start",
-    "start:frontend": "npm --prefix frontend run dev",
-    "validate:real-system": "npm --prefix backend run validate:real-system",
+    "env:check": "node scripts/check-env.js",
+    "dev:docker:check": "node scripts/dev/docker-guard.js",
+    "dev:infra": "npm run dev:docker:check && docker compose --profile infra up -d mongodb redis kafka",
+    "dev:tools": "npm run dev:docker:check && docker compose --profile tools up -d prometheus grafana jenkins",
+    "dev:up": "npm run env:check && npm run dev:infra && npm run dev:docker:check && docker compose --profile infra --profile apps up -d backend worker kafka-service chart-service",
+    "dev:up:full": "npm run env:check && npm run dev:infra && npm run dev:docker:check && docker compose --profile infra --profile apps --profile logo up -d backend worker logo-service kafka-service chart-service",
+    "dev:down": "npm run dev:docker:check && docker compose down",
+    "dev:reset": "npm run dev:docker:check && docker compose down -v --remove-orphans",
+    "dev:logs": "npm run dev:docker:check && docker compose logs -f --tail=200 backend chart-service mongodb redis kafka",
+    "app": "node scripts/dev/run-app.js",
+    "app:fallback": "concurrently -n backend,chart-service,frontend -c green,blue,cyan \"node backend/bootstrap-dev.js\" \"npm --prefix services/chart-service run dev\" \"npm --prefix frontend run dev\"",
+    "app:docker": "npm run dev:up && npm --prefix frontend run dev",
+    "app:full": "concurrently -n backend,worker,logo-service,kafka,chart-service,frontend -c green,yellow,magenta,blue,white,cyan \"node backend/bootstrap-dev.js\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix services/chart-service run dev\" \"npm --prefix frontend run dev\"",
     "install:all": "npm --prefix backend install && npm --prefix frontend install && npm --prefix services/logo-service install && npm --prefix services/chart-service install",
     "build": "npm --prefix backend run build && npm --prefix services/chart-service run build && npm --prefix frontend run build",
     "typecheck": "npm --prefix backend run build && npm --prefix frontend run typecheck",
@@ -20,16 +26,24 @@
     "validate:logo-pipeline": "npm --prefix backend exec tsx ./tests/load/testLogoPipeline.ts",
     "stress:test": "npm --prefix backend exec tsx ./tests/load/stressTest.ts",
     "test:e2e": "playwright test -c tests/integration/e2e/playwright.config.ts",
+    "test:matrix": "playwright test -c tests/integration/e2e/playwright.config.ts --project=chromium tests/integration/e2e/tool-matrix.spec.ts",
+    "test:parity:capture": "playwright test -c tests/integration/e2e/playwright.config.ts --project=chromium tests/integration/e2e/tradingview-parity.spec.ts",
+    "test:parity:reference": "node tests/tooling/capture-tradingview-reference.mjs",
+    "test:parity:diff": "node tests/tooling/tradingview-parity-diff.mjs",
+    "test:matrix:batches": "node tests/tooling/run-matrix-batches.mjs",
+    "tool:inventory": "node tests/tooling/generate-inventory.mjs",
+    "tool:coverage": "node tests/tooling/generate-coverage.mjs",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
-    "deploy:auto": "docker compose up -d redis kafka mongodb backend worker logo-service kafka-service chart-service && npm run validate"
+    "deploy:auto": "docker compose up -d redis kafka mongodb backend worker logo-service kafka-service && npm run validate"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0"
   },
   "dependencies": {
-    "dotenv": "^17.4.1",
-    "typescript": "^6.0.3"
+    "dotenv": "^17.4.1"
   }
 }

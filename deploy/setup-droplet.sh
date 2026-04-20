@@ -4,7 +4,7 @@
 # Run as root on a fresh Ubuntu 22.04/24.04 droplet
 set -euo pipefail
 
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-chart-engine}"
 
 echo "=== Trade Replay — Droplet Setup (cost-optimized) ==="
 
@@ -81,18 +81,6 @@ cd /opt/tradereplay/backend
 npm ci
 cd /opt/tradereplay/services/logo-service
 npm ci
-cd /opt/tradereplay/services/asset-service
-npm ci
-cd /opt/tradereplay/services/screener-service
-npm ci
-cd /opt/tradereplay/services/alert-service
-npm ci
-cd /opt/tradereplay/services/portfolio-service
-npm ci
-cd /opt/tradereplay/services/simulation-service
-npm ci
-cd /opt/tradereplay/services/datafeed-service
-npm ci
 cd /opt/tradereplay/services/chart-service
 npm ci
 
@@ -125,8 +113,8 @@ echo "       APP_ENV=local"
 echo "       MONGO_URI_LOCAL=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/tradereplay?retryWrites=true&w=majority"
 echo "       REDIS_URL_LOCAL=redis://default:${REDIS_PASS}@127.0.0.1:6379"
 echo "       KAFKA_BROKER_LOCAL=127.0.0.1:9092"
-echo "       CHART_SERVICE_PORT=3009"
-echo "       CHART_SERVICE_URL=http://127.0.0.1:3009"
+echo "       CHART_SERVICE_PORT=4010"
+echo "       CHART_SERVICE_URL=http://127.0.0.1:4010"
 echo "       GOOGLE_CLIENT_ID=519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com"
 echo "       CLIENT_URL=https://tradereplay.me"
 echo "       (plus shared settings like PORT/JWT_SECRET/KAFKA_ENABLED)"

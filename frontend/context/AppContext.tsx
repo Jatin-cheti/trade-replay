@@ -60,7 +60,7 @@ interface AppState {
   startDate: string;
   endDate: string;
   totalCandles: number;
-  dataSource: 'alpha-vantage' | 'fallback' | null;
+  dataSource: 'alpha-vantage' | 'fallback' | 'yahoo-intraday' | null;
   activePortfolioId: string | null;
   isInitializingSimulation: boolean;
   currentCandleIndex: number;
@@ -77,7 +77,7 @@ interface AppState {
   setIsPlaying: (p: boolean) => void;
   setPlaySpeed: (s: number) => Promise<void>;
   executeTrade: (type: 'BUY' | 'SELL', symbol: string, price: number, quantity: number, date: string) => Promise<ActionResult>;
-  initializeSimulation: (input?: { portfolioId?: string; scenarioId?: string; symbol?: string }) => Promise<void>;
+  initializeSimulation: (input?: { portfolioId?: string; scenarioId?: string; symbol?: string; dataMode?: 'default' | 'parity-live' }) => Promise<void>;
   stepForward: () => Promise<void>;
   stepBackward: () => Promise<void>;
   importPortfolioCsv: (file: File) => Promise<ActionResult>;
@@ -106,12 +106,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [totalCandles, setTotalCandles] = useState(0);
-  const [dataSource, setDataSource] = useState<'alpha-vantage' | 'fallback' | null>(null);
+  const [dataSource, setDataSource] = useState<'alpha-vantage' | 'fallback' | 'yahoo-intraday' | null>(null);
   const [activePortfolioId, setActivePortfolioId] = useState<string | null>(null);
   const [isInitializingSimulation, setIsInitializingSimulation] = useState(false);
   const [currentCandleIndex, setCurrentCandleIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
+  const [simulationDataMode, setSimulationDataMode] = useState<'default' | 'parity-live'>('default');
   const [socketReady, setSocketReady] = useState(false);
   const [appReady, setAppReady] = useState(false);
 
@@ -238,6 +239,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUsername('');
     setCandles([]);
     setAllStockCandles({});
+    setSimulationDataMode('default');
   }, []);
 
   const formatCurrency = useCallback((amount: number) => {
@@ -265,17 +267,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const initializeSimulation = useCallback(async (input?: { portfolioId?: string; scenarioId?: string; symbol?: string }) => {
+  const initializeSimulation = useCallback(async (input?: { portfolioId?: string; scenarioId?: string; symbol?: string; dataMode?: 'default' | 'parity-live' }) => {
     if (!isAuthenticated) return;
     setIsInitializingSimulation(true);
     const effectiveScenario = input?.scenarioId ?? scenarioId;
     const effectiveSymbol = input?.symbol ?? selectedStock;
     const effectivePortfolioId = input?.portfolioId ?? activePortfolioId;
+    const requestedDataMode = input?.dataMode;
+    const effectiveDataMode = requestedDataMode ?? simulationDataMode;
+    if (requestedDataMode && requestedDataMode !== simulationDataMode) {
+      setSimulationDataMode(requestedDataMode);
+    }
     try {
       const response = await api.post('/sim/init', {
         scenarioId: effectiveScenario,
         symbol: effectiveSymbol,
         portfolioId: effectivePortfolioId ?? undefined,
+        dataMode: effectiveDataMode === 'default' ? undefined : effectiveDataMode,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
@@ -295,7 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsInitializingSimulation(false);
     }
-  }, [isAuthenticated, scenarioId, selectedStock, activePortfolioId, startDate, endDate]);
+  }, [isAuthenticated, scenarioId, selectedStock, activePortfolioId, simulationDataMode, startDate, endDate]);
 
   const callControl = useCallback(async (action: 'play' | 'pause' | 'step-forward' | 'step-backward', speed?: number) => {
     await api.post('/sim/control', { action, speed });

@@ -12,7 +12,7 @@ import BrandLottie from '@/components/BrandLottie';
 import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
 import ScrollReveal from '@/components/ScrollReveal';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
-import { BarChart3, History, Wallet, LineChart, ArrowLeft } from 'lucide-react';
+import { BarChart3, History, Wallet, LineChart } from 'lucide-react';
 
 export default function Simulation() {
   const {
@@ -23,6 +23,7 @@ export default function Simulation() {
   } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const parityDataEnabled = searchParams.get('parityData') === '1';
   const [mobileTab, setMobileTab] = useState<'chart' | 'trade' | 'portfolio' | 'history'>('chart');
 
   useEffect(() => {
@@ -34,8 +35,7 @@ export default function Simulation() {
       const portfolioId = searchParams.get('portfolioId') ?? undefined;
       const nextScenarioId = searchParams.get('scenarioId') ?? scenarioId;
       const scenario = scenarios.find(s => s.id === nextScenarioId);
-      const requestedSymbol = searchParams.get('symbol')?.trim().toUpperCase();
-      const nextSymbol = requestedSymbol || scenario?.stocks[0]?.symbol || selectedStock;
+      const nextSymbol = scenario?.stocks[0]?.symbol ?? selectedStock;
 
       if (portfolioId) {
         setActivePortfolioId(portfolioId);
@@ -53,9 +53,10 @@ export default function Simulation() {
         portfolioId,
         scenarioId: nextScenarioId,
         symbol: nextSymbol,
+        dataMode: parityDataEnabled ? 'parity-live' : 'default',
       });
     }
-  }, [isAuthenticated, scenarioId, selectedStock, initializeSimulation, searchParams, setActivePortfolioId, setScenarioId, setSelectedStock]);
+  }, [isAuthenticated, scenarioId, selectedStock, initializeSimulation, parityDataEnabled, searchParams, setActivePortfolioId, setScenarioId, setSelectedStock]);
 
   const scenario = scenarios.find(s => s.id === scenarioId)!;
   const allStockCandles = useMemo(() => {
@@ -65,10 +66,6 @@ export default function Simulation() {
     });
     return map;
   }, [stockCache, candles, scenario.stocks]);
-
-  const cameFromSymbolPage = searchParams.get('from') === 'symbol';
-  const returnSymbol = searchParams.get('symbol')?.trim().toUpperCase() || selectedStock;
-  const parityMode = searchParams.get('parityData') === '1';
 
   const totalCandles = candles.length;
   const currentCandle = candles[currentCandleIndex] ?? null;
@@ -82,24 +79,11 @@ export default function Simulation() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col page-gradient-shell overflow-visible">
+    <div data-testid="simulation-page" className="min-h-screen flex flex-col page-gradient-shell overflow-visible">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
       <main className="relative z-10">
-
-      {cameFromSymbolPage && (
-        <div className="px-3 pt-3">
-          <button
-            type="button"
-            onClick={() => navigate(`/symbol/${encodeURIComponent(returnSymbol)}`)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/20 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/35"
-          >
-            <ArrowLeft size={13} />
-            Back to Symbol
-          </button>
-        </div>
-      )}
 
       {isInitializingSimulation && (
         <div className="px-3 pt-3">
@@ -129,12 +113,11 @@ export default function Simulation() {
         >
           <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
             <ChartEngine
-              symbol={selectedStock}
-              timeframe="1m"
-              mode="simulation"
               data={candles}
               visibleCount={currentCandleIndex + 1}
-              parityMode={parityMode}
+              symbol={selectedStock}
+              timeframe="1m"
+              parityMode={parityDataEnabled}
             />
           </InteractiveSurface>
         </motion.div>
@@ -169,12 +152,11 @@ export default function Simulation() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
               <ChartEngine
-                symbol={selectedStock}
-                timeframe="1m"
-                mode="simulation"
                 data={candles}
                 visibleCount={currentCandleIndex + 1}
-                parityMode={parityMode}
+                symbol={selectedStock}
+                timeframe="1m"
+                parityMode={parityDataEnabled}
               />
             </InteractiveSurface>
           </motion.div>

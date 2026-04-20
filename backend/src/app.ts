@@ -10,7 +10,9 @@ import { createBullBoard } from "@bull-board/api";
 import { ExpressAdapter } from "@bull-board/express";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { env } from "./config/env";
-import { isRedisMockMode, isRedisReady, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
+import { getRedisHealthStatus, isRedisFallbackMode, isRedisMockMode, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
+import { getMongoHealthStatus } from "./config/db";
+import { getKafkaHealthStatus } from "./config/kafka";
 import { verifyJwt } from "./utils/jwt";
 import { logger } from "./utils/logger";
 import authRoutes from "./routes/authRoutes";
@@ -22,27 +24,20 @@ import { createSymbolRoutes } from "./routes/symbolRoutes";
 import { createChartRoutes } from "./routes/chartRoutes";
 import { createAlertsRoutes } from "./routes/alertsRoutes";
 import { createDatafeedRoutes } from "./routes/datafeedRoutes";
-import { createScreenerRoutes } from "./routes/screenerRoutes";
-import { createScreenRoutes } from "./routes/screenRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
 import { createSymbolController } from "./controllers/symbolController";
 import { SimulationEngine } from "./services/simulationEngine";
-import { getLogoQueue } from "./services/logoQueue.service";
-import { startLogoQueueWorker } from "./jobs/logoQueue.worker";
-import { getIngestionQueue } from "./ingestion/queue";
-import { createIngestionRoutes } from "./ingestion/routes";
-import { startIngestionWorker } from "./ingestion/worker";
+import { getLogoQueue, isLogoQueueEnabled } from "./services/logoQueue.service";
+import { getLogoServiceHealthStatus } from "./services/logoServiceMode.service";
+import { getChartServiceHealthStatus } from "./services/chartCompute.service";
 import { warmSymbolSearchCache } from "./services/symbol.service";
 import { startSearchIndexService } from "./services/searchIndex.service";
-import { getChartServiceHealthStatus } from "./services/chartCompute.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
 import { getFullCoverageReport, runTailEliminationOnce, startTailOrchestrator, stopTailOrchestrator, isOrchestratorRunning } from "./services/tailOrchestrator.service";
 import { startScalingOrchestrator, stopScalingOrchestrator, isScalingOrchestratorRunning, getLiveScalingReport, runExpansionOnce, runSyncOnce, getScalingStatus } from "./services/scalingOrchestrator.service";
 import { getExpansionStats } from "./services/symbolExpansion.service";
 import { getShardStats } from "./services/redisShard.service";
-import { validateSystem } from "./services/validation.service";
-import { buildCleanAssets, getCleanAssetStats } from "./services/cleanAsset.service";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
 
@@ -52,27 +47,85 @@ export function createApp() {
   const symbolController = createSymbolController();
   let lastCompletedCount = 0;
   let lastMetricsSampleAt = Date.now();
+  let limiterDebugLogCount = 0;
+
+  const shouldSkipRateLimit = (req: express.Request): boolean => {
+    const originalUrl = req.originalUrl || req.url || "";
+    const path = req.path || "";
+    const hasAuthHeader = Boolean(req.headers.authorization);
+    const skip =
+      originalUrl.includes("/health")
+      || originalUrl.includes("/metrics")
+      || path.includes("/health")
+      || path.includes("/metrics")
+      || path.startsWith("/api/auth/")
+      || path.startsWith("/auth/")
+      || hasAuthHeader;
+
+    if (
+      limiterDebugLogCount < 120
+      && (originalUrl.includes("/api/metrics") || originalUrl.includes("/api/simulation/assets"))
+    ) {
+      limiterDebugLogCount += 1;
+      logger.info("rate_limit_skip_evaluated", {
+        originalUrl,
+        baseUrl: req.baseUrl,
+        path,
+        hasAuthHeader,
+        skip,
+      });
+    }
+
+    return skip;
+  };
+
   app.set("trust proxy", 1);
-  const isLocalDev = process.env.APP_ENV !== "production";
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: isLocalDev ? 0 : Math.max(500, env.API_RATE_LIMIT_MAX),
+    max: Math.max(100, env.API_RATE_LIMIT_MAX),
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => Boolean(req.headers.authorization),
-  });
-
-  const io = new Server(httpServer, {
-    cors: {
-      origin: "*",
+    skip: shouldSkipRateLimit,
+    handler: (req, res, _next, options) => {
+      logger.warn("rate_limit_blocked", {
+        originalUrl: req.originalUrl,
+        baseUrl: req.baseUrl,
+        path: req.path,
+        ip: req.ip,
+      });
+      const message = typeof options.message === "string"
+        ? options.message
+        : "Too many requests, please try again later.";
+      res.status(options.statusCode).send(message);
     },
   });
 
-  if (!isRedisMockMode() && isRedisReady()) {
+  const allowedOrigins = Array.from(new Set([env.CLIENT_URL, ...env.CLIENT_URLS]));
+  const corsOrigin: cors.CorsOptions["origin"] = (origin, callback) => {
+    const isLocalhostOrigin =
+      typeof origin === "string" && /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+
+    // Allow non-browser requests (curl, server-to-server) and known browser origins.
+    if (!origin || isLocalhostOrigin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Not allowed by CORS"));
+  };
+
+  const io = new Server(httpServer, {
+    cors: {
+      origin: corsOrigin,
+      credentials: true,
+    },
+  });
+
+  if (!isRedisMockMode()) {
     io.adapter(createAdapter(redisPublisher, redisSubscriber));
   }
 
   const engine = new SimulationEngine(io);
+  const logoQueueEnabled = isLogoQueueEnabled();
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token as string | undefined;
@@ -97,7 +150,7 @@ export function createApp() {
     socket.emit("ready");
   });
 
-  app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+  app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(helmet());
   app.use(compression());
   app.use(express.json());
@@ -119,35 +172,30 @@ export function createApp() {
     });
   }, 5 * 60 * 1000).unref();
 
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath("/admin/queues");
-  createBullBoard({
-    queues: [
-      new BullMQAdapter(getLogoQueue()),
-      new BullMQAdapter(getIngestionQueue()),
-    ],
-    serverAdapter,
-  });
-
-  // Start ingestion worker so it processes jobs immediately
-  startIngestionWorker();
-  // Start logo queue worker so full-sweep/batch logo jobs are consumed.
-  startLogoQueueWorker();
-  app.use("/admin/queues", serverAdapter.getRouter());
+  if (logoQueueEnabled) {
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath("/admin/queues");
+    createBullBoard({
+      queues: [new BullMQAdapter(getLogoQueue())],
+      serverAdapter,
+    });
+    app.use("/admin/queues", serverAdapter.getRouter());
+  }
 
   const portfolioController = createPortfolioController();
 
   app.get("/api/health", async (_req, res) => {
     const local = getChartServiceHealthStatus();
+    const redis = getRedisHealthStatus();
+    const mongo = getMongoHealthStatus();
+    const kafka = getKafkaHealthStatus();
+    const logoService = await getLogoServiceHealthStatus();
     let remote: {
       reachable: boolean;
-      statusCode: number | null;
-      error: string | null;
-    } = {
-      reachable: false,
-      statusCode: null,
-      error: null,
-    };
+      ok?: boolean;
+      statusCode?: number;
+      error?: string;
+    } = { reachable: false };
 
     if (local.enabled) {
       const controller = new AbortController();
@@ -158,13 +206,12 @@ export function createApp() {
         const response = await fetch(target, { method: "GET", signal: controller.signal });
         remote = {
           reachable: response.ok,
+          ok: response.ok,
           statusCode: response.status,
-          error: response.ok ? null : `HTTP_${response.status}`,
         };
       } catch (error) {
         remote = {
           reachable: false,
-          statusCode: null,
           error: error instanceof Error ? error.message : String(error),
         };
       } finally {
@@ -174,9 +221,20 @@ export function createApp() {
 
     res.json({
       ok: true,
+      dependencies: {
+        mongo,
+        redis,
+        kafka,
+      },
       chartService: {
         local,
         remote,
+      },
+      logoService,
+      logoQueue: {
+        enabled: logoQueueEnabled,
+        degraded: !logoQueueEnabled,
+        reason: logoQueueEnabled ? null : "queue_disabled_for_non_local_logo_mode_or_redis_fallback",
       },
     });
   });
@@ -252,40 +310,45 @@ export function createApp() {
   });
 
   app.get("/api/metrics", async (_req, res) => {
-    const queue = getLogoQueue();
-    const [waiting, active, delayed, completed, failed] = await Promise.all([
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getDelayedCount(),
-      queue.getCompletedCount(),
-      queue.getFailedCount(),
-    ]);
+    const queueStats = logoQueueEnabled
+      ? await (async () => {
+        const queue = getLogoQueue();
+        const [waiting, active, delayed, completed, failed] = await Promise.all([
+          queue.getWaitingCount(),
+          queue.getActiveCount(),
+          queue.getDelayedCount(),
+          queue.getCompletedCount(),
+          queue.getFailedCount(),
+        ]);
+        return { waiting, active, delayed, completed, failed };
+      })()
+      : { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 };
 
     const now = Date.now();
     const elapsedMs = Math.max(1, now - lastMetricsSampleAt);
-    const completedDelta = Math.max(0, completed - lastCompletedCount);
+    const completedDelta = Math.max(0, queueStats.completed - lastCompletedCount);
     const processingRatePerMin = Number(((completedDelta * 60000) / elapsedMs).toFixed(2));
-    const settled = completed + failed;
-    const successRate = settled > 0 ? Number(((completed / settled) * 100).toFixed(2)) : 100;
-    const failureRate = settled > 0 ? Number(((failed / settled) * 100).toFixed(2)) : 0;
+    const settled = queueStats.completed + queueStats.failed;
+    const successRate = settled > 0 ? Number(((queueStats.completed / settled) * 100).toFixed(2)) : 100;
+    const failureRate = settled > 0 ? Number(((queueStats.failed / settled) * 100).toFixed(2)) : 0;
 
-    lastCompletedCount = completed;
+    lastCompletedCount = queueStats.completed;
     lastMetricsSampleAt = now;
 
     res.json({
       ...getMetricsSnapshot(),
       queueDepth: {
         logoEnrichment: {
-          waiting,
-          active,
-          delayed,
-          total: waiting + active + delayed,
+          waiting: queueStats.waiting,
+          active: queueStats.active,
+          delayed: queueStats.delayed,
+          total: queueStats.waiting + queueStats.active + queueStats.delayed,
         },
       },
       queueProcessing: {
         logoEnrichment: {
-          completed,
-          failed,
+          completed: queueStats.completed,
+          failed: queueStats.failed,
           processingRatePerMin,
           successRate,
           failureRate,
@@ -295,20 +358,25 @@ export function createApp() {
   });
 
   app.get("/metrics", async (_req, res) => {
-    const queue = getLogoQueue();
-    const [waiting, active, delayed, completed, failed] = await Promise.all([
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getDelayedCount(),
-      queue.getCompletedCount(),
-      queue.getFailedCount(),
-    ]);
+    const queueStats = logoQueueEnabled
+      ? await (async () => {
+        const queue = getLogoQueue();
+        const [waiting, active, delayed, completed, failed] = await Promise.all([
+          queue.getWaitingCount(),
+          queue.getActiveCount(),
+          queue.getDelayedCount(),
+          queue.getCompletedCount(),
+          queue.getFailedCount(),
+        ]);
+        return { waiting, active, delayed, completed, failed };
+      })()
+      : { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 };
 
     const metrics = getMetricsSnapshot();
     const queueLag = Math.round(metrics.queueLatency.logoEnrichment?.avgLatencyMs ?? 0);
-    const settled = completed + failed;
-    const successRate = settled > 0 ? Number(((completed / settled) * 100).toFixed(2)) : 100;
-    const failureRate = settled > 0 ? Number(((failed / settled) * 100).toFixed(2)) : 0;
+    const settled = queueStats.completed + queueStats.failed;
+    const successRate = settled > 0 ? Number(((queueStats.completed / settled) * 100).toFixed(2)) : 100;
+    const failureRate = settled > 0 ? Number(((queueStats.failed / settled) * 100).toFixed(2)) : 0;
 
     let redisMemoryUsage = 0;
     try {
@@ -322,7 +390,7 @@ export function createApp() {
     const lines: string[] = [];
     lines.push("# HELP queue_depth Current queue depth (waiting + active + delayed)");
     lines.push("# TYPE queue_depth gauge");
-    lines.push(`queue_depth{queue=\"logo_enrichment\"} ${waiting + active + delayed}`);
+    lines.push(`queue_depth{queue=\"logo_enrichment\"} ${queueStats.waiting + queueStats.active + queueStats.delayed}`);
     lines.push("# HELP queue_lag Average queue latency in milliseconds");
     lines.push("# TYPE queue_lag gauge");
     lines.push(`queue_lag{queue=\"logo_enrichment\"} ${queueLag}`);
@@ -331,10 +399,10 @@ export function createApp() {
     lines.push(`queue_lag_seconds{queue=\"logo_enrichment\"} ${(queueLag / 1000).toFixed(3)}`);
     lines.push("# HELP worker_throughput_completed Total completed queue jobs");
     lines.push("# TYPE worker_throughput_completed counter");
-    lines.push(`worker_throughput_completed{queue=\"logo_enrichment\"} ${completed}`);
+    lines.push(`worker_throughput_completed{queue=\"logo_enrichment\"} ${queueStats.completed}`);
     lines.push("# HELP worker_throughput_failed Total failed queue jobs");
     lines.push("# TYPE worker_throughput_failed counter");
-    lines.push(`worker_throughput_failed{queue=\"logo_enrichment\"} ${failed}`);
+    lines.push(`worker_throughput_failed{queue=\"logo_enrichment\"} ${queueStats.failed}`);
     lines.push("# HELP queue_success_rate Queue success rate percentage");
     lines.push("# TYPE queue_success_rate gauge");
     lines.push(`queue_success_rate{queue=\"logo_enrichment\"} ${successRate}`);
@@ -366,29 +434,17 @@ export function createApp() {
     res.send(`${lines.join("\n")}\n`);
   });
 
-  if (!isLocalDev) {
-    app.use("/api", apiLimiter);
-  }
-
-  // ── Validation & gold layer endpoints ──────────────────────────────
-  app.get("/api/validate", async (_req, res) => {
-    const result = await validateSystem();
-    res.json(result);
-  });
-
-  app.post("/api/rebuild-gold", async (_req, res) => {
-    const result = await buildCleanAssets();
-    const stats = await getCleanAssetStats();
-    res.json({ buildResult: result, stats });
-  });
-
-  app.get("/api/clean-stats", async (_req, res) => {
-    const stats = await getCleanAssetStats();
-    res.json(stats);
+  app.use("/api", (req, res, next) => {
+    // Keep observability endpoints fully available under load.
+    if (req.path === "/metrics" || req.path === "/health") {
+      return next();
+    }
+    return apiLimiter(req, res, next);
   });
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
   app.get("/api/search", verifyToken, symbolController.search);
+  app.get("/api/symbol-search", verifyToken, symbolController.searchTradingView);
 
   app.use("/api/auth", authRoutes);
   app.use("/api/sim", createSimulationRoutes(engine));
@@ -398,11 +454,8 @@ export function createApp() {
   app.use("/api/trade", createTradeRoutes(engine));
   app.use("/api/symbols", createSymbolRoutes());
   app.use("/api/chart", createChartRoutes());
-  app.use("/api/screener", createScreenerRoutes());
-  app.use("/api/screens", createScreenRoutes());
   app.use("/api/alerts", createAlertsRoutes());
   app.use("/api/datafeed", createDatafeedRoutes());
-  app.use("/api/ingestion", createIngestionRoutes());
   app.use(notFoundHandler);
   app.use(errorHandler);
 
