@@ -92,9 +92,13 @@ export async function listScreenerAssets(params: ListParams) {
   } catch {}
 
   const typeMap: Record<string, string[]> = {
+    // Plural/long-form (frontend canonical)
     stocks: ["stock"], etfs: ["etf"], "crypto-coins": ["crypto"],
     forex: ["forex"], indices: ["index"], futures: ["futures"],
     bonds: ["bond"], options: ["options"],
+    // Singular aliases (accept REST-style ?type=crypto)
+    stock: ["stock"], etf: ["etf"], crypto: ["crypto"],
+    index: ["index"], bond: ["bond"], option: ["options"],
   };
 
   const filter: Record<string, unknown> = { isActive: true };
@@ -163,7 +167,7 @@ export async function listScreenerAssets(params: ListParams) {
         },
       }},
       { $group: {
-        _id: "$_dedupKey",
+        _id: { country: "$country", key: "$_dedupKey" },
         doc: { $first: "$$ROOT" },
         exchanges: { $push: "$exchange" },
         count: { $sum: 1 },
