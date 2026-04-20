@@ -9,7 +9,7 @@ const FIELD_TO_DB: Record<string, string> = {
   epsDilTtm: "eps",
   epsDilGrowth: "earningsGrowth",
   divYieldPercent: "dividendYield",
-  price: "currentPrice",
+  // price: identity — both US stocks ("price") and India stocks ("price" via mapItem alias) use the same DB field
 };
 const DB_TO_FIELD: Record<string, string> = Object.fromEntries(
   Object.entries(FIELD_TO_DB).map(([k, v]) => [v, k]),
@@ -26,9 +26,14 @@ function mapItem(doc: Record<string, unknown>): Record<string, unknown> {
   for (const [dbKey, feKey] of Object.entries(DB_TO_FIELD)) {
     if (out[dbKey] !== undefined && out[feKey] === undefined) out[feKey] = out[dbKey];
   }
-  // Ensure price alias
+  // Ensure price alias: India stocks store price as currentPrice
   if (out.currentPrice !== undefined && (out.price === undefined || out.price === 0))
     out.price = out.currentPrice;
+  // Ensure epsDilGrowth alias: enrichment writes to epsGrowth (legacy US) or earningsGrowth (canonical)
+  if (out.epsGrowth !== undefined && out.epsDilGrowth === undefined)
+    out.epsDilGrowth = out.epsGrowth;
+  if (out.earningsGrowth !== undefined && out.epsDilGrowth === undefined)
+    out.epsDilGrowth = out.earningsGrowth;
   // Compute change/changePercent from price and previousClose
   const price = out.price as number | undefined;
   const prevClose = out.previousClose as number | undefined;
