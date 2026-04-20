@@ -55,6 +55,22 @@ export interface FullSymbolData {
   // Meta
   logoSource: string;
   isSynthetic: boolean;
+
+  // Company profile (populated by enrichment; empty string if unavailable)
+  industry: string;
+  ceo: string;
+  headquarters: string;
+  founded: string;
+  ipoDate: string;
+  isin: string;
+  cfiCode: string;
+  description: string;
+
+  // Earnings
+  recentEarningsDate: string;
+  upcomingEarningsDate: string;
+  epsEstimate: number | null;
+  revenueEstimate: number | null;
 }
 
 /* ── Fundamentals (real data only — no synthetic generation) ────────── */
@@ -275,6 +291,22 @@ export async function getFullSymbolData(fullSymbol: string): Promise<FullSymbolD
 
       logoSource: logo.logoSource,
       isSynthetic: (doc as any).isSynthetic || false,
+
+      // Company profile
+      industry: doc.industry || "",
+      ceo: doc.ceo || "",
+      headquarters: doc.headquarters || "",
+      founded: doc.founded || "",
+      ipoDate: doc.ipoDate || "",
+      isin: doc.isin || "",
+      cfiCode: doc.cfiCode || "",
+      description: doc.description || "",
+
+      // Earnings
+      recentEarningsDate: doc.recentEarningsDate || "",
+      upcomingEarningsDate: doc.upcomingEarningsDate || "",
+      epsEstimate: typeof doc.epsEstimate === "number" && Number.isFinite(doc.epsEstimate) ? doc.epsEstimate : null,
+      revenueEstimate: typeof doc.revenueEstimate === "number" && Number.isFinite(doc.revenueEstimate) ? doc.revenueEstimate : null,
     };
   });
 }
@@ -374,6 +406,22 @@ export async function enrichScreenerBatch(docs: any[]): Promise<FullSymbolData[]
 
         logoSource: logo.logoSource,
         isSynthetic: doc.isSynthetic || false,
+
+        // Company profile
+        industry: doc.industry || "",
+        ceo: doc.ceo || "",
+        headquarters: doc.headquarters || "",
+        founded: doc.founded || "",
+        ipoDate: doc.ipoDate || "",
+        isin: doc.isin || "",
+        cfiCode: doc.cfiCode || "",
+        description: doc.description || "",
+
+        // Earnings
+        recentEarningsDate: doc.recentEarningsDate || "",
+        upcomingEarningsDate: doc.upcomingEarningsDate || "",
+        epsEstimate: typeof doc.epsEstimate === "number" && Number.isFinite(doc.epsEstimate) ? doc.epsEstimate : null,
+        revenueEstimate: typeof doc.revenueEstimate === "number" && Number.isFinite(doc.revenueEstimate) ? doc.revenueEstimate : null,
       };
 
       results[idx] = entry;

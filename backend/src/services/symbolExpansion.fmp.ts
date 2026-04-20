@@ -475,3 +475,92 @@ export async function expandFmpFutures(): Promise<ExpansionResult> {
     return { source: "fmp-futures", fetched: 0, newInserted: 0, existingSkipped: 0, errors: 1, durationMs: Date.now() - start };
   }
 }
+
+// ── Company Profile Enrichment ───────────────────────────────────────────
+
+export interface FmpCompanyProfile {
+  symbol: string;
+  price?: number;
+  beta?: number;
+  volAvg?: number;
+  mktCap?: number;
+  lastDiv?: number;
+  range?: string;
+  changes?: number;
+  companyName?: string;
+  currency?: string;
+  cik?: string;
+  isin?: string;
+  cusip?: string;
+  exchange?: string;
+  exchangeShortName?: string;
+  industry?: string;
+  website?: string;
+  description?: string;
+  ceo?: string;
+  sector?: string;
+  country?: string;
+  fullTimeEmployees?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  dcfDiff?: number;
+  dcf?: number;
+  image?: string;
+  ipoDate?: string;
+  defaultImage?: boolean;
+  isEtf?: boolean;
+  isActivelyTrading?: boolean;
+  isAdr?: boolean;
+  isFund?: boolean;
+}
+
+export interface CompanyProfileEnrichResult {
+  symbol: string;
+  updated: boolean;
+  error?: string;
+}
+
+/**
+ * Fetch FMP company profile for a single symbol and return the enriched fields.
+ * Does NOT write to DB — callers decide whether/how to persist.
+ */
+export async function fetchFmpCompanyProfile(symbol: string): Promise<FmpCompanyProfile | null> {
+  if (!isFmpAvailable()) return null;
+  const url = fmpUrl(`/api/v3/profile/${encodeURIComponent(symbol)}`);
+  if (!url) return null;
+
+  try {
+    const data = await fetchJson<FmpCompanyProfile[]>(url);
+    if (!Array.isArray(data) || data.length === 0) return null;
+    return data[0];
+  } catch (error) {
+    tripFmpCircuit(error);
+    logger.warn("fmp_profile_fetch_failed", { symbol, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
+/**
+ * Map a raw FMP company profile to clean CleanAsset profile fields.
+ */
+export function mapFmpProfileToAssetFields(profile: FmpCompanyProfile): Record<string, string | number | null> {
+  const hqParts = [profile.address, profile.city, profile.state, profile.country]
+    .filter(Boolean)
+    .join(", ");
+
+  return {
+    industry: profile.industry?.trim() || "",
+    ceo: profile.ceo?.trim() || "",
+    headquarters: hqParts || "",
+    ipoDate: profile.ipoDate?.trim() || "",
+    isin: profile.isin?.trim() || "",
+    description: profile.description?.trim() || "",
+    // sector from FMP can supplement existing sector if missing
+    ...(profile.sector ? { sector: profile.sector.trim() } : {}),
+    // companyDomain from website
+    ...(profile.website ? { companyDomain: profile.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/.*$/, "").trim() } : {}),
+  };
+}

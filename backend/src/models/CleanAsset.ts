@@ -38,6 +38,22 @@ const cleanAssetSchema = new Schema(
     domainResolutionMethod: { type: String, trim: true, default: "" },
     isActive: { type: Boolean, required: true, default: true },
     verifiedAt: { type: Date, default: () => new Date() },
+
+    // ── Company profile fields (populated by enrichment scripts) ──────
+    industry: { type: String, trim: true, default: "" },
+    ceo: { type: String, trim: true, default: "" },
+    headquarters: { type: String, trim: true, default: "" },
+    founded: { type: String, trim: true, default: "" },
+    ipoDate: { type: String, trim: true, default: "" },
+    isin: { type: String, trim: true, default: "" },
+    cfiCode: { type: String, trim: true, default: "" },
+    description: { type: String, trim: true, default: "" },
+
+    // ── Earnings fields ───────────────────────────────────────────────
+    recentEarningsDate: { type: String, trim: true, default: "" },
+    upcomingEarningsDate: { type: String, trim: true, default: "" },
+    epsEstimate: { type: Number, default: null },
+    revenueEstimate: { type: Number, default: null },
   },
   { timestamps: true },
 );

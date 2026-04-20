@@ -18,6 +18,8 @@ import SnapshotMenu from "@/components/symbol/SnapshotMenu";
 import CustomRangePicker, { type CustomRange } from "@/components/symbol/CustomRangePicker";
 import SavedPeriodsMenu from "@/components/symbol/SavedPeriodsMenu";
 import { useSavedPeriods } from "@/components/symbol/useSavedPeriods";
+import MarketClosedIcon from "@/components/symbol/MarketClosedIcon";
+import PrimaryListingIcon from "@/components/symbol/PrimaryListingIcon";
 import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
 import type { CandleData } from "@/data/stockData";
 import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
@@ -183,25 +185,6 @@ const CRYPTO_TABS = ["futures", "indices", "spot", "swap"] as const;
 type CryptoTab = typeof CRYPTO_TABS[number];
 const CRYPTO_TAB_LABELS: Record<CryptoTab, string> = { futures: "Futures", indices: "Indices", spot: "Spot", swap: "Swap" };
 const CRYPTO_TAB_COUNTS: Record<CryptoTab, number> = { futures: 16, indices: 18, spot: 48, swap: 24 };
-
-/* ── Market icons ─────────────────────────────────────────────────────── */
-function MarketClosedIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2.5" y="10.5" width="19" height="3" rx="1.5" />
-    </svg>
-  );
-}
-
-function PrimaryListingIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" className={className}>
-      <path opacity="0.25" d="M4 16V5L8 9L12 5L16 9L20 5V16H4Z" fill="currentColor" />
-      <path d="M4 19H20M4 5V16H20V5L16 9L12 5L8 9L4 5Z"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 /* ── Sub-components ─────────────────────────────────────────────────────── */
 
