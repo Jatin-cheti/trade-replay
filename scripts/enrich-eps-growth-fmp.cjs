@@ -153,7 +153,7 @@ async function main() {
       if (fg) {
         if (fg.revenueGrowth != null) update.revenueGrowth = Number(fg.revenueGrowth);
         const epsGrowthVal = fg.epsdilutedGrowth ?? fg.epsgrowth ?? null;
-        if (epsGrowthVal != null) update.epsGrowth = Number(epsGrowthVal);
+        if (epsGrowthVal != null) update.earningsGrowth = Number(epsGrowthVal);
       }
     } catch { /* growth optional */ }
 
