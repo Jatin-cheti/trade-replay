@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ExternalLink, BarChart3, ChevronRight, ChevronDown, Camera, Copy,
-  Search, X,
+  Search, X, AreaChart, LineChart, CandlestickChart,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import AssetAvatar from "@/components/ui/AssetAvatar";
@@ -110,6 +110,14 @@ const TIME_PERIODS = [
   { label: "All time", key: "all" },
 ] as const;
 
+type OverviewChartType = "area" | "line" | "candlestick";
+
+const CHART_TYPE_OPTIONS: Array<{ key: OverviewChartType; label: string }> = [
+  { key: "area", label: "Area" },
+  { key: "line", label: "Line" },
+  { key: "candlestick", label: "Candlestick" },
+];
+
 /* ── Exact ISIN Copy SVG (from requirements) ─────────────────────────── */
 function IsinCopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
@@ -159,6 +167,8 @@ export default function SymbolPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("Overview");
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
+  const [overviewChartType, setOverviewChartType] = useState<OverviewChartType>("area");
+  const [chartTypeOpen, setChartTypeOpen] = useState(false);
 
   // Symbol picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -167,6 +177,7 @@ export default function SymbolPage() {
   const [copiedIsin, setCopiedIsin] = useState<string | null>(null);
   const [copyToast, setCopyToast] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const chartTypeRef = useRef<HTMLDivElement>(null);
 
   // Chart candle data
   const [candles, setCandles] = useState<CandleData[]>([]);
@@ -205,6 +216,15 @@ export default function SymbolPage() {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Close chart type dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (chartTypeRef.current && !chartTypeRef.current.contains(e.target as Node)) setChartTypeOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -554,6 +574,44 @@ export default function SymbolPage() {
                   Chart <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </h2>
                 <div className="flex items-center gap-2">
+                  {/* Chart type dropdown */}
+                  <div className="relative" ref={chartTypeRef}>
+                    <button
+                      onClick={() => setChartTypeOpen((v) => !v)}
+                      className="flex items-center gap-1.5 h-8 rounded-md border border-border/40 px-2.5 text-xs font-medium text-foreground hover:bg-secondary/30 transition-colors"
+                      title="Chart type"
+                    >
+                      {overviewChartType === "area" ? <AreaChart className="w-3.5 h-3.5" /> : null}
+                      {overviewChartType === "line" ? <LineChart className="w-3.5 h-3.5" /> : null}
+                      {overviewChartType === "candlestick" ? <CandlestickChart className="w-3.5 h-3.5" /> : null}
+                      <span>
+                        {CHART_TYPE_OPTIONS.find((t) => t.key === overviewChartType)?.label}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${chartTypeOpen ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {chartTypeOpen && (
+                      <div className="absolute right-0 mt-1 w-40 rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30 overflow-hidden">
+                        {CHART_TYPE_OPTIONS.map((option) => (
+                          <button
+                            key={option.key}
+                            onClick={() => {
+                              setOverviewChartType(option.key);
+                              setChartTypeOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                              overviewChartType === option.key
+                                ? "bg-secondary/50 text-foreground"
+                                : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Code embed — disabled */}
                   <button className="h-8 w-8 rounded-md border border-border/40 flex items-center justify-center text-muted-foreground/40 cursor-not-allowed" disabled title="Embed widget">
                     <svg viewBox="0 0 18 18" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -598,6 +656,7 @@ export default function SymbolPage() {
                     height={340}
                     color={detail.changePercent >= 0 ? "#26a69a" : "#ef5350"}
                     currency={detail.currency}
+                    chartType={overviewChartType}
                   />
                 </div>
               ) : (
