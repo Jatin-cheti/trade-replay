@@ -1,0 +1,18 @@
+{
+  "before": {
+    "sz32": 0,
+    "sz64": 0,
+    "sz128": 1460752,
+    "sz256": 62,
+    "noLogo": 1,
+    "clearbit": 0,
+    "logodev": 0,
+    "total_active": 1579751
+  },
+  "after": {
+    "sz128": 0,
+    "sz256": 1460814,
+    "noLogo": 1,
+    "upgraded": 1460752
+  }
+}
