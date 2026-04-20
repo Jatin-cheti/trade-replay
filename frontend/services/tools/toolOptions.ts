@@ -9,8 +9,14 @@ export type ToolOptions = {
   priceLabel: boolean;
   axisLabel: boolean;
   snapMode: 'off' | 'ohlc' | 'candle';
+  fibLevels: string;
+  fibLabelMode: 'percent' | 'price' | 'both';
+  vwapInterval: 'session' | 'week' | 'month';
+  positionLabelMode: 'rr' | 'price' | 'both';
+  brushSmoothness: number;
   font: string;
   textSize: number;
+  textMaxWidth: number;
   bold: boolean;
   italic: boolean;
   align: 'left' | 'center' | 'right';
@@ -21,7 +27,7 @@ export type ToolOptions = {
   visible: boolean;
 };
 
-export type OptionFieldType = 'color' | 'number' | 'range' | 'select' | 'toggle';
+export type OptionFieldType = 'color' | 'number' | 'range' | 'select' | 'toggle' | 'text';
 
 export type OptionField = {
   key: keyof ToolOptions;
@@ -60,6 +66,38 @@ export const baseOptionSchema: OptionField[] = [
       { label: 'Nearest Candle', value: 'candle' },
     ],
   },
+  { key: 'fibLevels', label: 'Fib Levels (CSV)', type: 'text' },
+  {
+    key: 'fibLabelMode',
+    label: 'Fib Label Mode',
+    type: 'select',
+    options: [
+      { label: 'Percent', value: 'percent' },
+      { label: 'Price', value: 'price' },
+      { label: 'Both', value: 'both' },
+    ],
+  },
+  {
+    key: 'vwapInterval',
+    label: 'VWAP Interval',
+    type: 'select',
+    options: [
+      { label: 'Session', value: 'session' },
+      { label: 'Weekly', value: 'week' },
+      { label: 'Monthly', value: 'month' },
+    ],
+  },
+  {
+    key: 'positionLabelMode',
+    label: 'Position Label',
+    type: 'select',
+    options: [
+      { label: 'Risk/Reward', value: 'rr' },
+      { label: 'Price Delta', value: 'price' },
+      { label: 'Both', value: 'both' },
+    ],
+  },
+  { key: 'brushSmoothness', label: 'Brush Smoothness', type: 'range', min: 0, max: 1, step: 0.05 },
   { key: 'priceLabel', label: 'Price Label', type: 'toggle' },
   { key: 'axisLabel', label: 'Axis Label', type: 'toggle' },
   {
@@ -74,6 +112,7 @@ export const baseOptionSchema: OptionField[] = [
     ],
   },
   { key: 'textSize', label: 'Font Size', type: 'range', min: 10, max: 28, step: 1 },
+  { key: 'textMaxWidth', label: 'Text Max Width', type: 'range', min: 120, max: 640, step: 20 },
   { key: 'bold', label: 'Bold', type: 'toggle' },
   { key: 'italic', label: 'Italic', type: 'toggle' },
   {
@@ -103,9 +142,15 @@ export const defaultToolOptions: ToolOptions = {
   rayMode: false,
   priceLabel: true,
   axisLabel: true,
-  snapMode: 'ohlc',
+  snapMode: 'off',
+  fibLevels: '',
+  fibLabelMode: 'percent',
+  vwapInterval: 'session',
+  positionLabelMode: 'rr',
+  brushSmoothness: 0.45,
   font: 'JetBrains Mono',
   textSize: 12,
+  textMaxWidth: 240,
   bold: false,
   italic: false,
   align: 'left',
@@ -126,6 +171,8 @@ export function clampOptionValue(options: ToolOptions): ToolOptions {
     thickness: Math.max(1, Math.min(8, options.thickness)),
     opacity: Math.max(0.15, Math.min(1, options.opacity)),
     textSize: Math.max(10, Math.min(28, options.textSize)),
+    textMaxWidth: Math.max(120, Math.min(640, options.textMaxWidth)),
+    brushSmoothness: Math.max(0, Math.min(1, options.brushSmoothness)),
     textPadding: Math.max(0, Math.min(24, options.textPadding)),
   };
 }

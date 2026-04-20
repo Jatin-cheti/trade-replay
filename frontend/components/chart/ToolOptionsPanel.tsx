@@ -13,7 +13,7 @@ export default function ToolOptionsPanel({ open, options, optionsSchema = baseOp
   const fields = optionsSchema.length ? optionsSchema : baseOptionSchema;
 
   return (
-    <aside className="absolute left-[245px] top-3 z-30 w-[240px] rounded-xl border border-primary/25 bg-background/85 p-2 backdrop-blur-xl">
+    <aside data-testid="tool-options-panel" className="absolute left-3 top-2 z-[35] w-[240px] rounded-xl border border-primary/25 bg-background/85 p-2 backdrop-blur-xl">
       <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Tool Options</div>
       <div className="space-y-2">
         {fields.map((field) => {
@@ -26,6 +26,7 @@ export default function ToolOptionsPanel({ open, options, optionsSchema = baseOp
               <button
                 key={id}
                 type="button"
+                data-testid={`tool-option-${String(field.key)}`}
                 className={`w-full rounded-md px-2 py-1 text-[11px] text-left ${enabled ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
                 onClick={() => onChange({ [field.key]: !enabled } as Partial<ToolOptions>)}
               >
@@ -39,6 +40,7 @@ export default function ToolOptionsPanel({ open, options, optionsSchema = baseOp
               <label key={id} className="block">
                 <span className="mb-1 block text-[11px] text-muted-foreground">{field.label}</span>
                 <select
+                  data-testid={`tool-option-${String(field.key)}`}
                   value={String(value)}
                   onChange={(e) => onChange({ [field.key]: e.target.value } as Partial<ToolOptions>)}
                   className="w-full rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px]"
@@ -56,6 +58,7 @@ export default function ToolOptionsPanel({ open, options, optionsSchema = baseOp
               <label key={id} className="block">
                 <span className="mb-1 block text-[11px] text-muted-foreground">{field.label}</span>
                 <input
+                  data-testid={`tool-option-${String(field.key)}`}
                   type="color"
                   value={String(value)}
                   onChange={(e) => onChange({ [field.key]: e.target.value } as Partial<ToolOptions>)}
@@ -65,10 +68,26 @@ export default function ToolOptionsPanel({ open, options, optionsSchema = baseOp
             );
           }
 
+          if (field.type === 'text') {
+            return (
+              <label key={id} className="block">
+                <span className="mb-1 block text-[11px] text-muted-foreground">{field.label}</span>
+                <input
+                  data-testid={`tool-option-${String(field.key)}`}
+                  type="text"
+                  value={String(value)}
+                  onChange={(e) => onChange({ [field.key]: e.target.value } as Partial<ToolOptions>)}
+                  className="w-full rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px]"
+                />
+              </label>
+            );
+          }
+
           return (
             <label key={id} className="block">
               <span className="mb-1 block text-[11px] text-muted-foreground">{field.label}</span>
               <input
+                data-testid={`tool-option-${String(field.key)}`}
                 type={field.type === 'number' ? 'number' : 'range'}
                 min={field.min}
                 max={field.max}
