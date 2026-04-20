@@ -103,7 +103,13 @@ export async function listScreenerAssets(params: ListParams) {
 
   if (params.countries.length) filter.country = { $in: params.countries.map((c) => c.toUpperCase()) };
   if (params.exchanges.length) filter.exchange = { $in: params.exchanges.map((e) => e.toUpperCase()) };
-  if (params.sectors.length) filter.sector = { $in: params.sectors };
+  if (params.sectors.length) {
+    // Case-insensitive sector match — capitalize first letter of each word to match DB storage
+    const normalizedSectors = params.sectors.map((s) =>
+      s.trim().replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    );
+    filter.sector = { $in: normalizedSectors };
+  }
   if (params.analystRatings.length) filter.analystRating = { $in: params.analystRatings };
   if (params.primaryOnly) filter.isPrimaryListing = true;
 
