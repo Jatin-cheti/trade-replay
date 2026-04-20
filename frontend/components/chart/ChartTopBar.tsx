@@ -302,11 +302,14 @@ export default function ChartTopBar({
         {(() => { const ChartIcon = chartTypeIconMap[chartType] ?? CandlestickChart; return (
           <button
             type="button"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-primary/10"
             onClick={() => chartTypeDropdown.setOpen(!chartTypeDropdown.open)}
             title={chartTypeLabels[chartType]}
+            data-testid="charttype-current"
           >
             <ChartIcon size={15} />
+            <span>{chartTypeLabels[chartType]}</span>
+            <ChevronDown size={12} className={`transition-transform ${chartTypeDropdown.open ? 'rotate-180' : ''}`} />
           </button>
         ); })()}
         <div className={`absolute left-0 top-full z-[70] mt-1 max-h-[70vh] w-[230px] overflow-y-auto rounded-xl border border-primary/30 bg-background p-1 shadow-xl shadow-black/50 ${chartTypeDropdown.open ? '' : 'hidden'}`}>
