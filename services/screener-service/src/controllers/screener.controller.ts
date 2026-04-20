@@ -5,6 +5,7 @@ import { listScreenerAssets, getScreenerStats, fastSearchAssets, getSymbolDetail
 const listSchema = z.object({
   type: z.string().default("stocks"),
   q: z.string().optional(),
+  query: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   sort: z.string().default("marketCap"),
@@ -57,7 +58,7 @@ export async function list(req: Request, res: Response, next: NextFunction) {
       if (min !== undefined || max !== undefined) ranges[key] = { min, max };
     }
     const result = await listScreenerAssets({
-      type: d.type, query: d.q, countries: csv(d.marketCountries),
+      type: d.type, query: d.q || d.query, countries: csv(d.marketCountries),
       exchanges: csv(d.exchanges), sectors: csv(d.sectors),
       primaryOnly: d.primaryListing || false,
       ranges,
