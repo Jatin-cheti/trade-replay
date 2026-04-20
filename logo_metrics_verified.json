@@ -1,0 +1,296 @@
+{
+  "totalSymbols": 1579751,
+  "withIconUrl": 1579751,
+  "withDomain": 1579751,
+  "withS3Icon": 1579751,
+  "noIconUrl": 0,
+  "byType": {
+    "options": 1379532,
+    "futures": 92796,
+    "crypto": 48690,
+    "stock": 41977,
+    "etf": 11156,
+    "forex": 4703,
+    "index": 566,
+    "economy": 180,
+    "bond": 151
+  },
+  "perTypeBreakdown": {
+    "options": {
+      "total": 1379532,
+      "sampled": 5000,
+      "real": 5000,
+      "realPct": 100,
+      "fallback": 0,
+      "fallbackPct": 0,
+      "estFallbackFull": 0,
+      "estRealFull": 1379532,
+      "urlSources": {
+        "clearbit": 588,
+        "googleFav": 84,
+        "fmp": 1848,
+        "coingecko": 84,
+        "ddg": 0,
+        "s3": 0,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 2396,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "futures": {
+      "total": 92796,
+      "sampled": 5000,
+      "real": 5000,
+      "realPct": 100,
+      "fallback": 0,
+      "fallbackPct": 0,
+      "estFallbackFull": 0,
+      "estRealFull": 92796,
+      "urlSources": {
+        "clearbit": 216,
+        "googleFav": 192,
+        "fmp": 2344,
+        "coingecko": 96,
+        "ddg": 24,
+        "s3": 0,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 2128,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "crypto": {
+      "total": 48690,
+      "sampled": 5000,
+      "real": 5000,
+      "realPct": 100,
+      "fallback": 0,
+      "fallbackPct": 0,
+      "estFallbackFull": 0,
+      "estRealFull": 48690,
+      "urlSources": {
+        "clearbit": 1,
+        "googleFav": 4905,
+        "fmp": 36,
+        "coingecko": 35,
+        "ddg": 0,
+        "s3": 19,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 4,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "stock": {
+      "total": 41977,
+      "sampled": 5000,
+      "real": 4999,
+      "realPct": 100,
+      "fallback": 1,
+      "fallbackPct": 0,
+      "estFallbackFull": 8,
+      "estRealFull": 41969,
+      "urlSources": {
+        "clearbit": 163,
+        "googleFav": 496,
+        "fmp": 2008,
+        "coingecko": 247,
+        "ddg": 7,
+        "s3": 115,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 1964,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 1,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "etf": {
+      "total": 11156,
+      "sampled": 5000,
+      "real": 4994,
+      "realPct": 99.9,
+      "fallback": 6,
+      "fallbackPct": 0.1,
+      "estFallbackFull": 13,
+      "estRealFull": 11143,
+      "urlSources": {
+        "clearbit": 556,
+        "googleFav": 19,
+        "fmp": 491,
+        "coingecko": 7,
+        "ddg": 0,
+        "s3": 11,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 3916,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 6
+      }
+    },
+    "forex": {
+      "total": 4703,
+      "sampled": 4703,
+      "real": 4703,
+      "realPct": 100,
+      "fallback": 0,
+      "fallbackPct": 0,
+      "estFallbackFull": 0,
+      "estRealFull": 4703,
+      "urlSources": {
+        "clearbit": 2,
+        "googleFav": 1509,
+        "fmp": 0,
+        "coingecko": 0,
+        "ddg": 0,
+        "s3": 0,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 3192,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "index": {
+      "total": 566,
+      "sampled": 566,
+      "real": 565,
+      "realPct": 99.8,
+      "fallback": 1,
+      "fallbackPct": 0.2,
+      "estFallbackFull": 1,
+      "estRealFull": 565,
+      "urlSources": {
+        "clearbit": 3,
+        "googleFav": 63,
+        "fmp": 1,
+        "coingecko": 2,
+        "ddg": 0,
+        "s3": 1,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 496,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 1,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "economy": {
+      "total": 180,
+      "sampled": 180,
+      "real": 180,
+      "realPct": 100,
+      "fallback": 0,
+      "fallbackPct": 0,
+      "estFallbackFull": 0,
+      "estRealFull": 180,
+      "urlSources": {
+        "clearbit": 0,
+        "googleFav": 16,
+        "fmp": 0,
+        "coingecko": 0,
+        "ddg": 0,
+        "s3": 0,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 164,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 0
+      }
+    },
+    "bond": {
+      "total": 151,
+      "sampled": 151,
+      "real": 151,
+      "realPct": 100,
+      "fallback": 0,
+      "fallbackPct": 0,
+      "estFallbackFull": 0,
+      "estRealFull": 151,
+      "urlSources": {
+        "clearbit": 0,
+        "googleFav": 58,
+        "fmp": 25,
+        "coingecko": 0,
+        "ddg": 0,
+        "s3": 0,
+        "jsdelivr": 0,
+        "svgData": 0,
+        "other": 68,
+        "noIcon": 0
+      },
+      "fallbackBreakdown": {
+        "exchange": 0,
+        "svg": 0,
+        "type": 0
+      }
+    }
+  },
+  "svgFallbacksExact": 0,
+  "logoSourceDist": {
+    "existing": 1502933,
+    "clearbit:two_words": 35284,
+    "clearbit:known_map": 492,
+    "s3": 218,
+    "clearbit:first_word": 167,
+    "clearbit": 109,
+    "fmp:image": 56,
+    "exchange:favicon": 10,
+    "fallback:google": 1
+  },
+  "logoConfidenceDist": {
+    "medium": 35507,
+    "high": 601
+  },
+  "logoStatusDist": {
+    "resolved": 796363,
+    "mapped": 744349,
+    "pending": 39039
+  },
+  "mismatches": [
+    "stock real%: reported=98.6%, verified=100% (diff=1.4%)",
+    "etf real%: reported=97.5%, verified=99.9% (diff=2.4%)",
+    "crypto real%: reported=64.8%, verified=100% (diff=35.2%)",
+    "options real%: reported=95.5%, verified=100% (diff=4.5%)",
+    "futures real%: reported=96.4%, verified=100% (diff=3.6%)",
+    "forex real%: reported=0%, verified=100% (diff=100.0%)",
+    "index real%: reported=96.3%, verified=99.8% (diff=3.5%)",
+    "bond real%: reported=62.3%, verified=100% (diff=37.7%)"
+  ],
+  "verificationPassed": false,
+  "timestamp": "2026-04-19T22:56:45.134Z"
+}

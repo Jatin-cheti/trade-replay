@@ -105,6 +105,24 @@ export async function invalidateSymbolCaches(fullSymbol: string): Promise<void> 
   void invalidatePattern(`sc:`);
 }
 
+/**
+ * Invalidate only logo-related Redis keys after logo repair/update.
+ * Safe alternative to FLUSHALL — preserves session, auth, and other caches.
+ * Logo key namespaces: logo:*, brand:*, app:cluster:*, sc:* (screener contains icon data)
+ */
+export async function invalidateLogoCaches(): Promise<{ deleted: number; patterns: string[] }> {
+  const patterns = ["logo:*", "brand:*", "app:cluster:*", "sc:*"];
+  let totalDeleted = 0;
+
+  for (const pattern of patterns) {
+    const count = await invalidatePattern(pattern.replace("*", ""));
+    totalDeleted += count;
+  }
+
+  logger.info("logo_cache_invalidated", { deleted: totalDeleted, patterns });
+  return { deleted: totalDeleted, patterns };
+}
+
 /* ── Multi-instance subscription ─────────────────────────────────── */
 
 let subscribed = false;

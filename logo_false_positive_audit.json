@@ -1,0 +1,104 @@
+{
+  "timestamp": "2026-04-19T22:58:05.538Z",
+  "samples": {
+    "stock": {
+      "sampled": 1000,
+      "checked": 1000,
+      "clearbitChecked": 304,
+      "clean": 301,
+      "suspects": 3,
+      "noCheck": 696,
+      "errorRate": "0.99%",
+      "mismatchReasons": {
+        "brand_mismatch": 3
+      }
+    },
+    "etf": {
+      "sampled": 500,
+      "checked": 500,
+      "clearbitChecked": 106,
+      "clean": 106,
+      "suspects": 0,
+      "noCheck": 394,
+      "errorRate": "0.00%",
+      "mismatchReasons": {}
+    },
+    "options": {
+      "sampled": 1000,
+      "checked": 1000,
+      "clearbitChecked": 23,
+      "clean": 23,
+      "suspects": 0,
+      "noCheck": 977,
+      "errorRate": "0.00%",
+      "mismatchReasons": {}
+    },
+    "futures": {
+      "sampled": 500,
+      "checked": 500,
+      "clearbitChecked": 18,
+      "clean": 18,
+      "suspects": 0,
+      "noCheck": 482,
+      "errorRate": "0.00%",
+      "mismatchReasons": {}
+    },
+    "crypto": {
+      "sampled": 500,
+      "checked": 500,
+      "clearbitChecked": 2,
+      "clean": 2,
+      "suspects": 0,
+      "noCheck": 498,
+      "errorRate": "0.00%",
+      "mismatchReasons": {}
+    },
+    "forex": {
+      "sampled": 200,
+      "checked": 200,
+      "clearbitChecked": 0,
+      "clean": 0,
+      "suspects": 0,
+      "noCheck": 200,
+      "errorRate": "N/A%",
+      "mismatchReasons": {}
+    },
+    "index": {
+      "sampled": 200,
+      "checked": 200,
+      "clearbitChecked": 0,
+      "clean": 0,
+      "suspects": 0,
+      "noCheck": 200,
+      "errorRate": "N/A%",
+      "mismatchReasons": {}
+    },
+    "bond": {
+      "sampled": 151,
+      "checked": 151,
+      "clearbitChecked": 0,
+      "clean": 0,
+      "suspects": 0,
+      "noCheck": 151,
+      "errorRate": "N/A%",
+      "mismatchReasons": {}
+    }
+  },
+  "suspects": [],
+  "errorRates": {
+    "stock": "0.99%",
+    "etf": "0.00%",
+    "options": "0.00%",
+    "futures": "0.00%",
+    "crypto": "0.00%",
+    "forex": "N/A%",
+    "index": "N/A%",
+    "bond": "N/A%"
+  },
+  "summary": {
+    "totalSampled": 4051,
+    "totalSuspects": 3,
+    "overallSuspectRate": "0.074%",
+    "reviewQueueSize": 3
+  }
+}

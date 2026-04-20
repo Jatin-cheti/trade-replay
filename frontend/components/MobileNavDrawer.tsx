@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, X } from "lucide-react";
 import { useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
+import { SCREENER_TYPE_ICONS } from "@/lib/screener";
 
 export interface NavItem {
   label: string;
@@ -165,16 +166,21 @@ export function MobileNavDrawer({
                               transition={{ duration: 0.16, ease: "easeOut" }}
                               className="space-y-0.5 overflow-hidden border-t border-border/50 px-1 py-1"
                             >
-                              {screenerMenuItems.map((item) => (
+                              {screenerMenuItems.map((item) => {
+                                const routeType = item.path.replace("/screener/", "");
+                                const Icon = SCREENER_TYPE_ICONS[routeType];
+                                return (
                                 <button
                                   key={item.path}
                                   type="button"
                                   onClick={() => runFeatureMenuAction(item.path)}
-                                  className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+                                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
                                 >
+                                  {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
                                   {item.label}
                                 </button>
-                              ))}
+                                );
+                              })}
                             </motion.div>
                           )}
                         </AnimatePresence>

@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { isSpreadExpression } from "@/lib/spreadOperator";
 import type { SavedScreen, ScreenerTypeDefinition } from "@/lib/screener";
-import { FALLBACK_SCREENER_TYPES } from "@/lib/screener";
+import { FALLBACK_SCREENER_TYPES, SCREENER_TYPE_ICONS } from "@/lib/screener";
 import ScreenerScreenMenu from "./ScreenerScreenMenu";
 
 export default function ScreenerToolbar({
@@ -58,6 +58,7 @@ export default function ScreenerToolbar({
           onClick={() => setTypeMenuOpen(!typeMenuOpen)}
           className="inline-flex items-center gap-2 rounded-lg border border-border/55 bg-secondary/25 px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:border-border"
         >
+          {(() => { const Icon = SCREENER_TYPE_ICONS[currentType?.routeType || "stocks"]; return Icon ? <Icon className="h-4 w-4 text-primary" /> : null; })()}
           {currentType?.label || "Stock Screener"}
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
@@ -69,7 +70,10 @@ export default function ScreenerToolbar({
                 <button key={entry.routeType} type="button" onClick={() => onTypeSelect(entry.routeType)}
                   className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${active ? "bg-primary/12 text-foreground" : "text-foreground/85 hover:bg-secondary/45"}`}
                 >
-                  <span>{entry.label}</span>
+                  <span className="flex items-center gap-2">
+                    {(() => { const Icon = SCREENER_TYPE_ICONS[entry.routeType]; return Icon ? <Icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`} /> : null; })()}
+                    {entry.label}
+                  </span>
                   {active && <Check className="h-4 w-4 text-primary" />}
                 </button>
               );

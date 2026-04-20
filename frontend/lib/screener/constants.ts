@@ -7,6 +7,10 @@ export const FALLBACK_SCREENER_TYPES: ScreenerTypeDefinition[] = [
   { routeType: "crypto-coins", label: "Crypto Coins Screener" },
   { routeType: "cex-pairs", label: "CEX Screener" },
   { routeType: "dex-pairs", label: "DEX Screener" },
+  { routeType: "options", label: "Options Screener" },
+  { routeType: "futures", label: "Futures Screener" },
+  { routeType: "forex", label: "Forex Screener" },
+  { routeType: "indices", label: "Indices Screener" },
 ];
 
 export const DEFAULT_VISIBLE_COLUMNS = [

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, getDetectedCountry } from "@/lib/api";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenerData } from "@/hooks/useScreenerData";
 import { useScreenerFilters } from "@/hooks/useScreenerFilters";
 import { useScreenerScreens } from "@/hooks/useScreenerScreens";
 import type { ScreenerColumnField, ScreenerMetaResponse, ScreenerStatsResponse, ScreenerTabDefinition } from "@/lib/screener";
-import { DEFAULT_VISIBLE_COLUMNS, FALLBACK_SCREENER_TYPES, dedupe, normalizeRouteType, parseCsv, getMultiParamName, getDateParamNames } from "@/lib/screener";
+import { DEFAULT_VISIBLE_COLUMNS, FALLBACK_SCREENER_TYPES, SCREENER_TYPE_ICONS, dedupe, normalizeRouteType, parseCsv, getMultiParamName, getDateParamNames } from "@/lib/screener";
 import { COMPLETE_SCREENER_META_FALLBACK } from "@/lib/screener/fallback";
+import CountryFlagImg from "@/components/screener/CountryFlagImg";
 import ScreenerToolbar from "@/components/screener/ScreenerToolbar";
 import ScreenerFilterBar from "@/components/screener/ScreenerFilterBar";
 import ScreenerTabBar from "@/components/screener/ScreenerTabBar";
@@ -140,10 +141,56 @@ export default function Screener() {
     <div className="min-h-screen bg-background pb-8 pt-3">
       <div className="mx-auto max-w-[1480px] px-4 md:px-6">
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          <span>Screener</span><span className="text-muted-foreground/35">/</span><span>{currentType?.label || "Stock Screener"}</span>
+          <span>Screener</span><span className="text-muted-foreground/35">/</span>
+          {(() => { const Icon = SCREENER_TYPE_ICONS[currentType?.routeType || "stocks"]; return Icon ? <Icon className="h-3.5 w-3.5" /> : null; })()}
+          <span>{currentType?.label || "Stock Screener"}</span>
         </div>
         <ScreenerToolbar meta={meta} routeType={routeType} currentType={currentType} typeMenuOpen={typeMenuOpen} setTypeMenuOpen={setTypeMenuOpen} typeMenuRef={typeMenuRef} onTypeSelect={onTypeSelect} activeScreenName={screens.activeScreenName} activeScreenId={screens.activeScreenId} screenDirty={screens.screenDirty} isAuthenticated={screens.isAuthenticated} savedScreens={screens.savedScreens} saveScreen={screens.saveScreen} deleteScreenById={screens.deleteScreenById} copyScreenById={screens.copyScreenById} renameScreenById={screens.renameScreenById} loadScreenState={loadScreenState} onDownloadCSV={downloadCSV} queryInput={queryInput} setQueryInput={setQueryInput} onSpreadChart={(sym) => navigate(`/simulation?symbol=${encodeURIComponent(sym)}`)} />
         <ScreenerFilterBar meta={meta} parsedFilters={data.parsedFilters} filterFields={filters.filterFields} visibleFilterKeys={filters.visibleFilterKeys} filterCount={filters.filterCount} editingFilterKey={filters.editingFilterKey} setEditingFilterKey={filters.setEditingFilterKey} addFilterOpen={filters.addFilterOpen} setAddFilterOpen={filters.setAddFilterOpen} addFilterSearch={filters.addFilterSearch} setAddFilterSearch={filters.setAddFilterSearch} filterChipRefs={filters.filterChipRefs} addFilterRef={filters.addFilterRef} manualFilterKeys={filters.manualFilterKeys} setManualFilterKeys={filters.setManualFilterKeys} setMultiFilter={filters.setMultiFilter} setRangeFilter={filters.setRangeFilter} setDateFilter={filters.setDateFilter} setToggleFilter={filters.setToggleFilter} clearAllFilters={filters.clearAllFilters} />
+        {/* ── Region info bar with quick country toggles ── */}
+        {(() => {
+          const countryTypes = new Set(["stocks", "etfs", "bonds"]);
+          if (!countryTypes.has(routeType)) return null;
+          const activeCountries = (data.parsedFilters.marketCountries as string[] | undefined) || [];
+          const isFiltered = activeCountries.length > 0;
+          const tabTotal = stats?.byType?.[routeType] ?? data.total;
+          const userCountry = getDetectedCountry();
+          const countryLabel = activeCountries.length === 1 ? activeCountries[0] : activeCountries.length > 1 ? `${activeCountries.length} countries` : "Global";
+          const QUICK_COUNTRIES = [
+            ...(userCountry && userCountry !== "US" && userCountry !== "IN" ? [{ code: userCountry, label: userCountry }] : []),
+            { code: "US", label: "US" },
+            { code: "IN", label: "India" },
+            { code: "", label: "Global" },
+          ];
+          return (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-secondary/15 px-3 py-1.5">
+              <span className="text-xs text-muted-foreground">
+                {isFiltered ? (
+                  <><CountryFlagImg code={activeCountries[0]} size={14} className="mr-1 inline-block align-text-bottom" /><strong className="text-foreground">{data.total.toLocaleString()}</strong> shown ({countryLabel}){tabTotal > data.total && <> · <span className="text-muted-foreground/70">{tabTotal.toLocaleString()} total</span></>}</>
+                ) : (
+                  <><CountryFlagImg code="WORLD" size={14} className="mr-1 inline-block align-text-bottom" /><strong className="text-foreground">{data.total.toLocaleString()}</strong> {currentType?.label?.replace(" Screener", "").toLowerCase() || "symbols"} worldwide</>
+                )}
+              </span>
+              <span className="text-border/50">|</span>
+              {QUICK_COUNTRIES.map((c) => {
+                const isActive = c.code === "" ? activeCountries.length === 0 : activeCountries.length === 1 && activeCountries[0] === c.code;
+                return (
+                  <button
+                    key={c.code || "global"}
+                    type="button"
+                    onClick={() => filters.setMultiFilter("marketCountries", c.code ? [c.code] : [])}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                      isActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    }`}
+                  >
+                    <CountryFlagImg code={c.code || "WORLD"} size={13} />
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
         <ScreenerTabBar tabs={meta?.tabs || []} activeTab={activeTab} loading={data.loading} onTabSelect={onTabSelect} onRefresh={data.refreshList} />
         {data.loading && data.items.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />Loading screener…</div>
@@ -155,7 +202,15 @@ export default function Screener() {
         {!data.loading && data.items.length === 0 && <div className="py-16 text-center text-sm text-muted-foreground">No results found. Try adjusting your filters.</div>}
         {!data.loading && data.total > 0 && (
           <div className="mt-3 flex items-center justify-between px-1">
-            <p className="text-xs text-muted-foreground">{data.total.toLocaleString()} matches</p>
+            <p className="text-xs text-muted-foreground">
+              {data.total.toLocaleString()} {currentType?.label?.replace(" Screener", "").toLowerCase() || "results"}
+              {(() => {
+                const ac = (data.parsedFilters.marketCountries as string[] | undefined) || [];
+                if (ac.length === 1) return ` · ${ac[0]} filter`;
+                if (ac.length > 1) return ` · ${ac.length} countries`;
+                return " · Global";
+              })()}
+            </p>
             <p className="text-xs text-muted-foreground">Showing {Math.min(data.items.length, data.total).toLocaleString()} of {data.total.toLocaleString()}</p>
           </div>
         )}

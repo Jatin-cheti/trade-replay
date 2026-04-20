@@ -114,7 +114,8 @@ export interface ScreenerListResponse {
   limit: number;
   offset: number;
   hasMore: boolean;
-  scannedCount: number;
+  returned?: number;
+  scannedCount?: number;
 }
 
 export type RangeFilterValue = { min?: number; max?: number };

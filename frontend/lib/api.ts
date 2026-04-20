@@ -106,6 +106,10 @@ if (typeof window !== "undefined" && !detectedCountry) {
 
 export { setCountryHeader };
 
+export function getDetectedCountry(): string | null {
+  return detectedCountry;
+}
+
 const bootstrapToken = typeof window !== "undefined" ? window.localStorage.getItem("sim_token") : null;
 if (bootstrapToken) {
   api.defaults.headers.common.Authorization = `Bearer ${bootstrapToken}`;
