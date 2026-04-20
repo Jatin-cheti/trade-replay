@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import AssetAvatar from "@/components/ui/AssetAvatar";
-import MiniAreaChart from "@/components/chart/MiniAreaChart";
+import SymbolMiniTradingChart from "@/components/chart/SymbolMiniTradingChart";
 import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
 import type { CandleData } from "@/data/stockData";
+import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
 
 interface SymbolDetail {
   symbol: string;
@@ -110,13 +111,17 @@ const TIME_PERIODS = [
   { label: "All time", key: "all" },
 ] as const;
 
-type OverviewChartType = "area" | "line" | "candlestick";
-
-const CHART_TYPE_OPTIONS: Array<{ key: OverviewChartType; label: string }> = [
-  { key: "area", label: "Area" },
-  { key: "line", label: "Line" },
-  { key: "candlestick", label: "Candlestick" },
-];
+const chartTypeIconMap: Partial<Record<ChartType, typeof CandlestickChart>> = {
+  candlestick: CandlestickChart,
+  line: LineChart,
+  area: AreaChart,
+  baseline: LineChart,
+  histogram: BarChart3,
+  bar: BarChart3,
+  heikinAshi: CandlestickChart,
+  ohlc: BarChart3,
+  hollowCandles: CandlestickChart,
+};
 
 /* ── Exact ISIN Copy SVG (from requirements) ─────────────────────────── */
 function IsinCopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
@@ -167,7 +172,7 @@ export default function SymbolPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("Overview");
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
-  const [overviewChartType, setOverviewChartType] = useState<OverviewChartType>("area");
+  const [overviewChartType, setOverviewChartType] = useState<ChartType>("area");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
 
   // Symbol picker state
@@ -581,32 +586,40 @@ export default function SymbolPage() {
                       className="flex items-center gap-1.5 h-8 rounded-md border border-border/40 px-2.5 text-xs font-medium text-foreground hover:bg-secondary/30 transition-colors"
                       title="Chart type"
                     >
-                      {overviewChartType === "area" ? <AreaChart className="w-3.5 h-3.5" /> : null}
-                      {overviewChartType === "line" ? <LineChart className="w-3.5 h-3.5" /> : null}
-                      {overviewChartType === "candlestick" ? <CandlestickChart className="w-3.5 h-3.5" /> : null}
+                      {(() => {
+                        const ChartTypeIcon = chartTypeIconMap[overviewChartType] ?? CandlestickChart;
+                        return <ChartTypeIcon className="w-3.5 h-3.5" />;
+                      })()}
                       <span>
-                        {CHART_TYPE_OPTIONS.find((t) => t.key === overviewChartType)?.label}
+                        {chartTypeLabels[overviewChartType]}
                       </span>
                       <ChevronDown className={`w-3.5 h-3.5 transition-transform ${chartTypeOpen ? "rotate-180" : ""}`} />
                     </button>
 
                     {chartTypeOpen && (
-                      <div className="absolute right-0 mt-1 w-40 rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30 overflow-hidden">
-                        {CHART_TYPE_OPTIONS.map((option) => (
-                          <button
-                            key={option.key}
-                            onClick={() => {
-                              setOverviewChartType(option.key);
-                              setChartTypeOpen(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                              overviewChartType === option.key
-                                ? "bg-secondary/50 text-foreground"
-                                : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
-                            }`}
-                          >
-                            {option.label}
-                          </button>
+                      <div className="absolute right-0 mt-1 max-h-[60vh] w-56 overflow-y-auto rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30 p-1.5">
+                        {chartTypeGroups.map((group) => (
+                          <div key={group.id} className="mb-1.5 last:mb-0">
+                            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {group.label}
+                            </div>
+                            {group.types.map((type) => (
+                              <button
+                                key={type}
+                                onClick={() => {
+                                  setOverviewChartType(type);
+                                  setChartTypeOpen(false);
+                                }}
+                                className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors ${
+                                  overviewChartType === type
+                                    ? "bg-secondary/50 text-foreground"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                                }`}
+                              >
+                                {chartTypeLabels[type]}
+                              </button>
+                            ))}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -651,11 +664,9 @@ export default function SymbolPage() {
                 </div>
               ) : candles.length > 0 ? (
                 <div className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
-                  <MiniAreaChart
+                  <SymbolMiniTradingChart
                     data={candles}
                     height={340}
-                    color={detail.changePercent >= 0 ? "#26a69a" : "#ef5350"}
-                    currency={detail.currency}
                     chartType={overviewChartType}
                   />
                 </div>
