@@ -68,6 +68,7 @@ interface ListParams {
   countries: string[];
   exchanges: string[];
   sectors: string[];
+  analystRatings: string[];
   primaryOnly: boolean;
   ranges: Record<string, { min?: number; max?: number }>;
   sort: string;
@@ -98,6 +99,7 @@ export async function listScreenerAssets(params: ListParams) {
   if (params.countries.length) filter.country = { $in: params.countries.map((c) => c.toUpperCase()) };
   if (params.exchanges.length) filter.exchange = { $in: params.exchanges.map((e) => e.toUpperCase()) };
   if (params.sectors.length) filter.sector = { $in: params.sectors };
+  if (params.analystRatings.length) filter.analystRating = { $in: params.analystRatings };
   if (params.primaryOnly) filter.isPrimaryListing = true;
 
   // Apply all range filters (marketCap, pe, price, beta, etc.)
@@ -226,12 +228,19 @@ export async function fastSearchAssets(query: string, limit: number) {
 }
 
 export async function getSymbolDetail(symbol: string) {
-  const doc = await CleanAssetModel.findOne({
-    $or: [
-      { symbol: symbol.toUpperCase() },
-      { fullSymbol: symbol.toUpperCase() },
-    ],
-  }).lean();
+  const normalized = symbol.toUpperCase();
+
+  const exact = await CleanAssetModel.findOne({ fullSymbol: normalized }).lean();
+  if (exact) return mapItem(exact as Record<string, unknown>);
+
+  const preferredIndia = await CleanAssetModel.findOne({ symbol: normalized, exchange: "NSE" })
+    .sort({ isPrimaryListing: -1, priorityScore: -1 })
+    .lean();
+  if (preferredIndia) return mapItem(preferredIndia as Record<string, unknown>);
+
+  const doc = await CleanAssetModel.findOne({ symbol: normalized })
+    .sort({ isPrimaryListing: -1, priorityScore: -1 })
+    .lean();
   return doc ? mapItem(doc as Record<string, unknown>) : null;
 }
 
@@ -247,6 +256,16 @@ export async function getScreenerMeta() {
     CleanAssetModel.aggregate([{ $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 50 }]),
   ]);
 
+  const countries = countryAgg
+    .filter((r) => typeof r._id === "string" && r._id)
+    .map((r: any) => ({ value: r._id, label: r._id }));
+  const sectors = sectorAgg
+    .filter((r) => typeof r._id === "string" && r._id)
+    .map((r: any) => ({ value: r._id, label: r._id }));
+  const exchanges = exchangeAgg
+    .filter((r) => typeof r._id === "string" && r._id)
+    .map((r: any) => r._id);
+
   const result = {
     screenerTypes: [
       { routeType: "stocks", label: "Stock Screener" },
@@ -258,12 +277,30 @@ export async function getScreenerMeta() {
       { routeType: "forex", label: "Forex Screener" },
       { routeType: "indices", label: "Indices Screener" },
     ],
+    heatmapTypes: [
+      { label: "Stocks", routeType: "stocks" },
+      { label: "ETFs", routeType: "etfs" },
+      { label: "Crypto coins", routeType: "crypto-coins" },
+    ],
     tabs: [
       { key: "overview", label: "Overview", defaultColumns: ["symbol","price","changePercent","volume","relVolume","marketCap","pe","epsDilTtm","epsDilGrowth","divYieldPercent","sector","analystRating"] },
       { key: "performance", label: "Performance", defaultColumns: ["symbol","price","changePercent","perfPercent","volume","relVolume","marketCap","beta"] },
+      { key: "extended-hours", label: "Extended Hours", defaultColumns: ["symbol","price","changePercent","perfPercent","volume","relVolume","sector"] },
       { key: "valuation", label: "Valuation", defaultColumns: ["symbol","price","marketCap","pe","peg","priceToBook","epsDilTtm","divYieldPercent","revenue","revenueGrowth"] },
       { key: "dividends", label: "Dividends", defaultColumns: ["symbol","price","divYieldPercent","marketCap","sector"] },
       { key: "profitability", label: "Profitability", defaultColumns: ["symbol","price","grossMargin","operatingMargin","profitMargin","roe","revenue"] },
+      { key: "income-statement", label: "Income Statement", defaultColumns: ["symbol","price","revenue","netIncome","epsDilTtm","epsDilGrowth","sector"] },
+      { key: "balance-sheet", label: "Balance Sheet", defaultColumns: ["symbol","price","marketCap","sharesFloat","beta"] },
+    ],
+    filterCategories: [
+      { key: "security-info", label: "Security info" },
+      { key: "market-data", label: "Market data" },
+      { key: "technicals", label: "Technicals" },
+      { key: "financials", label: "Financials" },
+      { key: "valuation", label: "Valuation" },
+      { key: "growth", label: "Growth" },
+      { key: "margins", label: "Margins" },
+      { key: "dividends", label: "Dividends" },
     ],
     columnFields: [
       { key: "symbol", label: "Symbol", category: "security-info" },
@@ -295,18 +332,44 @@ export async function getScreenerMeta() {
       { key: "priceToBook", label: "Price to book", category: "valuation" },
     ],
     filterFields: [
-      { key: "marketCountries", label: "Country", category: "security-info", type: "multi", options: countryAgg.map((r: any) => r._id) },
-      { key: "exchanges", label: "Exchange", category: "security-info", type: "multi", options: exchangeAgg.map((r: any) => r._id) },
-      { key: "sector", label: "Sector", category: "security-info", type: "multi", options: sectorAgg.map((r: any) => r._id) },
-      { key: "marketCap", label: "Market cap", category: "market-data", type: "range" },
-      { key: "price", label: "Price", category: "market-data", type: "range" },
-      { key: "pe", label: "P/E", category: "valuation", type: "range" },
-      { key: "beta", label: "Beta", category: "market-data", type: "range" },
-      { key: "divYieldPercent", label: "Div yield %", category: "dividends", type: "range" },
-      { key: "revenueGrowth", label: "Revenue growth", category: "growth", type: "range" },
-      { key: "changePercent", label: "Change %", category: "market-data", type: "range" },
+      { key: "marketCountries", label: "Market Countries", category: "market-data", inputType: "multiselect", supportsMultiSelect: true, options: countries },
+      { key: "exchanges", label: "Exchanges", category: "market-data", inputType: "multiselect", supportsMultiSelect: true, options: exchanges.map((value) => ({ value, label: value })) },
+      { key: "sector", label: "Sector", category: "security-info", inputType: "multiselect", supportsMultiSelect: true, options: sectors },
+      { key: "analystRating", label: "Analyst Rating", category: "technicals", inputType: "multiselect", supportsMultiSelect: true, options: [
+        { value: "strong-buy", label: "Strong buy" },
+        { value: "buy", label: "Buy" },
+        { value: "neutral", label: "Neutral" },
+        { value: "sell", label: "Sell" },
+        { value: "strong-sell", label: "Strong sell" },
+      ] },
+      { key: "primaryListingOnly", label: "Primary listing only", category: "security-info", inputType: "toggle" },
+      { key: "price", label: "Price", category: "market-data", inputType: "range" },
+      { key: "changePercent", label: "Change %", category: "market-data", inputType: "range" },
+      { key: "volume", label: "Volume", category: "market-data", inputType: "range" },
+      { key: "marketCap", label: "Market cap", category: "market-data", inputType: "range" },
+      { key: "pe", label: "P/E", category: "valuation", inputType: "range" },
+      { key: "epsDilTtm", label: "EPS dil TTM", category: "valuation", inputType: "range" },
+      { key: "epsDilGrowth", label: "EPS dil growth", category: "growth", inputType: "range" },
+      { key: "divYieldPercent", label: "Div yield %", category: "dividends", inputType: "range" },
+      { key: "revenueGrowth", label: "Revenue growth", category: "growth", inputType: "range" },
+      { key: "peg", label: "PEG", category: "valuation", inputType: "range" },
+      { key: "roe", label: "ROE", category: "margins", inputType: "range" },
+      { key: "beta", label: "Beta", category: "market-data", inputType: "range" },
     ],
     lastUpdated: new Date().toISOString(),
+    screenMenuOptions: [
+      { key: "save-screen", label: "Save screen" },
+      { key: "share-screen", label: "Share screen" },
+      { key: "copy-link", label: "Copy link" },
+      { key: "make-copy", label: "Make a copy" },
+      { key: "rename", label: "Rename" },
+      { key: "download-csv", label: "Download CSV" },
+    ],
+    countries,
+    indices: [],
+    watchlists: [],
+    sectors,
+    exchanges,
   };
 
   try { await redis.setex(cacheKey, 300, JSON.stringify(result)); } catch {}
