@@ -64,14 +64,10 @@ export default function SymbolMiniTradingChart({
 
   useEffect(() => {
     const seriesMap = seriesMapRef.current;
-    const chart = chartRef.current;
-    if (!ready || !seriesMap || !chart) return;
+    if (!ready || !seriesMap) return;
 
     applySeriesData(seriesMap, transformed);
     applySeriesVisibility(seriesMap, chartType);
-
-    chart.timeScale().fitContent();
-    chart.timeScale().scrollToRealTime();
   }, [chartType, ready, transformed]);
 
   const hasData = transformed.ohlcRows.length > 1;
