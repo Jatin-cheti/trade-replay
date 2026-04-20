@@ -137,8 +137,20 @@ function mapRow(base: Awaited<ReturnType<typeof enrichScreenerBatch>>[number]): 
     peg,
     roe,
     analystRating: deriveAnalystRating(base),
-    recentEarningsDate: (base as any).recentEarningsDate || "",
-    upcomingEarningsDate: (base as any).upcomingEarningsDate || "",
+    // Company profile — sourced from FullSymbolData (populated by enrichment)
+    industry: base.industry || "",
+    ceo: base.ceo || "",
+    headquarters: base.headquarters || "",
+    founded: base.founded || "",
+    ipoDate: base.ipoDate || "",
+    isin: base.isin || "",
+    cfiCode: base.cfiCode || "",
+    description: base.description || "",
+    // Earnings
+    recentEarningsDate: base.recentEarningsDate || "",
+    upcomingEarningsDate: base.upcomingEarningsDate || "",
+    epsEstimate: base.epsEstimate ?? null,
+    revenueEstimate: base.revenueEstimate ?? null,
     marketClass,
   };
 }

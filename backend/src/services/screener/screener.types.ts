@@ -48,16 +48,18 @@ export interface ScreenerGetSymbolsRequest {
 }
 
 export interface ScreenerRow extends FullSymbolData {
+  // Computed display fields (not in FullSymbolData)
   relVolume: number | null;
   epsDilTtm: number | null;
   epsDilGrowth: number | null;
   divYieldPercent: number | null;
   perfPercent: number;
   peg: number | null;
-  analystRating: string;
-  recentEarningsDate: string;
-  upcomingEarningsDate: string;
   marketClass: "cex" | "dex";
+  // Note: recentEarningsDate, upcomingEarningsDate, epsEstimate, revenueEstimate,
+  // company profile fields (industry, ceo, headquarters, founded, ipoDate,
+  // isin, cfiCode, description), analystRating, roe, revenueGrowth
+  // are all inherited from FullSymbolData.
 }
 
 export interface ScreenerGetSymbolsResponse {
