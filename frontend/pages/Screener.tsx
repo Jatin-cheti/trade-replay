@@ -160,8 +160,6 @@ export default function Screener() {
           const countryTypes = new Set(["stocks", "etfs", "bonds"]);
           if (!countryTypes.has(routeType)) return null;
           const activeCountries = (data.parsedFilters.marketCountries as string[] | undefined) || [];
-          const isFiltered = activeCountries.length > 0;
-          const tabTotal = stats?.byType?.[routeType] ?? data.total;
           const userCountry = getDetectedCountry();
           const countryLabel = activeCountries.length === 1 ? activeCountries[0] : activeCountries.length > 1 ? `${activeCountries.length} countries` : "Global";
           const QUICK_COUNTRIES = [
@@ -173,11 +171,10 @@ export default function Screener() {
           return (
             <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-secondary/15 px-3 py-1.5">
               <span className="text-xs text-muted-foreground">
-                {isFiltered ? (
-                  <><CountryFlagImg code={activeCountries[0]} size={14} className="mr-1 inline-block align-text-bottom" /><strong className="text-foreground">{data.total.toLocaleString()}</strong> shown ({countryLabel}){tabTotal > data.total && <> · <span className="text-muted-foreground/70">{tabTotal.toLocaleString()} total</span></>}</>
-                ) : (
-                  <><CountryFlagImg code="WORLD" size={14} className="mr-1 inline-block align-text-bottom" /><strong className="text-foreground">{data.total.toLocaleString()}</strong> {currentType?.label?.replace(" Screener", "").toLowerCase() || "symbols"} worldwide</>
-                )}
+                <>
+                  <CountryFlagImg code={activeCountries[0] || "WORLD"} size={14} className="mr-1 inline-block align-text-bottom" />
+                  <strong className="text-foreground">{data.total.toLocaleString()}</strong> results · {countryLabel}
+                </>
               </span>
               <span className="text-border/50">|</span>
               {QUICK_COUNTRIES.map((c) => {
@@ -211,7 +208,7 @@ export default function Screener() {
         {!data.loading && data.total > 0 && (
           <div className="mt-3 flex items-center justify-between px-1">
             <p className="text-xs text-muted-foreground">
-              {data.total.toLocaleString()} {currentType?.label?.replace(" Screener", "").toLowerCase() || "results"}
+              {data.total.toLocaleString()} results
               {(() => {
                 const ac = (data.parsedFilters.marketCountries as string[] | undefined) || [];
                 if (ac.length === 1) return ` · ${ac[0]} filter`;
@@ -219,7 +216,7 @@ export default function Screener() {
                 return " · Global";
               })()}
             </p>
-            <p className="text-xs text-muted-foreground">Showing {Math.min(data.items.length, data.total).toLocaleString()} of {data.total.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Loaded {data.items.length.toLocaleString()} rows</p>
           </div>
         )}
       </div>

@@ -13,14 +13,19 @@ const listSchema = z.object({
   marketCountries: z.string().optional(),
   exchanges: z.string().optional(),
   sectors: z.string().optional(),
+  analystRatings: z.string().optional(),
   primaryListing: z.coerce.boolean().optional(),
   // Range filters — all optional min/max pairs
   marketCapMin: z.coerce.number().optional(),
   marketCapMax: z.coerce.number().optional(),
   priceMin: z.coerce.number().optional(),
   priceMax: z.coerce.number().optional(),
+  volumeMin: z.coerce.number().optional(),
+  volumeMax: z.coerce.number().optional(),
   peMin: z.coerce.number().optional(),
   peMax: z.coerce.number().optional(),
+  epsDilTtmMin: z.coerce.number().optional(),
+  epsDilTtmMax: z.coerce.number().optional(),
   betaMin: z.coerce.number().optional(),
   betaMax: z.coerce.number().optional(),
   changePercentMin: z.coerce.number().optional(),
@@ -43,7 +48,7 @@ function csv(s?: string): string[] {
   return s ? s.split(",").map((v) => v.trim()).filter(Boolean) : [];
 }
 
-const RANGE_KEYS = ["marketCap", "price", "pe", "beta", "changePercent", "divYieldPercent", "epsDilGrowth", "perfPercent", "revenueGrowth", "peg", "roe"];
+const RANGE_KEYS = ["marketCap", "price", "volume", "pe", "epsDilTtm", "beta", "changePercent", "divYieldPercent", "epsDilGrowth", "perfPercent", "revenueGrowth", "peg", "roe"];
 
 export async function list(req: Request, res: Response, next: NextFunction) {
   try {
@@ -59,7 +64,7 @@ export async function list(req: Request, res: Response, next: NextFunction) {
     }
     const result = await listScreenerAssets({
       type: d.type, query: d.q || d.query, countries: csv(d.marketCountries),
-      exchanges: csv(d.exchanges), sectors: csv(d.sectors),
+      exchanges: csv(d.exchanges), sectors: csv(d.sectors), analystRatings: csv(d.analystRatings),
       primaryOnly: d.primaryListing || false,
       ranges,
       sort: d.sort, order: d.order, limit: d.limit, offset: d.offset,

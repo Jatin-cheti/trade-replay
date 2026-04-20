@@ -186,17 +186,18 @@ export default function SymbolPage() {
   // Fetch candle data for chart
   const loadCandles = useCallback(() => {
     if (!detail?.symbol) return;
+    const candleSymbol = detail.fullSymbol || detail.symbol;
     setChartLoading(true);
     setChartError(false);
-    fetchLiveSnapshot({ symbols: [detail.symbol], candleSymbols: [detail.symbol], candleLimit: 240 })
+    fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: 240 })
       .then((snap) => {
-        const c = snap.candlesBySymbol?.[detail.symbol];
+        const c = snap.candlesBySymbol?.[candleSymbol];
         if (c?.length) setCandles(c);
         else setChartError(true);
       })
       .catch(() => setChartError(true))
       .finally(() => setChartLoading(false));
-  }, [detail?.symbol]);
+  }, [detail?.fullSymbol, detail?.symbol]);
 
   useEffect(() => { loadCandles(); }, [loadCandles]);
 
@@ -273,7 +274,7 @@ export default function SymbolPage() {
   const screenerRouteType = toScreenerRouteType(detail.type);
   const isStock = detail.type === "stock";
   const isCrypto = detail.type === "crypto" || detail.marketClass === "cex" || detail.marketClass === "dex";
-  const simulationHref = `/simulation?symbol=${encodeURIComponent(detail.symbol)}&from=symbol&parityData=1`;
+  const simulationHref = `/simulation?symbol=${encodeURIComponent(detail.fullSymbol || detail.symbol)}&from=symbol&parityData=1`;
 
   // Build stock picker entries from detail — use Reliance data for RELIANCE, else single entry
   const isReliance = detail.symbol === "RELIANCE" || detail.symbol === "RIL";
