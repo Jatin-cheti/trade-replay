@@ -29,8 +29,8 @@ export async function listScreenerAssets(params: ListParams) {
 
   const typeMap: Record<string, string[]> = {
     stocks: ["stock"], etfs: ["etf"], "crypto-coins": ["crypto"],
-    forex: ["forex"], indices: ["index"], futures: ["derivative"],
-    bonds: ["bond"], options: ["option"],
+    forex: ["forex"], indices: ["index"], futures: ["futures"],
+    bonds: ["bond"], options: ["options"],
   };
 
   const filter: Record<string, unknown> = { isActive: true };
@@ -63,7 +63,7 @@ export async function listScreenerAssets(params: ListParams) {
     CleanAssetModel.countDocuments(filter),
   ]);
 
-  const result = { items, total, limit: params.limit, offset: params.offset, hasMore: params.offset + params.limit < total };
+  const result = { items, total, returned: items.length, limit: params.limit, offset: params.offset, hasMore: params.offset + params.limit < total };
 
   try { await redis.setex(cacheKey, CACHE_TTL_S, JSON.stringify(result)); } catch {}
 

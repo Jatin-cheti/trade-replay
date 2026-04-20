@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, getDetectedCountry } from "@/lib/api";
 import type {
   DateRangeFilterValue,
   ParsedFilters,
@@ -37,7 +37,19 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
   const previousPricesRef = useRef<Map<string, number>>(new Map());
   const flashClearTimerRef = useRef<number | null>(null);
 
-  const parsedFilters = useMemo(() => parseFiltersFromSearch(searchParams), [searchParams]);
+  const parsedFilters = useMemo(() => {
+    const f = parseFiltersFromSearch(searchParams);
+    // Default stock/etf/bond screeners to user's detected country
+    const countryTypes = new Set(["stocks", "etfs", "bonds"]);
+    if (!f.marketCountries && countryTypes.has(routeType)) {
+      const userCountry = getDetectedCountry();
+      if (userCountry && userCountry !== "WORLD") {
+        f.marketCountries = [userCountry];
+      }
+      // If no country detected yet, show all (no filter)
+    }
+    return f;
+  }, [searchParams, routeType]);
   const activeTab = searchParams.get("tab") || "overview";
   const sortField = searchParams.get("sort") || "marketCap";
   const sortOrder: SortOrder = searchParams.get("order") === "asc" ? "asc" : "desc";

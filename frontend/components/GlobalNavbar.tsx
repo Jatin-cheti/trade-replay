@@ -6,6 +6,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LogOut, Settings, User, Sun, Moon, Menu, ChevronDown, ChevronRight, BarChart3, LayoutGrid, LineChart, Briefcase, Search, Globe } from "lucide-react";
 import BrandLottie from "@/components/BrandLottie";
+import { SCREENER_TYPE_ICONS } from "@/lib/screener";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 import type { NavItem, FeatureMenuItem, MarketSection } from "./MobileNavDrawer";
 
@@ -285,12 +286,17 @@ export default function GlobalNavbar() {
                           className="absolute left-full top-0 z-50 ml-1 w-64 rounded-lg border border-primary/30 bg-background/95 p-2 backdrop-blur-xl"
                         >
                           <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Screeners</p>
-                          {PRODUCTS_SCREENER_ITEMS.map((item) => (
+                          {PRODUCTS_SCREENER_ITEMS.map((item) => {
+                            const routeType = item.path.replace("/screener/", "");
+                            const Icon = SCREENER_TYPE_ICONS[routeType];
+                            return (
                             <button key={item.label} type="button" onClick={() => runFeatureMenuAction(item.path)}
-                              className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
+                              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-secondary/45 hover:text-foreground">
+                              {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />}
                               {item.label}
                             </button>
-                          ))}
+                            );
+                          })}
 
                           <div className="my-2 h-px bg-border/40" />
 

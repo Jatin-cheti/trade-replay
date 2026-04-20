@@ -7,21 +7,32 @@ interface AssetAvatarProps {
   imgClassName?: string;
 }
 
-function normalizeAvatarClasses(input?: string): string {
-  const base = input?.trim() || "h-5 w-5 rounded-full object-cover ring-1 ring-border/70";
-  const withoutCover = base.replace(/\bobject-cover\b/g, "").replace(/\s+/g, " ").trim();
-  const hasContain = /\bobject-contain\b/.test(withoutCover);
-  const hasBackground = /\bbg-/.test(withoutCover);
-  const hasPadding = /\bp-/.test(withoutCover);
+/** Extract size classes (h-X w-X) and ring/border classes from input, split into container vs img concerns */
+function parseAvatarClasses(input?: string): { containerClasses: string; imgClasses: string } {
+  const base = input?.trim() || "h-5 w-5 rounded-full ring-1 ring-border/70";
 
-  return [
-    withoutCover,
-    hasContain ? "" : "object-contain",
-    hasBackground ? "" : "bg-white/90",
-    hasPadding ? "" : "p-1",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Remove object-cover (we always use object-contain)
+  const cleaned = base.replace(/\bobject-cover\b/g, "").replace(/\s+/g, " ").trim();
+
+  // Container gets: size (h-X w-X), shape (rounded-*), ring/border, background, shrink, overflow
+  // Image gets: object-contain only (fills 100% of container with padding applied to container)
+  const tokens = cleaned.split(" ");
+  const containerTokens: string[] = [];
+
+  for (const t of tokens) {
+    // Skip object-* and p-* (we handle these ourselves)
+    if (t.startsWith("object-") || /^p-/.test(t) || /^p[xytblr]-/.test(t)) continue;
+    containerTokens.push(t);
+  }
+
+  // Ensure container has background and overflow-hidden
+  if (!containerTokens.some(t => t.startsWith("bg-"))) containerTokens.push("bg-white/90");
+  if (!containerTokens.includes("overflow-hidden")) containerTokens.push("overflow-hidden");
+
+  return {
+    containerClasses: containerTokens.join(" "),
+    imgClasses: "object-contain",
+  };
 }
 
 function extractDomainFromClearbitUrl(src: string): string | null {
@@ -48,6 +59,9 @@ function extractDomainFromLogoDevUrl(src: string): string | null {
 function buildImageCandidates(src?: string): string[] {
   if (!src) return [];
 
+  // Data URIs (generated SVGs) — use directly, no fallback chain needed
+  if (src.startsWith("data:")) return [src];
+
   // Extract domain only from known logo-service URLs
   let domain: string | null = null;
 
@@ -65,13 +79,30 @@ function buildImageCandidates(src?: string): string[] {
   }
 
   // If domain was extracted from a logo service, build a fallback chain
+  // Skip known-dead providers (Clearbit DNS down, logo.dev ORB blocked) and go straight to stable
   if (domain) {
     const encoded = encodeURIComponent(domain);
+    const isDeadProvider =
+      src.includes("logo.clearbit.com") || src.includes("img.logo.dev");
+
+    if (isDeadProvider) {
+      // Skip the dead primary, go straight to Google Favicon
+      return [
+        `https://www.google.com/s2/favicons?sz=128&domain=${encoded}`,
+        `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+      ];
+    }
+
     return [
       src,
       `https://www.google.com/s2/favicons?sz=128&domain=${encoded}`,
       `https://icons.duckduckgo.com/ip3/${domain}.ico`,
     ];
+  }
+
+  // For FMP image-stock URLs, add Google favicon as fallback
+  if (src.includes("financialmodelingprep.com/image-stock/")) {
+    return [src];
   }
 
   // For direct image URLs (CloudFront, S3, etc.), use as-is
@@ -85,8 +116,8 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
   const imageCandidates = useMemo(() => buildImageCandidates(src), [src]);
   const fallbackIcon = "/icons/exchange/default.svg";
   const currentSrc = imageCandidates[candidateIndex] || fallbackIcon;
-  const normalizedClassName = useMemo(
-    () => normalizeAvatarClasses(imgClassName ?? className),
+  const { containerClasses, imgClasses } = useMemo(
+    () => parseAvatarClasses(imgClassName ?? className),
     [imgClassName, className],
   );
 
@@ -101,31 +132,33 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
 
   if (svgFailed) {
     return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-primary/40 to-primary/20 text-xs font-bold text-primary ${normalizedClassName}`}>
+      <div className={`flex items-center justify-center bg-gradient-to-br from-primary/40 to-primary/20 text-xs font-bold text-primary ${containerClasses}`}>
         {initials}
       </div>
     );
   }
 
   return (
-    <img
-      src={displaySrc}
-      alt={label}
-      title={label}
-      loading="lazy"
-      onError={() => {
-        if (candidateIndex < imageCandidates.length - 1) {
-          setCandidateIndex((index) => index + 1);
-          return;
-        }
-        if (displaySrc !== fallbackIcon) {
-          setImageFailed(true);
-          return;
-        }
-        setSvgFailed(true);
-      }}
-      referrerPolicy="no-referrer"
-      className={normalizedClassName}
-    />
+    <div className={`flex items-center justify-center p-[3px] ${containerClasses}`}>
+      <img
+        src={displaySrc}
+        alt={label}
+        title={label}
+        loading="lazy"
+        onError={() => {
+          if (candidateIndex < imageCandidates.length - 1) {
+            setCandidateIndex((index) => index + 1);
+            return;
+          }
+          if (displaySrc !== fallbackIcon) {
+            setImageFailed(true);
+            return;
+          }
+          setSvgFailed(true);
+        }}
+        referrerPolicy="no-referrer"
+        className={`w-full h-full ${imgClasses}`}
+      />
+    </div>
   );
 }

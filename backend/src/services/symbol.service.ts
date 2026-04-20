@@ -1134,9 +1134,11 @@ export async function fetchSymbolFilters(type?: string): Promise<{
 export function mapCategoryToSymbolType(category?: string): SymbolType | undefined {
   if (!category) return undefined;
   const normalized = category.toLowerCase();
-  if (normalized === "stocks" || normalized === "bonds") return "stock";
+  if (normalized === "stocks") return "stock";
   if (normalized === "funds") return "etf";
-  if (normalized === "options" || normalized === "futures") return "derivative";
+  if (normalized === "options") return "options";
+  if (normalized === "futures") return "futures";
+  if (normalized === "bonds") return "bond";
   if (normalized === "crypto") return "crypto";
   if (normalized === "forex") return "forex";
   if (normalized === "indices" || normalized === "economy") return "index";

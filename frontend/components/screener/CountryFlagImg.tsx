@@ -1,6 +1,6 @@
 import { flagEmojiToCountryCode } from "@/lib/screener";
 
-export default function CountryFlagImg({ code, size = 16 }: { code: string; size?: number }) {
+export default function CountryFlagImg({ code, size = 16, className = "" }: { code: string; size?: number; className?: string }) {
   if (!code || code === "WORLD" || code === "OTHER") {
     return (
       <img
@@ -9,7 +9,7 @@ export default function CountryFlagImg({ code, size = 16 }: { code: string; size
         alt="World"
         width={size}
         height={Math.round(size * 0.75)}
-        className="inline-block rounded-[2px] object-cover"
+        className={`inline-block rounded-[2px] object-cover ${className}`}
         style={{ width: size, height: Math.round(size * 0.75), minWidth: size }}
         loading="lazy"
       />
@@ -33,7 +33,7 @@ export default function CountryFlagImg({ code, size = 16 }: { code: string; size
       alt={cc}
       width={size}
       height={h}
-      className="inline-block rounded-[2px] object-cover"
+      className={`inline-block rounded-[2px] object-cover ${className}`}
       style={{ width: size, height: h, minWidth: size }}
       loading="lazy"
     />

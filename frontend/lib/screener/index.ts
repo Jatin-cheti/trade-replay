@@ -3,3 +3,4 @@ export { FALLBACK_SCREENER_TYPES, DEFAULT_VISIBLE_COLUMNS, DEFAULT_FILTER_KEYS, 
 export { POPULAR_COUNTRIES, ALL_COUNTRIES, INDEX_GROUPS, type IndexGroupDef } from "./data";
 export { parseCsv, parseFiniteNumber, formatCompactNumber, formatPrice, formatPercent, formatDateValue, flagEmojiToCountryCode, getMultiParamName, getDateParamNames, parseFiltersFromSearch, isFilterActiveValue, buildFilterLabel, dedupe, normalizeRouteType, toStatsTypeKey } from "./utils";
 export { COMPLETE_SCREENER_META_FALLBACK } from "./fallback";
+export { SCREENER_TYPE_ICONS } from "./icons";
