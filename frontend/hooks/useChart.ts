@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Time, UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { createTradingChart, resizeChartSurface } from '@/services/chart/chartEngine';
 import {
@@ -17,7 +17,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function useChart(data: CandleData[], visibleCount: number, chartType: ChartType) {
+export type CrosshairSnapMode = 'free' | 'time' | 'ohlc';
+
+export function useChart(
+  data: CandleData[],
+  visibleCount: number,
+  chartType: ChartType,
+  onResize?: () => void,
+  mountKey = 'default',
+  parityMode = false,
+  parityRoute: 'simulation' | 'live' | null = null,
+) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
@@ -25,11 +35,11 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
   const resizeDebounceRef = useRef<number | null>(null);
   const lastLengthRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
-  const isUserInteractingRef = useRef(false);
-  const interactionResetTimerRef = useRef<number | null>(null);
+  const isDetachedFromRealtimeRef = useRef(false);
   const [ready, setReady] = useState(false);
+  const [chartGeneration, setChartGeneration] = useState(0);
 
-  const transformedData = useMemo(() => transformChartData(data, visibleCount), [data, visibleCount]);
+  const transformedData = useMemo(() => transformChartData(data, visibleCount, parityMode), [data, visibleCount, parityMode]);
 
   const getActiveSeries = useCallback(() => {
     const map = seriesMapRef.current;
@@ -42,37 +52,99 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     const overlay = overlayRef.current;
     if (!container || !overlay) return;
 
-    const chart = createTradingChart(container);
-    const seriesMap = createChartSeries(chart);
+    const chart = createTradingChart(container, {
+      parityMode,
+      viewMode: mountKey === 'full' ? 'full' : 'normal',
+    });
+    const seriesMap = createChartSeries(chart, { parityMode });
     chartRef.current = chart;
     seriesMapRef.current = seriesMap;
+    // New chart instance: force next data pass to use full setData sync.
+    lastLengthRef.current = 0;
+    lastTimeRef.current = null;
+    isDetachedFromRealtimeRef.current = false;
+    setChartGeneration((value) => value + 1);
 
-    resizeChartSurface(chart, container, overlay);
+    let disposed = false;
+    const resizeRetryTimers: number[] = [];
+    let lastDpr = window.devicePixelRatio || 1;
 
-    const markInteracting = () => {
-      isUserInteractingRef.current = true;
-      if (interactionResetTimerRef.current != null) {
-        window.clearTimeout(interactionResetTimerRef.current);
-      }
-      interactionResetTimerRef.current = window.setTimeout(() => {
-        const currentPosition = chartRef.current?.timeScale().scrollPosition();
-        if (currentPosition != null && currentPosition <= 0.5) {
-          isUserInteractingRef.current = false;
+    const flushResizeTimers = () => {
+      while (resizeRetryTimers.length) {
+        const timer = resizeRetryTimers.pop();
+        if (timer != null) {
+          window.clearTimeout(timer);
         }
-      }, 1200);
+      }
     };
 
-    container.addEventListener('wheel', markInteracting, { passive: true });
-    container.addEventListener('pointerdown', markInteracting);
-    container.addEventListener('touchstart', markInteracting, { passive: true });
+    const resizeOnce = () => {
+      if (disposed) return false;
+      const activeChart = chartRef.current;
+      const activeContainer = chartContainerRef.current;
+      const activeOverlay = overlayRef.current;
+      if (!activeChart || !activeContainer || !activeOverlay) return false;
+
+      // Full-view transitions can briefly report 0x0; retry until layout settles.
+      if (activeContainer.clientWidth <= 0 || activeContainer.clientHeight <= 0) {
+        return false;
+      }
+
+      resizeChartSurface(activeChart, activeContainer, activeOverlay);
+      onResize?.();
+      return true;
+    };
+
+    const scheduleResizeRetries = (delays = [0, 16, 64, 140, 260]) => {
+      flushResizeTimers();
+      for (const delay of delays) {
+        const timer = window.setTimeout(() => {
+          if (disposed) return;
+          resizeOnce();
+        }, delay);
+        resizeRetryTimers.push(timer);
+      }
+    };
+
+    scheduleResizeRetries();
+
+    const syncDetachState = () => {
+      const position = chart.timeScale().scrollPosition();
+      isDetachedFromRealtimeRef.current = position != null && position > 0.5;
+    };
+
+    const handleViewportChange = () => {
+      scheduleResizeRetries();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleResizeRetries([0, 40, 140]);
+      }
+    };
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(syncDetachState);
+    container.addEventListener('wheel', syncDetachState, { passive: true });
+    container.addEventListener('pointerup', syncDetachState);
+    container.addEventListener('touchend', syncDetachState, { passive: true });
+    window.addEventListener('resize', handleViewportChange, { passive: true });
+    window.addEventListener('pageshow', handleViewportChange);
+    document.addEventListener('fullscreenchange', handleViewportChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    syncDetachState();
 
     const observer = new ResizeObserver(() => {
       if (resizeDebounceRef.current != null) {
         window.clearTimeout(resizeDebounceRef.current);
       }
       resizeDebounceRef.current = window.setTimeout(() => {
-        if (!chartRef.current || !chartContainerRef.current || !overlayRef.current) return;
-        resizeChartSurface(chartRef.current, chartContainerRef.current, overlayRef.current);
+        const currentDpr = window.devicePixelRatio || 1;
+        if (Math.abs(currentDpr - lastDpr) > 0.001) {
+          lastDpr = currentDpr;
+        }
+        if (!resizeOnce()) {
+          scheduleResizeRetries([16, 60, 180]);
+        }
       }, 90);
     });
 
@@ -80,29 +152,42 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     setReady(true);
 
     return () => {
-      if (interactionResetTimerRef.current != null) {
-        window.clearTimeout(interactionResetTimerRef.current);
-      }
+      disposed = true;
+      flushResizeTimers();
       if (resizeDebounceRef.current != null) {
         window.clearTimeout(resizeDebounceRef.current);
       }
-      container.removeEventListener('wheel', markInteracting);
-      container.removeEventListener('pointerdown', markInteracting);
-      container.removeEventListener('touchstart', markInteracting);
+      try {
+        chart.timeScale().unsubscribeVisibleTimeRangeChange(syncDetachState);
+      } catch {
+        // Chart may already be disposed.
+      }
+      container.removeEventListener('wheel', syncDetachState);
+      container.removeEventListener('pointerup', syncDetachState);
+      container.removeEventListener('touchend', syncDetachState);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('pageshow', handleViewportChange);
+      document.removeEventListener('fullscreenchange', handleViewportChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       observer.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesMapRef.current = null;
+      lastLengthRef.current = 0;
+      lastTimeRef.current = null;
+      isDetachedFromRealtimeRef.current = false;
       setReady(false);
     };
-  }, []);
+  }, [mountKey, parityMode]);
 
   useEffect(() => {
     const map = seriesMapRef.current;
     const chart = chartRef.current;
-    if (!map || !chart) return;
+    const container = chartContainerRef.current;
+    if (!ready || !map || !chart) return;
 
     const timeScale = chart.timeScale();
+    const wasDetachedFromRealtime = isDetachedFromRealtimeRef.current;
     const previousLogicalRange = timeScale.getVisibleLogicalRange();
     const previousScrollPosition = timeScale.scrollPosition();
     const nextLength = transformedData.ohlcRows.length;
@@ -115,15 +200,35 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
 
     if (isAppend || isReplaceTail) {
       updateSeriesData(map, transformedData);
+      if (container) container.dataset.chartSyncMode = 'tail';
     } else {
       applySeriesData(map, transformedData);
-      isUserInteractingRef.current = false;
+      if (container) container.dataset.chartSyncMode = 'full';
     }
 
-    if (isUserInteractingRef.current) {
-      if (previousScrollPosition != null && Number.isFinite(previousScrollPosition)) {
-        timeScale.applyOptions({ rightOffset: previousScrollPosition });
-      }
+    if (container) {
+      container.dataset.chartDataLength = String(nextLength);
+      container.dataset.chartVisibleLength = String(transformedData.ohlcRows.length);
+      container.dataset.chartLastTime = nextLast == null ? '' : String(nextLast);
+    }
+
+    if (parityMode && nextLength > 0) {
+      const plotWidth = Math.max(120, (container?.clientWidth ?? 0) - 68);
+      // TradingView uses slightly different effective density in normal vs full layouts.
+      const isFullView = mountKey === 'full';
+      const barsPerPxDivisor = isFullView ? 6.14 : 6.1;
+      const rightPaddingBars = !isFullView && parityRoute === 'live' ? 6.1 : 5.8;
+
+      const targetBars = clamp(
+        Math.round(plotWidth / barsPerPxDivisor),
+        isFullView ? 60 : 60,
+        isFullView ? 320 : 240,
+      );
+      const rangeTo = (nextLength - 1) + rightPaddingBars;
+      const rangeFrom = Math.max(0, rangeTo - targetBars);
+      timeScale.setVisibleLogicalRange({ from: rangeFrom, to: rangeTo });
+      isDetachedFromRealtimeRef.current = false;
+    } else if (wasDetachedFromRealtime) {
       if (previousLogicalRange) {
         timeScale.setVisibleLogicalRange(previousLogicalRange);
       }
@@ -135,37 +240,47 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     }
 
     const postPosition = timeScale.scrollPosition();
-    if (postPosition != null && postPosition <= 0.5) {
-      isUserInteractingRef.current = false;
-    }
+    isDetachedFromRealtimeRef.current = parityMode
+      ? false
+      : (postPosition != null && postPosition > 0.5);
 
     lastLengthRef.current = nextLength;
     lastTimeRef.current = nextLast;
-  }, [transformedData]);
+  }, [ready, transformedData, chartGeneration, mountKey, parityMode, parityRoute]);
 
   useEffect(() => {
     const map = seriesMapRef.current;
-    if (!map) return;
+    if (!ready || !map) return;
     applySeriesVisibility(map, chartType);
-  }, [chartType]);
+  }, [chartType, ready]);
 
-  const pointerToDataPoint = useCallback((clientX: number, clientY: number, magnetMode: boolean) => {
+  const pointerToDataPoint = useCallback((clientX: number, clientY: number, snapMode: CrosshairSnapMode, magnetMode: boolean) => {
     const overlay = overlayRef.current;
     const chart = chartRef.current;
     const series = getActiveSeries();
     if (!overlay || !chart || !series) return null;
 
     const rect = overlay.getBoundingClientRect();
-    const x = clamp(clientX - rect.left, 0, rect.width);
-    const y = clamp(clientY - rect.top, 0, rect.height);
+    if (rect.width <= 0 || rect.height <= 0) return null;
 
-    const rawTime = chart.timeScale().coordinateToTime(x);
+    // Avoid exact edges where coordinate transforms can transiently return null during fullscreen resizes.
+    const edgeEpsilon = 0.5;
+    const x = clamp(clientX - rect.left, edgeEpsilon, Math.max(edgeEpsilon, rect.width - edgeEpsilon));
+    const y = clamp(clientY - rect.top, edgeEpsilon, Math.max(edgeEpsilon, rect.height - edgeEpsilon));
+
+    let rawTime = chart.timeScale().coordinateToTime(x);
     const rawPrice = series.coordinateToPrice(y);
+
+    if (rawTime == null) {
+      const fallbackTime = chart.timeScale().coordinateToTime(x - 1) ?? chart.timeScale().coordinateToTime(x + 1);
+      rawTime = fallbackTime;
+    }
 
     const time = toTimestampFromTime(rawTime);
     if (time == null || rawPrice == null || Number.isNaN(rawPrice)) return null;
 
-    if (!magnetMode || !transformedData.times.length) {
+    const effectiveSnapMode = magnetMode ? 'ohlc' : snapMode;
+    if (!transformedData.times.length || effectiveSnapMode === 'free') {
       return { time, price: rawPrice };
     }
 
@@ -173,17 +288,32 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     if (idx < 0) return { time, price: rawPrice };
     const candle = transformedData.ohlcRows[idx];
 
+    if (effectiveSnapMode === 'time') {
+      return { time: candle.time, price: rawPrice };
+    }
+
     const prices = [candle.open, candle.high, candle.low, candle.close];
     let snapped = prices[0];
     for (let i = 1; i < prices.length; i += 1) {
       if (Math.abs(prices[i] - rawPrice) < Math.abs(snapped - rawPrice)) snapped = prices[i];
     }
 
+    if (magnetMode) {
+      const baseRange = Math.max(1e-6, candle.high - candle.low, Math.abs(candle.close - candle.open));
+      const exponent = Math.floor(Math.log10(baseRange));
+      const baseStep = Math.pow(10, exponent);
+      const gridStep = Math.max(baseStep / 2, Math.abs(rawPrice) * 0.0001, 0.0001);
+      const snappedToGrid = Math.round(rawPrice / gridStep) * gridStep;
+      if (Math.abs(snappedToGrid - rawPrice) < Math.abs(snapped - rawPrice) * 0.9) {
+        snapped = snappedToGrid;
+      }
+    }
+
     return { time: candle.time, price: snapped };
   }, [getActiveSeries, transformedData.ohlcRows, transformedData.times]);
 
   const zoomToRange = useCallback((from: UTCTimestamp, to: UTCTimestamp) => {
-    chartRef.current?.timeScale().setVisibleRange({ from: Math.min(from, to) as Time, to: Math.max(from, to) as Time });
+    chartRef.current?.timeScale().setVisibleRange({ from: Math.min(from, to), to: Math.max(from, to) });
   }, []);
 
   return {

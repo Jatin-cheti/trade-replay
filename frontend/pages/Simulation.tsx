@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
 import { scenarios } from '@/data/stockData';
-import TradingChart from '@/components/chart/TradingChart';
+import ChartEngine from '@/components/chart/ChartEngine';
 import TradingPanel from '@/components/simulation/TradingPanel';
 import PortfolioPanel from '@/components/simulation/PortfolioPanel';
 import TradeHistory from '@/components/simulation/TradeHistory';
@@ -12,7 +12,7 @@ import BrandLottie from '@/components/BrandLottie';
 import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
 import ScrollReveal from '@/components/ScrollReveal';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
-import { BarChart3, History, Wallet, LineChart } from 'lucide-react';
+import { BarChart3, History, Wallet, LineChart, ArrowLeft } from 'lucide-react';
 
 export default function Simulation() {
   const {
@@ -34,7 +34,8 @@ export default function Simulation() {
       const portfolioId = searchParams.get('portfolioId') ?? undefined;
       const nextScenarioId = searchParams.get('scenarioId') ?? scenarioId;
       const scenario = scenarios.find(s => s.id === nextScenarioId);
-      const nextSymbol = scenario?.stocks[0]?.symbol ?? selectedStock;
+      const requestedSymbol = searchParams.get('symbol')?.trim().toUpperCase();
+      const nextSymbol = requestedSymbol || scenario?.stocks[0]?.symbol || selectedStock;
 
       if (portfolioId) {
         setActivePortfolioId(portfolioId);
@@ -65,6 +66,10 @@ export default function Simulation() {
     return map;
   }, [stockCache, candles, scenario.stocks]);
 
+  const cameFromSymbolPage = searchParams.get('from') === 'symbol';
+  const returnSymbol = searchParams.get('symbol')?.trim().toUpperCase() || selectedStock;
+  const parityMode = searchParams.get('parityData') === '1';
+
   const totalCandles = candles.length;
   const currentCandle = candles[currentCandleIndex] ?? null;
   const currentDate = currentCandle?.time ?? '';
@@ -82,6 +87,19 @@ export default function Simulation() {
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
       <main className="relative z-10">
+
+      {cameFromSymbolPage && (
+        <div className="px-3 pt-3">
+          <button
+            type="button"
+            onClick={() => navigate(`/symbol/${encodeURIComponent(returnSymbol)}`)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/20 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/35"
+          >
+            <ArrowLeft size={13} />
+            Back to Symbol
+          </button>
+        </div>
+      )}
 
       {isInitializingSimulation && (
         <div className="px-3 pt-3">
@@ -110,7 +128,14 @@ export default function Simulation() {
           className="flex-[7]"
         >
           <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
-            <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+            <ChartEngine
+              symbol={selectedStock}
+              timeframe="1m"
+              mode="simulation"
+              data={candles}
+              visibleCount={currentCandleIndex + 1}
+              parityMode={parityMode}
+            />
           </InteractiveSurface>
         </motion.div>
 
@@ -143,7 +168,14 @@ export default function Simulation() {
         {mobileTab === 'chart' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
-              <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+              <ChartEngine
+                symbol={selectedStock}
+                timeframe="1m"
+                mode="simulation"
+                data={candles}
+                visibleCount={currentCandleIndex + 1}
+                parityMode={parityMode}
+              />
             </InteractiveSurface>
           </motion.div>
         )}

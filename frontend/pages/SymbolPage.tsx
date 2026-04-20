@@ -273,6 +273,7 @@ export default function SymbolPage() {
   const screenerRouteType = toScreenerRouteType(detail.type);
   const isStock = detail.type === "stock";
   const isCrypto = detail.type === "crypto" || detail.marketClass === "cex" || detail.marketClass === "dex";
+  const simulationHref = `/simulation?symbol=${encodeURIComponent(detail.symbol)}&from=symbol&parityData=1`;
 
   // Build stock picker entries from detail — use Reliance data for RELIANCE, else single entry
   const isReliance = detail.symbol === "RELIANCE" || detail.symbol === "RIL";
@@ -535,7 +536,7 @@ export default function SymbolPage() {
             ))}
             {/* See on Supercharts — TradingView style right-aligned link */}
             <Link
-              to={`/simulation?symbol=${detail.symbol}`}
+              to={simulationHref}
               className="ml-auto shrink-0 flex items-center gap-1.5 rounded-lg border border-border/40 px-3 py-1.5 text-sm text-foreground hover:bg-secondary/30 transition-colors whitespace-nowrap"
             >
               <BarChart3 className="w-3.5 h-3.5" /> See on Supercharts
@@ -564,7 +565,7 @@ export default function SymbolPage() {
                   </button>
                   {/* Full chart button — matches image5 */}
                   <button
-                    onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
+                    onClick={() => navigate(simulationHref)}
                     className="flex items-center gap-1.5 h-8 rounded-md border border-border/50 bg-secondary/30 px-3 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
                   >
                     <BarChart3 className="w-3.5 h-3.5" /> Full chart
@@ -600,7 +601,7 @@ export default function SymbolPage() {
                 </div>
               ) : (
                 <div
-                  onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
+                  onClick={() => navigate(simulationHref)}
                   className="h-[340px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
@@ -785,7 +786,7 @@ export default function SymbolPage() {
             {/* ── Quick Actions ──────────────────────────────────────────── */}
             <div className="flex items-center gap-3 pt-6 border-t border-border/20">
               <button
-                onClick={() => navigate(`/simulation?symbol=${detail.symbol}`)}
+                onClick={() => navigate(simulationHref)}
                 className="flex items-center gap-2 rounded-lg bg-primary/15 border border-primary/30 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/25 transition-colors"
               >
                 <BarChart3 className="w-4 h-4" />

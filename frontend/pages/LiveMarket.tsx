@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Activity, BarChart3, FolderOpen, List, Search, TrendingUp } from "lucide-react";
-import TradingChart from "@/components/chart/TradingChart";
+import ChartEngine from "@/components/chart/ChartEngine";
 import SymbolSearchModal from "@/components/simulation/SymbolSearchModal";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
@@ -26,6 +26,7 @@ const defaultWatchlist = ["SPY", "AAPL", "TSLA", "BTCUSDT", "EURUSD"];
 export default function LiveMarket() {
   const { isAuthenticated, formatCurrency } = useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [viewMode, setViewMode] = useState<LiveViewMode>("symbol");
   const [selectedSymbol, setSelectedSymbol] = useState("SPY");
@@ -130,6 +131,7 @@ export default function LiveMarket() {
   const chartSymbol = viewMode === "portfolio"
     ? (selectedPortfolio ? `PORT-${selectedPortfolio.name}` : "PORTFOLIO")
     : selectedSymbol;
+  const parityMode = searchParams.get("parityData") === "1";
 
   const priceValue = viewMode === "portfolio" ? liveData.portfolioValue : (liveData.symbolQuote?.price ?? 0);
   const changePercent = viewMode === "portfolio" ? liveData.portfolioChangePercent : (liveData.symbolQuote?.changePercent ?? 0);
@@ -222,7 +224,14 @@ export default function LiveMarket() {
 
           <InteractiveSurface className="glass-strong rounded-2xl overflow-hidden gradient-border card-lift min-h-[68vh]">
             {chartData.length > 0 ? (
-              <TradingChart mode="live" data={chartData} visibleCount={chartData.length} symbol={chartSymbol} />
+              <ChartEngine
+                symbol={chartSymbol}
+                timeframe="1m"
+                mode="live"
+                data={chartData}
+                visibleCount={chartData.length}
+                parityMode={parityMode}
+              />
             ) : (
               <div className="h-full min-h-[460px] flex items-center justify-center text-sm text-muted-foreground">
                 Loading live chart...
