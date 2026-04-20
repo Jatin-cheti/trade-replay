@@ -606,11 +606,20 @@ export async function searchSymbols(params: {
             || !hasStrongLocalMatch(enrichedSmartItems, query)
           );
         if (shouldTryExternalFallback) {
-          const externalCandidates = await fetchExternalSymbols(query, {
-            country: normalizedCountry,
-            type: params.type,
-            limit: Math.max(12, limit * 2),
-          }).catch((error) => {
+          const externalCacheKey = clusterScopedKey(
+            "search-external",
+            query.toLowerCase(),
+            `${params.type ?? "all"}:${normalizedCountry ?? "all"}`,
+          );
+          const externalCandidates = await getOrSetCachedJsonWithLock<ExternalSymbolCandidate[]>(
+            externalCacheKey,
+            30,
+            () => fetchExternalSymbols(query, {
+              country: normalizedCountry,
+              type: params.type,
+              limit: Math.max(12, limit * 2),
+            }),
+          ).catch((error) => {
             logger.warn("external_symbol_fetch_failed", {
               query,
               message: error instanceof Error ? error.message : String(error),
@@ -993,11 +1002,20 @@ export async function searchSymbols(params: {
       && !params.cursor
       && (paged.length < Math.min(limit, 10) || !hasStrongLocalMatch(paged, query))
     ) {
-      const externalCandidates = await fetchExternalSymbols(query, {
-        country: normalizedCountry,
-        type: params.type,
-        limit: Math.max(12, limit * 2),
-      }).catch((error) => {
+      const externalCacheKey2 = clusterScopedKey(
+        "search-external",
+        query.toLowerCase(),
+        `${params.type ?? "all"}:${normalizedCountry ?? "all"}`,
+      );
+      const externalCandidates = await getOrSetCachedJsonWithLock<ExternalSymbolCandidate[]>(
+        externalCacheKey2,
+        30,
+        () => fetchExternalSymbols(query, {
+          country: normalizedCountry,
+          type: params.type,
+          limit: Math.max(12, limit * 2),
+        }),
+      ).catch((error) => {
         logger.warn("external_symbol_fetch_failed", {
           query,
           message: error instanceof Error ? error.message : String(error),
