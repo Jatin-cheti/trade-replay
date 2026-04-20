@@ -156,7 +156,9 @@ export async function listScreenerAssets(params: ListParams) {
         count: { $sum: 1 },
       }},
       { $replaceRoot: { newRoot: "$doc" } },
-      { $sort: sortObj },
+      // Push nulls to end: _hasSort=1 if field has a value, 0 otherwise
+      { $addFields: { _hasSort: { $cond: [{ $ifNull: [`$${dbSortField}`, false] }, 1, 0] } } },
+      { $sort: { _hasSort: -1, ...sortObj } },
     ];
     const countPipeline: PipelineStage[] = [...pipeline, { $count: "total" }];
     const dataPipeline: PipelineStage[] = [...pipeline, { $skip: params.offset }, { $limit: params.limit }];
