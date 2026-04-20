@@ -32,5 +32,27 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "mobile-iphone12",
+      use: { ...devices["iPhone 12"] },
+    },
+    {
+      name: "tablet-ipad",
+      use: { ...devices["iPad"] },
+    },
+    {
+      name: "laptop-1366",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1366, height: 768 },
+      },
+    },
+    {
+      name: "desktop-1920",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1920, height: 1080 },
+      },
+    },
   ],
 });
