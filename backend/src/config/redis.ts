@@ -35,6 +35,7 @@ function parseRedisUrl(url: string): RedisOptions {
 }
 
 export let redisConnectionOptions = parseRedisUrl(useMockRedis ? "redis://127.0.0.1:6379" : env.REDIS_URL);
+export const redisQueueConnectionOptions = redisConnectionOptions;
 function getRedisClientOptions(): RedisOptions {
   return {
     ...redisConnectionOptions,
