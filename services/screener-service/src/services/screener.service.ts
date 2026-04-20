@@ -29,6 +29,13 @@ function mapItem(doc: Record<string, unknown>): Record<string, unknown> {
   // Ensure price alias
   if (out.currentPrice !== undefined && (out.price === undefined || out.price === 0))
     out.price = out.currentPrice;
+  // Compute change/changePercent from price and previousClose
+  const price = out.price as number | undefined;
+  const prevClose = out.previousClose as number | undefined;
+  if (typeof price === "number" && typeof prevClose === "number" && prevClose > 0) {
+    if (out.change === undefined) out.change = price - prevClose;
+    if (out.changePercent === undefined) out.changePercent = ((price - prevClose) / prevClose) * 100;
+  }
   return out;
 }
 
