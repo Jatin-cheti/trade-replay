@@ -499,9 +499,9 @@ export default function SymbolPage() {
                   {detail.price > 0 ? detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "\u2014"}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground">{detail.currency}</span>
-                <span className={`text-lg font-semibold ${detail.changePercent > 0 ? "text-emerald-400" : detail.changePercent < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                  {detail.change > 0 ? "+" : ""}{detail.change.toFixed(2)}{" "}
-                  ({detail.changePercent > 0 ? "+" : ""}{detail.changePercent.toFixed(2)}%)
+                <span className={`text-lg font-semibold ${(detail.changePercent ?? 0) > 0 ? "text-emerald-400" : (detail.changePercent ?? 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                  {(detail.change ?? 0) > 0 ? "+" : ""}{(detail.change ?? 0).toFixed(2)}{" "}
+                  ({(detail.changePercent ?? 0) > 0 ? "+" : ""}{(detail.changePercent ?? 0).toFixed(2)}%)
                 </span>
               </div>
               {/* Timestamp like TradingView — timezone-aware */}
@@ -759,7 +759,7 @@ export default function SymbolPage() {
                 <FaqItem
                   q={`What is the current price of ${detail.name}?`}
                   a={detail.price > 0
-                    ? `The last known price of ${detail.name} (${detail.symbol}) stock is ${detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${detail.currency}. It changed by ${detail.changePercent >= 0 ? "+" : ""}${detail.changePercent.toFixed(2)}% in the latest trading session.`
+                    ? `The last known price of ${detail.name} (${detail.symbol}) stock is ${detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${detail.currency}. It changed by ${(detail.changePercent ?? 0) >= 0 ? "+" : ""}${(detail.changePercent ?? 0).toFixed(2)}% in the latest trading session.`
                     : "Price data is currently unavailable."}
                 />
                 {detail.marketCap != null && detail.marketCap > 0 && (
