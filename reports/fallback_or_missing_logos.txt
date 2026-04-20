@@ -1,0 +1,2 @@
+symbol|exchange|assetType|issue_type|width|height|source|current_url
+"　"|COINGECKO|crypto|missing|0|0|none|

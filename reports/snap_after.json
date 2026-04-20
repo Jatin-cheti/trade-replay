@@ -1,0 +1,256 @@
+{
+  "snapshot_ts": "2026-04-20T22:56:46.958Z",
+  "total_docs": 1579758,
+  "total_active": 1579751,
+  "by_type": [
+    {
+      "_id": "options",
+      "n": 1379532
+    },
+    {
+      "_id": "futures",
+      "n": 92796
+    },
+    {
+      "_id": "crypto",
+      "n": 48690
+    },
+    {
+      "_id": "stock",
+      "n": 41977
+    },
+    {
+      "_id": "etf",
+      "n": 11156
+    },
+    {
+      "_id": "forex",
+      "n": 4703
+    },
+    {
+      "_id": "index",
+      "n": 566
+    },
+    {
+      "_id": "economy",
+      "n": 180
+    },
+    {
+      "_id": "bond",
+      "n": 151
+    }
+  ],
+  "by_country_stocks": [
+    {
+      "_id": "US",
+      "n": 34803
+    },
+    {
+      "_id": "IN",
+      "n": 2965
+    },
+    {
+      "_id": "EU",
+      "n": 549
+    },
+    {
+      "_id": "GB",
+      "n": 546
+    },
+    {
+      "_id": "CA",
+      "n": 512
+    },
+    {
+      "_id": "AU",
+      "n": 386
+    },
+    {
+      "_id": "JP",
+      "n": 369
+    },
+    {
+      "_id": "HK",
+      "n": 297
+    },
+    {
+      "_id": "TW",
+      "n": 254
+    },
+    {
+      "_id": "CN",
+      "n": 248
+    },
+    {
+      "_id": "KR",
+      "n": 218
+    },
+    {
+      "_id": "GLOBAL",
+      "n": 149
+    },
+    {
+      "_id": "TH",
+      "n": 107
+    },
+    {
+      "_id": "IL",
+      "n": 71
+    },
+    {
+      "_id": "SE",
+      "n": 56
+    },
+    {
+      "_id": "SG",
+      "n": 52
+    },
+    {
+      "_id": "SA",
+      "n": 47
+    },
+    {
+      "_id": "NO",
+      "n": 35
+    },
+    {
+      "_id": "DK",
+      "n": 32
+    },
+    {
+      "_id": "ID",
+      "n": 32
+    },
+    {
+      "_id": "CH",
+      "n": 32
+    },
+    {
+      "_id": "BR",
+      "n": 31
+    },
+    {
+      "_id": "PL",
+      "n": 30
+    },
+    {
+      "_id": "MY",
+      "n": 27
+    },
+    {
+      "_id": "NZ",
+      "n": 26
+    },
+    {
+      "_id": "ZA",
+      "n": 22
+    },
+    {
+      "_id": "RU",
+      "n": 21
+    },
+    {
+      "_id": "",
+      "n": 20
+    },
+    {
+      "_id": "MX",
+      "n": 13
+    },
+    {
+      "_id": "AR",
+      "n": 10
+    },
+    {
+      "_id": "QA",
+      "n": 5
+    },
+    {
+      "_id": "AE",
+      "n": 3
+    },
+    {
+      "_id": "EG",
+      "n": 2
+    },
+    {
+      "_id": "CL",
+      "n": 2
+    },
+    {
+      "_id": "ES",
+      "n": 1
+    },
+    {
+      "_id": "KW",
+      "n": 1
+    },
+    {
+      "_id": "IT",
+      "n": 1
+    },
+    {
+      "_id": "BD",
+      "n": 1
+    },
+    {
+      "_id": "DE",
+      "n": 1
+    }
+  ],
+  "null_rates": {
+    "us": {
+      "_": "US stocks",
+      "n": 34803,
+      "price": "98.2%",
+      "pe": "66.4%",
+      "eps": "39.1%",
+      "marketCap": "0.0%",
+      "volume": "0.0%",
+      "avgVolume": "34.3%",
+      "dividendYield": "78.2%",
+      "beta": "47.2%",
+      "roe": "51.7%",
+      "earningsGrowth": "79.7%",
+      "epsGrowth": "79.4%",
+      "revenue": "50.7%",
+      "revenueGrowth": "54.1%",
+      "analystRating": "37.5%",
+      "peg": "81.8%",
+      "industry": "40.5%",
+      "sector": "14.2%"
+    },
+    "in": {
+      "_": "IN stocks",
+      "n": 2965,
+      "price": "92.3%",
+      "pe": "78.2%",
+      "eps": "72.7%",
+      "marketCap": "0.0%",
+      "volume": "0.0%",
+      "avgVolume": "72.3%",
+      "dividendYield": "85.1%",
+      "beta": "76.9%",
+      "roe": "94.9%",
+      "earningsGrowth": "83.2%",
+      "epsGrowth": "84.8%",
+      "revenue": "76.5%",
+      "revenueGrowth": "77.6%",
+      "analystRating": "77.3%",
+      "peg": "97.9%",
+      "industry": "77.0%",
+      "sector": "0.0%"
+    }
+  },
+  "logos": {
+    "withIcon": 1579750,
+    "withS3": 0,
+    "gFav64": 0,
+    "gFav128": 1460752,
+    "gFav256": 62,
+    "clearbit_logodev": 0,
+    "noLogo": 1,
+    "lowTier_lte2": 24,
+    "highTier_gte3": 624733
+  }
+}

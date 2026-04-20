@@ -1,0 +1,8 @@
+wave_id,source,type,country,started_at,ended_at,fetched,inserted,deduped,failed,skipped,notes
+W1-us-yahoo-broad,yahoo_quote+summary,stock,US,2026-04-19T22:30:00Z,2026-04-19T22:47:30Z,2005,1994,0,11,0,"17.5 min broad wave; top-coverage already in DB"
+W2-fmp-ratios,fmp_stable_ratios,stock,US,2026-04-19T22:48:00Z,2026-04-19T22:55:00Z,2000,1,0,1999,0,"Premium endpoint — blocked on subscription"
+W3-fmp-analyst,fmp_grades_consensus,stock,US,2026-04-19T22:55:10Z,2026-04-19T23:02:00Z,2000,3,0,1997,0,"Premium endpoint — blocked"
+W4-eps-growth-fmp,fmp_income_statement,stock,US,2026-04-19T22:56:00Z,,2000,,,,,"still running at snapshot time (PID 300776)"
+W5-logo-upgrade,db_mongo_pipeline,all,all,2026-04-20T22:45:00Z,2026-04-20T22:46:10Z,1579751,1460752,0,0,118937,"sz=128 -> sz=256; upgraded=1,460,752; skipped already sz=256 or non-Google"
+W6-india-yahoo-v2,yahoo_quote+summary,stock,IN,2026-04-20T23:00:00Z,2026-04-20T23:15:00Z,1500,868,0,632,0,"no-clobber merge; 957 deep summaries; 10848 fields written"
+W7-us-yahoo-wave2,yahoo_quote+summary,stock,US,2026-04-20T23:13:00Z,,5000,,,,,"running at ~750/min; 500/5000 at poll; ETA ~7 min"
