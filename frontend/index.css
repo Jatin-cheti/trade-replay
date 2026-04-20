@@ -905,4 +905,46 @@
     -webkit-tap-highlight-color: hsl(var(--neon-blue) / 0.15);
     touch-action: manipulation;
   }
+
+  /* Symbol custom range picker (react-day-picker) theme overrides */
+  .symbol-rdp {
+    --rdp-cell-size: 34px;
+    --rdp-accent-color: hsl(var(--primary));
+    --rdp-background-color: hsl(var(--primary) / 0.15);
+    --rdp-outline: 2px solid hsl(var(--primary) / 0.45);
+    --rdp-outline-selected: 2px solid hsl(var(--primary));
+  }
+
+  .symbol-rdp .rdp {
+    margin: 0;
+    color: hsl(var(--foreground));
+    font-size: 12px;
+  }
+
+  .symbol-rdp .rdp-caption_label,
+  .symbol-rdp .rdp-head_cell {
+    color: hsl(var(--muted-foreground));
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .symbol-rdp .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+    background: hsl(var(--secondary) / 0.45);
+  }
+
+  .symbol-rdp .rdp-day_selected,
+  .symbol-rdp .rdp-day_selected:focus-visible,
+  .symbol-rdp .rdp-day_selected:hover {
+    background: hsl(var(--primary) / 0.2);
+    color: hsl(var(--primary));
+    border-radius: 8px;
+  }
+
+  .symbol-rdp .rdp-nav_button,
+  .symbol-rdp .rdp-dropdown_month,
+  .symbol-rdp .rdp-dropdown_year {
+    color: hsl(var(--foreground));
+    background: hsl(var(--secondary) / 0.25);
+    border-radius: 6px;
+  }
 }

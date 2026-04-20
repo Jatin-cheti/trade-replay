@@ -1,0 +1,149 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { BarChart3 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import AssetAvatar from "@/components/ui/AssetAvatar";
+
+interface StickySymbolHeaderProps {
+  symbol: string;
+  name: string;
+  exchange: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  currency: string;
+  iconUrl: string;
+  activeTab: string;
+  tabs: readonly string[];
+  onTabChange: (tab: string) => void;
+  onFullChart: () => void;
+  /** ref to the hero section — when it leaves viewport, show sticky header */
+  heroRef: React.RefObject<HTMLDivElement | null>;
+}
+
+export default function StickySymbolHeader({
+  symbol,
+  name,
+  exchange,
+  price,
+  change,
+  changePercent,
+  currency,
+  iconUrl,
+  activeTab,
+  tabs,
+  onTabChange,
+  onFullChart,
+  heroRef,
+}: StickySymbolHeaderProps) {
+  const [visible, setVisible] = useState(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el) return;
+    observerRef.current = new IntersectionObserver(
+      ([entry]) => setVisible(!entry.isIntersecting),
+      { threshold: 0, rootMargin: "-64px 0px 0px 0px" }
+    );
+    observerRef.current.observe(el);
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, [heroRef]);
+
+  const safeChangePercent = changePercent ?? 0;
+  const isPositive = safeChangePercent > 0;
+  const isNegative = safeChangePercent < 0;
+  const priceColor = isPositive
+    ? "text-emerald-400"
+    : isNegative
+    ? "text-red-400"
+    : "text-muted-foreground";
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ y: -64, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -64, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 400, damping: 38, mass: 0.8 }}
+          className="fixed top-[var(--navbar-height,64px)] left-0 right-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur-xl shadow-lg"
+          style={{ willChange: "transform" }}
+        >
+          <div className="mx-auto max-w-[1400px] px-4 md:px-6">
+            <div className="flex items-center h-12 gap-3">
+              {/* Compact logo + info */}
+              <AssetAvatar
+                src={iconUrl}
+                label={symbol}
+                className="h-7 w-7 rounded-full border border-border/30 shrink-0"
+              />
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-bold text-foreground truncate">{symbol}</span>
+                <span className="hidden sm:inline text-xs text-muted-foreground truncate max-w-[160px]">
+                  {name}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60 font-medium bg-secondary/50 rounded px-1.5 py-0.5 border border-border/20 shrink-0">
+                  {exchange}
+                </span>
+              </div>
+
+              {/* Price */}
+              <div className="flex items-center gap-1.5 ml-1">
+                <span className="text-sm font-bold text-foreground tabular-nums">
+                  {price > 0
+                    ? price.toLocaleString("en", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : "—"}
+                </span>
+                <span className="text-xs text-muted-foreground">{currency}</span>
+                <span className={`text-xs font-semibold tabular-nums ${priceColor}`}>
+                  {isPositive ? "+" : ""}
+                  {safeChangePercent.toFixed(2)}%
+                </span>
+              </div>
+
+              {/* Tabs — scrollable */}
+              <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide ml-2">
+                <div className="flex items-center gap-0">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => onTabChange(tab)}
+                      className={`relative px-3 h-12 text-xs font-medium whitespace-nowrap transition-colors ${
+                        activeTab === tab
+                          ? "text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {tab}
+                      {activeTab === tab && (
+                        <motion.div
+                          layoutId="sticky-tab-indicator"
+                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+                          transition={{ type: "spring", stiffness: 450, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Full chart CTA */}
+              <button
+                onClick={onFullChart}
+                className="hidden md:flex shrink-0 items-center gap-1.5 rounded-md border border-border/40 px-3 h-7 text-xs font-medium text-foreground hover:bg-secondary/30 transition-colors"
+              >
+                <BarChart3 className="w-3 h-3" />
+                Full chart
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
