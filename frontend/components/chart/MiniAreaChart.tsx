@@ -8,6 +8,7 @@ interface MiniAreaChartProps {
   color?: string;
   showTooltip?: boolean;
   currency?: string;
+  chartType?: "area" | "line" | "candlestick";
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -83,6 +84,7 @@ export default function MiniAreaChart({
   color,
   showTooltip = true,
   currency,
+  chartType = "area",
 }: MiniAreaChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(propWidth ?? 800);
@@ -100,12 +102,27 @@ export default function MiniAreaChart({
   const width = propWidth ?? containerWidth;
   const PADDING = { top: 16, right: 65, bottom: 36, left: 12 };
 
-  const { points, fillPath, linePath, minVal, maxVal, isGain, yTicks, timeLabels } = useMemo(() => {
-    if (data.length < 2) return { points: [], fillPath: "", linePath: "", minVal: 0, maxVal: 0, isGain: true, yTicks: [], timeLabels: [] };
+  const { points, fillPath, linePath, minVal, maxVal, isGain, yTicks, timeLabels, candleShapes } = useMemo(() => {
+    if (data.length < 2) {
+      return {
+        points: [],
+        fillPath: "",
+        linePath: "",
+        minVal: 0,
+        maxVal: 0,
+        isGain: true,
+        yTicks: [],
+        timeLabels: [],
+        candleShapes: [],
+      };
+    }
 
     const closes = data.map((d) => d.close);
-    const min = Math.min(...closes);
-    const max = Math.max(...closes);
+    const lows = data.map((d) => typeof (d as { low?: number }).low === "number" ? (d as { low: number }).low : d.close);
+    const highs = data.map((d) => typeof (d as { high?: number }).high === "number" ? (d as { high: number }).high : d.close);
+
+    const min = chartType === "candlestick" ? Math.min(...lows) : Math.min(...closes);
+    const max = chartType === "candlestick" ? Math.max(...highs) : Math.max(...closes);
     const range = max - min || 1;
     const chartW = width - PADDING.left - PADDING.right;
     const chartH = height - PADDING.top - PADDING.bottom;
@@ -121,6 +138,32 @@ export default function MiniAreaChart({
     const lineD = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
     const bottomY = PADDING.top + chartH;
     const fillD = `${lineD} L ${pts[pts.length - 1].x.toFixed(1)} ${bottomY} L ${pts[0].x.toFixed(1)} ${bottomY} Z`;
+    const candleWidth = Math.max(2, Math.min(10, (chartW / Math.max(data.length, 1)) * 0.7));
+
+    const candleShapes = data.map((d, i) => {
+      const x = PADDING.left + (i / (data.length - 1)) * chartW;
+      const open = typeof (d as { open?: number }).open === "number" ? (d as { open: number }).open : d.close;
+      const high = typeof (d as { high?: number }).high === "number" ? (d as { high: number }).high : d.close;
+      const low = typeof (d as { low?: number }).low === "number" ? (d as { low: number }).low : d.close;
+      const close = d.close;
+      const yOpen = PADDING.top + chartH - ((open - min) / range) * chartH;
+      const yHigh = PADDING.top + chartH - ((high - min) / range) * chartH;
+      const yLow = PADDING.top + chartH - ((low - min) / range) * chartH;
+      const yClose = PADDING.top + chartH - ((close - min) / range) * chartH;
+
+      return {
+        i,
+        x,
+        yOpen,
+        yHigh,
+        yLow,
+        yClose,
+        bullish: close >= open,
+        bodyTop: Math.min(yOpen, yClose),
+        bodyHeight: Math.max(1, Math.abs(yClose - yOpen)),
+        bodyWidth: candleWidth,
+      };
+    });
 
     const yTicks = niceYTicks(min, max, 6);
 
@@ -139,8 +182,8 @@ export default function MiniAreaChart({
       tl.push({ x, label: timeStr, dateLabel: showDate ? dateStr : undefined });
     }
 
-    return { points: pts, fillPath: fillD, linePath: lineD, minVal: min, maxVal: max, isGain: isGainVal, yTicks, timeLabels: tl };
-  }, [data, width, height]);
+    return { points: pts, fillPath: fillD, linePath: lineD, minVal: min, maxVal: max, isGain: isGainVal, yTicks, timeLabels: tl, candleShapes };
+  }, [chartType, data, width, height]);
 
   const chartColor = color ?? (isGain ? "#26a69a" : "#ef5350");
   const gradId = "mini-area-grad";
@@ -219,11 +262,39 @@ export default function MiniAreaChart({
           </g>
         ))}
 
-        {/* Filled area */}
-        <path d={fillPath} fill={`url(#${gradId})`} />
+        {/* Series */}
+        {chartType === "area" && (
+          <>
+            <path d={fillPath} fill={`url(#${gradId})`} />
+            <path d={linePath} fill="none" stroke={chartColor} strokeWidth={1.5} strokeLinejoin="round" />
+          </>
+        )}
 
-        {/* Line */}
-        <path d={linePath} fill="none" stroke={chartColor} strokeWidth={1.5} strokeLinejoin="round" />
+        {chartType === "line" && (
+          <path d={linePath} fill="none" stroke={chartColor} strokeWidth={2} strokeLinejoin="round" />
+        )}
+
+        {chartType === "candlestick" && candleShapes.map((c) => (
+          <g key={c.i}>
+            <line
+              x1={c.x}
+              y1={c.yHigh}
+              x2={c.x}
+              y2={c.yLow}
+              stroke={c.bullish ? "#26a69a" : "#ef5350"}
+              strokeWidth={1}
+            />
+            <rect
+              x={c.x - c.bodyWidth / 2}
+              y={c.bodyTop}
+              width={c.bodyWidth}
+              height={c.bodyHeight}
+              fill={c.bullish ? "#26a69a" : "#ef5350"}
+              opacity={0.85}
+              rx={1}
+            />
+          </g>
+        ))}
 
         {/* Last price horizontal dashed line + badge */}
         {lastPrice && (
