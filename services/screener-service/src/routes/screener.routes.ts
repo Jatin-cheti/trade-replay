@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { list, stats, search, symbol } from "../controllers/screener.controller.js";
+import { list, stats, search, symbol, meta } from "../controllers/screener.controller.js";
 import { screenAuth, listScreens, createScreen, updateScreen, deleteScreen, copyScreen } from "../controllers/screen.controller.js";
 
 const router = Router();
 
 // Public screener endpoints
+router.get("/meta", meta);
 router.get("/list", list);
 router.get("/stats", stats);
 router.get("/search", search);
