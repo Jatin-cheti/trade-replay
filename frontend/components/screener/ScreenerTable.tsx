@@ -207,8 +207,10 @@ export default function ScreenerTable({
               <button
                 key={`${item.fullSymbol}-${index}`}
                 type="button"
+                data-testid="screener-row"
+                data-symbol={item.fullSymbol || item.symbol}
                 onClick={() => onNavigate(item.symbol)}
-                className={`grid w-full items-center gap-2 py-2 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 group md:py-2.5 ${
+                className={`grid w-full items-center gap-2 py-2 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 group md:py-2.5 ${`
                   index > 0 ? "border-t border-border/20" : ""
                 } ${
                   flashBySymbol[item.fullSymbol || item.symbol] === "up"

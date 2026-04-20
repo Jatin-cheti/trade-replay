@@ -173,7 +173,7 @@ export default function Screener() {
               <span className="text-xs text-muted-foreground">
                 <>
                   <CountryFlagImg code={activeCountries[0] || "WORLD"} size={14} className="mr-1 inline-block align-text-bottom" />
-                  <strong className="text-foreground">{data.total.toLocaleString()}</strong> results · {countryLabel}
+                  <strong data-testid="screener-result-count" className="text-foreground">{data.total.toLocaleString()}</strong> results · {countryLabel}
                 </>
               </span>
               <span className="text-border/50">|</span>
@@ -183,6 +183,7 @@ export default function Screener() {
                   <button
                     key={c.code || "global"}
                     type="button"
+                    data-testid={`screener-country-${c.code || "global"}`}
                     onClick={() => filters.setMultiFilter("marketCountries", c.code ? [c.code] : [])}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
                       isActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"

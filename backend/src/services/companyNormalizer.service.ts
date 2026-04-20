@@ -272,7 +272,6 @@ const NAME_DOMAIN_MAP: Record<string, string> = {
   "toronto dominion": "td.com",
   "bank of nova scotia": "scotiabank.com",
   "scotiabank": "scotiabank.com",
-  "shopify": "shopify.com",
   "enbridge": "enbridge.com",
   "suncor": "suncor.com",
   "barrick gold": "barrick.com",
