@@ -125,10 +125,25 @@ export async function listScreenerAssets(params: ListParams) {
     // Use aggregation with dedup for India stocks
     const pipeline: PipelineStage[] = [
       { $match: filter },
-      { $sort: sortObj },
-      // Group by symbol to pick the best exchange per symbol
+      // Sort NSE first (exchange ascending: "NSE" < others alphabetically is not guaranteed, use addFields)
+      { $addFields: {
+        _exchangePrio: { $switch: {
+          branches: [
+            { case: { $eq: ["$exchange", "NSE"] }, then: 1 },
+            { case: { $eq: ["$exchange", "BSE"] }, then: 2 },
+          ],
+          default: 3,
+        }},
+      }},
+      { $sort: { _exchangePrio: 1 as const, ...sortObj } },
+      // Strip .NS/.BO suffixes for dedup grouping, then pick the best exchange per symbol
+      { $addFields: {
+        _dedupKey: {
+          $replaceAll: { input: { $replaceAll: { input: "$symbol", find: ".NS", replacement: "" } }, find: ".BO", replacement: "" }
+        },
+      }},
       { $group: {
-        _id: "$symbol",
+        _id: "$_dedupKey",
         doc: { $first: "$$ROOT" },
         exchanges: { $push: "$exchange" },
         count: { $sum: 1 },
