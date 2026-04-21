@@ -182,6 +182,15 @@ export interface ChartOptions {
    * Can also be enabled at runtime: `window.__TRADEREPLAY_PERF_DEBUG__ = true`.
    */
   perfDebug?: boolean;
+  /**
+   * When provided, the time axis uses these exact UTC-second timestamps as
+   * tick targets instead of the automatic bar-modulo heuristic. The chart
+   * finds the nearest data bar to each target and labels it.
+   * Useful for 1D NSE sessions: pass the 30-min IST boundary timestamps
+   * (stored as fake-UTC seconds, i.e. IST time treated as UTC) so labels
+   * always land on 09:30, 10:00, 10:30 … 15:30 regardless of bar count.
+   */
+  forcedTimeTicks?: number[];
 }
 
 export interface IChartApi {
@@ -579,6 +588,10 @@ export function createChart(
   // normally instead of the chart hijacking the wheel.
   let allowWheelZoom = initOpts?.handleScale?.mouseWheel !== false;
   let allowWheelScroll = initOpts?.handleScroll?.mouseWheel !== false;
+
+  // Optional forced tick timestamps (UTC seconds, e.g. IST fake-UTC boundaries for 1D).
+  // When set, drawTimeAxis uses nearest-bar lookup instead of the modulo heuristic.
+  let forcedTimeTicks: number[] | null = initOpts?.forcedTimeTicks ?? null;
   let allowPressedMouseMove = initOpts?.handleScroll?.pressedMouseMove !== false;
 
   /** Ordered list of pane definitions; main pane is always first. */
@@ -1364,6 +1377,36 @@ export function createChart(
       interval = timeIndex.interval();
     }
 
+    // ── Forced tick mode (e.g. 1D NSE 30-min IST boundaries) ──────────
+    if (forcedTimeTicks && forcedTimeTicks.length > 0 && timeIndex.length > 0) {
+      const firstT = timeIndex.at(rs.firstBar);
+      const lastT = timeIndex.at(rs.lastBar);
+      const rangeSec = firstT != null && lastT != null ? Math.max(0, lastT - firstT) : interval;
+
+      for (const targetSec of forcedTimeTicks) {
+        // Find the bar whose timestamp is nearest to this target second
+        let bestBar = -1;
+        let bestDist = Infinity;
+        for (let i = rs.firstBar; i <= rs.lastBar; i++) {
+          const t = timeIndex.at(i);
+          if (t == null) continue;
+          const dist = Math.abs((t as number) - targetSec);
+          if (dist < bestDist) { bestDist = dist; bestBar = i; }
+        }
+        if (bestBar < 0) continue;
+
+        const x = barToX(bestBar);
+        if (x < 10 || x > w - 10) continue;
+        const t = timeIndex.at(bestBar);
+        if (t == null) continue;
+        // Use the TARGET timestamp for the label (not the nearest bar's timestamp)
+        // so labels always read exactly 09:30, 10:00, etc.
+        ctx.fillText(fmtTime(targetSec as UTCTimestamp, interval, rangeSec), x, h + TIME_AXIS_H / 2);
+      }
+      return;
+    }
+
+    // ── Default automatic tick mode ────────────────────────────────────
     const tickBars = resolveTimeTickBars(
       rs.firstBar,
       rs.lastBar,
@@ -2496,6 +2539,7 @@ export function createChart(
       if (opts.crosshair?.vertLine?.color) crosshairVColor = opts.crosshair.vertLine.color;
       if (opts.crosshair?.horzLine?.color) crosshairHColor = opts.crosshair.horzLine.color;
       if (opts.rightPriceScale?.borderColor) axisBorderColor = opts.rightPriceScale.borderColor;
+      if ('forcedTimeTicks' in opts) forcedTimeTicks = opts.forcedTimeTicks ?? null;
       resizeCanvas(undefined, 'apply-options');
       scheduleRender();
     },

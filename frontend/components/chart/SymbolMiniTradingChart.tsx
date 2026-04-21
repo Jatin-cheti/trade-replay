@@ -28,11 +28,11 @@ interface SymbolMiniTradingChartProps {
 }
 
 const GREEN_LINE = '#10b981';
-const GREEN_TOP = 'rgba(16, 185, 129, 0.12)';
-const GREEN_BOTTOM = 'rgba(16, 185, 129, 0.01)';
+const GREEN_TOP = 'rgba(16, 185, 129, 0.08)';
+const GREEN_BOTTOM = 'rgba(16, 185, 129, 0.00)';
 const RED_LINE = '#ef4444';
-const RED_TOP = 'rgba(239, 68, 68, 0.12)';
-const RED_BOTTOM = 'rgba(239, 68, 68, 0.01)';
+const RED_TOP = 'rgba(239, 68, 68, 0.08)';
+const RED_BOTTOM = 'rgba(239, 68, 68, 0.00)';
 
 const PREV_CLOSE_COLOR = 'rgba(156, 163, 175, 0.85)';
 
@@ -141,6 +141,24 @@ export default function SymbolMiniTradingChart({
     seriesMap.line.applyOptions({ color: lineColor });
     seriesMap.stepLine.applyOptions({ color: lineColor });
 
+    // Update forced tick boundaries whenever timePeriod changes
+    if (timePeriod === '1d') {
+      // Build 30-min IST boundary timestamps (stored as fake-UTC seconds)
+      // so the x-axis always shows 09:30, 10:00, 10:30 … 15:30 exactly.
+      const IST_OFFSET_MS = 5.5 * 3600 * 1000;
+      const istNow = new Date(Date.now() + IST_OFFSET_MS);
+      const y = istNow.getUTCFullYear(), mo = istNow.getUTCMonth(), da = istNow.getUTCDate();
+      // 09:30 to 15:30 IST in 30-min steps (13 ticks)
+      const ticks: number[] = [];
+      for (let minFromMidnight = 9 * 60 + 30; minFromMidnight <= 15 * 60 + 30; minFromMidnight += 30) {
+        ticks.push(Date.UTC(y, mo, da, Math.floor(minFromMidnight / 60), minFromMidnight % 60, 0) / 1000);
+      }
+      chartRef.current?.applyOptions({ forcedTimeTicks: ticks });
+    } else {
+      // Clear forced ticks for all other periods — use automatic heuristic
+      chartRef.current?.applyOptions({ forcedTimeTicks: undefined });
+    }
+
     const times = transformed.ohlcRows;
     if (times.length >= 2) {
       // Clamp visible range to the data span. (Backend serves daily candles,
@@ -192,12 +210,13 @@ export default function SymbolMiniTradingChart({
 
   const tooltipBits = useMemo(() => {
     if (!tooltip) return null;
+    // Use UTC getters — timestamps use the fake-UTC IST trick so UTCHours == IST hours
     const d = new Date(tooltip.time * 1000);
-    const day = String(d.getDate()).padStart(2, '0');
-    const mon = d.toLocaleString('en-US', { month: 'short' });
-    const yr = String(d.getFullYear()).slice(2);
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const yr = String(d.getUTCFullYear()).slice(2);
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
     return {
       price: formatPriceUs(tooltip.price),
       date: `${day} ${mon} '${yr}`,

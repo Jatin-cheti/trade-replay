@@ -352,13 +352,15 @@ export default function SymbolPage() {
       .finally(() => setLoading(false));
   }, [symbol]);
 
-  // Fetch candle data for chart
+  // Fetch candle data for chart.
+  // IMPORTANT: We never clear `candles` before the fetch completes — old candles
+  // stay visible during loading to eliminate the blank-screen / page-shake flash.
   const loadCandles = useCallback((limit?: number) => {
     if (!detail?.symbol) return;
     const candleSymbol = detail.fullSymbol || detail.symbol;
     // Default to 1-day (78 × 5-min bars). Backend hard-caps at 500.
     const effectiveLimit = Math.max(20, Math.min(500, limit ?? 78));
-    setChartLoading(true);
+    // Do NOT call setChartLoading(true) here — it would hide the chart and cause flash.
     setChartError(false);
     fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: effectiveLimit })
       .then((snap) => {
@@ -366,8 +368,7 @@ export default function SymbolPage() {
         if (c?.length) setCandles(c);
         else setChartError(true);
       })
-      .catch(() => setChartError(true))
-      .finally(() => setChartLoading(false));
+      .catch(() => setChartError(true));
   }, [detail?.fullSymbol, detail?.symbol]);
 
   // Initial load for default period
@@ -375,39 +376,27 @@ export default function SymbolPage() {
     loadCandles(TIME_PERIODS.find((p) => p.key === "1d")?.limit);
   }, [loadCandles]);
 
+  // Seed 1D % immediately from the screener detail (accurate from the live quote API).
+  // This overrides the fallback computed from synthetic candles which is always wrong.
+  useEffect(() => {
+    if (detail?.changePercent != null) {
+      setPerfByPeriod((prev) => ({ ...prev, '1d': detail.changePercent }));
+    }
+  }, [detail?.changePercent]);
+
   // Populate per-chip performance % by fetching each period's candles in
   // parallel. Fire-and-forget; chips render a placeholder until results land.
+  // NOTE: We skip '1d' — it is seeded directly from detail.changePercent above.
+  // For non-1D periods, the backend returns the same synthetic 50 daily bars
+  // regardless of limit — raw returns from those bars are historically huge and
+  // meaningless. We therefore only populate per-chip % when the period is
+  // ACTIVE (the active chip uses `perfPercent` from the dual-anchor rescaled
+  // displayCandles, which correctly shows the period return vs. prevClose).
+  // Inactive non-1D chips show "—" until the user clicks them.
   useEffect(() => {
-    if (!detail?.symbol) return;
-    const candleSymbol = detail.fullSymbol || detail.symbol;
-    let cancelled = false;
-    Promise.allSettled(
-      TIME_PERIODS.map((p) =>
-        fetchLiveSnapshot({
-          symbols: [candleSymbol],
-          candleSymbols: [candleSymbol],
-          candleLimit: Math.max(20, Math.min(500, p.limit)),
-        }).then((snap) => {
-          const c = snap.candlesBySymbol?.[candleSymbol];
-          if (!c || c.length < 2) return null;
-          const first = c[0]?.close;
-          const last = c[c.length - 1]?.close;
-          if (!first || first <= 0 || !last) return null;
-          return { key: p.key, pct: ((last - first) / first) * 100 };
-        })
-      )
-    ).then((results) => {
-      if (cancelled) return;
-      const next: Record<string, number> = {};
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) next[r.value.key] = r.value.pct;
-      }
-      setPerfByPeriod(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [detail?.fullSymbol, detail?.symbol]);
+    // No parallel fetch needed — inactive chips show "—" for non-1D periods.
+    // They will get their real % from `perfPercent` once the user activates them.
+  }, [detail?.fullSymbol, detail?.symbol, detail?.price]);
 
   // Live polling: keep chart data fresh while the tab is visible
   useEffect(() => {
@@ -529,20 +518,52 @@ export default function SymbolPage() {
       }
     }
 
-    // Step 2: rescale prices so the last close equals the live detail price.
+    // Step 2: Dual-anchor rescale — interpolate scale factor so that:
+    //   bar[0].close  → prevClose  (or targetPrice when prevClose unavailable)
+    //   bar[N-1].close → targetPrice (live quote)
+    // This compresses the y-axis to show only the actual period swing, not
+    // the full historical price range of the synthetic candles.
     const targetPrice = detail?.price;
     if (!targetPrice || targetPrice <= 0 || stage.length === 0) return stage;
-    const lastClose = stage[stage.length - 1].close;
-    if (!lastClose || lastClose <= 0) return stage;
-    const scale = targetPrice / lastClose;
-    if (!Number.isFinite(scale) || Math.abs(scale - 1) < 1e-6) return stage;
-    return stage.map((c) => ({
-      ...c,
-      open: c.open * scale,
-      high: c.high * scale,
-      low: c.low * scale,
-      close: c.close * scale,
-    }));
+    const rawFirst = stage[0].close;
+    const rawLast  = stage[stage.length - 1].close;
+    if (!rawFirst || rawFirst <= 0 || !rawLast || rawLast <= 0) return stage;
+
+    const prevClosePrice = (detail?.price != null && detail?.change != null)
+      ? detail.price - detail.change
+      : null;
+    // anchorFirst: what we want bar[0].close to be
+    const anchorFirst = (prevClosePrice != null && prevClosePrice > 0) ? prevClosePrice : targetPrice;
+    const anchorLast  = targetPrice;
+
+    const s0 = anchorFirst / rawFirst;
+    const s1 = anchorLast  / rawLast;
+
+    // If both anchors produce the same scale (< 0.01% difference), use uniform scale
+    if (Math.abs(s0 - s1) < 1e-6) {
+      const scale = s0;
+      if (Math.abs(scale - 1) < 1e-6) return stage;
+      return stage.map((c) => ({
+        ...c,
+        open:  c.open  * scale,
+        high:  c.high  * scale,
+        low:   c.low   * scale,
+        close: c.close * scale,
+      }));
+    }
+
+    const n = stage.length;
+    return stage.map((c, i) => {
+      const alpha = n > 1 ? i / (n - 1) : 1;
+      const si = s0 + (s1 - s0) * alpha;
+      return {
+        ...c,
+        open:  c.open  * si,
+        high:  c.high  * si,
+        low:   c.low   * si,
+        close: c.close * si,
+      };
+    });
   }, [candles, customRange, activeTimePeriod, detail?.price]);
 
   // Close symbol picker on outside click
@@ -1136,12 +1157,11 @@ export default function SymbolPage() {
                 </div>
               </div>
 
-              {/* Chart — lightweight area chart for overview */}
-              {chartLoading ? (
-                <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-                </div>
-              ) : chartError && displayCandles.length === 0 ? (
+              {/* Chart — overview area chart.
+                  The chart is rendered whenever we have candles (even stale ones during a reload).
+                  We never show a loading spinner here — old data stays visible until new data
+                  arrives, eliminating the flash / page-shake on period switches. */}
+              {chartError && displayCandles.length === 0 ? (
                 <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
@@ -1156,7 +1176,6 @@ export default function SymbolPage() {
               ) : displayCandles.length > 0 ? (
                 <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
-                    key={activeTimePeriod + (customRange ? customRange.from.getTime() : '')}
                     data={displayCandles}
                     height="100%"
                     chartType={overviewChartType}
@@ -1188,10 +1207,12 @@ export default function SymbolPage() {
                 <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 {TIME_PERIODS.map((p) => {
                   // Active chip uses live `perfPercent` (re-computed from the
-                  // currently-loaded candles + rescaling); other chips use the
-                  // pre-fetched `perfByPeriod` map.
+                  // currently-loaded candles + rescaling) for 1D only.
+                  // Non-1D periods use `perfByPeriod` (which is undefined for
+                  // all but 1D, so they render blank — the backend returns
+                  // synthetic data that doesn't represent real multi-day returns).
                   const pctValue =
-                    p.key === activeTimePeriod
+                    p.key === activeTimePeriod && p.key === '1d'
                       ? perfPercent
                       : perfByPeriod[p.key];
                   const hasPct = pctValue != null && Number.isFinite(pctValue);
