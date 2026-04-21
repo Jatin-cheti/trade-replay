@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { Check, ChevronDown, Filter, Plus, Search, X } from "lucide-react";
+import {
+  Check, ChevronDown, Filter, Plus, Search, X,
+  Globe2, BookMarked, BarChart2, DollarSign, TrendingUp, Building2,
+  Percent, Coins, Layers, Star, Activity, ArrowUpRight, Sigma,
+  Waves, Calendar, CalendarClock,
+} from "lucide-react";
 import type {
   DateRangeFilterValue,
   ParsedFilters,
@@ -8,6 +13,7 @@ import type {
   ScreenerMetaResponse,
 } from "@/lib/screener";
 import {
+  ALL_COUNTRIES,
   DEFAULT_FILTER_KEYS,
   FALLBACK_FILTER_CATEGORY_LABELS,
   buildFilterLabel,
@@ -15,6 +21,28 @@ import {
 } from "@/lib/screener";
 import CountryFlagImg from "./CountryFlagImg";
 import FilterEditorSwitch from "./FilterEditorSwitch";
+
+const FILTER_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  marketCountries: Globe2,
+  watchlists: BookMarked,
+  indices: BarChart2,
+  exchanges: Building2,
+  price: DollarSign,
+  changePercent: TrendingUp,
+  marketCap: Building2,
+  pe: Percent,
+  epsDilGrowth: TrendingUp,
+  divYieldPercent: Coins,
+  sector: Layers,
+  analystRating: Star,
+  perfPercent: Activity,
+  revenueGrowth: ArrowUpRight,
+  peg: Sigma,
+  roe: Percent,
+  beta: Waves,
+  recentEarningsDate: Calendar,
+  upcomingEarningsDate: CalendarClock,
+};
 
 export default function ScreenerFilterBar({
   meta,
@@ -99,12 +127,19 @@ export default function ScreenerFilterBar({
                 active ? "border-primary/40 bg-primary/12 text-primary" : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
               }`}
             >
+              {(() => { const Icon = FILTER_ICONS[field.key]; return Icon ? <Icon className="h-3 w-3 shrink-0 opacity-70" /> : null; })()}
               {field.key === "marketCountries" ? (
                 <span className="inline-flex items-center gap-1">
                   {(() => {
                     const countries = (value as string[] | undefined) || [];
                     if (countries.length === 0) return <><CountryFlagImg code="WORLD" size={16} /><span>Entire world</span></>;
-                    if (countries.length === 1) return <><CountryFlagImg code={countries[0]} size={16} /><span>{countries[0]}</span></>;
+                    if (countries.length === 1) {
+                      const code = countries[0];
+                      if (code === "WORLD") return <><CountryFlagImg code="WORLD" size={16} /><span>Entire world</span></>;
+                      const entry = ALL_COUNTRIES.find((c) => c.value === code);
+                      const name = entry?.name ?? code;
+                      return <><CountryFlagImg code={code} size={16} /><span>{name}</span></>;
+                    }
                     return <>{countries.slice(0, 2).map((c) => <CountryFlagImg key={c} code={c} size={14} />)}{countries.length > 2 && <span>+{countries.length - 2}</span>}</>;
                   })()}
                 </span>

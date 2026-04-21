@@ -100,7 +100,6 @@ export default function Screener() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [addColumnOpen, filters, typeMenuOpen]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setTypeMenuOpen(false); filters.setAddFilterOpen(false); setAddColumnOpen(false); filters.setEditingFilterKey(null); }, [location.pathname, location.search]);
 
   /* ── Callbacks ── */
@@ -129,17 +128,7 @@ export default function Screener() {
     URL.revokeObjectURL(url);
   }, [visibleColumns, data.items, routeType]);
 
-  type SavedScreen = {
-    _id: string;
-    tab?: string;
-    columns?: string[];
-    sort?: string;
-    order?: string;
-    query?: string;
-    filters?: Record<string, unknown>;
-    screenerType?: string;
-  };
-  const loadScreenState = useCallback((screen: SavedScreen) => {
+  const loadScreenState = useCallback((screen: any) => {
     screens.setActiveScreenId(screen._id); screens.setScreenDirty(false);
     const p = new URLSearchParams();
     p.set("tab", screen.tab || "overview");
@@ -157,8 +146,8 @@ export default function Screener() {
   }, [navigate, routeType, setSearchParams, screens]);
 
   return (
-    <div className="min-h-screen bg-background pb-8 pt-3">
-      <div className="mx-auto max-w-[1480px] px-4 md:px-6">
+    <div className="min-h-screen overflow-x-hidden bg-background pb-8 pt-3">
+      <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10">
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           <span>Screener</span><span className="text-muted-foreground/35">/</span>
           {(() => { const Icon = SCREENER_TYPE_ICONS[currentType?.routeType || "stocks"]; return Icon ? <Icon className="h-3.5 w-3.5" /> : null; })()}
@@ -181,21 +170,25 @@ export default function Screener() {
           ];
           return (
             <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-secondary/15 px-3 py-1.5">
-              <span className="text-xs text-muted-foreground">
-                <>
-                  <CountryFlagImg code={activeCountries[0] || "WORLD"} size={14} className="mr-1 inline-block align-text-bottom" />
-                  <strong data-testid="screener-result-count" className="text-foreground">{data.total.toLocaleString()}</strong> results · {countryLabel}
-                </>
-              </span>
-              <span className="text-border/50">|</span>
               {QUICK_COUNTRIES.map((c) => {
-                const isActive = c.code === "" ? activeCountries.length === 0 : activeCountries.length === 1 && activeCountries[0] === c.code;
+                const isActive = c.code === "" ? activeCountries.length === 0 : activeCountries.includes(c.code);
                 return (
                   <button
                     key={c.code || "global"}
                     type="button"
                     data-testid={`screener-country-${c.code || "global"}`}
-                    onClick={() => filters.setMultiFilter("marketCountries", c.code ? [c.code] : [])}
+                    onClick={() => {
+                      if (c.code === "") {
+                        filters.setMultiFilter("marketCountries", []);
+                        return;
+                      }
+                      const current = (data.parsedFilters.marketCountries as string[] | undefined) || [];
+                      if (current.includes(c.code)) {
+                        filters.setMultiFilter("marketCountries", current.filter(x => x !== c.code));
+                      } else {
+                        filters.setMultiFilter("marketCountries", [...current, c.code]);
+                      }
+                    }}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
                       isActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                     }`}
@@ -209,6 +202,8 @@ export default function Screener() {
           );
         })()}
         <ScreenerTabBar tabs={meta?.tabs || []} activeTab={activeTab} loading={data.loading} onTabSelect={onTabSelect} onRefresh={data.refreshList} />
+      </div>{/* end padded section */}
+      <div className="w-full min-w-0">{/* full-width table section */}
         {data.loading && data.items.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />Loading screener…</div>
         ) : isMobile ? (
@@ -216,19 +211,18 @@ export default function Screener() {
         ) : (
           <ScreenerTable items={data.items} flashBySymbol={data.flashBySymbol} visibleColumns={visibleColumns} columnLookup={columnLookup} sortField={data.sortField} sortOrder={data.sortOrder} loadingMore={data.loadingMore} onSort={setSort} onNavigate={(sym: string) => navigate(`/symbol/${encodeURIComponent(sym)}`)} onLoadMore={data.loadMore} addColumnOpen={addColumnOpen} setAddColumnOpen={setAddColumnOpen} addColumnSearch={addColumnSearch} setAddColumnSearch={setAddColumnSearch} availableAddColumnFields={availableAddColumnFields} updateSelectedColumns={updateSelectedColumns} addColumnRef={addColumnRef} />
         )}
-        {!data.loading && data.items.length === 0 && <div className="py-16 text-center text-sm text-muted-foreground">No results found. Try adjusting your filters.</div>}
-        {!data.loading && data.total > 0 && (
-          <div className="mt-3 flex items-center justify-between px-1">
-            <p className="text-xs text-muted-foreground">
-              {data.total.toLocaleString()} results
-              {(() => {
-                const ac = (data.parsedFilters.marketCountries as string[] | undefined) || [];
-                if (ac.length === 1) return ` · ${ac[0]} filter`;
-                if (ac.length > 1) return ` · ${ac.length} countries`;
-                return " · Global";
-              })()}
-            </p>
-            <p className="text-xs text-muted-foreground">Loaded {data.items.length.toLocaleString()} rows</p>
+        {!data.loading && data.items.length === 0 && (
+          <div data-testid="screener-no-results" className="flex flex-col items-center gap-3 py-20 text-center">
+            <div className="text-3xl" aria-hidden>🔍</div>
+            <p className="text-sm font-medium text-foreground">No results found</p>
+            <p className="max-w-xs text-xs text-muted-foreground">Try adjusting your filters or switching to a different market.</p>
+            <button
+              type="button"
+              onClick={() => navigate(`/screener/${routeType}`)}
+              className="mt-1 rounded-lg bg-secondary/40 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/60"
+            >
+              Clear all filters
+            </button>
           </div>
         )}
       </div>

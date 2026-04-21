@@ -1,0 +1,539 @@
+{
+  "by_country_top": [
+    {
+      "_id": "US",
+      "count": 1333674
+    },
+    {
+      "_id": "GLOBAL",
+      "count": 179441
+    },
+    {
+      "_id": "IN",
+      "count": 66857
+    },
+    {
+      "_id": "",
+      "count": 3373
+    },
+    {
+      "_id": "EU",
+      "count": 847
+    },
+    {
+      "_id": "CA",
+      "count": 608
+    },
+    {
+      "_id": "JP",
+      "count": 604
+    },
+    {
+      "_id": "AU",
+      "count": 463
+    },
+    {
+      "_id": "GB",
+      "count": 298
+    },
+    {
+      "_id": "CN",
+      "count": 276
+    },
+    {
+      "_id": "HK",
+      "count": 233
+    },
+    {
+      "_id": "KR",
+      "count": 231
+    },
+    {
+      "_id": "ES",
+      "count": 103
+    },
+    {
+      "_id": "BR",
+      "count": 43
+    },
+    {
+      "_id": "MX",
+      "count": 20
+    },
+    {
+      "_id": "DE",
+      "count": 13
+    },
+    {
+      "_id": "ZA",
+      "count": 8
+    },
+    {
+      "_id": "IT",
+      "count": 7
+    },
+    {
+      "_id": "FR",
+      "count": 7
+    },
+    {
+      "_id": "ID",
+      "count": 4
+    },
+    {
+      "_id": "SA",
+      "count": 3
+    },
+    {
+      "_id": "RU",
+      "count": 3
+    },
+    {
+      "_id": "CH",
+      "count": 3
+    },
+    {
+      "_id": "TR",
+      "count": 3
+    },
+    {
+      "_id": "MY",
+      "count": 3
+    },
+    {
+      "_id": "NZ",
+      "count": 3
+    },
+    {
+      "_id": "TW",
+      "count": 3
+    },
+    {
+      "_id": "NO",
+      "count": 2
+    },
+    {
+      "_id": "PL",
+      "count": 2
+    },
+    {
+      "_id": "PH",
+      "count": 2
+    }
+  ],
+  "in_breakdown": [
+    {
+      "_id": {
+        "exchange": "OPT",
+        "type": "derivative"
+      },
+      "count": 59861,
+      "has_logo": 59861,
+      "has_isin": 59861,
+      "has_sector": 59861,
+      "has_marketCap": 59861
+    },
+    {
+      "_id": {
+        "exchange": "DERIV",
+        "type": "derivative"
+      },
+      "count": 3336,
+      "has_logo": 3336,
+      "has_isin": 3336,
+      "has_sector": 3336,
+      "has_marketCap": 3336
+    },
+    {
+      "_id": {
+        "exchange": "NSE",
+        "type": "stock"
+      },
+      "count": 2586,
+      "has_logo": 2586,
+      "has_isin": 2586,
+      "has_sector": 2586,
+      "has_marketCap": 2586
+    },
+    {
+      "_id": {
+        "exchange": "BSE",
+        "type": "stock"
+      },
+      "count": 756,
+      "has_logo": 755,
+      "has_isin": 756,
+      "has_sector": 756,
+      "has_marketCap": 756
+    },
+    {
+      "_id": {
+        "exchange": "CFD",
+        "type": "derivative"
+      },
+      "count": 279,
+      "has_logo": 279,
+      "has_isin": 279,
+      "has_sector": 279,
+      "has_marketCap": 279
+    },
+    {
+      "_id": {
+        "exchange": "BSE",
+        "type": "etf"
+      },
+      "count": 11,
+      "has_logo": 11,
+      "has_isin": 11,
+      "has_sector": 11,
+      "has_marketCap": 11
+    },
+    {
+      "_id": {
+        "exchange": "NSE",
+        "type": "etf"
+      },
+      "count": 9,
+      "has_logo": 9,
+      "has_isin": 9,
+      "has_sector": 9,
+      "has_marketCap": 9
+    },
+    {
+      "_id": {
+        "exchange": "NSE",
+        "type": "index"
+      },
+      "count": 7,
+      "has_logo": 7,
+      "has_isin": 7,
+      "has_sector": 7,
+      "has_marketCap": 7
+    },
+    {
+      "_id": {
+        "exchange": "ECONOMICS",
+        "type": "economy"
+      },
+      "count": 6,
+      "has_logo": 6,
+      "has_isin": 6,
+      "has_sector": 6,
+      "has_marketCap": 6
+    },
+    {
+      "_id": {
+        "exchange": "BOND",
+        "type": "bond"
+      },
+      "count": 3,
+      "has_logo": 3,
+      "has_isin": 3,
+      "has_sector": 3,
+      "has_marketCap": 3
+    },
+    {
+      "_id": {
+        "exchange": "BSE",
+        "type": "index"
+      },
+      "count": 2,
+      "has_logo": 2,
+      "has_isin": 2,
+      "has_sector": 2,
+      "has_marketCap": 2
+    },
+    {
+      "_id": {
+        "exchange": "BONDS",
+        "type": "bond"
+      },
+      "count": 1,
+      "has_logo": 1,
+      "has_isin": 1,
+      "has_sector": 1,
+      "has_marketCap": 1
+    }
+  ],
+  "facets": {
+    "global": [
+      {
+        "n": 1587159
+      }
+    ],
+    "india": [
+      {
+        "n": 66857
+      }
+    ],
+    "us": [
+      {
+        "n": 1333674
+      }
+    ],
+    "nse_stock": [
+      {
+        "n": 2586
+      }
+    ],
+    "bse_stock": [
+      {
+        "n": 756
+      }
+    ],
+    "mf": [],
+    "futures": [],
+    "options": [],
+    "bonds": [
+      {
+        "n": 4
+      }
+    ]
+  },
+  "audit": {
+    "total": 32354,
+    "null_overwrite_bug": 0,
+    "weak_source_bug": 0,
+    "positive_confidence": 0,
+    "zero_confidence": 0,
+    "by_reason": [
+      {
+        "_id": null,
+        "count": 32354
+      }
+    ]
+  },
+  "dupes": [],
+  "source_names": [],
+  "indexes": [
+    {
+      "name": "_id_",
+      "key": {
+        "_id": 1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_logo_status_idx",
+      "key": {
+        "logoStatus": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "type_1_country_1_createdAt_-1__id_-1",
+      "key": {
+        "type": 1,
+        "country": 1,
+        "createdAt": -1,
+        "_id": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_search_prefixes_idx",
+      "key": {
+        "searchPrefixes": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "isCleanAsset_1_priorityScore_-1",
+      "key": {
+        "isCleanAsset": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_popularity_active_idx",
+      "key": {
+        "popularity": -1,
+        "createdAt": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_priority_score_idx",
+      "key": {
+        "priorityScore": -1,
+        "createdAt": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_asset_prefixes_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "searchPrefixes": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_exchange_priority_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "exchange": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_type_country_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "type": 1,
+        "country": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "createdAt_-1__id_-1",
+      "key": {
+        "createdAt": -1,
+        "_id": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_1_type_1_country_1_createdAt_-1",
+      "key": {
+        "symbol": 1,
+        "type": 1,
+        "country": 1,
+        "createdAt": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_type_exchange_priority_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "type": 1,
+        "exchange": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_search_frequency_idx",
+      "key": {
+        "searchFrequency": -1,
+        "createdAt": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_hot_lifecycle_idx",
+      "key": {
+        "isHot": 1,
+        "lastAccessedAt": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_1_priorityScore_-1",
+      "key": {
+        "symbol": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "fullSymbol_1",
+      "key": {
+        "fullSymbol": 1
+      },
+      "unique": true
+    },
+    {
+      "name": "clean_type_priority_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "type": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "exchange_1_type_1_country_1",
+      "key": {
+        "exchange": 1,
+        "type": 1,
+        "country": 1
+      },
+      "unique": false
+    },
+    {
+      "name": "logoAttempts_1_lastLogoAttemptAt_1",
+      "key": {
+        "logoAttempts": 1,
+        "lastLogoAttemptAt": 1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_asset_priority_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_asset_symbol_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "symbol": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_prefix_idx",
+      "key": {
+        "searchPrefixes": 1
+      },
+      "unique": false
+    },
+    {
+      "name": "clean_country_priority_idx",
+      "key": {
+        "isCleanAsset": 1,
+        "country": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_text_name_text_fullSymbol_text",
+      "key": {
+        "_fts": "text",
+        "_ftsx": 1
+      },
+      "unique": false
+    },
+    {
+      "name": "primary_listing_idx",
+      "key": {
+        "isPrimaryListing": 1,
+        "type": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    },
+    {
+      "name": "symbol_base_cluster_idx",
+      "key": {
+        "baseSymbol": 1,
+        "priorityScore": -1
+      },
+      "unique": false
+    }
+  ],
+  "timestamp": "2026-04-21T04:56:14.495Z"
+}

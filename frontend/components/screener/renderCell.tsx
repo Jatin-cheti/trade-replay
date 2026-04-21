@@ -4,24 +4,32 @@ import { NUMERIC_COLUMNS, formatCompactNumber, formatDateValue, formatPercent, f
 
 export default function renderCell(item: ScreenerItem, columnKey: string) {
   if (columnKey === "symbol") {
+    const displayName = (item.name && item.name.trim()) || item.symbol;
+    const ticker = item.symbol;
+    const exchange = item.exchange;
     return (
       <div className="flex min-w-0 items-center gap-2.5">
-        <AssetAvatar src={item.iconUrl} label={item.symbol} className="h-7 w-7 shrink-0 rounded-full object-contain bg-white/90 p-0.5 ring-1 ring-border/40" />
+        <AssetAvatar src={item.iconUrl} label={ticker} className="h-7 w-7 shrink-0 rounded-full object-contain bg-white/90 p-0.5 ring-1 ring-border/40" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{item.symbol}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{item.name}</p>
+          <p className="truncate text-sm font-semibold leading-tight text-foreground">{displayName}</p>
+          <p className="truncate text-[10px] leading-tight text-muted-foreground/80">{exchange ? `${exchange}: ${ticker}` : ticker}</p>
         </div>
       </div>
     );
   }
-  if (columnKey === "changePercent" || columnKey === "perfPercent" || columnKey === "epsDilGrowth") {
+  if (columnKey === "changePercent" || columnKey === "perfPercent" || columnKey === "epsDilGrowth" || columnKey === "revenueGrowth" || columnKey === "roe") {
     const raw = item[columnKey as keyof ScreenerItem];
     if (raw === null || raw === undefined) return <span className="text-xs text-muted-foreground">—</span>;
     const num = Number(raw);
     if (!Number.isFinite(num)) return <span className="text-xs text-muted-foreground">—</span>;
-    // Show "0.00%" for genuine zero (flat movement) — don't treat as missing
     if (num === 0) return <span className="text-xs text-muted-foreground">{formatPercent(0)}</span>;
     return <span className={`text-xs font-semibold tabular-nums ${num > 0 ? "text-emerald-400" : ""} ${num < 0 ? "text-red-400" : "text-muted-foreground"}`}>{formatPercent(num)}</span>;
+  }
+  if (columnKey === "divYieldPercent") {
+    const raw = item.divYieldPercent;
+    const num = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(num) || num === 0) return <span className="text-xs text-muted-foreground">—</span>;
+    return <span className="text-xs tabular-nums text-emerald-400">{formatPercent(num)}</span>;
   }
   if (columnKey === "analystRating") {
     const rating = item.analystRating;
@@ -37,7 +45,7 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
     const cfg = cfgs[key] ?? { icon: "—", color: "#9598a1", label: rating };
     return <span className="inline-flex items-center gap-0.5 text-xs font-medium" style={{ color: cfg.color }}><span>{cfg.icon}</span><span>{cfg.label}</span></span>;
   }
-  if (columnKey === "price") return <span className="text-xs tabular-nums text-foreground">{formatPrice(item.price)}</span>;
+  if (columnKey === "price") return <span className="text-xs tabular-nums text-foreground">{formatPrice(item.price, item.currency)}</span>;
   if (columnKey === "recentEarningsDate" || columnKey === "upcomingEarningsDate") return <span className="text-xs text-foreground/85">{formatDateValue(item[columnKey as keyof ScreenerItem] as string | undefined)}</span>;
   const raw = item[columnKey as keyof ScreenerItem];
   if (NUMERIC_COLUMNS.has(columnKey)) {

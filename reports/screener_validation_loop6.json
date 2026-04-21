@@ -1,0 +1,404 @@
+{
+  "timestamp": "2026-04-21T05:43:25.937Z",
+  "baseUrl": "https://tradereplay.me",
+  "summary": {
+    "total": 56,
+    "passed": 56,
+    "failed": 0,
+    "passPct": 100
+  },
+  "results": [
+    {
+      "viewport": "mobile-xs",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=805"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=10"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=320 iw=320"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "mobile-xs",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=875"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=11"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=390 iw=390"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "mobile-iphone",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=941"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=12"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=430 iw=430"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "mobile-large",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=3147"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=23"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=768 iw=768"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "tablet-portrait",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=2504"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=18"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=1024 iw=1024"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "tablet-landscape",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=2504"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=18"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=1280 iw=1280"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "laptop",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C01",
+      "desc": "Screener page loads (body text > 200 chars)",
+      "ok": true,
+      "note": "bodyLen=2739"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C02",
+      "desc": "At least 10 screener rows visible",
+      "ok": true,
+      "note": "rows=20"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C03",
+      "desc": "No literal 'undefined' / 'null' / 'NaN' in first 10 rows",
+      "ok": true,
+      "note": "checked=10"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C04",
+      "desc": "First row has a visible avatar (image loaded OR initials badge)",
+      "ok": true,
+      "note": "img loaded=true"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C05",
+      "desc": "No horizontal page overflow (scrollWidth ≤ innerWidth + 5px)",
+      "ok": true,
+      "note": "sw=1440 iw=1440"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C06",
+      "desc": "Result count element shows a non-zero number",
+      "ok": true,
+      "note": "count=7480"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C07",
+      "desc": "At least one price cell shows currency symbol or em-dash",
+      "ok": true,
+      "note": "priceSample=₹1,362.6|₹795.40|₹1,846.1"
+    },
+    {
+      "viewport": "desktop",
+      "id": "C08",
+      "desc": "Row href contains /symbol/ path",
+      "ok": true,
+      "note": "href=/symbol/NSE%3ARELIANCE"
+    }
+  ]
+}

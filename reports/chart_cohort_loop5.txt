@@ -1,0 +1,23 @@
+PASS NSE:RELIANCE       -> RELIANCE.NS    | real OHLCV n=18 last=1361.90
+PASS NSE:HDFCBANK       -> HDFCBANK.NS    | real OHLCV n=18 last=803.30
+PASS NSE:TCS            -> TCS.NS         | real OHLCV n=18 last=2587.20
+PASS NSE:INFY           -> INFY.NS        | real OHLCV n=18 last=1314.80
+PASS NSE:LT             -> LT.NS          | real OHLCV n=18 last=4076.20
+PASS NSE:BAJFINANCE     -> BAJFINANCE.NS  | real OHLCV n=18 last=927.10
+PASS NASDAQ:AAPL        -> AAPL           | real OHLCV n=20 last=273.05
+PASS NASDAQ:MSFT        -> MSFT           | real OHLCV n=20 last=418.07
+PASS NASDAQ:GOOGL       -> GOOGL          | real OHLCV n=20 last=337.42
+PASS NYSE:JPM           -> JPM            | real OHLCV n=20 last=316.99
+PASS NASDAQ:TSLA        -> TSLA           | real OHLCV n=20 last=392.50
+PASS NSE:NIFTYBEES      -> NIFTYBEES.NS   | real OHLCV n=18 last=277.00
+PASS NYSE:SPY           -> SPY            | real OHLCV n=20 last=708.72
+PASS NASDAQ:QQQ         -> QQQ            | real OHLCV n=20 last=646.79
+PASS NSE:NIFTY50        -> ^NSEI          | real OHLCV n=18 last=24513.90
+PASS CBOE:SPX           -> ^GSPC          | real OHLCV n=20 last=7109.14
+PASS CRYPTO:BTCUSDT     -> BTC-USD        | real OHLCV n=31 last=75877.58
+PASS CRYPTO:ETHUSDT     -> ETH-USD        | real OHLCV n=31 last=2317.00
+PASS FOREX:USDINR       -> USDINR=X       | real OHLCV n=22 last=93.31
+PASS NSE:BANKNIFTY      -> ^NSEBANK       | real OHLCV n=18 last=57212.35
+PASS NSE:NIFTY          -> ^NSEI          | real OHLCV n=18 last=24513.90
+
+=== 21/21 cohort symbols return REAL Yahoo OHLCV ===

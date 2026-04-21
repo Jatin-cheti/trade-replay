@@ -14,7 +14,7 @@ Files affected (all now redacted):
 **Action taken in Loop 4:** PowerShell `-replace` pass substituted all occurrences
 with `REDACTED_AV_KEY_LOOP4`. Verification:
 ```
-Select-String -Path reports\*.md,reports\*.json -Pattern "PCDWC3C4U8HZ5G98"
+Select-String -Path reports\*.md,reports\*.json -Pattern "***REDACTED_AV_KEY***"
 (no matches = OK)
 ```
 

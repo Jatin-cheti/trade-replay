@@ -92,12 +92,11 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
     if (import.meta.env.DEV && response.data.items.length > 0) {
       const sample = response.data.items[0];
       const requestedCols = (params.columns as string || "").split(",").filter(Boolean);
-      const sampleRecord = sample as unknown as Record<string, unknown>;
-      const missingFields = requestedCols.filter((col: string) => col !== "symbol" && sampleRecord[col] === undefined);
+      const missingFields = requestedCols.filter((col: string) => col !== "symbol" && (sample as any)[col] === undefined);
       if (missingFields.length > 0) {
         console.warn("[Screener] Fields requested but undefined in response:", missingFields, "| Sample keys:", Object.keys(sample));
       }
-      const nullFields = requestedCols.filter((col: string) => sampleRecord[col] === null);
+      const nullFields = requestedCols.filter((col: string) => (sample as any)[col] === null);
       if (nullFields.length > 0) {
         console.debug("[Screener] Fields with null value (genuinely unavailable):", nullFields);
       }

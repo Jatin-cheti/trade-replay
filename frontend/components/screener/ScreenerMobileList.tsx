@@ -24,16 +24,16 @@ export default function ScreenerMobileList({
         itemContent={(index, item) => (
           // Section 2 spec (SYM-NEWTAB-001): new tab on row click.
           <a
-            href={`/symbol/${encodeURIComponent(item.symbol)}`}
+            href={`/symbol/${encodeURIComponent(item.fullSymbol || item.symbol)}`}
             target="_blank"
             rel="noopener noreferrer"
             data-testid="screener-row-mobile"
             data-symbol={item.fullSymbol || item.symbol}
             onClick={(e) => {
               if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-              onNavigate?.(item.symbol);
+              onNavigate?.(item.fullSymbol || item.symbol);
             }}
-            className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-secondary/35 ${
+            className={`flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-left transition-colors hover:bg-secondary/35 ${
               index > 0 ? "border-t border-border/20" : ""
             }`}
           >
@@ -43,18 +43,19 @@ export default function ScreenerMobileList({
               className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-border/40"
             />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-sm font-semibold text-foreground">{item.symbol}</span>
-                <span className="text-[10px] text-muted-foreground">{item.exchange}</span>
-              </div>
-              <p className="truncate text-xs text-muted-foreground">{item.name}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm tabular-nums text-foreground">{formatPrice(item.price)}</p>
-              <p className={`text-xs font-semibold tabular-nums ${item.changePercent > 0 ? "text-emerald-400" : item.changePercent < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                {formatPercent(item.changePercent)}
+              <span className="block truncate text-sm font-semibold leading-tight text-foreground">
+                {(item.name && item.name.trim()) || item.symbol}
+              </span>
+              <p className="truncate text-[10px] leading-tight text-muted-foreground/80">
+                {item.exchange ? `${item.exchange}: ${item.symbol}` : item.symbol}
               </p>
-              <p className="text-[11px] tabular-nums text-muted-foreground">{formatCompactNumber(item.marketCap)}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-sm tabular-nums text-foreground">{formatPrice(item.price, item.currency)}</p>
+              <p className={`text-xs font-semibold tabular-nums ${item.changePercent == null ? "text-muted-foreground" : item.changePercent > 0 ? "text-emerald-400" : item.changePercent < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                {item.changePercent == null || !Number.isFinite(item.changePercent) ? "—" : formatPercent(item.changePercent)}
+              </p>
+              <p className="text-[11px] tabular-nums text-muted-foreground">{item.marketCap ? formatCompactNumber(item.marketCap) : ""}</p>
             </div>
           </a>
         )}

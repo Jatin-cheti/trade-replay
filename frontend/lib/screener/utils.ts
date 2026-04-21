@@ -34,11 +34,23 @@ export function formatCompactNumber(value?: number | null): string {
   return value.toFixed(0);
 }
 
-export function formatPrice(value?: number | null): string {
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$", INR: "₹", GBP: "£", EUR: "€", JPY: "¥",
+  HKD: "HK$", AUD: "A$", CAD: "C$", SGD: "S$",
+  CHF: "CHF ", KRW: "₩", BRL: "R$", MXN: "MX$", ZAR: "R",
+  RUB: "₽", TRY: "₺", IDR: "Rp", THB: "฿", PLN: "zł",
+  NOK: "kr", SEK: "kr", DKK: "kr", TWD: "NT$", NZD: "NZ$",
+};
+
+export function formatPrice(value?: number | null, currency?: string | null): string {
   if (value === undefined || value === null || !Number.isFinite(value) || value <= 0) return "—";
-  if (value >= 1000) return value.toLocaleString("en", { maximumFractionDigits: 2 });
-  if (value >= 1) return value.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return value.toLocaleString("en", { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+  const cur = (currency || "USD").toUpperCase();
+  const sym = CURRENCY_SYMBOLS[cur] ?? `${cur} `;
+  let body: string;
+  if (value >= 1000) body = value.toLocaleString("en", { maximumFractionDigits: 2 });
+  else if (value >= 1) body = value.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  else body = value.toLocaleString("en", { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+  return `${sym}${body}`;
 }
 
 export function formatPercent(value?: number | null): string {
