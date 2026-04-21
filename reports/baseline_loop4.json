@@ -1,0 +1,173 @@
+{
+  "global_active": 1594101,
+  "global_total": 1594108,
+  "by_country_top": [
+    {
+      "_id": "US",
+      "n": 1328012
+    },
+    {
+      "_id": "GLOBAL",
+      "n": 178043
+    },
+    {
+      "_id": "IN",
+      "n": 80551
+    },
+    {
+      "_id": "",
+      "n": 1819
+    },
+    {
+      "_id": "GB",
+      "n": 986
+    },
+    {
+      "_id": "EU",
+      "n": 847
+    },
+    {
+      "_id": "CA",
+      "n": 617
+    },
+    {
+      "_id": "JP",
+      "n": 602
+    },
+    {
+      "_id": "HK",
+      "n": 529
+    },
+    {
+      "_id": "AU",
+      "n": 463
+    },
+    {
+      "_id": "CN",
+      "n": 276
+    },
+    {
+      "_id": "TW",
+      "n": 257
+    },
+    {
+      "_id": "KR",
+      "n": 232
+    },
+    {
+      "_id": "TH",
+      "n": 109
+    },
+    {
+      "_id": "ES",
+      "n": 102
+    }
+  ],
+  "in_by_exchange_type": [
+    {
+      "_id": {
+        "exchange": "OPT",
+        "type": "options"
+      },
+      "n": 59861
+    },
+    {
+      "_id": {
+        "exchange": "AMFI",
+        "type": "mutualfund"
+      },
+      "n": 14350
+    },
+    {
+      "_id": {
+        "exchange": "DERIV",
+        "type": "futures"
+      },
+      "n": 3336
+    },
+    {
+      "_id": {
+        "exchange": "NSE",
+        "type": "stock"
+      },
+      "n": 2586
+    },
+    {
+      "_id": {
+        "exchange": "BSE",
+        "type": "stock"
+      },
+      "n": 379
+    },
+    {
+      "_id": {
+        "exchange": "BSE",
+        "type": "etf"
+      },
+      "n": 11
+    },
+    {
+      "_id": {
+        "exchange": "NSE",
+        "type": "etf"
+      },
+      "n": 9
+    },
+    {
+      "_id": {
+        "exchange": "NSE",
+        "type": "index"
+      },
+      "n": 7
+    },
+    {
+      "_id": {
+        "exchange": "ECONOMICS",
+        "type": "economy"
+      },
+      "n": 6
+    },
+    {
+      "_id": {
+        "exchange": "BOND",
+        "type": "bond"
+      },
+      "n": 3
+    },
+    {
+      "_id": {
+        "exchange": "BSE",
+        "type": "index"
+      },
+      "n": 2
+    },
+    {
+      "_id": {
+        "exchange": "BONDS",
+        "type": "bond"
+      },
+      "n": 1
+    }
+  ],
+  "in_total": 80551,
+  "us_total": 1328012,
+  "in_enrichment": [
+    {
+      "_id": null,
+      "total": 80551,
+      "has_logo": 80551,
+      "has_sector": 80550,
+      "has_industry": 80551,
+      "has_mcap": 80551,
+      "has_pe": 80551,
+      "has_name": 80551
+    }
+  ],
+  "dupe_fullsymbol": [],
+  "audit_log": {
+    "total": 0,
+    "null_overwrite_bug": 0,
+    "weak_source_bug": 0
+  },
+  "timestamp": "2026-04-21T03:34:17.818Z"
+}
