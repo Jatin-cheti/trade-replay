@@ -9,7 +9,7 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
     const exchange = item.exchange;
     return (
       <div className="flex min-w-0 items-center gap-2.5">
-        <AssetAvatar src={item.iconUrl} label={ticker} className="h-7 w-7 shrink-0 rounded-full object-contain bg-white/90 p-0.5 ring-1 ring-border/40" />
+        <AssetAvatar src={item.s3Icon || item.iconUrl} label={ticker} className="h-7 w-7 shrink-0 rounded-full object-contain bg-white/90 p-0.5 ring-1 ring-border/40" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-tight text-foreground">{displayName}</p>
           <p className="truncate text-[10px] leading-tight text-muted-foreground/80">{exchange ? `${exchange}: ${ticker}` : ticker}</p>

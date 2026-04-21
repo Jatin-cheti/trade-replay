@@ -38,7 +38,7 @@ export default function ScreenerMobileList({
             }`}
           >
             <AssetAvatar
-              src={item.iconUrl}
+              src={item.s3Icon || item.iconUrl}
               label={item.symbol}
               className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-border/40"
             />

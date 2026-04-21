@@ -72,6 +72,7 @@ export interface ScreenerItem {
   type: string;
   currency: string;
   iconUrl: string;
+  s3Icon?: string;
   companyDomain?: string;
   sector?: string;
   source?: string;

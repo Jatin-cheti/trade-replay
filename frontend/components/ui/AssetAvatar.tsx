@@ -33,7 +33,8 @@ function isDeadProvider(url: string): boolean {
     url.includes("logo.clearbit.com") ||
     url.includes("img.logo.dev") ||
     url.includes("ui-avatars.com") ||
-    url.includes("logo.uplead.com")
+    url.includes("logo.uplead.com") ||
+    url.includes("financialmodelingprep.com")
   );
 }
 
