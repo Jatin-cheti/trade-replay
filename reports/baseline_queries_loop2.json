@@ -1,0 +1,590 @@
+{
+  "ts": "2026-04-21T02:38:03.984Z",
+  "queries": {
+    "q1_global_total": 1579751,
+    "q2_by_country": [
+      {
+        "_id": "US",
+        "count": 34803
+      },
+      {
+        "_id": "IN",
+        "count": 2965
+      },
+      {
+        "_id": "EU",
+        "count": 549
+      },
+      {
+        "_id": "GB",
+        "count": 546
+      },
+      {
+        "_id": "CA",
+        "count": 512
+      },
+      {
+        "_id": "AU",
+        "count": 386
+      },
+      {
+        "_id": "JP",
+        "count": 369
+      },
+      {
+        "_id": "HK",
+        "count": 297
+      },
+      {
+        "_id": "TW",
+        "count": 254
+      },
+      {
+        "_id": "CN",
+        "count": 248
+      },
+      {
+        "_id": "KR",
+        "count": 218
+      },
+      {
+        "_id": "GLOBAL",
+        "count": 149
+      },
+      {
+        "_id": "TH",
+        "count": 107
+      },
+      {
+        "_id": "IL",
+        "count": 71
+      },
+      {
+        "_id": "SE",
+        "count": 56
+      },
+      {
+        "_id": "SG",
+        "count": 52
+      },
+      {
+        "_id": "SA",
+        "count": 47
+      },
+      {
+        "_id": "NO",
+        "count": 35
+      },
+      {
+        "_id": "ID",
+        "count": 32
+      },
+      {
+        "_id": "DK",
+        "count": 32
+      },
+      {
+        "_id": "CH",
+        "count": 32
+      },
+      {
+        "_id": "BR",
+        "count": 31
+      },
+      {
+        "_id": "PL",
+        "count": 30
+      },
+      {
+        "_id": "MY",
+        "count": 27
+      },
+      {
+        "_id": "NZ",
+        "count": 26
+      },
+      {
+        "_id": "ZA",
+        "count": 22
+      },
+      {
+        "_id": "RU",
+        "count": 21
+      },
+      {
+        "_id": "",
+        "count": 20
+      },
+      {
+        "_id": "MX",
+        "count": 13
+      },
+      {
+        "_id": "AR",
+        "count": 10
+      }
+    ],
+    "q3_by_asset_class": [
+      {
+        "_id": "options",
+        "count": 1379532
+      },
+      {
+        "_id": "futures",
+        "count": 92796
+      },
+      {
+        "_id": "crypto",
+        "count": 48690
+      },
+      {
+        "_id": "stock",
+        "count": 41977
+      },
+      {
+        "_id": "etf",
+        "count": 11156
+      },
+      {
+        "_id": "forex",
+        "count": 4703
+      },
+      {
+        "_id": "index",
+        "count": 566
+      },
+      {
+        "_id": "economy",
+        "count": 180
+      },
+      {
+        "_id": "bond",
+        "count": 151
+      }
+    ],
+    "q4_india_by_exchange_type": [
+      {
+        "_id": {
+          "exchange": "OPT",
+          "type": "options"
+        },
+        "count": 59861
+      },
+      {
+        "_id": {
+          "exchange": "DERIV",
+          "type": "futures"
+        },
+        "count": 3336
+      },
+      {
+        "_id": {
+          "exchange": "NSE",
+          "type": "stock"
+        },
+        "count": 2586
+      },
+      {
+        "_id": {
+          "exchange": "BSE",
+          "type": "stock"
+        },
+        "count": 379
+      },
+      {
+        "_id": {
+          "exchange": "BSE",
+          "type": "etf"
+        },
+        "count": 11
+      },
+      {
+        "_id": {
+          "exchange": "NSE",
+          "type": "etf"
+        },
+        "count": 9
+      },
+      {
+        "_id": {
+          "exchange": "NSE",
+          "type": "index"
+        },
+        "count": 7
+      },
+      {
+        "_id": {
+          "exchange": "ECONOMICS",
+          "type": "economy"
+        },
+        "count": 6
+      },
+      {
+        "_id": {
+          "exchange": "BOND",
+          "type": "bond"
+        },
+        "count": 3
+      },
+      {
+        "_id": {
+          "exchange": "BSE",
+          "type": "index"
+        },
+        "count": 2
+      },
+      {
+        "_id": {
+          "exchange": "BONDS",
+          "type": "bond"
+        },
+        "count": 1
+      }
+    ],
+    "q5_enrichment_pct": [
+      {
+        "_id": "US",
+        "total": 34803,
+        "has_name": 34803,
+        "has_industry": 34803,
+        "has_marketCap": 22237,
+        "has_pe": 34803,
+        "has_iconUrl": 34803,
+        "has_price": 34803,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 63.89,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "IN",
+        "total": 2965,
+        "has_name": 2965,
+        "has_industry": 2965,
+        "has_marketCap": 1603,
+        "has_pe": 2965,
+        "has_iconUrl": 2965,
+        "has_price": 2965,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 54.06,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "EU",
+        "total": 549,
+        "has_name": 549,
+        "has_industry": 549,
+        "has_marketCap": 342,
+        "has_pe": 549,
+        "has_iconUrl": 549,
+        "has_price": 549,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 62.3,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "GB",
+        "total": 546,
+        "has_name": 546,
+        "has_industry": 546,
+        "has_marketCap": 299,
+        "has_pe": 546,
+        "has_iconUrl": 546,
+        "has_price": 546,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 54.76,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "CA",
+        "total": 512,
+        "has_name": 512,
+        "has_industry": 512,
+        "has_marketCap": 340,
+        "has_pe": 512,
+        "has_iconUrl": 512,
+        "has_price": 512,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 66.41,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "AU",
+        "total": 386,
+        "has_name": 386,
+        "has_industry": 386,
+        "has_marketCap": 280,
+        "has_pe": 386,
+        "has_iconUrl": 386,
+        "has_price": 386,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 72.54,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "JP",
+        "total": 369,
+        "has_name": 369,
+        "has_industry": 369,
+        "has_marketCap": 340,
+        "has_pe": 369,
+        "has_iconUrl": 369,
+        "has_price": 369,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 92.14,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "HK",
+        "total": 297,
+        "has_name": 297,
+        "has_industry": 297,
+        "has_marketCap": 283,
+        "has_pe": 297,
+        "has_iconUrl": 297,
+        "has_price": 297,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 95.29,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "TW",
+        "total": 254,
+        "has_name": 254,
+        "has_industry": 254,
+        "has_marketCap": 242,
+        "has_pe": 254,
+        "has_iconUrl": 254,
+        "has_price": 254,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 95.28,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "CN",
+        "total": 248,
+        "has_name": 248,
+        "has_industry": 248,
+        "has_marketCap": 232,
+        "has_pe": 248,
+        "has_iconUrl": 248,
+        "has_price": 248,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 93.55,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "KR",
+        "total": 218,
+        "has_name": 218,
+        "has_industry": 218,
+        "has_marketCap": 177,
+        "has_pe": 218,
+        "has_iconUrl": 218,
+        "has_price": 218,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 81.19,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "GLOBAL",
+        "total": 149,
+        "has_name": 149,
+        "has_industry": 149,
+        "has_marketCap": 7,
+        "has_pe": 149,
+        "has_iconUrl": 149,
+        "has_price": 149,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 4.7,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "TH",
+        "total": 107,
+        "has_name": 107,
+        "has_industry": 107,
+        "has_marketCap": 97,
+        "has_pe": 107,
+        "has_iconUrl": 107,
+        "has_price": 107,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 90.65,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "IL",
+        "total": 71,
+        "has_name": 71,
+        "has_industry": 71,
+        "has_marketCap": 59,
+        "has_pe": 71,
+        "has_iconUrl": 71,
+        "has_price": 71,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 83.1,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "SE",
+        "total": 56,
+        "has_name": 56,
+        "has_industry": 56,
+        "has_marketCap": 41,
+        "has_pe": 56,
+        "has_iconUrl": 56,
+        "has_price": 56,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 73.21,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "SG",
+        "total": 52,
+        "has_name": 52,
+        "has_industry": 52,
+        "has_marketCap": 49,
+        "has_pe": 52,
+        "has_iconUrl": 52,
+        "has_price": 52,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 94.23,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "SA",
+        "total": 47,
+        "has_name": 47,
+        "has_industry": 47,
+        "has_marketCap": 44,
+        "has_pe": 47,
+        "has_iconUrl": 47,
+        "has_price": 47,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 93.62,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "NO",
+        "total": 35,
+        "has_name": 35,
+        "has_industry": 35,
+        "has_marketCap": 25,
+        "has_pe": 35,
+        "has_iconUrl": 35,
+        "has_price": 35,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 71.43,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "DK",
+        "total": 32,
+        "has_name": 32,
+        "has_industry": 32,
+        "has_marketCap": 17,
+        "has_pe": 32,
+        "has_iconUrl": 32,
+        "has_price": 32,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 53.12,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      },
+      {
+        "_id": "CH",
+        "total": 32,
+        "has_name": 32,
+        "has_industry": 32,
+        "has_marketCap": 18,
+        "has_pe": 32,
+        "has_iconUrl": 32,
+        "has_price": 32,
+        "pct_has_name": 100,
+        "pct_has_industry": 100,
+        "pct_has_marketCap": 56.25,
+        "pct_has_pe": 100,
+        "pct_has_iconUrl": 100,
+        "pct_has_price": 100
+      }
+    ],
+    "q6_coverage_vs_target": [
+      {
+        "region": "Global",
+        "current": 1579751,
+        "target": 2000000,
+        "gap": 420249,
+        "pct": 78.99
+      },
+      {
+        "region": "India (stock)",
+        "current": 2965,
+        "target": 800000,
+        "gap": 797035,
+        "pct": 0.37
+      },
+      {
+        "region": "US (stock)",
+        "current": 34803,
+        "target": 200000,
+        "gap": 165197,
+        "pct": 17.4
+      }
+    ]
+  }
+}

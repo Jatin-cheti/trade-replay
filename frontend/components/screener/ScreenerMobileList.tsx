@@ -22,9 +22,17 @@ export default function ScreenerMobileList({
         endReached={onLoadMore}
         overscan={300}
         itemContent={(index, item) => (
-          <button
-            type="button"
-            onClick={() => onNavigate(item.symbol)}
+          // Section 2 spec (SYM-NEWTAB-001): new tab on row click.
+          <a
+            href={`/symbol/${encodeURIComponent(item.symbol)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="screener-row-mobile"
+            data-symbol={item.fullSymbol || item.symbol}
+            onClick={(e) => {
+              if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+              onNavigate?.(item.symbol);
+            }}
             className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-secondary/35 ${
               index > 0 ? "border-t border-border/20" : ""
             }`}
@@ -48,7 +56,7 @@ export default function ScreenerMobileList({
               </p>
               <p className="text-[11px] tabular-nums text-muted-foreground">{formatCompactNumber(item.marketCap)}</p>
             </div>
-          </button>
+          </a>
         )}
         components={{
           Footer: () => loadingMore ? (
