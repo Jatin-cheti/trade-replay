@@ -8,7 +8,7 @@ const listSchema = z.object({
   query: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(50),
   offset: z.coerce.number().int().min(0).default(0),
-  sort: z.string().default("marketCap"),
+  sort: z.string().default("priorityScore"),
   order: z.enum(["asc", "desc"]).default("desc"),
   marketCountries: z.string().optional(),
   exchanges: z.string().optional(),
