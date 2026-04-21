@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import type { ComponentType, SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;

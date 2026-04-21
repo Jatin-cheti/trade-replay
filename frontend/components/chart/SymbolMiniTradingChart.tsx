@@ -9,6 +9,7 @@ import {
   type ChartSeriesMap,
 } from '@/services/chart/seriesManager';
 import { transformChartData, type ChartType } from '@/services/chart/dataTransforms';
+import { formatPriceUs } from '@/lib/numberFormat';
 
 interface SymbolMiniTradingChartProps {
   data: CandleData[];
@@ -76,7 +77,9 @@ export default function SymbolMiniTradingChart({
     : null;
 
   const latest = transformed.ohlcRows[transformed.ohlcRows.length - 1] ?? null;
+  const previous = transformed.ohlcRows[transformed.ohlcRows.length - 2] ?? null;
   const latestY = latest && activeSeries ? activeSeries.priceToCoordinate(latest.close) : null;
+  const isDown = latest && previous ? latest.close < previous.close : true;
 
   return (
     <div className="relative" style={{ height }}>
@@ -92,9 +95,12 @@ export default function SymbolMiniTradingChart({
       {latest && latestY != null && (
         <div
           className="pointer-events-none absolute right-2 rounded px-2 py-0.5 text-[11px] font-semibold text-white"
-          style={{ top: Math.max(4, Math.min(height - 24, latestY - 10)), backgroundColor: '#ef5350' }}
+          style={{
+            top: Math.max(4, Math.min(height - 24, latestY - 10)),
+            backgroundColor: isDown ? "hsl(var(--destructive))" : "hsl(var(--primary))",
+          }}
         >
-          {latest.close.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+          {formatPriceUs(latest.close)}
         </div>
       )}
     </div>

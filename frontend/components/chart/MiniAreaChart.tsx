@@ -118,8 +118,8 @@ export default function MiniAreaChart({
     }
 
     const closes = data.map((d) => d.close);
-    const lows = data.map((d) => typeof (d as { low?: number }).low === "number" ? (d as { low: number }).low : d.close);
-    const highs = data.map((d) => typeof (d as { high?: number }).high === "number" ? (d as { high: number }).high : d.close);
+    const lows = data.map((d) => typeof (d as { low?: number }).low === "number" ? (d as unknown as { low: number }).low : d.close);
+    const highs = data.map((d) => typeof (d as { high?: number }).high === "number" ? (d as unknown as { high: number }).high : d.close);
 
     const min = chartType === "candlestick" ? Math.min(...lows) : Math.min(...closes);
     const max = chartType === "candlestick" ? Math.max(...highs) : Math.max(...closes);
@@ -142,9 +142,9 @@ export default function MiniAreaChart({
 
     const candleShapes = data.map((d, i) => {
       const x = PADDING.left + (i / (data.length - 1)) * chartW;
-      const open = typeof (d as { open?: number }).open === "number" ? (d as { open: number }).open : d.close;
-      const high = typeof (d as { high?: number }).high === "number" ? (d as { high: number }).high : d.close;
-      const low = typeof (d as { low?: number }).low === "number" ? (d as { low: number }).low : d.close;
+      const open = typeof (d as { open?: number }).open === "number" ? (d as unknown as { open: number }).open : d.close;
+      const high = typeof (d as { high?: number }).high === "number" ? (d as unknown as { high: number }).high : d.close;
+      const low = typeof (d as { low?: number }).low === "number" ? (d as unknown as { low: number }).low : d.close;
       const close = d.close;
       const yOpen = PADDING.top + chartH - ((open - min) / range) * chartH;
       const yHigh = PADDING.top + chartH - ((high - min) / range) * chartH;
@@ -183,6 +183,7 @@ export default function MiniAreaChart({
     }
 
     return { points: pts, fillPath: fillD, linePath: lineD, minVal: min, maxVal: max, isGain: isGainVal, yTicks, timeLabels: tl, candleShapes };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartType, data, width, height]);
 
   const chartColor = color ?? (isGain ? "#26a69a" : "#ef5350");

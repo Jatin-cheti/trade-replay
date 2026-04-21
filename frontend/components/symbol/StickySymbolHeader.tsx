@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { BarChart3 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AssetAvatar from "@/components/ui/AssetAvatar";
+import { formatPrice } from "@/lib/numberFormat";
 
 interface StickySymbolHeaderProps {
   symbol: string;
@@ -18,6 +19,10 @@ interface StickySymbolHeaderProps {
   onFullChart: () => void;
   /** ref to the hero section — when it leaves viewport, show sticky header */
   heroRef: React.RefObject<HTMLDivElement | null>;
+}
+
+function getTabSlug(tab: string): string {
+  return tab.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 export default function StickySymbolHeader({
@@ -37,17 +42,26 @@ export default function StickySymbolHeader({
 }: StickySymbolHeaderProps) {
   const [visible, setVisible] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     const el = heroRef.current;
     if (!el) return;
+    const onScroll = () => {
+      const heroTop = el.getBoundingClientRect().top;
+      if (window.scrollY <= 24 || heroTop >= 40) {
+        setVisible(false);
+      }
+    };
     observerRef.current = new IntersectionObserver(
       ([entry]) => setVisible(!entry.isIntersecting),
       { threshold: 0, rootMargin: "-64px 0px 0px 0px" }
     );
     observerRef.current.observe(el);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       observerRef.current?.disconnect();
+      window.removeEventListener("scroll", onScroll);
     };
   }, [heroRef]);
 
@@ -59,6 +73,22 @@ export default function StickySymbolHeader({
     : isNegative
     ? "text-red-400"
     : "text-muted-foreground";
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+
+    event.preventDefault();
+    const lastIndex = tabs.length - 1;
+    let nextIndex = index;
+    if (event.key === "ArrowRight") nextIndex = index === lastIndex ? 0 : index + 1;
+    if (event.key === "ArrowLeft") nextIndex = index === 0 ? lastIndex : index - 1;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = lastIndex;
+
+    const nextTab = tabs[nextIndex];
+    onTabChange(nextTab);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   return (
     <AnimatePresence>
@@ -92,12 +122,7 @@ export default function StickySymbolHeader({
               {/* Price */}
               <div className="flex items-center gap-1.5 ml-1">
                 <span className="text-sm font-bold text-foreground tabular-nums">
-                  {price > 0
-                    ? price.toLocaleString("en", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
-                    : "—"}
+                  {price > 0 ? formatPrice(price) : "—"}
                 </span>
                 <span className="text-xs text-muted-foreground">{currency}</span>
                 <span className={`text-xs font-semibold tabular-nums ${priceColor}`}>
@@ -108,19 +133,29 @@ export default function StickySymbolHeader({
 
               {/* Tabs — scrollable */}
               <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide ml-2">
-                <div className="flex items-center gap-0">
-                  {tabs.map((tab) => (
+                <div className="flex items-center gap-0" role="tablist" aria-label="Sticky symbol sections">
+                  {tabs.map((tab, index) => {
+                    const tabSlug = getTabSlug(tab);
+                    const selected = activeTab === tab;
+                    return (
                     <button
                       key={tab}
+                      ref={(node) => { tabRefs.current[index] = node; }}
                       onClick={() => onTabChange(tab)}
+                      onKeyDown={(event) => handleTabKeyDown(event, index)}
+                      role="tab"
+                      id={`sticky-tab-${tabSlug}`}
+                      aria-controls={`symbol-panel-${tabSlug}`}
+                      aria-selected={selected}
+                      tabIndex={selected ? 0 : -1}
                       className={`relative px-3 h-12 text-xs font-medium whitespace-nowrap transition-colors ${
-                        activeTab === tab
+                        selected
                           ? "text-foreground"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       {tab}
-                      {activeTab === tab && (
+                      {selected && (
                         <motion.div
                           layoutId="sticky-tab-indicator"
                           className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
@@ -128,7 +163,7 @@ export default function StickySymbolHeader({
                         />
                       )}
                     </button>
-                  ))}
+                  );})}
                 </div>
               </div>
 

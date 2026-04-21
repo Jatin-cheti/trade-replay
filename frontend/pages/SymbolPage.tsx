@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, useId, lazy, Suspense } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -10,16 +10,22 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
+import { formatPrice } from "@/lib/numberFormat";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import SymbolMiniTradingChart from "@/components/chart/SymbolMiniTradingChart";
 import StickySymbolHeader from "@/components/symbol/StickySymbolHeader";
-import SnapshotMenu from "@/components/symbol/SnapshotMenu";
-import CustomRangePicker, { type CustomRange } from "@/components/symbol/CustomRangePicker";
-import SavedPeriodsMenu from "@/components/symbol/SavedPeriodsMenu";
 import { useSavedPeriods } from "@/components/symbol/useSavedPeriods";
+import { useUserList } from "@/hooks/useUserList";
+import { toast } from "@/hooks/use-toast";
 import MarketClosedIcon from "@/components/symbol/MarketClosedIcon";
 import PrimaryListingIcon from "@/components/symbol/PrimaryListingIcon";
+
+// On-demand components — lazy-loaded to reduce initial bundle
+const SnapshotMenu = lazy(() => import("@/components/symbol/SnapshotMenu"));
+const CustomRangePicker = lazy(() => import("@/components/symbol/CustomRangePicker"));
+const SavedPeriodsMenu = lazy(() => import("@/components/symbol/SavedPeriodsMenu"));
+import type { CustomRange } from "@/components/symbol/CustomRangePicker";
 import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
 import type { CandleData } from "@/data/stockData";
 import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
@@ -94,6 +100,19 @@ function typeLabel(t: string): string {
   return { stock: "Stocks", etf: "ETFs", crypto: "Crypto", forex: "Forex", index: "Indices", bond: "Bonds", economy: "Economy" }[t] || t;
 }
 
+function splitIdentifiers(raw?: string): string[] {
+  if (!raw) return [];
+  return Array.from(new Set(raw.split(/[\s,;|]+/).map((v) => v.trim()).filter(Boolean)));
+}
+
+function deriveEarningsPeriod(isoDate?: string): string {
+  if (!isoDate) return "—";
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  const q = Math.floor(parsed.getUTCMonth() / 3) + 1;
+  return `Q${q} ${parsed.getUTCFullYear()}`;
+}
+
 function toScreenerRouteType(type: string): string {
   const normalized = type.toLowerCase();
   if (normalized === "stock") return "stocks";
@@ -121,6 +140,10 @@ const COUNTRY_NAME: Record<string, string> = {
 
 const TABS = ["Overview", "Financials", "News", "Documents", "Community", "Technicals", "Forecasts", "Seasonals", "Options", "Bonds", "ETFs"] as const;
 type Tab = (typeof TABS)[number];
+
+function getTabSlug(tab: string): string {
+  return tab.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 const TIME_PERIODS = [
   { label: "1 day",       key: "1d",  limit: 78   },
@@ -283,13 +306,18 @@ export default function SymbolPage() {
   const [pickerTab, setPickerTab] = useState<"stocks" | "futures" | CryptoTab>("stocks");
   const [pickerSearch, setPickerSearch] = useState("");
   const [copiedIsin, setCopiedIsin] = useState<string | null>(null);
-  const [copyToast, setCopyToast] = useState(false);
+
+  const watchlist = useUserList("watchlist");
+  const portfolioList = useUserList("portfolio");
 
   // Refs
   const heroRef          = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const pickerRef        = useRef<HTMLDivElement>(null);
   const chartTypeRef     = useRef<HTMLDivElement>(null);
+  const tabRefs          = useRef<Array<HTMLButtonElement | null>>([]);
+  const copiedIsinTimerRef = useRef<number | null>(null);
+  const savePromptTitleId = useId().replace(/:/g, "");
 
   // Chart candle data
   const [candles, setCandles] = useState<CandleData[]>([]);
@@ -370,12 +398,37 @@ export default function SymbolPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (copiedIsinTimerRef.current !== null) {
+        window.clearTimeout(copiedIsinTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Escape to close save-prompt modal
+  useEffect(() => {
+    if (!showSavePrompt) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowSavePrompt(false);
+        setSaveNameInput("");
+        setSaveNameError("");
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [showSavePrompt]);
+
   const copyToClipboard = useCallback((text: string) => {
     const doCopy = (t: string) => {
       setCopiedIsin(t);
-      setCopyToast(true);
-      setTimeout(() => setCopiedIsin(null), 2000);
-      setTimeout(() => setCopyToast(false), 2000);
+      if (copiedIsinTimerRef.current !== null) {
+        window.clearTimeout(copiedIsinTimerRef.current);
+      }
+      copiedIsinTimerRef.current = window.setTimeout(() => setCopiedIsin(null), 2000);
+      toast({ title: "ISIN copied", duration: 1800 });
     };
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => doCopy(text)).catch(() => {
@@ -401,6 +454,47 @@ export default function SymbolPage() {
       document.body.removeChild(ta);
       doCopy(text);
     }
+  }, []);
+
+  const showActionToast = useCallback((msg: string, isError = false) => {
+    toast({
+      title: msg,
+      variant: isError ? "destructive" : "default",
+      duration: 2400,
+    });
+  }, []);
+
+  const copyWithFeedback = useCallback(async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showActionToast(`${label} copied`);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      showActionToast(`${label} copied`);
+    }
+  }, [showActionToast]);
+
+  const handleMainTabKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+
+    event.preventDefault();
+    const lastIndex = TABS.length - 1;
+    let nextIndex = index;
+    if (event.key === "ArrowRight") nextIndex = index === lastIndex ? 0 : index + 1;
+    if (event.key === "ArrowLeft") nextIndex = index === 0 ? lastIndex : index - 1;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = lastIndex;
+
+    const nextTab = TABS[nextIndex];
+    setActiveTab(nextTab);
+    tabRefs.current[nextIndex]?.focus();
   }, []);
 
   // Performance percentage for time period chips (computed from candle data when available)
@@ -436,6 +530,12 @@ export default function SymbolPage() {
   const isStock = detail.type === "stock";
   const isCrypto = detail.type === "crypto" || detail.marketClass === "cex" || detail.marketClass === "dex";
   const simulationHref = `/simulation?symbol=${encodeURIComponent(detail.fullSymbol || detail.symbol)}&from=symbol&parityData=1`;
+  const symbolLookupKey = detail.fullSymbol || detail.symbol;
+  const isInWatchlist = watchlist.has(symbolLookupKey);
+  const isInPortfolio = portfolioList.has(symbolLookupKey);
+  const isinValues = splitIdentifiers(detail.isin);
+  const cfiValues = splitIdentifiers(detail.cfiCode);
+  const earningsPeriod = detail.earningsReportPeriod || deriveEarningsPeriod(detail.upcomingEarningsDate || detail.recentEarningsDate);
 
   // Build stock picker entries from detail — use Reliance data for RELIANCE, else single entry
   const isReliance = detail.symbol === "RELIANCE" || detail.symbol === "RIL";
@@ -526,17 +626,30 @@ export default function SymbolPage() {
                 <span className="text-xs text-muted-foreground">&middot;</span>
                 {/* Exchange badge with market status + picker trigger */}
                 <div className="relative" ref={pickerRef}>
-                  <button
-                    type="button"
-                    onClick={() => setSymPickerOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {/* Market status icon */}
-                    <MarketClosedIcon className="h-3.5 w-3.5 text-red-400/80" />
-                    <span className="font-medium">{detail.exchange}</span>
-                    {detail.isPrimaryListing && <PrimaryListingIcon className="h-4 w-4 text-amber-400" />}
-                    <ChevronDown className={`h-3 w-3 transition-transform ${symPickerOpen ? "rotate-180" : ""}`} />
-                  </button>
+                  <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                    {/* Market status icon — static span outside picker button to avoid nested <button> */}
+                    <span
+                      aria-label="Market closed"
+                      title="Market closed"
+                      className="inline-flex items-center"
+                    >
+                      <MarketClosedIcon className="h-3.5 w-3.5 text-red-400/80" />
+                    </span>
+                    {/* Exchange picker button */}
+                    <button
+                      type="button"
+                      onClick={() => setSymPickerOpen((v) => !v)}
+                      className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
+                    >
+                      <span className="font-medium">{detail.exchange}</span>
+                      {detail.isPrimaryListing && (
+                        <span aria-label="Primary listing" title="Primary listing" className="inline-flex items-center">
+                          <PrimaryListingIcon className="h-4 w-4 text-amber-400" title="Primary listing" />
+                        </span>
+                      )}
+                      <ChevronDown className={`h-3 w-3 transition-transform ${symPickerOpen ? "rotate-180" : ""}`} />
+                    </button>
+                  </div>
 
                   {/* Symbol Picker Dropdown */}
                   <AnimatePresence>
@@ -643,18 +756,50 @@ export default function SymbolPage() {
                 {/* Watchlist / portfolio action buttons */}
                 <span className="inline-flex gap-1.5">
                   <button
-                    className="h-7 w-7 rounded-md bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 hover:bg-blue-500/25 transition-colors"
-                    title="Add to watchlist"
-                    aria-label="Add to watchlist"
+                    type="button"
+                    onClick={() => {
+                      const added = watchlist.toggle({
+                        symbol: detail.symbol,
+                        fullSymbol: symbolLookupKey,
+                        name: detail.name,
+                        exchange: detail.exchange,
+                        currency: detail.currency,
+                      });
+                      showActionToast(`${detail.symbol} ${added ? "added to" : "removed from"} watchlist`);
+                    }}
+                    className={`h-7 w-7 rounded-md border flex items-center justify-center transition-colors ${
+                      isInWatchlist
+                        ? "bg-blue-500/25 border-blue-500/40 text-blue-300"
+                        : "bg-blue-500/15 border-blue-500/30 text-blue-400 hover:bg-blue-500/25"
+                    }`}
+                    title={isInWatchlist ? "Remove from watchlist" : "Add to watchlist"}
+                    aria-label={isInWatchlist ? "Remove from watchlist" : "Add to watchlist"}
+                    aria-pressed={isInWatchlist}
                   >
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2}>
                       <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
                     </svg>
                   </button>
                   <button
-                    className="h-7 w-7 rounded-md bg-teal-500/15 border border-teal-500/30 flex items-center justify-center text-teal-400 hover:bg-teal-500/25 transition-colors"
-                    title="Add to portfolio"
-                    aria-label="Add to portfolio"
+                    type="button"
+                    onClick={() => {
+                      const added = portfolioList.toggle({
+                        symbol: detail.symbol,
+                        fullSymbol: symbolLookupKey,
+                        name: detail.name,
+                        exchange: detail.exchange,
+                        currency: detail.currency,
+                      });
+                      showActionToast(`${detail.symbol} ${added ? "added to" : "removed from"} portfolio`);
+                    }}
+                    className={`h-7 w-7 rounded-md border flex items-center justify-center transition-colors ${
+                      isInPortfolio
+                        ? "bg-teal-500/25 border-teal-500/40 text-teal-200"
+                        : "bg-teal-500/15 border-teal-500/30 text-teal-400 hover:bg-teal-500/25"
+                    }`}
+                    title={isInPortfolio ? "Remove from portfolio" : "Add to portfolio"}
+                    aria-label={isInPortfolio ? "Remove from portfolio" : "Add to portfolio"}
+                    aria-pressed={isInPortfolio}
                   >
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2}>
                       <path d="M12 5v14M5 12h14" />
@@ -666,7 +811,7 @@ export default function SymbolPage() {
               {/* Price line — live data */}
               <div className="flex items-baseline gap-3 mb-0.5">
                 <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground tabular-nums">
-                  {detail.price > 0 ? detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "\u2014"}
+                  {detail.price > 0 ? formatPrice(detail.price) : "\u2014"}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground">{detail.currency}</span>
                 <span className={`text-lg font-semibold ${(detail.changePercent ?? 0) > 0 ? "text-emerald-400" : (detail.changePercent ?? 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
@@ -689,21 +834,31 @@ export default function SymbolPage() {
 
         {/* ── Tabs (TradingView exact) ──────────────────────────────────── */}
         <div className="relative mb-8 border-b border-border/30 overflow-x-auto scrollbar-hide">
-          <div className="flex items-center gap-0.5">
-            {TABS.map((tab) => (
+          <div className="flex items-center gap-0.5" role="tablist" aria-label="Symbol sections">
+            {TABS.map((tab, index) => {
+              const tabSlug = getTabSlug(tab);
+              const selected = activeTab === tab;
+              return (
               <button
                 key={tab}
+                ref={(node) => { tabRefs.current[index] = node; }}
                 onClick={() => setActiveTab(tab)}
+                onKeyDown={(event) => handleMainTabKeyDown(event, index)}
+                role="tab"
+                id={`symbol-tab-${tabSlug}`}
+                aria-controls={`symbol-panel-${tabSlug}`}
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
                 className={`relative px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  selected ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {tab}
-                {activeTab === tab && (
+                {selected && (
                   <motion.div layoutId="symbol-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" transition={{ type: "spring", stiffness: 450, damping: 30 }} />
                 )}
               </button>
-            ))}
+            );})}
             {/* See on Supercharts — TradingView style right-aligned link */}
             <Link
               to={simulationHref}
@@ -715,7 +870,13 @@ export default function SymbolPage() {
         </div>
 
         {activeTab === "Overview" && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            role="tabpanel"
+            id="symbol-panel-overview"
+            aria-labelledby="symbol-tab-overview"
+          >
             {/* ── Chart Section ──────────────────────────────────────────── */}
             <div className="mb-10">
               <div className="flex items-center justify-between mb-3">
@@ -772,12 +933,22 @@ export default function SymbolPage() {
                     )}
                   </div>
 
-                  {/* Code embed — disabled */}
-                  <button className="h-8 w-8 rounded-md border border-border/40 flex items-center justify-center text-muted-foreground/40 cursor-not-allowed" disabled title="Embed widget" aria-label="Embed widget (unavailable)">
+                  {/* Code embed */}
+                  <button
+                    type="button"
+                    className="h-8 w-8 rounded-md border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
+                    onClick={() => {
+                      const embed = `<iframe src="${window.location.href}" style="width:100%;height:520px;border:0;border-radius:12px;" loading="lazy"></iframe>`;
+                      copyWithFeedback(embed, "Embed code");
+                    }}
+                    title="Copy embed code"
+                    aria-label="Copy embed code"
+                  >
                     <svg viewBox="0 0 18 18" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
                       <polyline points="5,4 1,9 5,14" /><polyline points="13,4 17,9 13,14" />
                     </svg>
                   </button>
+                  <Suspense fallback={null}>
                   <SnapshotMenu
                     chartContainerRef={chartContainerRef}
                     symbol={detail.symbol}
@@ -785,6 +956,7 @@ export default function SymbolPage() {
                     price={detail.price}
                     currency={detail.currency}
                   />
+                  </Suspense>
                   {/* Full chart button — matches image5 */}
                   <button
                     onClick={() => navigate(simulationHref)}
@@ -880,6 +1052,7 @@ export default function SymbolPage() {
                       Clear
                     </button>
                   )}
+                  <Suspense fallback={null}>
                   <SavedPeriodsMenu
                     periods={periods}
                     activePeriodId={activeSavedPeriodId}
@@ -901,6 +1074,7 @@ export default function SymbolPage() {
                       }
                     }}
                   />
+                  </Suspense>
                 </div>
                 {customRange && (
                   <div className="text-xs text-muted-foreground">
@@ -986,10 +1160,38 @@ export default function SymbolPage() {
                     </div>
                   </AboutRow>
                   <AboutRow label="ISIN" tooltip="International Securities Identification Number">
-                    <div className="flex items-center gap-2 text-sm"><Hash className="w-4 h-4 text-muted-foreground" />{detail.isin || "—"}</div>
+                    <div className="flex items-center gap-2 text-sm flex-wrap">
+                      <Hash className="w-4 h-4 text-muted-foreground" />
+                      {isinValues.length > 0 ? isinValues.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => copyWithFeedback(value, "ISIN")}
+                          className="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary/25 px-2 py-0.5 text-xs hover:bg-secondary/45 transition-colors"
+                          aria-label={`Copy ISIN ${value}`}
+                        >
+                          {value}
+                          <Copy className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      )) : "—"}
+                    </div>
                   </AboutRow>
                   <AboutRow label="CFI Code" tooltip="Classification of Financial Instruments code">
-                    <div className="flex items-center gap-2 text-sm"><Code2 className="w-4 h-4 text-muted-foreground" />{detail.cfiCode || "—"}</div>
+                    <div className="flex items-center gap-2 text-sm flex-wrap">
+                      <Code2 className="w-4 h-4 text-muted-foreground" />
+                      {cfiValues.length > 0 ? cfiValues.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => copyWithFeedback(value, "CFI code")}
+                          className="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary/25 px-2 py-0.5 text-xs hover:bg-secondary/45 transition-colors"
+                          aria-label={`Copy CFI code ${value}`}
+                        >
+                          {value}
+                          <Copy className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      )) : "—"}
+                    </div>
                   </AboutRow>
                   <AboutRow label="Source" tooltip="Primary data source">
                     <div className="flex items-center gap-2 text-sm"><Info className="w-4 h-4 text-muted-foreground" />{detail.source}</div>
@@ -999,27 +1201,38 @@ export default function SymbolPage() {
             </div>
 
             {/* ── Upcoming Earnings ────────────────────────────────────── */}
-            {(detail.upcomingEarningsDate || detail.recentEarningsDate) && (
-              <div className="mb-10">
-                <h2 className="text-lg font-semibold text-foreground mb-5 flex items-center gap-1">
-                  Earnings <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {detail.recentEarningsDate && (
-                    <EarningsCard label="Recent earnings date" value={detail.recentEarningsDate} icon={Calendar} />
-                  )}
-                  {detail.upcomingEarningsDate && (
-                    <EarningsCard label="Upcoming earnings date" value={detail.upcomingEarningsDate} icon={Target} accent tooltip="Next announced earnings event" />
-                  )}
-                  {(detail.epsEstimate ?? detail.eps) != null && (
-                    <EarningsCard label="EPS estimate" value={(detail.epsEstimate ?? detail.eps ?? 0).toFixed(2)} icon={TrendingUp} tooltip="Consensus EPS estimate" />
-                  )}
-                  {((detail.revenueEstimate ?? detail.revenue) != null) && (
-                    <EarningsCard label="Revenue estimate" value={fmt(detail.revenueEstimate ?? detail.revenue ?? 0, detail.currency)} icon={Award} tooltip="Consensus revenue estimate" />
-                  )}
-                </div>
+            <div className="mb-10">
+              <h2 className="text-lg font-semibold text-foreground mb-5 flex items-center gap-1">
+                Earnings <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <EarningsCard
+                  label="Next report date"
+                  value={detail.upcomingEarningsDate || "—"}
+                  icon={Target}
+                  accent
+                  tooltip="Estimated date of the next earnings release"
+                />
+                <EarningsCard
+                  label="Report period"
+                  value={earningsPeriod}
+                  icon={Calendar}
+                  tooltip="Fiscal quarter associated with this report"
+                />
+                <EarningsCard
+                  label="EPS estimate"
+                  value={(detail.epsEstimate ?? detail.eps) != null ? (detail.epsEstimate ?? detail.eps ?? 0).toFixed(2) : "—"}
+                  icon={TrendingUp}
+                  tooltip="Consensus EPS estimate"
+                />
+                <EarningsCard
+                  label="Revenue estimate"
+                  value={(detail.revenueEstimate ?? detail.revenue) != null ? fmt(detail.revenueEstimate ?? detail.revenue ?? 0, detail.currency) : "—"}
+                  icon={Award}
+                  tooltip="Consensus revenue estimate"
+                />
               </div>
-            )}
+            </div>
 
             {/* ── FAQ Section ───────────────────────────────────────────── */}
             <div className="mb-10">
@@ -1028,7 +1241,7 @@ export default function SymbolPage() {
                 <FaqItemNew
                   q={`What is the current price of ${detail.name}?`}
                   a={detail.price > 0
-                    ? `The last known price of ${detail.name} (${detail.symbol}) stock is ${detail.price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${detail.currency}. It changed by ${(detail.changePercent ?? 0) >= 0 ? "+" : ""}${(detail.changePercent ?? 0).toFixed(2)}% in the latest trading session.`
+                    ? `The last known price of ${detail.name} (${detail.symbol}) stock is ${formatPrice(detail.price)} ${detail.currency}. It changed by ${(detail.changePercent ?? 0) >= 0 ? "+" : ""}${(detail.changePercent ?? 0).toFixed(2)}% in the latest trading session.`
                     : "Price data is currently unavailable."}
                 />
                 {detail.marketCap != null && detail.marketCap > 0 && (
@@ -1049,6 +1262,14 @@ export default function SymbolPage() {
                     a={`Yes. The indicated annual dividend yield of ${detail.name} is ${detail.dividendYield.toFixed(2)}%.`}
                   />
                 )}
+                <FaqItemNew
+                  q={`Which exchange is ${detail.name} listed on?`}
+                  a={`${detail.name} (${detail.symbol}) is ${detail.exchange ? `listed on the ${detail.exchange} exchange` : "listed on a major stock exchange"}${detail.country ? ` in ${detail.country}` : ""}.${detail.isin ? ` Its ISIN is ${detail.isin}.` : ""}`}
+                />
+                <FaqItemNew
+                  q={`How can I replay historical data for ${detail.name}?`}
+                  a={`Use Trade Replay's Supercharts feature to step through historical candles for ${detail.name} (${detail.symbol}) at any pace. Click "Open in Supercharts" on this page or search for the symbol in the charts section.`}
+                />
               </div>
             </div>
 
@@ -1072,27 +1293,27 @@ export default function SymbolPage() {
         )}
 
         {activeTab !== "Overview" && (
-          <div className="py-24 text-center">
-            <p className="text-lg text-muted-foreground mb-2">{activeTab}</p>
-            <p className="text-sm text-muted-foreground/60">Coming soon</p>
+          <div
+            className="py-16 rounded-2xl border border-border/30 bg-card/40 text-center"
+            role="tabpanel"
+            id={`symbol-panel-${getTabSlug(activeTab)}`}
+            aria-labelledby={`symbol-tab-${getTabSlug(activeTab)}`}
+          >
+            <p className="text-base text-foreground mb-2">{activeTab}</p>
+            <p className="text-sm text-muted-foreground mb-4">This data lives in the advanced chart workspace.</p>
+            <button
+              type="button"
+              onClick={() => navigate(simulationHref)}
+              className="inline-flex items-center gap-2 rounded-lg border border-border/40 px-4 py-2 text-sm text-foreground hover:bg-secondary/30 transition-colors"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Open in Supercharts
+            </button>
           </div>
         )}
       </div>
 
-      {/* Copy ISIN toast */}
-      <AnimatePresence>
-        {copyToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 30 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] rounded-lg bg-[#1e222d] px-4 py-2.5 text-sm text-white shadow-xl"
-          >
-            Copied
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      <Suspense fallback={null}>
       <CustomRangePicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -1105,15 +1326,22 @@ export default function SymbolPage() {
           setShowSavePrompt(true);
         }}
       />
+      </Suspense>
 
       {showSavePrompt && customRange && (
         <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border/50 bg-background p-5 shadow-2xl">
-            <h3 className="text-base font-semibold text-foreground mb-2">Save this custom period?</h3>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={savePromptTitleId}
+            className="w-full max-w-md rounded-2xl border border-border/50 bg-background p-5 shadow-2xl"
+          >
+            <h3 id={savePromptTitleId} className="text-base font-semibold text-foreground mb-2">Save this custom period?</h3>
             <p className="text-xs text-muted-foreground mb-3">
               {format(customRange.from, "MMM d, yyyy HH:mm")} to {format(customRange.to, "MMM d, yyyy HH:mm")}
             </p>
             <input
+              autoFocus
               value={saveNameInput}
               onChange={(e) => {
                 setSaveNameInput(e.target.value);

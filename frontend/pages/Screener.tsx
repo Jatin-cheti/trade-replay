@@ -100,6 +100,7 @@ export default function Screener() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [addColumnOpen, filters, typeMenuOpen]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setTypeMenuOpen(false); filters.setAddFilterOpen(false); setAddColumnOpen(false); filters.setEditingFilterKey(null); }, [location.pathname, location.search]);
 
   /* ── Callbacks ── */
@@ -128,6 +129,7 @@ export default function Screener() {
     URL.revokeObjectURL(url);
   }, [visibleColumns, data.items, routeType]);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const loadScreenState = useCallback((screen: any) => {
     screens.setActiveScreenId(screen._id); screens.setScreenDirty(false);
     const p = new URLSearchParams();

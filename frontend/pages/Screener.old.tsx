@@ -961,6 +961,7 @@ function WatchlistFilterEditor({
     const serverIds = new Set(fromServer.map((w) => w.id));
     const defaults = defaultWatchlists.filter((d) => !serverIds.has(d.id));
     return [...fromServer, ...defaults];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlists]);
 
   const filtered = useMemo(

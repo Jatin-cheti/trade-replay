@@ -1285,7 +1285,7 @@ export function createChart(
       interval,
       barWidth,
       60,
-      (i) => timeIndex.at(i),
+      (i) => timeIndex.at(i) ?? null,
     );
     for (const i of tickBars) {
       const x = snapCssPixel(barToX(i));
@@ -1337,7 +1337,7 @@ export function createChart(
       interval,
       barWidth,
       70,
-      (i) => timeIndex.at(i),
+      (i) => timeIndex.at(i) ?? null,
     );
     for (const i of tickBars) {
       const x = barToX(i);

@@ -59,6 +59,7 @@ import { toolGroups, type CursorMode, type ToolCategory, type ToolGroup, type To
 import IconToolPanel, { type IconPresetSelection } from '@/components/chart/IconToolPanel';
 
 /* ── Icon map ───────────────────────────────────────────────── */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const railIconMap: Record<string, React.ComponentType<any>> = {
   Activity, AlignHorizontalSpaceAround, ArrowDown, ArrowRight, ArrowUp, Box, Circle,
   Clock3, CornerRightUp, Crosshair, Eraser, Eye, EyeOff, Fan, Flag, GitFork, GitMerge, Info,

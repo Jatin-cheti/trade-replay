@@ -42,6 +42,7 @@ export default function WatchlistFilterEditor({
       }
     }
     return deduped;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlists]);
 
   const filtered = useMemo(

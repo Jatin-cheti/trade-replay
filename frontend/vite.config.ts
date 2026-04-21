@@ -4,6 +4,7 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 import tailwindcss from "tailwindcss";
 import autoprefixer from "autoprefixer";
+import { visualizer } from "rollup-plugin-visualizer";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -21,7 +22,7 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), mode === "development" && componentTagger(), mode !== "production" && visualizer({ open: false, filename: "dist/stats.html" })].filter(Boolean),
   css: {
     postcss: {
       plugins: [tailwindcss(), autoprefixer()],
@@ -34,6 +35,18 @@ export default defineConfig(({ mode }) => ({
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
   },
   build: {
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/framer-motion')) return 'vendor-motion';
+          if (id.includes('node_modules/date-fns')) return 'vendor-date';
+          if (id.includes('node_modules/@tanstack')) return 'vendor-query';
+          if (id.includes('node_modules/@radix-ui')) return 'vendor-radix';
+          if (id.includes('node_modules/lucide-react')) return 'vendor-lucide';
+          if (id.includes('node_modules/react-router') || id.includes('node_modules/react-router-dom')) return 'vendor-router';
+        },
+      },
+    },
   },
 }));
