@@ -5,7 +5,8 @@ const useExternalStack = process.env.E2E_USE_EXTERNAL_STACK === "true";
 export default defineConfig({
   testDir: ".",
   timeout: 60_000,
-  fullyParallel: true,
+  fullyParallel: false,
+  workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : 1,
   reporter: "list",
   use: {
     baseURL: "http://localhost:8080",

@@ -13,6 +13,7 @@ import { startInvalidationListener } from "./services/cacheInvalidation.service"
 import { initTrieSearch } from "./services/trieSearch.service";
 import { initFilterCache } from "./services/filterCache.service";
 import { warmScreenerCache } from "./services/cacheWarmup.service";
+import { ensureE2EScreenerSeedData } from "./services/e2eScreenerSeed.service";
 
 type NodeErrorWithCode = Error & { code?: string };
 
@@ -46,6 +47,7 @@ async function bootstrap() {
   logger.info("redis_url_config", { url: env.REDIS_URL });
   logger.info("bootstrap_connect_mongodb");
   await connectDB();
+  await ensureE2EScreenerSeedData();
   logger.info("bootstrap_connect_redis");
   try {
     await connectRedis();
