@@ -22,11 +22,11 @@
 | 2     | hashicorp-tf-password| `e2e/simulation-flow.spec.ts`                    | FP — test fixture |
 | 2     | hashicorp-tf-password| `tests/integration/e2e/test-results/.../error-context.md` | FP — test log |
 | 6     | hashicorp-tf-password| `tests/integration/e2e/*.spec.ts`                | FP — test fixture |
-| **1** | generic-api-key      | `backend/scripts/prodExpand.cjs:19` (historical) | **real — historical Alpha Vantage key `PCDWC3C4U8HZ5G98…` committed in an early revision; current source uses `process.env.ALPHA_VANTAGE_KEY`** |
+| **1** | generic-api-key      | `backend/scripts/prodExpand.cjs:19` (historical) | **real — historical Alpha Vantage key `REDACTED_AV_KEY_LOOP4…` committed in an early revision; current source uses `process.env.ALPHA_VANTAGE_KEY`** |
 
 ### Action for the one real finding
 
-- Key fragment: `PCDWC3C4U8HZ5G98` (Alpha Vantage free-tier)
+- Key fragment: `REDACTED_AV_KEY_LOOP4` (Alpha Vantage free-tier)
 - File (current `HEAD`): `backend/scripts/prodExpand.cjs` — currently loads from env, no leak in present revision.
 - Git history: key still readable via `git log -p`. Rotation required.
 - **Remediation steps (Loop 4):** rotate the Alpha Vantage free-tier key; rewrite history via `git filter-repo --replace-text` on that constant; force-push after team sign-off; update `.env.secrets` deployment manifest.

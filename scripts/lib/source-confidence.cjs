@@ -13,6 +13,9 @@ const SOURCE_CONFIDENCE_REGISTRY = Object.freeze({
   // India — Official (1.0)
   NSE_official: 1.0,
   BSE_official: 1.0,
+  nse_official: 1.0,
+  bse_official: 1.0,
+  amfi_india: 0.98,
   SEBI_filings: 0.98,
   // India — High Quality
   screener_in: 0.92,

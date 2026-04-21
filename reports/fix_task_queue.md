@@ -12,7 +12,7 @@
 | FIX-008  | UI-003         | P1       | OPEN      | Sticky sub-header uses `var(--navbar-height)` offset                                    |
 | FIX-009  | UI-004         | P1       | OPEN      | Icon registry audit (no emoji in production UI)                                         |
 | FIX-010  | TEST-002/003   | P1       | BLOCKED   | Playwright via Dockerised CI with full browser deps                                     |
-| FIX-011  | SEC-002        | P1       | PARTIAL   | gitleaks installed; Loop 4: rotate historical `PCDWC3C4U8HZ5G98…` key + filter-repo     |
+| FIX-011  | SEC-002        | P1       | PARTIAL   | gitleaks installed; Loop 4: rotate historical `REDACTED_AV_KEY_LOOP4…` key + filter-repo     |
 | FIX-012  | PERF-001/002   | P2       | BLOCKED   | Lighthouse via same Dockerised CI as FIX-010                                            |
 | FIX-013  | IND-004        | P0       | **DONE**  | Root cause: "2,965" was stock-only slice; true in_total=80,551                          |
 | FIX-014  | IND-005        | P1       | OPEN      | Run `enrich-india-yahoo-v3.cjs` routed through `mergeFieldWithAudit`                    |
