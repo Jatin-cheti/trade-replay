@@ -93,3 +93,55 @@ jobs:
         with:
           reporter: github-pr-check
           fail_on_error: false
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci || npm install
+      - name: Build
+        run: npm run build
+      - name: Upload bundle stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 3
+
+  prod-smoke:
+    name: Prod HTTP smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hit public endpoints
+        run: |
+          set -e
+          ok=0; fail=0
+          check() {
+            local url="$1"; local label="$2"
+            local code
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)
+            if [[ "$code" == "200" ]]; then echo "PASS $label $code"; ok=$((ok+1));
+            else echo "FAIL $label $code"; fail=$((fail+1)); fi
+          }
+          check https://tradereplay.me/ home
+          check https://tradereplay.me/screener/stocks screener
+          check "https://tradereplay.me/symbol/NSE%3ARELIANCE" symbolRELIANCE
+          check "https://api.tradereplay.me/api/screener/list?type=stocks&limit=1" apiList
+          check "https://api.tradereplay.me/api/screener/symbol/NSE%3ARELIANCE" apiSymbol
+          echo "prod smoke: PASS=$ok FAIL=$fail"
+          test "$fail" -eq 0
