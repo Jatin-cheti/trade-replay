@@ -338,7 +338,9 @@ export default function SymbolPage() {
   const loadCandles = useCallback((limit?: number) => {
     if (!detail?.symbol) return;
     const candleSymbol = detail.fullSymbol || detail.symbol;
-    const effectiveLimit = limit ?? 240;
+    // Backend caps candleLimit at 500; clamp here to avoid 400 validation errors.
+    const requested = limit ?? 240;
+    const effectiveLimit = Math.max(20, Math.min(500, requested));
     setChartLoading(true);
     setChartError(false);
     fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: effectiveLimit })
@@ -1018,8 +1020,8 @@ export default function SymbolPage() {
                       onClick={() => handleTimePeriodChange(p.key)}
                       className={`flex flex-col items-center px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[80px] ${
                         activeTimePeriod === p.key
-                          ? "bg-primary/10 text-foreground border border-primary/30"
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                          ? "bg-primary/10 text-foreground border-2 border-primary"
+                          : "border-2 border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/20"
                       }`}
                     >
                       <span className={activeTimePeriod === p.key ? "text-foreground font-semibold" : ""}>{p.label}</span>
@@ -1238,37 +1240,76 @@ export default function SymbolPage() {
             <div className="mb-10">
               <h2 className="text-lg font-semibold text-foreground mb-5">Frequently asked questions</h2>
               <div className="space-y-3">
+                {/* 1. Exchange listing */}
                 <FaqItemNew
-                  q={`What is the current price of ${detail.name}?`}
+                  q={`Which exchange is ${detail.name} (${detail.symbol}) listed on?`}
+                  a={`${detail.name} (${detail.symbol}) is listed on ${detail.exchange ? `the ${detail.exchange} exchange` : "a major stock exchange"}${detail.country ? ` in ${COUNTRY_NAME[detail.country] || detail.country}` : ""}.${detail.isin ? ` Its ISIN is ${detail.isin}.` : ""}`}
+                />
+
+                {/* 2. How to replay */}
+                <FaqItemNew
+                  q={`How can I replay historical price data for ${detail.symbol}?`}
+                  a={`Use Trade Replay's Supercharts feature to step through historical candles for ${detail.name} at any pace. Click "Open in Supercharts" on this page or choose a period chip above to analyse price action over different time frames.`}
+                />
+
+                {/* 3. Earnings */}
+                <FaqItemNew
+                  q={`When is ${detail.name}'s next earnings report?`}
+                  a={detail.upcomingEarningsDate
+                    ? `The next earnings report for ${detail.name} is expected on ${detail.upcomingEarningsDate}${earningsPeriod && earningsPeriod !== "—" ? ` (${earningsPeriod})` : ""}.`
+                    : `The next earnings date for ${detail.name} has not been announced yet. Check back closer to the reporting period.`}
+                />
+
+                {/* 4. EPS */}
+                <FaqItemNew
+                  q={`What is the current EPS estimate for ${detail.name}?`}
+                  a={(detail.epsEstimate ?? detail.eps) != null && (detail.epsEstimate ?? detail.eps ?? 0) > 0
+                    ? `The consensus EPS estimate for ${detail.name} is ${(detail.epsEstimate ?? detail.eps ?? 0).toFixed(2)}${detail.currency ? ` ${detail.currency}` : ""} per share.`
+                    : `Analyst EPS estimates for ${detail.name} are not currently available on Trade Replay.`}
+                />
+
+                {/* 5. Market cap */}
+                <FaqItemNew
+                  q={`What is ${detail.name}'s market capitalization?`}
+                  a={detail.marketCap != null && detail.marketCap > 0
+                    ? `The market capitalization of ${detail.name} is ${fmt(detail.marketCap, detail.currency)}.`
+                    : `Market capitalization data for ${detail.name} is not available at this time.`}
+                />
+
+                {/* 6. Business */}
+                <FaqItemNew
+                  q={`What does ${detail.name} do?`}
+                  a={`${detail.name} (${detail.symbol}) is a ${typeLabel(detail.type).toLowerCase().replace(/s$/, "")} traded${detail.exchange ? ` on ${detail.exchange}` : ""}${detail.sector ? ` in the ${detail.sector} sector` : ""}${detail.industry ? `, within the ${detail.industry} industry` : ""}. ${detail.ceo ? `The company is led by ${detail.ceo}. ` : ""}${detail.headquarters ? `It is headquartered in ${detail.headquarters}.` : ""}`.trim()}
+                />
+
+                {/* 7. Sector */}
+                <FaqItemNew
+                  q={`Which sector does ${detail.name} belong to?`}
+                  a={detail.sector
+                    ? `${detail.name} belongs to the ${detail.sector} sector${detail.industry ? `, specifically the ${detail.industry} industry` : ""}.`
+                    : `Sector classification for ${detail.name} is not available.`}
+                />
+
+                {/* 8. Custom period */}
+                <FaqItemNew
+                  q={`How do I view the ${detail.symbol} chart for a custom date range?`}
+                  a={`Click the chart picker icon next to the period chips above to open the custom range picker. You can select any start and end date (or time for intraday ranges) and save frequently used ranges as presets for quick access later.`}
+                />
+
+                {/* 9. Dividend */}
+                <FaqItemNew
+                  q={`Does ${detail.name} pay dividends?`}
+                  a={detail.dividendYield != null && detail.dividendYield > 0
+                    ? `Yes. ${detail.name} currently has an indicated annual dividend yield of ${detail.dividendYield.toFixed(2)}%.`
+                    : `${detail.name} does not currently pay a dividend, or dividend data is unavailable.`}
+                />
+
+                {/* 10. 52-week range / price */}
+                <FaqItemNew
+                  q={`What is the current price of ${detail.symbol}?`}
                   a={detail.price > 0
-                    ? `The last known price of ${detail.name} (${detail.symbol}) stock is ${formatPrice(detail.price)} ${detail.currency}. It changed by ${(detail.changePercent ?? 0) >= 0 ? "+" : ""}${(detail.changePercent ?? 0).toFixed(2)}% in the latest trading session.`
-                    : "Price data is currently unavailable."}
-                />
-                {detail.marketCap != null && detail.marketCap > 0 && (
-                  <FaqItemNew
-                    q={`What is the market capitalization of ${detail.name}?`}
-                    a={`The market cap of ${detail.name} is ${fmt(detail.marketCap, detail.currency)}.`}
-                  />
-                )}
-                {detail.pe != null && detail.pe > 0 && (
-                  <FaqItemNew
-                    q={`What is the P/E ratio of ${detail.name}?`}
-                    a={`The trailing twelve-month P/E ratio of ${detail.name} is ${detail.pe.toFixed(2)}.`}
-                  />
-                )}
-                {detail.dividendYield != null && detail.dividendYield > 0 && (
-                  <FaqItemNew
-                    q={`Does ${detail.name} pay dividends?`}
-                    a={`Yes. The indicated annual dividend yield of ${detail.name} is ${detail.dividendYield.toFixed(2)}%.`}
-                  />
-                )}
-                <FaqItemNew
-                  q={`Which exchange is ${detail.name} listed on?`}
-                  a={`${detail.name} (${detail.symbol}) is ${detail.exchange ? `listed on the ${detail.exchange} exchange` : "listed on a major stock exchange"}${detail.country ? ` in ${detail.country}` : ""}.${detail.isin ? ` Its ISIN is ${detail.isin}.` : ""}`}
-                />
-                <FaqItemNew
-                  q={`How can I replay historical data for ${detail.name}?`}
-                  a={`Use Trade Replay's Supercharts feature to step through historical candles for ${detail.name} (${detail.symbol}) at any pace. Click "Open in Supercharts" on this page or search for the symbol in the charts section.`}
+                    ? `The last known price of ${detail.name} (${detail.symbol}) is ${formatPrice(detail.price)} ${detail.currency}. It moved ${(detail.changePercent ?? 0) >= 0 ? "+" : ""}${(detail.changePercent ?? 0).toFixed(2)}% in the latest trading session.`
+                    : `Live price data for ${detail.symbol} is currently unavailable.`}
                 />
               </div>
             </div>

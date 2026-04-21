@@ -41,29 +41,37 @@ export default function StickySymbolHeader({
   heroRef,
 }: StickySymbolHeaderProps) {
   const [visible, setVisible] = useState(false);
+  const [navbarHeight, setNavbarHeight] = useState<number>(64);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Measure the app navbar height so the sticky header sits directly below it.
+  useEffect(() => {
+    const navEl = document.querySelector("nav");
+    if (navEl) setNavbarHeight(navEl.getBoundingClientRect().height);
+    const onResize = () => {
+      const el = document.querySelector("nav");
+      if (el) setNavbarHeight(el.getBoundingClientRect().height);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     const el = heroRef.current;
     if (!el) return;
-    const onScroll = () => {
-      const heroTop = el.getBoundingClientRect().top;
-      if (window.scrollY <= 24 || heroTop >= 40) {
-        setVisible(false);
-      }
-    };
+    // Use IntersectionObserver as the single source of truth for visibility —
+    // a scroll listener that races with the observer was previously causing
+    // the sticky header to flicker/hide unexpectedly on certain scroll positions.
     observerRef.current = new IntersectionObserver(
       ([entry]) => setVisible(!entry.isIntersecting),
-      { threshold: 0, rootMargin: "-64px 0px 0px 0px" }
+      { threshold: 0, rootMargin: `-${Math.max(navbarHeight, 48)}px 0px 0px 0px` }
     );
     observerRef.current.observe(el);
-    window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       observerRef.current?.disconnect();
-      window.removeEventListener("scroll", onScroll);
     };
-  }, [heroRef]);
+  }, [heroRef, navbarHeight]);
 
   const safeChangePercent = changePercent ?? 0;
   const isPositive = safeChangePercent > 0;
@@ -97,9 +105,9 @@ export default function StickySymbolHeader({
           initial={{ y: -64, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -64, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 400, damping: 38, mass: 0.8 }}
-          className="fixed top-[var(--navbar-height,64px)] left-0 right-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur-xl shadow-lg"
-          style={{ willChange: "transform" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed left-0 right-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur-xl shadow-lg"
+          style={{ willChange: "transform", top: navbarHeight }}
         >
           <div className="mx-auto max-w-[1400px] px-4 md:px-6">
             <div className="flex items-center h-12 gap-3">

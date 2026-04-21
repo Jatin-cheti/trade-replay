@@ -101,7 +101,7 @@ export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions
       excludeFromTimeIndex: true,
     }),
     area: chart.addSeries('Area', {
-      lineColor: '#00d1ff', lineWidth: 2, topColor: 'rgba(0, 209, 255, 0.42)', bottomColor: 'rgba(0, 209, 255, 0.02)', visible: false,
+      lineColor: '#17c964', lineWidth: 2, topColor: 'rgba(23, 201, 100, 0.35)', bottomColor: 'rgba(23, 201, 100, 0.02)', visible: false,
     }),
     mountainArea: chart.addSeries('Area', {
       lineColor: '#40e0d0', lineWidth: 2, topColor: 'rgba(64, 224, 208, 0.46)', bottomColor: 'rgba(64, 224, 208, 0.04)', visible: false,

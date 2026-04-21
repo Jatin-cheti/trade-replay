@@ -83,7 +83,13 @@ export default function SymbolMiniTradingChart({
 
   return (
     <div className="relative" style={{ height }}>
-      <div ref={containerRef} className="absolute inset-0" />
+      {/*
+        Note: The chart library's createChart() sets `container.style.position = 'relative'`
+        on the container element, which overrides Tailwind's `absolute` class. We therefore
+        use explicit width/height inline styles on the container div so its dimensions are
+        preserved regardless of the position override.
+      */}
+      <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }} />
       <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
 
       {!hasData && (
