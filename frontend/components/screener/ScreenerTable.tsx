@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { ArrowUpDown, Check, Plus, Search, X, TrendingDown, TrendingUp } from "lucide-react";
 import type { ScreenerColumnField, ScreenerItem } from "@/lib/screener";
 import { COLUMN_WIDTHS, NUMERIC_COLUMNS } from "@/lib/screener";
 import type { SortOrder } from "@/lib/screener";
 import renderCell from "./renderCell";
+import ScreenerRowContextMenu from "./ScreenerRowContextMenu";
+import { useSymbolFlags } from "@/hooks/useSymbolFlags";
 
 export default function ScreenerTable({
   items,
@@ -65,13 +67,31 @@ export default function ScreenerTable({
       const minWidth = match ? Number(match[1]) : 100;
       total += minWidth;
     }
-    return Math.max(700, total + 50); // 50 for padding and scrollbar
+    return Math.max(480, total + 44);
   }, [visibleColumns]);
 
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; symbol: string; fullSymbol: string; name: string } | null>(null);
+  const { getFlag, setFlag } = useSymbolFlags();
+
+  const FLAG_HEX: Record<string, string> = {
+    red: "#EF4444", blue: "#3B82F6", green: "#22C55E", yellow: "#EAB308",
+    purple: "#A855F7", cyan: "#06B6D4", pink: "#EC4899", orange: "#F97316",
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.altKey || e.key !== "Enter") return;
+      const row = document.querySelector<HTMLElement>('[data-testid="screener-row"]:hover');
+      if (row) { const sym = row.getAttribute("data-symbol") || ""; if (sym) setFlag(sym, getFlag(sym) ? null : "blue"); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [getFlag, setFlag]);
+
   return (
-    <div className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
-      {/* FIXED: Horizontal scroll container with proper constraint */}
-      <div className="overflow-x-auto overflow-y-hidden" style={{ minWidth: 0 }}>
+    <div className="w-full">
+      <div className="border-t border-b border-border/30">
+      <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
         <div style={{ minWidth: `${tableMinWidth}px` }}>
           {/* FIXED: Sticky header with matching grid template */}
           <div
@@ -215,6 +235,10 @@ export default function ScreenerTable({
                 href={`/symbol/${encodeURIComponent(item.fullSymbol || item.symbol)}`}
                 target="_blank"
                 rel="noopener noreferrer"
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, symbol: item.symbol, fullSymbol: item.fullSymbol || item.symbol, name: item.name || item.symbol });
+                }}
                 onClick={(e) => {
                   // If caller provided an in-page navigator (legacy), still allow it
                   // when modifier keys are NOT used, otherwise let the browser handle it.
@@ -234,7 +258,12 @@ export default function ScreenerTable({
                     ? "screener-flash-down"
                     : ""
                 }`}
-                style={{ gridTemplateColumns: `${tableGridTemplate} 36px` }}
+                style={{
+                  gridTemplateColumns: `${tableGridTemplate} 36px`,
+                  ...(getFlag(item.fullSymbol || item.symbol)
+                    ? { borderLeft: `3px solid ${FLAG_HEX[getFlag(item.fullSymbol || item.symbol)!]}` }
+                    : {}),
+                }}
               >
                 {visibleColumns.map((column) => {
                   const isSymbol = column === "symbol";
@@ -266,6 +295,20 @@ export default function ScreenerTable({
           />
         </div>
       </div>
+      </div>
+      {contextMenu && (
+        <ScreenerRowContextMenu
+          x={contextMenu.x} y={contextMenu.y}
+          symbol={contextMenu.symbol} fullSymbol={contextMenu.fullSymbol} name={contextMenu.name}
+          flagColor={getFlag(contextMenu.fullSymbol)}
+          watchlists={[]}
+          onClose={() => setContextMenu(null)}
+          onFlag={(sym, color) => setFlag(sym, color)}
+          onAddToWatchlist={(sym, wlId) => {
+            fetch(`/api/watchlist/${wlId}/symbols`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: sym }) }).catch(console.error);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,24 @@
 import { motion } from "framer-motion";
-import { RefreshCw } from "lucide-react";
+import {
+  RefreshCw,
+  LayoutGrid, TrendingUp, PieChart, Coins, BarChart3, FileText,
+  Scale, Droplets, Share2, Activity,
+} from "lucide-react";
 import type { ScreenerTabDefinition } from "@/lib/screener";
 import { DEFAULT_VISIBLE_COLUMNS } from "@/lib/screener";
+
+const TAB_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  overview: LayoutGrid,
+  performance: TrendingUp,
+  valuation: PieChart,
+  dividends: Coins,
+  profitability: BarChart3,
+  "income-statement": FileText,
+  "balance-sheet": Scale,
+  "cash-flow": Droplets,
+  "per-share": Share2,
+  technicals: Activity,
+};
 
 export default function ScreenerTabBar({
   tabs,
@@ -31,7 +48,10 @@ export default function ScreenerTabBar({
               active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab.label}
+            <span className="inline-flex items-center gap-1.5">
+              {(() => { const Icon = TAB_ICONS[tab.key]; return Icon ? <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "opacity-50"}`} /> : null; })()}
+              {tab.label}
+            </span>
             {active && <motion.div layoutId="screener-tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
           </button>
         );
