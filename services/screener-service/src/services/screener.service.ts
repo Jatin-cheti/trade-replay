@@ -4,12 +4,12 @@ import type { PipelineStage } from "mongoose";
 
 const CACHE_TTL_S = 8;
 
-/* ── Field mapping: frontend column key → DB field name ── */
+/* â”€â”€ Field mapping: frontend column key â†’ DB field name â”€â”€ */
 const FIELD_TO_DB: Record<string, string> = {
   epsDilTtm: "eps",
   epsDilGrowth: "earningsGrowth",
   divYieldPercent: "dividendYield",
-  // price: identity — both US stocks ("price") and India stocks ("price" via mapItem alias) use the same DB field
+  // price: identity â€” both US stocks ("price") and India stocks ("price" via mapItem alias) use the same DB field
 };
 const DB_TO_FIELD: Record<string, string> = Object.fromEntries(
   Object.entries(FIELD_TO_DB).map(([k, v]) => [v, k]),
@@ -22,7 +22,7 @@ function mapItem(doc: Record<string, unknown>): Record<string, unknown> {
   // Computed fields
   if (typeof out.volume === "number" && typeof out.avgVolume === "number" && (out.avgVolume as number) > 0)
     out.relVolume = (out.volume as number) / (out.avgVolume as number);
-  // Alias DB fields → frontend column names
+  // Alias DB fields â†’ frontend column names
   for (const [dbKey, feKey] of Object.entries(DB_TO_FIELD)) {
     if (out[dbKey] !== undefined && out[feKey] === undefined) out[feKey] = out[dbKey];
   }
@@ -44,7 +44,7 @@ function mapItem(doc: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-/* ── Dedup: prefer NSE over BSE for India stocks ── */
+/* â”€â”€ Dedup: prefer NSE over BSE for India stocks â”€â”€ */
 const EXCHANGE_PRIORITY: Record<string, number> = { NSE: 10, BSE: 5 };
 function dedupItems(items: Record<string, unknown>[]): Record<string, unknown>[] {
   const seen = new Map<string, Record<string, unknown>>();
@@ -108,7 +108,7 @@ export async function listScreenerAssets(params: ListParams) {
   if (params.countries.length) filter.country = { $in: params.countries.map((c) => c.toUpperCase()) };
   if (params.exchanges.length) filter.exchange = { $in: params.exchanges.map((e) => e.toUpperCase()) };
   if (params.sectors.length) {
-    // Case-insensitive sector match — capitalize first letter of each word to match DB storage
+    // Case-insensitive sector match â€” capitalize first letter of each word to match DB storage
     const normalizedSectors = params.sectors.map((s) =>
       s.trim().replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     );
@@ -259,7 +259,7 @@ export async function getSymbolDetail(symbol: string) {
   return doc ? mapItem(doc as Record<string, unknown>) : null;
 }
 
-/* ── Screener Meta ── */
+/* â”€â”€ Screener Meta â”€â”€ */
 export async function getScreenerMeta() {
   const redis = getRedis();
   const cacheKey = "scr:meta";
@@ -305,6 +305,7 @@ export async function getScreenerMeta() {
       { key: "profitability", label: "Profitability", defaultColumns: ["symbol","price","grossMargin","operatingMargin","profitMargin","roe","revenue"] },
       { key: "income-statement", label: "Income Statement", defaultColumns: ["symbol","price","revenue","netIncome","epsDilTtm","epsDilGrowth","sector"] },
       { key: "balance-sheet", label: "Balance Sheet", defaultColumns: ["symbol","price","marketCap","sharesFloat","beta"] },
+      { key: "technicals", label: "Technicals", defaultColumns: ["symbol","price","changePercent","relVolume","beta","analystRating","perfPercent","volume"] },
     ],
     filterCategories: [
       { key: "security-info", label: "Security info" },
@@ -369,6 +370,11 @@ export async function getScreenerMeta() {
       { key: "peg", label: "PEG", category: "valuation", inputType: "range" },
       { key: "roe", label: "ROE", category: "margins", inputType: "range" },
       { key: "beta", label: "Beta", category: "market-data", inputType: "range" },
+      { key: "perfPercent", label: "Perf %", category: "market-data", inputType: "range" },
+      { key: "watchlists", label: "Watchlists", category: "market-data", inputType: "multiselect", supportsMultiSelect: true, options: [] },
+      { key: "indices", label: "Indices", category: "market-data", inputType: "multiselect", supportsMultiSelect: true, options: [] },
+      { key: "recentEarningsDate", label: "Recent earnings date", category: "financials", inputType: "date-range" },
+      { key: "upcomingEarningsDate", label: "Upcoming earnings date", category: "financials", inputType: "date-range" },
     ],
     lastUpdated: new Date().toISOString(),
     screenMenuOptions: [
