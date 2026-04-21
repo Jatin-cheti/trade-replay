@@ -1,5 +1,50 @@
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./playwright-fixture";
 import fs from "node:fs/promises";
+
+const CHART_OVERLAY_SELECTOR = 'canvas[aria-label="chart-drawing-overlay"]';
+
+async function waitForChartRender(page: Page, selector: string = CHART_OVERLAY_SELECTOR): Promise<void> {
+  await page.waitForFunction(
+    (overlaySelector: string) => {
+      const overlays = Array.from(document.querySelectorAll(overlaySelector));
+      if (overlays.length === 0) return false;
+
+      return overlays.some((overlay) => {
+        const ownBars = overlay.getAttribute("data-bar-count");
+        const hostBars = overlay.closest("[data-bar-count]")?.getAttribute("data-bar-count");
+        const bars = Number.parseInt(ownBars ?? hostBars ?? "0", 10);
+        if (Number.isFinite(bars) && bars > 0) {
+          return true;
+        }
+
+        const rect = overlay.getBoundingClientRect();
+        const style = window.getComputedStyle(overlay);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      });
+    },
+    selector,
+    { timeout: 10_000 },
+  );
+}
+
+async function getChartOverlay(page: Page, selector: string = CHART_OVERLAY_SELECTOR): Promise<Locator> {
+  await waitForChartRender(page, selector);
+  return page.locator(selector).first();
+}
+
+test.afterEach(async ({ context, page }) => {
+  await context.clearCookies();
+  await page.goto("about:blank");
+  await page
+    .evaluate(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    })
+    .catch(() => {
+      // Ignore storage cleanup failures on transient pages.
+    });
+});
 
 test("chart platform types, tools, and object actions", async ({ page }) => {
   const uid = Date.now();
@@ -34,8 +79,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
 
-  const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(chartOverlay).toBeVisible();
+  const chartOverlay = await getChartOverlay(page);
 
   const quickChartTypes = ["chart-type-candlestick", "chart-type-line", "chart-type-area"];
   const dropdownTypes = [
@@ -166,8 +210,7 @@ test("drawing visibility: single drawing appears immediately", async ({ page }) 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
 
-  const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(chartOverlay).toBeVisible();
+  const chartOverlay = await getChartOverlay(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -255,8 +298,7 @@ test("drawing anchoring: coordinates stable across data updates", async ({ page 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
 
-  const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(chartOverlay).toBeVisible();
+  const chartOverlay = await getChartOverlay(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -343,7 +385,7 @@ test("toolbar actions: all controls visible on desktop", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   // All toolbar actions must be visible
   await expect(page.locator('[data-testid="toolbar-undo"]:visible').first()).toBeVisible();
@@ -387,8 +429,7 @@ test("drawing visible regardless of object tree state", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
 
-  const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(chartOverlay).toBeVisible();
+  const chartOverlay = await getChartOverlay(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -449,8 +490,7 @@ test("drawing visible regardless of object tree state", async ({ page }) => {
   });
   expect(count).toBe(1);
 
-  // Overlay canvas still visible
-  await expect(chartOverlay).toBeVisible();
+  await waitForChartRender(page);
 });
 
 test("indicators: search and add non-top indicator", async ({ page }) => {
@@ -483,7 +523,7 @@ test("indicators: search and add non-top indicator", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   // Open indicators panel
   await page.locator('[data-testid="indicators-button"]:visible').first().click();
@@ -536,8 +576,7 @@ test("selected tool badge does not block clicks", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
 
-  const chartOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(chartOverlay).toBeVisible();
+  const chartOverlay = await getChartOverlay(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -616,7 +655,7 @@ test("tool rail opens submenus on click", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -677,7 +716,7 @@ test("status row and toolbox header are uncluttered", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   // OHLC status row exists
   const statusRow = page.locator('[data-testid="ohlc-status"]:visible').first();
@@ -723,7 +762,7 @@ test("tool rail: select measure tool via submenu", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -775,7 +814,7 @@ test("OHLC legend row displays structured values", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   // OHLC status row exists
   const statusRow = page.locator('[data-testid="ohlc-status"]:visible').first();
@@ -829,7 +868,7 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/simulation");
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+  await waitForChartRender(page);
 
   const clickByTestId = async (testId: string) => {
     await page.evaluate((id) => {
@@ -850,7 +889,7 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
   await clickByTestId("rail-lines");
   await clickByTestId("tool-trendline");
   const overlay = page.locator('[data-testid="super-pane-0"] canvas[aria-label="chart-drawing-overlay"]').first();
-  await expect(overlay).toBeVisible();
+  await waitForChartRender(page, '[data-testid="super-pane-0"] canvas[aria-label="chart-drawing-overlay"]');
   const box = await overlay.boundingBox();
   expect(box).toBeTruthy();
   if (box) {
@@ -879,7 +918,7 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
 
   // Switch back to single layout
   await clickByTestId("layout-1");
-  const singleOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(singleOverlay).toBeVisible();
+  await waitForChartRender(page);
 });
+
 

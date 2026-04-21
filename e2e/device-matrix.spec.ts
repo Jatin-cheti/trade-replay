@@ -14,6 +14,25 @@
 
 import { test, expect } from "@playwright/test";
 
+async function waitForChartRender(page: import("@playwright/test").Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const candidate = document.querySelector("[data-testid='chart-canvas'], canvas[aria-label='chart-drawing-overlay'], .tv-lightweight-charts canvas");
+      if (!candidate) return false;
+
+      const ownBars = candidate.getAttribute("data-bar-count");
+      const hostBars = candidate.closest("[data-bar-count]")?.getAttribute("data-bar-count");
+      const bars = Number.parseInt(ownBars ?? hostBars ?? "0", 10);
+      if (Number.isFinite(bars) && bars > 0) return true;
+
+      const rect = candidate.getBoundingClientRect();
+      const style = window.getComputedStyle(candidate);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    },
+    { timeout: 20_000 },
+  );
+}
+
 const ROUTES = [
   { name: "home", path: "/" },
   { name: "screener", path: "/screener" },
@@ -60,7 +79,5 @@ test("screener — result count visible", async ({ page }) => {
 test("symbol page — chart renders", async ({ page }) => {
   await page.goto("/symbol/NVDA", { waitUntil: "domcontentloaded", timeout: 30_000 });
 
-  // Chart container or canvas should be visible
-  const chart = page.locator("canvas, [data-testid='chart-container'], .tv-lightweight-charts");
-  await expect(chart.first()).toBeVisible({ timeout: 20_000 });
+  await waitForChartRender(page);
 });

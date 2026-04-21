@@ -28,7 +28,13 @@ const SYMBOL = "MRF.NS";
 const SYMBOL_URL = `/symbol/${SYMBOL}`;
 
 test.describe("Symbol page", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await page.goto("about:blank");
+    await page.evaluate(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    });
     await page.goto(SYMBOL_URL);
     // Wait for the hero price chip to appear — confirms symbol data loaded
     await expect(page.locator('[data-testid="symbol-price"], .tabular-nums').first()).toBeVisible({

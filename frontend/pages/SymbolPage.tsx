@@ -148,14 +148,28 @@ function getTabSlug(tab: string): string {
 const TIME_PERIODS = [
   { label: "1 day",       key: "1d",  limit: 78   },
   { label: "5 days",      key: "5d",  limit: 390  },
-  { label: "1 month",     key: "1m",  limit: 720  },
-  { label: "6 months",    key: "6m",  limit: 1800 },
-  { label: "Year to date",key: "ytd", limit: 2400 },
-  { label: "1 year",      key: "1y",  limit: 3120 },
-  { label: "5 years",     key: "5y",  limit: 5200 },
-  { label: "10 years",    key: "10y", limit: 7800 },
-  { label: "All time",    key: "all", limit: 9999 },
+  { label: "1 month",     key: "1m",  limit: 500  },
+  { label: "6 months",    key: "6m",  limit: 500  },
+  { label: "Year to date",key: "ytd", limit: 500  },
+  { label: "1 year",      key: "1y",  limit: 500  },
+  { label: "5 years",     key: "5y",  limit: 500  },
+  { label: "10 years",    key: "10y", limit: 500  },
+  { label: "All time",    key: "all", limit: 500  },
 ] as const;
+
+// Duration each period spans in milliseconds — used to re-timestamp
+// synthetic backend candles so the chart x-axis shows real recent dates.
+const PERIOD_DURATION_MS: Record<string, number> = {
+  "1d":  6.5 * 60 * 60 * 1000,               // 6.5 trading hours
+  "5d":  5 * 6.5 * 60 * 60 * 1000,           // 5 trading days
+  "1m":  30 * 24 * 60 * 60 * 1000,           // 30 days
+  "6m":  180 * 24 * 60 * 60 * 1000,          // ~6 months
+  "ytd": 0,                                   // computed at runtime (Jan 1 → now)
+  "1y":  365 * 24 * 60 * 60 * 1000,          // 1 year
+  "5y":  5 * 365 * 24 * 60 * 60 * 1000,      // 5 years
+  "10y": 10 * 365 * 24 * 60 * 60 * 1000,     // 10 years
+  "all": 20 * 365 * 24 * 60 * 60 * 1000,     // ~20 years
+};
 
 const chartTypeIconMap: Partial<Record<ChartType, typeof CandlestickChart>> = {
   candlestick: CandlestickChart,
@@ -338,9 +352,8 @@ export default function SymbolPage() {
   const loadCandles = useCallback((limit?: number) => {
     if (!detail?.symbol) return;
     const candleSymbol = detail.fullSymbol || detail.symbol;
-    // Backend caps candleLimit at 500; clamp here to avoid 400 validation errors.
-    const requested = limit ?? 240;
-    const effectiveLimit = Math.max(20, Math.min(500, requested));
+    // Default to 1-day (78 × 5-min bars). Backend hard-caps at 500.
+    const effectiveLimit = Math.max(20, Math.min(500, limit ?? 78));
     setChartLoading(true);
     setChartError(false);
     fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: effectiveLimit })
@@ -353,7 +366,21 @@ export default function SymbolPage() {
       .finally(() => setChartLoading(false));
   }, [detail?.fullSymbol, detail?.symbol]);
 
-  useEffect(() => { loadCandles(); }, [loadCandles]);
+  // Initial load for default period
+  useEffect(() => {
+    loadCandles(TIME_PERIODS.find((p) => p.key === "1d")?.limit);
+  }, [loadCandles]);
+
+  // Live polling: keep chart data fresh while the tab is visible
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      const period = TIME_PERIODS.find((p) => p.key === activeTimePeriod);
+      loadCandles(period?.limit ?? 78);
+    };
+    const id = setInterval(tick, 10_000);
+    return () => clearInterval(id);
+  }, [activeTimePeriod, loadCandles]);
 
   const handleTimePeriodChange = useCallback((key: string) => {
     setActiveTimePeriod(key);
@@ -371,16 +398,36 @@ export default function SymbolPage() {
     loadCandles(9999);
   }, [loadCandles]);
 
-  // Candles filtered by custom range
+  // Candles for the chart — re-timestamped to the selected period ending at "now".
+  // The backend serves synthetic data with historical timestamps; we remap them
+  // so the x-axis always shows the correct real date range for the chosen period.
   const displayCandles = useMemo(() => {
-    if (!customRange || !candles.length) return candles;
-    const from = customRange.from.getTime();
-    const to   = customRange.to.getTime();
-    return candles.filter((c) => {
-      const t = (typeof c.time === "number" ? c.time : Number(c.time)) * 1000;
-      return t >= from && t <= to;
-    });
-  }, [candles, customRange]);
+    if (!candles.length) return candles;
+
+    // Custom range: filter by raw calendar dates (user-specified, keep as-is)
+    if (customRange) {
+      const from = customRange.from.getTime();
+      const to   = customRange.to.getTime();
+      return candles.filter((c) => {
+        const t = (typeof c.time === "number" ? c.time : Number(c.time)) * 1000;
+        return t >= from && t <= to;
+      });
+    }
+
+    // Re-timestamp: evenly space candles over the selected period ending at now
+    const now = Date.now();
+    let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
+    if (activeTimePeriod === "ytd") {
+      durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
+    }
+    const n = candles.length;
+    const stepMs = n > 1 ? durationMs / (n - 1) : 0;
+    const startMs = now - durationMs;
+    return candles.map((c, i) => ({
+      ...c,
+      time: String(Math.floor((startMs + i * stepMs) / 1000)),
+    }));
+  }, [candles, customRange, activeTimePeriod]);
 
   // Close symbol picker on outside click
   useEffect(() => {
@@ -578,7 +625,7 @@ export default function SymbolPage() {
         onFullChart={() => navigate(simulationHref)}
         heroRef={heroRef}
       />
-      <div className="mx-auto max-w-[1400px] px-4 md:px-6">
+      <div className="mx-auto max-w-[1200px] px-4 md:px-6">
 
         {/* ── Breadcrumb (TradingView exact) ────────────────────────────── */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5 flex-wrap">
@@ -884,6 +931,10 @@ export default function SymbolPage() {
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-0.5 cursor-pointer hover:text-primary transition-colors">
                   Chart <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  <span className="ml-1.5 flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                    LIVE
+                  </span>
                 </h2>
                 <div className="flex items-center gap-2">
                   {/* Chart type dropdown */}
@@ -971,11 +1022,11 @@ export default function SymbolPage() {
 
               {/* Chart — lightweight area chart for overview */}
               {chartLoading ? (
-                <div ref={chartContainerRef} className="h-[420px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
               ) : chartError && displayCandles.length === 0 ? (
-                <div ref={chartContainerRef} className="h-[420px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
                     <button
@@ -989,8 +1040,9 @@ export default function SymbolPage() {
               ) : displayCandles.length > 0 ? (
                 <div ref={chartContainerRef} className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
+                    key={activeTimePeriod + (customRange ? customRange.from.getTime() : '')}
                     data={displayCandles}
-                    height={420}
+                    height={520}
                     chartType={overviewChartType}
                   />
                 </div>
@@ -998,7 +1050,7 @@ export default function SymbolPage() {
                 <div
                   onClick={() => navigate(simulationHref)}
                   ref={chartContainerRef}
-                  className="h-[420px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                  className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
                     <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />

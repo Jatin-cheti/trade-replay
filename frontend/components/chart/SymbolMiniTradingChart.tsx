@@ -69,6 +69,7 @@ export default function SymbolMiniTradingChart({
 
     applySeriesData(seriesMap, transformed);
     applySeriesVisibility(seriesMap, chartType);
+    chartRef.current?.timeScale().scrollToRealTime();
   }, [chartType, ready, transformed]);
 
   const hasData = transformed.ohlcRows.length > 1;

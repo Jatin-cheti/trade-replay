@@ -12,6 +12,15 @@ async function expectSymbolModalClosed(page: import("@playwright/test").Page): P
     .toMatch(/removed|closed/);
 }
 
+test.beforeEach(async ({ context, page }) => {
+  await context.clearCookies();
+  await page.goto("about:blank");
+  await page.evaluate(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+});
+
 test("shared symbol modal works in portfolio and simulation", async ({ page }) => {
   test.setTimeout(120_000);
 

@@ -207,9 +207,9 @@ export default function Screener() {
         {data.loading && data.items.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />Loading screener…</div>
         ) : isMobile ? (
-          <ScreenerMobileList items={data.items} loadingMore={data.loadingMore} onNavigate={(sym: string) => navigate(`/symbol/${encodeURIComponent(sym)}`)} onLoadMore={data.loadMore} />
+          <ScreenerMobileList items={data.items} loadingMore={data.loadingMore} onLoadMore={data.loadMore} />
         ) : (
-          <ScreenerTable items={data.items} flashBySymbol={data.flashBySymbol} visibleColumns={visibleColumns} columnLookup={columnLookup} sortField={data.sortField} sortOrder={data.sortOrder} loadingMore={data.loadingMore} onSort={setSort} onNavigate={(sym: string) => navigate(`/symbol/${encodeURIComponent(sym)}`)} onLoadMore={data.loadMore} addColumnOpen={addColumnOpen} setAddColumnOpen={setAddColumnOpen} addColumnSearch={addColumnSearch} setAddColumnSearch={setAddColumnSearch} availableAddColumnFields={availableAddColumnFields} updateSelectedColumns={updateSelectedColumns} addColumnRef={addColumnRef} />
+          <ScreenerTable items={data.items} flashBySymbol={data.flashBySymbol} visibleColumns={visibleColumns} columnLookup={columnLookup} sortField={data.sortField} sortOrder={data.sortOrder} loadingMore={data.loadingMore} onSort={setSort} onLoadMore={data.loadMore} addColumnOpen={addColumnOpen} setAddColumnOpen={setAddColumnOpen} addColumnSearch={addColumnSearch} setAddColumnSearch={setAddColumnSearch} availableAddColumnFields={availableAddColumnFields} updateSelectedColumns={updateSelectedColumns} addColumnRef={addColumnRef} />
         )}
         {!data.loading && data.items.length === 0 && (
           <div data-testid="screener-no-results" className="flex flex-col items-center gap-3 py-20 text-center">
