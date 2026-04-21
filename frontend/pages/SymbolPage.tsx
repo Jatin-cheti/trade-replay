@@ -338,6 +338,9 @@ export default function SymbolPage() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState(false);
+  // Per-period performance % (for TradingView-style chip labels). Populated
+  // lazily in parallel after the symbol detail loads.
+  const [perfByPeriod, setPerfByPeriod] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!symbol) return;
@@ -371,6 +374,40 @@ export default function SymbolPage() {
   useEffect(() => {
     loadCandles(TIME_PERIODS.find((p) => p.key === "1d")?.limit);
   }, [loadCandles]);
+
+  // Populate per-chip performance % by fetching each period's candles in
+  // parallel. Fire-and-forget; chips render a placeholder until results land.
+  useEffect(() => {
+    if (!detail?.symbol) return;
+    const candleSymbol = detail.fullSymbol || detail.symbol;
+    let cancelled = false;
+    Promise.allSettled(
+      TIME_PERIODS.map((p) =>
+        fetchLiveSnapshot({
+          symbols: [candleSymbol],
+          candleSymbols: [candleSymbol],
+          candleLimit: Math.max(20, Math.min(500, p.limit)),
+        }).then((snap) => {
+          const c = snap.candlesBySymbol?.[candleSymbol];
+          if (!c || c.length < 2) return null;
+          const first = c[0]?.close;
+          const last = c[c.length - 1]?.close;
+          if (!first || first <= 0 || !last) return null;
+          return { key: p.key, pct: ((last - first) / first) * 100 };
+        })
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, number> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) next[r.value.key] = r.value.pct;
+      }
+      setPerfByPeriod(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail?.fullSymbol, detail?.symbol]);
 
   // Live polling: keep chart data fresh while the tab is visible
   useEffect(() => {
@@ -1074,6 +1111,13 @@ export default function SymbolPage() {
                     data={displayCandles}
                     height="100%"
                     chartType={overviewChartType}
+                    prevClose={
+                      detail && typeof detail.price === "number" && typeof detail.change === "number"
+                        ? detail.price - detail.change
+                        : null
+                    }
+                    periodReturn={perfPercent}
+                    timePeriod={activeTimePeriod}
                   />
                 </div>
               ) : (
@@ -1094,12 +1138,23 @@ export default function SymbolPage() {
               <div className="mt-3 flex flex-col gap-2">
                 <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 {TIME_PERIODS.map((p) => {
-                  // Show changePercent for active period, perfPercent for 1d
-                  const pctValue = p.key === activeTimePeriod ? perfPercent : null;
-                  const pctColor = pctValue != null ? (pctValue >= 0 ? "text-emerald-500" : "text-red-500") : "";
+                  // Active chip uses live `perfPercent` (re-computed from the
+                  // currently-loaded candles + rescaling); other chips use the
+                  // pre-fetched `perfByPeriod` map.
+                  const pctValue =
+                    p.key === activeTimePeriod
+                      ? perfPercent
+                      : perfByPeriod[p.key];
+                  const hasPct = pctValue != null && Number.isFinite(pctValue);
+                  const pctColor = hasPct
+                    ? (pctValue as number) >= 0
+                      ? "text-emerald-500"
+                      : "text-red-500"
+                    : "";
                   return (
                     <button
                       key={p.key}
+                      data-period={p.key}
                       onClick={() => handleTimePeriodChange(p.key)}
                       className={`flex flex-col items-center px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[80px] ${
                         activeTimePeriod === p.key
@@ -1108,9 +1163,13 @@ export default function SymbolPage() {
                       }`}
                     >
                       <span className={activeTimePeriod === p.key ? "text-foreground font-semibold" : ""}>{p.label}</span>
-                      {pctValue != null && (
-                        <span className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
-                          {pctValue >= 0 ? "+" : ""}{pctValue.toFixed(2)}%
+                      {hasPct ? (
+                        <span data-percent className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
+                          {(pctValue as number) >= 0 ? "+" : ""}{(pctValue as number).toFixed(2)}%
+                        </span>
+                      ) : (
+                        <span data-percent className="text-[10px] tabular-nums mt-0.5 text-muted-foreground/40">
+                          &nbsp;
                         </span>
                       )}
                     </button>

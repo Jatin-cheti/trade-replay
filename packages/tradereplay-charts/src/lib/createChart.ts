@@ -281,16 +281,27 @@ function fmtPrice(p: number): string {
   return p.toPrecision(4);
 }
 
-function fmtTime(ts: UTCTimestamp, interval: number, rangeSeconds?: number): string {
+function fmtTime(ts: UTCTimestamp, interval: number, rangeSeconds?: number, prevTs?: UTCTimestamp): string {
   const d = new Date(ts * 1000);
   const span = rangeSeconds ?? interval;
-  // Multi-day span (≥ ~2 days) → show calendar dates
-  if (span >= 2 * 86400 || interval >= 86400) {
-    // Long ranges include year for clarity; medium ranges just month/day.
-    if (span >= 365 * 86400) {
-      return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-    }
+  // Long ranges (≥ ~1 year) → month + year
+  if (span >= 365 * 86400) {
+    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  }
+  // Medium ranges (≥ ~2 weeks or daily interval) → month + day
+  if (span >= 14 * 86400 || interval >= 86400) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+  // Short multi-day range (2–14 days, intraday interval): show date at day boundary, HH:MM otherwise.
+  if (span >= 2 * 86400) {
+    const prev = prevTs != null ? new Date((prevTs as number) * 1000) : null;
+    const dayChanged = !prev || prev.getUTCFullYear() !== d.getUTCFullYear() || prev.getUTCMonth() !== d.getUTCMonth() || prev.getUTCDate() !== d.getUTCDate();
+    if (dayChanged) {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
   }
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
@@ -553,6 +564,14 @@ export function createChart(
   let mode: InteractionMode = 'idle';
   let crosshairX: number | null = null;
   let crosshairY: number | null = null;
+
+  // Runtime-enforced interaction gates (see ChartOptions.handleScroll/handleScale).
+  // When false, the corresponding pointer/wheel behaviour is suppressed so consumers
+  // embedding the chart on pages (Symbol Page overview) can let the page scroll
+  // normally instead of the chart hijacking the wheel.
+  let allowWheelZoom = initOpts?.handleScale?.mouseWheel !== false;
+  let allowWheelScroll = initOpts?.handleScroll?.mouseWheel !== false;
+  let allowPressedMouseMove = initOpts?.handleScroll?.pressedMouseMove !== false;
 
   /** Ordered list of pane definitions; main pane is always first. */
   const panes: PaneDef[] = [{ id: MAIN_PANE_ID, height: 1 }];
@@ -1348,12 +1367,14 @@ export function createChart(
     const firstT = timeIndex.at(rs.firstBar);
     const lastT = timeIndex.at(rs.lastBar);
     const rangeSec = firstT != null && lastT != null ? Math.max(0, lastT - firstT) : interval;
+    let prevTickT: UTCTimestamp | undefined;
     for (const i of tickBars) {
       const x = barToX(i);
       if (x < 10 || x > w - 10) continue;
       const t = timeIndex.at(i);
       if (t == null) continue;
-      ctx.fillText(fmtTime(t, interval, rangeSec), x, h + TIME_AXIS_H / 2);
+      ctx.fillText(fmtTime(t, interval, rangeSec, prevTickT), x, h + TIME_AXIS_H / 2);
+      prevTickT = t;
     }
   }
 
@@ -2154,6 +2175,11 @@ export function createChart(
   }
 
   function onWheel(e: WheelEvent): void {
+    // If the consumer disabled BOTH wheel zoom AND wheel scroll, the chart must
+    // be completely passive — do not preventDefault so the page can scroll.
+    if (!allowWheelZoom && !allowWheelScroll) {
+      return;
+    }
     e.preventDefault();
 
     const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
@@ -2233,8 +2259,12 @@ export function createChart(
     crosshairY = e.offsetY;
     emitCrosshairMove('local-pointer');
     if (dragStart != null && (mode === 'pan' || mode === 'scroll' || mode === 'idle')) {
-      const dx = e.clientX - dragStart.clientX;
-      rightmostIndex = clampRightmostIndex(dragStart.rightAtStart - dx / barWidth);
+      if (!allowPressedMouseMove) {
+        dragStart = null;
+      } else {
+        const dx = e.clientX - dragStart.clientX;
+        rightmostIndex = clampRightmostIndex(dragStart.rightAtStart - dx / barWidth);
+      }
     }
     scheduleRender();
   }

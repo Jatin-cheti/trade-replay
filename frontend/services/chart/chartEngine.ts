@@ -3,11 +3,18 @@ import { createChart, type IChartApi } from '@tradereplay/charts';
 type TradingChartEngineOptions = {
   parityMode?: boolean;
   viewMode?: 'normal' | 'full';
+  /**
+   * When true, the chart becomes passive to mouse-wheel and drag-pan events.
+   * Used on the Symbol Page overview where the chart is view-only and the
+   * user expects the page (not the chart) to scroll.
+   */
+  passive?: boolean;
 };
 
 export function createTradingChart(container: HTMLElement, options?: TradingChartEngineOptions): IChartApi {
   const parityMode = options?.parityMode ?? false;
   const viewMode = options?.viewMode ?? 'normal';
+  const passive = options?.passive ?? false;
   const backgroundColor = parityMode ? '#0f0f0f' : '#131722';
   const gridColor = parityMode ? 'rgba(42, 46, 57, 0.42)' : 'rgba(42, 46, 57, 0.72)';
   const axisColor = parityMode ? 'rgba(42, 46, 57, 0.62)' : 'rgba(42, 46, 57, 0.95)';
@@ -53,14 +60,14 @@ export function createTradingChart(container: HTMLElement, options?: TradingChar
     },
     handleScale: {
       axisPressedMouseMove: { time: true, price: true },
-      mouseWheel: true,
-      pinch: true,
+      mouseWheel: !passive,
+      pinch: !passive,
     },
     handleScroll: {
-      mouseWheel: true,
-      pressedMouseMove: true,
+      mouseWheel: !passive,
+      pressedMouseMove: !passive,
       vertTouchDrag: false,
-      horzTouchDrag: true,
+      horzTouchDrag: !passive,
     },
     parity: parityMode
       ? {
