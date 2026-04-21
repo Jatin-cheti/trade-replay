@@ -625,7 +625,7 @@ export default function SymbolPage() {
         onFullChart={() => navigate(simulationHref)}
         heroRef={heroRef}
       />
-      <div className="mx-auto max-w-[1400px] px-4 md:px-6">
+      <div className="mx-auto max-w-[1200px] px-4 md:px-6">
 
         {/* ── Breadcrumb (TradingView exact) ────────────────────────────── */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5 flex-wrap">
@@ -1022,11 +1022,11 @@ export default function SymbolPage() {
 
               {/* Chart — lightweight area chart for overview */}
               {chartLoading ? (
-                <div ref={chartContainerRef} className="h-[420px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
               ) : chartError && displayCandles.length === 0 ? (
-                <div ref={chartContainerRef} className="h-[420px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
                     <button
@@ -1040,8 +1040,9 @@ export default function SymbolPage() {
               ) : displayCandles.length > 0 ? (
                 <div ref={chartContainerRef} className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
+                    key={activeTimePeriod + (customRange ? customRange.from.getTime() : '')}
                     data={displayCandles}
-                    height={420}
+                    height={520}
                     chartType={overviewChartType}
                   />
                 </div>
@@ -1049,7 +1050,7 @@ export default function SymbolPage() {
                 <div
                   onClick={() => navigate(simulationHref)}
                   ref={chartContainerRef}
-                  className="h-[420px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                  className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
                     <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />

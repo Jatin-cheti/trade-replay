@@ -192,12 +192,12 @@ export default function SavedPeriodsMenu({
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -6 }}
+            initial={{ opacity: 0, scale: 0.95, y: 6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -6 }}
+            exit={{ opacity: 0, scale: 0.95, y: 6 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
             id={menuId}
-            className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl border border-border/50 bg-background/98 backdrop-blur-xl shadow-2xl overflow-hidden"
+            className="absolute right-0 bottom-full mb-2 z-50 w-72 rounded-xl border border-border/50 bg-background/98 backdrop-blur-xl shadow-2xl overflow-hidden"
             role="menu"
             aria-label="Saved periods"
             onKeyDown={handleMenuKeyDown}

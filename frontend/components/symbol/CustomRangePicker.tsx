@@ -196,7 +196,7 @@ export default function CustomRangePicker({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 24 }}
             transition={{ type: "spring", stiffness: 380, damping: 32 }}
-            className="fixed inset-x-4 top-1/2 z-[90] max-w-lg mx-auto -translate-y-1/2 rounded-2xl border border-border/50 bg-background shadow-2xl overflow-hidden"
+            className="fixed inset-x-4 top-1/2 z-[90] max-w-lg mx-auto -translate-y-1/2 max-h-[90dvh] flex flex-col rounded-2xl border border-border/50 bg-background shadow-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -216,6 +216,8 @@ export default function CustomRangePicker({
               </button>
             </div>
 
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 min-h-0">
             {/* Mode selector */}
             <div className="flex gap-1.5 px-5 pt-4" role="tablist" aria-label="Range modes">
               {modes.map((m, index) => {
@@ -353,6 +355,8 @@ export default function CustomRangePicker({
                 </div>
               )}
             </div>
+
+            </div>{/* end scrollable body */}
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border/30">
