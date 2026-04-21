@@ -306,7 +306,7 @@ export default function SymbolPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
-  const [overviewChartType, setOverviewChartType] = useState<ChartType>("area");
+  const [overviewChartType, setOverviewChartType] = useState<ChartType>("line");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
 
   // Custom range + saved periods state
@@ -1208,15 +1208,11 @@ export default function SymbolPage() {
               <div className="mt-3 flex flex-col gap-2">
                 <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 {TIME_PERIODS.map((p) => {
-                  // Active chip uses live `perfPercent` (re-computed from the
-                  // currently-loaded candles + rescaling) for 1D only.
-                  // Non-1D periods use `perfByPeriod` (which is undefined for
-                  // all but 1D, so they render blank — the backend returns
-                  // synthetic data that doesn't represent real multi-day returns).
-                  const pctValue =
-                    p.key === activeTimePeriod && p.key === '1d'
-                      ? perfPercent
-                      : perfByPeriod[p.key];
+                  // All chips use perfByPeriod[p.key].
+                  // '1d' is seeded from detail.changePercent (accurate live %).
+                  // Non-1D chips are undefined (blank) — synthetic data can't give
+                  // meaningful historical returns without real backend candles.
+                  const pctValue = perfByPeriod[p.key];
                   const hasPct = pctValue != null && Number.isFinite(pctValue);
                   const pctColor = hasPct
                     ? (pctValue as number) >= 0

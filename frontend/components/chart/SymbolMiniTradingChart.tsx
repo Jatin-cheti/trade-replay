@@ -27,12 +27,12 @@ interface SymbolMiniTradingChartProps {
   timePeriod?: string;
 }
 
-const GREEN_LINE = '#10b981';
-const GREEN_TOP = 'rgba(16, 185, 129, 0.08)';
+const GREEN_LINE   = '#10b981';
+const GREEN_TOP    = 'rgba(16, 185, 129, 0.20)';  // line+fill mode: visible gradient top
 const GREEN_BOTTOM = 'rgba(16, 185, 129, 0.00)';
-const RED_LINE = '#ef4444';
-const RED_TOP = 'rgba(239, 68, 68, 0.08)';
-const RED_BOTTOM = 'rgba(239, 68, 68, 0.00)';
+const RED_LINE     = '#ef4444';
+const RED_TOP      = 'rgba(239, 68, 68, 0.20)';
+const RED_BOTTOM   = 'rgba(239, 68, 68, 0.00)';
 
 const PREV_CLOSE_COLOR = 'rgba(156, 163, 175, 0.85)';
 
@@ -136,10 +136,24 @@ export default function SymbolMiniTradingChart({
     const lineColor = isUp ? GREEN_LINE : RED_LINE;
     const topColor = isUp ? GREEN_TOP : RED_TOP;
     const bottomColor = isUp ? GREEN_BOTTOM : RED_BOTTOM;
-    seriesMap.area.applyOptions({ lineColor, topColor, bottomColor });
-    seriesMap.mountainArea.applyOptions({ lineColor, topColor, bottomColor });
-    seriesMap.line.applyOptions({ color: lineColor });
-    seriesMap.stepLine.applyOptions({ color: lineColor });
+
+    if (chartType === 'line') {
+      // TradingView "line" chart = prominent line + subtle gradient fill beneath it.
+      // applySeriesVisibility hid the area series; re-show it as a fill-only layer
+      // by setting lineColor to transparent so only the gradient fill is visible.
+      seriesMap.line.applyOptions({ color: lineColor });
+      seriesMap.area.applyOptions({
+        lineColor: 'rgba(0,0,0,0)',
+        topColor,
+        bottomColor,
+        visible: true,
+      });
+    } else {
+      seriesMap.area.applyOptions({ lineColor, topColor, bottomColor });
+      seriesMap.mountainArea.applyOptions({ lineColor, topColor, bottomColor });
+      seriesMap.line.applyOptions({ color: lineColor });
+      seriesMap.stepLine.applyOptions({ color: lineColor });
+    }
 
     // Update forced tick boundaries whenever timePeriod changes
     if (timePeriod === '1d') {
