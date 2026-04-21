@@ -1,0 +1,113 @@
+{
+  collections: [
+    'missinglogos',
+    'symbols',
+    'simulationsessions',
+    'users',
+    'alerts',
+    'domainmemories',
+    'savedportfolios',
+    'portfoliodatasetmetadatas',
+    'portfolios',
+    'ingestionstates',
+    'globalsymbolmasters',
+    'screens',
+    'cleanassets',
+    'clean_assets',
+    'trades',
+    'enrichment_audit_log'
+  ],
+  counts: {
+    symbols: 1587159,
+    cleanassets: 1624850,
+    enrichment_audit_log: 32354,
+    missinglogos: 68324
+  },
+  cleanassets_total: 1624850,
+  cleanassets_in: 111300,
+  cleanassets_in_active: 111293,
+  cleanassets_in_by_exchange: [
+    {
+      _id: 'OPT',
+      n: 59861
+    },
+    {
+      _id: 'NSE',
+      n: 28483
+    },
+    {
+      _id: 'AMFI',
+      n: 14350
+    },
+    {
+      _id: 'BSE',
+      n: 5253
+    },
+    {
+      _id: 'DERIV',
+      n: 3336
+    },
+    {
+      _id: 'ECONOMICS',
+      n: 6
+    },
+    {
+      _id: 'BOND',
+      n: 3
+    },
+    {
+      _id: 'BONDS',
+      n: 1
+    }
+  ],
+  cleanassets_in_by_type: [
+    {
+      _id: 'options',
+      n: 85204
+    },
+    {
+      _id: 'mutualfund',
+      n: 14350
+    },
+    {
+      _id: 'stock',
+      n: 7932
+    },
+    {
+      _id: 'futures',
+      n: 3768
+    },
+    {
+      _id: 'etf',
+      n: 20
+    },
+    {
+      _id: 'index',
+      n: 9
+    },
+    {
+      _id: 'economy',
+      n: 6
+    },
+    {
+      _id: 'bond',
+      n: 4
+    }
+  ],
+  cleanassets_global: 1624843,
+  cleanassets_us: 1328012,
+  cleanassets_sources: [
+    'bse_official',
+    'nse_official'
+  ],
+  cleanassets_sample_in: {
+    _id: ObjectId('69e182978b3c4d3fbe0c7ba0'),
+    fullSymbol: 'BSE:0P0001RK6V',
+    iconUrl: 'https://www.google.com/s2/favicons?sz=256&domain=hdfcpharmaandhealthcareregidcw.com',
+    marketCap: 0,
+    name: 'HDFC Pharma and Healthcare Reg IDCW-P',
+    sector: 'ETF - Healthcare',
+    symbol: '0P0001RK6V'
+  },
+  dupes_clean: []
+}

@@ -1,0 +1,95 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  unit-tests:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports: [27017:27017]
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci || npm install
+
+      - name: Unit tests
+        run: |
+          if grep -q "\"test\"" package.json; then
+            npm test -- --ci --forceExit 2>&1 | tee reports/unit_test_loop5.txt
+          else
+            echo "::warning::No test script configured"
+          fi
+        env:
+          MONGODB_URI: mongodb://localhost:27017/tradereplay_test
+          NODE_ENV: test
+        continue-on-error: true
+
+      - name: API key validation (warn-only)
+        run: node scripts/lib/validate-api-keys.cjs --warn
+        env:
+          ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        continue-on-error: true
+
+      - name: Historical credential check
+        run: |
+          COUNT=$(git log --all -p 2>/dev/null | grep -c "***REDACTED_AV_KEY***" || echo 0)
+          echo "::notice::Historical leaked-credential occurrences: $COUNT"
+          # SEC-006 force-push pending — do not fail on this yet; just surface the number.
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-report
+          path: reports/unit_test_*.txt
+
+  security-scan:
+    name: Security Scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  lint-workflow:
+    name: Validate workflow YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        uses: reviewdog/action-actionlint@v1
+        with:
+          reporter: github-pr-check
+          fail_on_error: false
