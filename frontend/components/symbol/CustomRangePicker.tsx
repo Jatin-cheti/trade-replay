@@ -7,6 +7,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Calendar, Check, Clock, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { DayPicker } from "react-day-picker";
 import { format, isAfter, isBefore, isValid, parse } from "date-fns";
 import "react-day-picker/dist/style.css";
@@ -81,7 +82,13 @@ export default function CustomRangePicker({
       }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    // Lock body scroll while modal is open so background doesn't scroll.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open, onClose]);
 
   const validate = (): boolean => {
@@ -177,16 +184,17 @@ export default function CustomRangePicker({
     modeTabRefs.current[nextIndex]?.focus();
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <AnimatePresence>
       {open && (
-        <>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={handleClose}
           />
 
@@ -196,7 +204,7 @@ export default function CustomRangePicker({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 24 }}
             transition={{ type: "spring", stiffness: 380, damping: 32 }}
-            className="fixed inset-x-4 top-1/2 z-[90] max-w-lg mx-auto -translate-y-1/2 max-h-[90dvh] flex flex-col rounded-2xl border border-border/50 bg-background shadow-2xl overflow-hidden"
+            className="relative w-full max-w-lg max-h-[88dvh] flex flex-col rounded-2xl border border-border/50 bg-background shadow-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -375,8 +383,9 @@ export default function CustomRangePicker({
               </button>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

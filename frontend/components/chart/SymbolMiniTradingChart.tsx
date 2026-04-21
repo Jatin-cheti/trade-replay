@@ -13,7 +13,7 @@ import { formatPriceUs } from '@/lib/numberFormat';
 
 interface SymbolMiniTradingChartProps {
   data: CandleData[];
-  height?: number;
+  height?: number | string;
   chartType: ChartType;
 }
 
@@ -69,7 +69,21 @@ export default function SymbolMiniTradingChart({
 
     applySeriesData(seriesMap, transformed);
     applySeriesVisibility(seriesMap, chartType);
-    chartRef.current?.timeScale().scrollToRealTime();
+    // Fit all data into the visible range so the x-axis spans the full
+    // selected period instead of a narrow default window.
+    const times = transformed.ohlcRows;
+    if (times.length >= 2) {
+      try {
+        chartRef.current?.timeScale().setVisibleRange({
+          from: times[0].time,
+          to: times[times.length - 1].time,
+        });
+      } catch {
+        chartRef.current?.timeScale().scrollToRealTime();
+      }
+    } else {
+      chartRef.current?.timeScale().scrollToRealTime();
+    }
   }, [chartType, ready, transformed]);
 
   const hasData = transformed.ohlcRows.length > 1;
@@ -103,7 +117,7 @@ export default function SymbolMiniTradingChart({
         <div
           className="pointer-events-none absolute right-2 rounded px-2 py-0.5 text-[11px] font-semibold text-white"
           style={{
-            top: Math.max(4, Math.min(height - 24, latestY - 10)),
+            top: Math.max(4, latestY - 10),
             backgroundColor: isDown ? "hsl(var(--destructive))" : "hsl(var(--primary))",
           }}
         >

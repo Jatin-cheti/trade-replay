@@ -159,9 +159,10 @@ const TIME_PERIODS = [
 
 // Duration each period spans in milliseconds — used to re-timestamp
 // synthetic backend candles so the chart x-axis shows real recent dates.
+// Use calendar durations so multi-day/month/year periods show date labels.
 const PERIOD_DURATION_MS: Record<string, number> = {
-  "1d":  6.5 * 60 * 60 * 1000,               // 6.5 trading hours
-  "5d":  5 * 6.5 * 60 * 60 * 1000,           // 5 trading days
+  "1d":  6.5 * 60 * 60 * 1000,               // 6.5 trading hours → intraday HH:MM
+  "5d":  5 * 24 * 60 * 60 * 1000,            // 5 calendar days
   "1m":  30 * 24 * 60 * 60 * 1000,           // 30 days
   "6m":  180 * 24 * 60 * 60 * 1000,          // ~6 months
   "ytd": 0,                                   // computed at runtime (Jan 1 → now)
@@ -398,36 +399,65 @@ export default function SymbolPage() {
     loadCandles(9999);
   }, [loadCandles]);
 
-  // Candles for the chart — re-timestamped to the selected period ending at "now".
-  // The backend serves synthetic data with historical timestamps; we remap them
-  // so the x-axis always shows the correct real date range for the chosen period.
+  // Candles for the chart — re-timestamped to the selected period ending at "now"
+  // AND rescaled so the last close matches `detail.price` (screener quote).
+  // The backend serves synthetic candles whose absolute prices often disagree
+  // with the live quote; without rescaling the y-axis shows unrelated values.
   const displayCandles = useMemo(() => {
     if (!candles.length) return candles;
 
-    // Custom range: filter by raw calendar dates (user-specified, keep as-is)
+    // Step 1: re-timestamp or filter by custom range
+    let stage: CandleData[];
     if (customRange) {
       const from = customRange.from.getTime();
-      const to   = customRange.to.getTime();
-      return candles.filter((c) => {
-        const t = (typeof c.time === "number" ? c.time : Number(c.time)) * 1000;
-        return t >= from && t <= to;
+      const to = customRange.to.getTime();
+      stage = candles.filter((c) => {
+        // c.time can be "YYYY-MM-DD", unix-seconds number, or numeric string
+        let ms: number;
+        if (typeof c.time === "number") {
+          ms = c.time < 1e11 ? c.time * 1000 : c.time;
+        } else {
+          const s = String(c.time);
+          if (/^-?\d+(?:\.\d+)?$/.test(s)) {
+            const n = Number(s);
+            ms = n < 1e11 ? n * 1000 : n;
+          } else {
+            ms = new Date(s).getTime();
+          }
+        }
+        return Number.isFinite(ms) && ms >= from && ms <= to;
       });
+      if (!stage.length) stage = candles; // fallback to all if filter empties
+    } else {
+      const now = Date.now();
+      let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
+      if (activeTimePeriod === "ytd") {
+        durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
+      }
+      const n = candles.length;
+      const stepMs = n > 1 ? durationMs / (n - 1) : 0;
+      const startMs = now - durationMs;
+      stage = candles.map((c, i) => ({
+        ...c,
+        time: String(Math.floor((startMs + i * stepMs) / 1000)),
+      }));
     }
 
-    // Re-timestamp: evenly space candles over the selected period ending at now
-    const now = Date.now();
-    let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
-    if (activeTimePeriod === "ytd") {
-      durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
-    }
-    const n = candles.length;
-    const stepMs = n > 1 ? durationMs / (n - 1) : 0;
-    const startMs = now - durationMs;
-    return candles.map((c, i) => ({
+    // Step 2: rescale prices so the last close equals the live detail price.
+    const targetPrice = detail?.price;
+    if (!targetPrice || targetPrice <= 0 || stage.length === 0) return stage;
+    const lastClose = stage[stage.length - 1].close;
+    if (!lastClose || lastClose <= 0) return stage;
+    const scale = targetPrice / lastClose;
+    if (!Number.isFinite(scale) || Math.abs(scale - 1) < 1e-6) return stage;
+    return stage.map((c) => ({
       ...c,
-      time: String(Math.floor((startMs + i * stepMs) / 1000)),
+      open: c.open * scale,
+      high: c.high * scale,
+      low: c.low * scale,
+      close: c.close * scale,
     }));
-  }, [candles, customRange, activeTimePeriod]);
+  }, [candles, customRange, activeTimePeriod, detail?.price]);
 
   // Close symbol picker on outside click
   useEffect(() => {
@@ -625,7 +655,7 @@ export default function SymbolPage() {
         onFullChart={() => navigate(simulationHref)}
         heroRef={heroRef}
       />
-      <div className="mx-auto max-w-[1200px] px-4 md:px-6">
+      <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10">
 
         {/* ── Breadcrumb (TradingView exact) ────────────────────────────── */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5 flex-wrap">
@@ -1022,11 +1052,11 @@ export default function SymbolPage() {
 
               {/* Chart — lightweight area chart for overview */}
               {chartLoading ? (
-                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
               ) : chartError && displayCandles.length === 0 ? (
-                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
                     <button
@@ -1038,11 +1068,11 @@ export default function SymbolPage() {
                   </div>
                 </div>
               ) : displayCandles.length > 0 ? (
-                <div ref={chartContainerRef} className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
+                <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
                     key={activeTimePeriod + (customRange ? customRange.from.getTime() : '')}
                     data={displayCandles}
-                    height={520}
+                    height="100%"
                     chartType={overviewChartType}
                   />
                 </div>
@@ -1050,7 +1080,8 @@ export default function SymbolPage() {
                 <div
                   onClick={() => navigate(simulationHref)}
                   ref={chartContainerRef}
-                  className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                  style={{ height: "clamp(420px, 62vh, 720px)" }}
+                  className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
                     <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />

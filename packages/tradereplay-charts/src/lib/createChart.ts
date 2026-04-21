@@ -281,9 +281,15 @@ function fmtPrice(p: number): string {
   return p.toPrecision(4);
 }
 
-function fmtTime(ts: UTCTimestamp, interval: number): string {
+function fmtTime(ts: UTCTimestamp, interval: number, rangeSeconds?: number): string {
   const d = new Date(ts * 1000);
-  if (interval >= 86400) {
+  const span = rangeSeconds ?? interval;
+  // Multi-day span (≥ ~2 days) → show calendar dates
+  if (span >= 2 * 86400 || interval >= 86400) {
+    // Long ranges include year for clarity; medium ranges just month/day.
+    if (span >= 365 * 86400) {
+      return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    }
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
   const hh = String(d.getUTCHours()).padStart(2, '0');
@@ -1339,12 +1345,15 @@ export function createChart(
       70,
       (i) => timeIndex.at(i) ?? null,
     );
+    const firstT = timeIndex.at(rs.firstBar);
+    const lastT = timeIndex.at(rs.lastBar);
+    const rangeSec = firstT != null && lastT != null ? Math.max(0, lastT - firstT) : interval;
     for (const i of tickBars) {
       const x = barToX(i);
       if (x < 10 || x > w - 10) continue;
       const t = timeIndex.at(i);
       if (t == null) continue;
-      ctx.fillText(fmtTime(t, interval), x, h + TIME_AXIS_H / 2);
+      ctx.fillText(fmtTime(t, interval, rangeSec), x, h + TIME_AXIS_H / 2);
     }
   }
 

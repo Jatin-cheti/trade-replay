@@ -12,7 +12,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import type { SavedPeriod } from "./useSavedPeriods";
 import type { CustomRange } from "./CustomRangePicker";
@@ -52,23 +53,67 @@ export default function SavedPeriodsMenu({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const menuId = useId();
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const periodItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  // Position the portaled menu above or below the trigger based on viewport space.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const btn = triggerRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const menuH = menuRef.current?.offsetHeight ?? 360;
+      const menuW = 288; // w-72
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top = spaceBelow >= menuH + 16
+        ? rect.bottom + 6
+        : Math.max(8, rect.top - menuH - 6);
+      const left = Math.min(
+        Math.max(8, rect.right - menuW),
+        window.innerWidth - menuW - 8
+      );
+      setMenuPos({ top, left });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (ref.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
+      setConfirmDelete(null);
+      setEditingId(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
         setOpen(false);
         setConfirmDelete(null);
         setEditingId(null);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -189,15 +234,18 @@ export default function SavedPeriodsMenu({
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      <AnimatePresence>
-        {open && (
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {open && menuPos && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 6 }}
+            ref={menuRef}
+            initial={{ opacity: 0, scale: 0.96, y: 4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 6 }}
+            exit={{ opacity: 0, scale: 0.96, y: 4 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
             id={menuId}
-            className="absolute right-0 bottom-full mb-2 z-50 w-72 rounded-xl border border-border/50 bg-background/98 backdrop-blur-xl shadow-2xl overflow-hidden"
+            style={{ position: "fixed", top: menuPos.top, left: menuPos.left }}
+            className="z-[200] w-72 rounded-xl border border-border/50 bg-background/98 backdrop-blur-xl shadow-2xl overflow-hidden"
             role="menu"
             aria-label="Saved periods"
             onKeyDown={handleMenuKeyDown}
@@ -329,8 +377,10 @@ export default function SavedPeriodsMenu({
               </div>
             )}
           </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

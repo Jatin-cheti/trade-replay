@@ -109,7 +109,7 @@ export default function StickySymbolHeader({
           className="fixed left-0 right-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur-xl shadow-lg"
           style={{ willChange: "transform", top: navbarHeight }}
         >
-          <div className="mx-auto max-w-[1200px] px-4 md:px-6">
+          <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10">
             <div className="flex items-center h-12 gap-3">
               {/* Compact logo + info */}
               <AssetAvatar
