@@ -109,6 +109,65 @@ function buildImageCandidates(src?: string): string[] {
   return [src];
 }
 
+/**
+ * Loop 3 LOGO-005 — build an `srcset` for HiDPI displays when the source CDN
+ * supports a size parameter. SVG and data URIs are resolution-independent, so
+ * we deliberately skip srcset for them (returns empty string => no srcset attr).
+ */
+function buildSrcSet(src: string): string {
+  if (!src || src.startsWith("data:")) return "";
+  if (/\.svg(\?|$)/i.test(src)) return "";
+
+  // Google Favicons — supports `sz` query param
+  if (src.includes("www.google.com/s2/favicons")) {
+    const url = new URL(src);
+    const base = `${url.origin}${url.pathname}`;
+    const domain = url.searchParams.get("domain") ?? "";
+    const enc = encodeURIComponent(domain);
+    return [
+      `${base}?sz=64&domain=${enc} 1x`,
+      `${base}?sz=128&domain=${enc} 2x`,
+      `${base}?sz=256&domain=${enc} 3x`,
+    ].join(", ");
+  }
+
+  // Clearbit — supports `size` param (kept even though provider is flaky; preserves
+  // srcset semantics if operators re-enable it).
+  if (src.includes("logo.clearbit.com")) {
+    const [base] = src.split("?");
+    return [
+      `${base}?size=64 1x`,
+      `${base}?size=128 2x`,
+      `${base}?size=256 3x`,
+    ].join(", ");
+  }
+
+  // Logo.dev — `?size=` param
+  if (src.includes("img.logo.dev")) {
+    const [base] = src.split("?");
+    return [
+      `${base}?size=64 1x`,
+      `${base}?size=128 2x`,
+      `${base}?size=256 3x`,
+    ].join(", ");
+  }
+
+  // S3 / CloudFront assets: if the filename encodes size (…/sz-256/logo.png),
+  // emit 1x/2x variants by swapping the size segment. This matches our
+  // logo-service output where sz=128 and sz=256 variants coexist.
+  const szMatch = src.match(/(\/|_)(sz-?)(128|256)(\/|_|\.)/i);
+  if (szMatch) {
+    const at64 = src.replace(szMatch[0], `${szMatch[1]}${szMatch[2]}64${szMatch[4]}`);
+    const at128 = src.replace(szMatch[0], `${szMatch[1]}${szMatch[2]}128${szMatch[4]}`);
+    const at256 = src.replace(szMatch[0], `${szMatch[1]}${szMatch[2]}256${szMatch[4]}`);
+    return [`${at64} 1x`, `${at128} 2x`, `${at256} 3x`].join(", ");
+  }
+
+  return "";
+}
+
+export { buildSrcSet };
+
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [svgFailed, setSvgFailed] = useState(false);
@@ -142,6 +201,8 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
     <div className={`flex items-center justify-center p-[3px] ${containerClasses}`}>
       <img
         src={displaySrc}
+        srcSet={buildSrcSet(displaySrc) || undefined}
+        sizes="64px"
         alt={label}
         title={label}
         loading="lazy"

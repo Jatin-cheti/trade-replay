@@ -1,0 +1,149 @@
+[
+  {
+    "full": "NSE:RELIANCE",
+    "y": "RELIANCE.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=1363.30",
+    "n": 18
+  },
+  {
+    "full": "NSE:HDFCBANK",
+    "y": "HDFCBANK.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=795.45",
+    "n": 18
+  },
+  {
+    "full": "NSE:TCS",
+    "y": "TCS.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=2579.60",
+    "n": 18
+  },
+  {
+    "full": "NSE:INFY",
+    "y": "INFY.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=1312.60",
+    "n": 18
+  },
+  {
+    "full": "NSE:LT",
+    "y": "LT.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=4051.00",
+    "n": 18
+  },
+  {
+    "full": "NSE:BAJFINANCE",
+    "y": "BAJFINANCE.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=917.75",
+    "n": 18
+  },
+  {
+    "full": "NASDAQ:AAPL",
+    "y": "AAPL",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=273.05",
+    "n": 20
+  },
+  {
+    "full": "NASDAQ:MSFT",
+    "y": "MSFT",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=418.07",
+    "n": 20
+  },
+  {
+    "full": "NASDAQ:GOOGL",
+    "y": "GOOGL",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=337.42",
+    "n": 20
+  },
+  {
+    "full": "NYSE:JPM",
+    "y": "JPM",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=316.99",
+    "n": 20
+  },
+  {
+    "full": "NASDAQ:TSLA",
+    "y": "TSLA",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=392.50",
+    "n": 20
+  },
+  {
+    "full": "NSE:NIFTYBEES",
+    "y": "NIFTYBEES.NS",
+    "status": "PASS",
+    "reason": "real OHLCV n=17 last=275.87",
+    "n": 17
+  },
+  {
+    "full": "NYSE:SPY",
+    "y": "SPY",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=708.72",
+    "n": 20
+  },
+  {
+    "full": "NASDAQ:QQQ",
+    "y": "QQQ",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=646.79",
+    "n": 20
+  },
+  {
+    "full": "NSE:NIFTY50",
+    "y": "^NSEI",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=24364.85",
+    "n": 18
+  },
+  {
+    "full": "CBOE:SPX",
+    "y": "^GSPC",
+    "status": "PASS",
+    "reason": "real OHLCV n=20 last=7109.14",
+    "n": 20
+  },
+  {
+    "full": "CRYPTO:BTCUSDT",
+    "y": "BTC-USD",
+    "status": "PASS",
+    "reason": "real OHLCV n=31 last=75600.79",
+    "n": 31
+  },
+  {
+    "full": "CRYPTO:ETHUSDT",
+    "y": "ETH-USD",
+    "status": "PASS",
+    "reason": "real OHLCV n=31 last=2304.90",
+    "n": 31
+  },
+  {
+    "full": "FOREX:USDINR",
+    "y": "USDINR=X",
+    "status": "PASS",
+    "reason": "real OHLCV n=22 last=93.09",
+    "n": 22
+  },
+  {
+    "full": "NSE:BANKNIFTY",
+    "y": "^NSEBANK",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=56582.35",
+    "n": 18
+  },
+  {
+    "full": "NSE:NIFTY",
+    "y": "^NSEI",
+    "status": "PASS",
+    "reason": "real OHLCV n=18 last=24364.85",
+    "n": 18
+  }
+]

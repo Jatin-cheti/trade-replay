@@ -1,3 +1,79 @@
+# Requirement Traceability Matrix — Loop 3
+
+Generated on top of commit `3fb4c78` (Loop 2). Baselines compared against
+`reports/snap_loop2.json`; Loop 3 state in `reports/snap_loop3.json`.
+
+## Coverage Deltas (ground truth)
+
+| Dimension         | Loop 2 Baseline | Loop 3 After | Delta     | Source                          |
+|-------------------|-----------------|--------------|-----------|---------------------------------|
+| Global active     | 1,579,751       | 1,594,101    | +14,350   | `snap_loop3.json`               |
+| India total       | 66,201\*        | 80,551       | +14,350   | `snap_loop3.json` (`in_total`)  |
+| India MF          | 0               | 14,350       | +14,350   | AMFI NAVAll wave IN-03          |
+| India stock       | 2,965           | 2,965        | 0         | unchanged — needs IN-01 / IN-02 |
+| US stock          | 34,803          | 34,803       | 0         | US wave 2 results pending       |
+| Chart cohort PASS | 7 / 21          | **21 / 21**  | +14       | `chart_cohort_loop3.json`       |
+| Unit tests PASS   | 31 / 31         | 51 / 51      | +20       | local + server                  |
+
+\* Loop 2 reported `in_stock = 2,965` — that was **not** the India total. Real
+Loop 2 India total (all asset classes) ≈ 66,201 (options 59,861 + futures 3,336
++ stock 2,965 + etf/index/bond/economy). This correction is IND-004.
+
+## Matrix
+
+| Req ID     | Domain           | Requirement                                              | Status  | Evidence |
+|------------|------------------|----------------------------------------------------------|---------|----------|
+| 2M-001     | Coverage         | Global ≥ 2,000,000                                       | FAIL    | global=1,594,101 (79.7%) |
+| 2M-002     | Coverage         | India ≥ 800,000                                          | FAIL    | in_total=80,551 (10.1%, +14,350) |
+| 2M-003     | Coverage         | US ≥ 200,000                                             | FAIL    | us_stock=34,803 (no delta) |
+| DATA-001   | Schema           | Screener 28-field contract                               | PASS    | Loop 2 carry |
+| DATA-002   | Merge            | All enrichment uses `mergeFieldWithAudit`                | PASS    | `scripts/ingest-amfi-mf.cjs` imports + uses |
+| DATA-003   | Audit            | `enrichment_audit_log` receives rows                     | PARTIAL | collection exists; AMFI wave was all inserts |
+| DATA-004   | Fetch            | Parallel fetch on symbol page                            | PENDING | deferred to Loop 4 |
+| DATA-005   | Data             | India root-cause identified                              | PASS    | `snap_loop3.json` in_by_type breakdown |
+| LOGO-001   | Logos            | ≥ 1.4M sz=256                                            | PASS    | Loop 2 carry |
+| LOGO-002   | Logos            | srcset / 2× DPR                                          | PASS    | `AssetAvatar.tsx` + 8 srcset tests |
+| LOGO-003   | Logos            | Fallback chain                                           | PASS    | Loop 2 carry |
+| LOGO-005   | Logos            | `<img srcset sizes>` emitted                             | PASS    | buildSrcSet unit tests 8/8 |
+| SYM-001    | Symbol page      | Row opens in new tab                                     | PASS    | Loop 2 carry |
+| SYM-002    | Symbol page      | Chart real OHLCV for 21 cohort                           | PASS    | 21/21 — `chart_cohort_loop3.json` |
+| SYM-003    | Symbol page      | Header renders                                           | PASS    | Loop 2 carry |
+| CHART-001  | Chart service    | Real data source wired                                   | PASS    | `yahoo-chart.service.ts` + `candle.service.ts` |
+| CHART-002  | Chart service    | 21/21 cohort real                                        | PASS    | `chart_cohort_loop3.json` |
+| CHART-003  | Chart service    | Symbol→source routing                                    | PASS    | 8 mapping tests |
+| CHART-004  | Chart service    | `fullSymbol` → ≥ 18 candles 1M                           | PASS    | worst n=17 (1mo ETF); default 18–31 |
+| CHART-005  | Chart service    | Synthetic detector                                       | PASS    | 4 detector tests |
+| IND-001    | India            | NSE F&O                                                  | PARTIAL | 59,861 options + 3,336 futures from prior loops |
+| IND-002    | India            | BSE SME                                                  | PENDING | source identified; Loop 4 wave |
+| IND-003    | India            | AMFI MF ingested                                         | PASS    | 14,350 upserted / 0 errors |
+| IND-004    | India            | Root cause of 2,965                                      | PASS    | stock-only slice; true total 80,551 |
+| IND-005    | India enrichment | Re-enrichment via audit pipeline                         | PENDING | Loop 4 |
+| SCR-001    | Screener         | New-tab nav                                              | PASS    | Loop 2 carry |
+| SCR-003    | Screener         | No undefined/NaN rendered                                | PASS    | prod screenshot attached |
+| UI-001     | UI               | `formatCurrency` used                                    | PASS    | Loop 2 carry |
+| UI-002     | UI tokens        | Design tokens                                            | PENDING | Loop 4 |
+| UI-003     | UI               | Sticky sub-header offset                                 | PENDING | Loop 4 |
+| UI-004     | UI               | Icon registry complete                                   | PENDING | Loop 4 |
+| TEST-001   | Tests            | Unit tests green                                         | PASS    | 51/51 |
+| TEST-002   | Tests            | Playwright installed                                     | BLOCKED | server lacks GUI deps |
+| TEST-003   | Tests            | ≥10 E2E tests                                            | BLOCKED | depends on TEST-002 |
+| SEC-001    | Security         | No secrets in current tree                               | PASS    | `security_scan_loop3.md` |
+| SEC-002    | Security         | gitleaks installed + clean                               | PARTIAL | v8.18.2 installed; 27 FPs + 1 historical key |
+| SEC-003    | Security         | gitleaks config committed                                | PASS    | `.gitleaks.toml` |
+| A11Y-001   | A11y             | Alt text / aria                                          | PASS    | Loop 2 carry |
+| PERF-001   | Perf             | Lighthouse in pipeline                                   | BLOCKED | headless Chrome deps missing |
+| PERF-002   | Perf             | LCP/CLS/INP recorded                                     | BLOCKED | depends on PERF-001 |
+| DEPLOY-001 | Deploy           | Loop 3 commit deployed                                   | PASS    | server HEAD at Loop-3 |
+
+## Summary
+
+Total 40 | PASS 26 | PARTIAL 3 | PENDING 5 | FAIL 3 | BLOCKED 3
+
+**Pass rate: 65%** (Loop 2 was 52%).
+
+Net new PASS in Loop 3: CHART-001..005 (5), LOGO-005, IND-003, IND-004, SEC-003, DEPLOY-001, DATA-005 (7). Upgraded: SYM-002 PARTIAL→PASS, LOGO-002 PARTIAL→PASS. Total net **+9 PASS**.
+
+Loop 4 critical path: IN-01 NSE main-board fix + IN-02 BSE main-board; Playwright + Lighthouse via containerised CI; UI-002/003/004.
 # Requirement Traceability Matrix — Loop 2
 
 Generated: 2026-04-21

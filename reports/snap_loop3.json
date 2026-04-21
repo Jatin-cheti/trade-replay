@@ -1,0 +1,45 @@
+{
+  "ts": "2026-04-21T03:15:33.505Z",
+  "global_active": 1594101,
+  "in_total": 80551,
+  "in_stock": 2965,
+  "in_mutualfund": 14350,
+  "in_by_type": [
+    {
+      "_id": "options",
+      "n": 59861
+    },
+    {
+      "_id": "mutualfund",
+      "n": 14350
+    },
+    {
+      "_id": "futures",
+      "n": 3336
+    },
+    {
+      "_id": "stock",
+      "n": 2965
+    },
+    {
+      "_id": "etf",
+      "n": 20
+    },
+    {
+      "_id": "index",
+      "n": 9
+    },
+    {
+      "_id": "economy",
+      "n": 6
+    },
+    {
+      "_id": "bond",
+      "n": 4
+    }
+  ],
+  "us_stock": 34803,
+  "us_total": 1328012,
+  "audit_log_docs": 0,
+  "audit_recent": []
+}

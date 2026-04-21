@@ -1,6 +1,13 @@
 import type { CandleQuery, MultiSymbolCandleQuery, OHLCV, SymbolMetadata, Timeframe } from "../models/candle.model";
 import { env } from "../config/env";
 import { withCache } from "./cache.service";
+import { fetchYahooCandles, isSyntheticCandleSeries } from "./yahoo-chart.service";
+
+// Loop 3 CHART-001: synthetic fallback is DEV-ONLY. Set ALLOW_SYNTHETIC_CANDLES=true
+// explicitly to keep legacy behaviour. In production, we prefer surfacing an empty
+// array so the client shows a clear "no data" state rather than fictitious prices.
+const ALLOW_SYNTHETIC =
+  String(process.env.ALLOW_SYNTHETIC_CANDLES ?? "").toLowerCase() === "true";
 
 const KNOWN_SYMBOLS: SymbolMetadata[] = [
   { symbol: "AAPL", description: "Apple Inc.", exchange: "NASDAQ", type: "stock" },
@@ -82,17 +89,36 @@ async function fromBackend(query: CandleQuery): Promise<OHLCV[]> {
 
   const payload = await response.json() as { candles?: unknown[] };
   const normalized = normalizeRows(payload.candles ?? []);
-  return normalized.length > 0 ? normalized : syntheticCandles(query);
+  if (normalized.length > 0 && !isSyntheticCandleSeries(normalized)) {
+    return normalized;
+  }
+  // Backend returned empty / synthetic-looking data — fall through to Yahoo.
+  throw new Error("CANDLE_SOURCE_EMPTY_OR_SYNTHETIC");
 }
 
 export async function getCandles(query: CandleQuery): Promise<OHLCV[]> {
   const key = `candles:${query.symbol}:${query.timeframe}:${query.from ?? "na"}:${query.to ?? "na"}:${query.limit ?? "na"}`;
   return withCache(key, async () => {
+    // 1. Try internal backend first (if configured for live data).
     try {
       return await fromBackend(query);
     } catch {
+      // fall through
+    }
+    // 2. Yahoo Finance — real OHLCV, no API key, global coverage.
+    try {
+      const yahoo = await fetchYahooCandles(query);
+      if (!isSyntheticCandleSeries(yahoo.candles)) {
+        return yahoo.candles;
+      }
+    } catch {
+      // fall through
+    }
+    // 3. Synthetic is only permitted when explicitly allowed (dev / CI).
+    if (ALLOW_SYNTHETIC) {
       return syntheticCandles(query);
     }
+    return [];
   });
 }
 
