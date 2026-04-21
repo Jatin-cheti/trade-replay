@@ -147,7 +147,7 @@ export default function Screener() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background pb-8 pt-3">
-      <div className="mx-auto max-w-[1480px] overflow-x-hidden px-4 md:px-6">
+      <div className="w-full overflow-x-hidden px-2 sm:px-3 md:px-5 lg:px-6">
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           <span>Screener</span><span className="text-muted-foreground/35">/</span>
           {(() => { const Icon = SCREENER_TYPE_ICONS[currentType?.routeType || "stocks"]; return Icon ? <Icon className="h-3.5 w-3.5" /> : null; })()}

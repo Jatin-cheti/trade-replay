@@ -31,11 +31,6 @@ export const COMPLETE_SCREENER_META_FALLBACK: ScreenerMetaResponse = {
       ],
     },
     {
-      key: "extended-hours",
-      label: "Extended Hours",
-      defaultColumns: ["symbol", "price", "changePercent", "perfPercent", "volume", "relVolume", "sector"],
-    },
-    {
       key: "valuation",
       label: "Valuation",
       defaultColumns: ["symbol", "price", "marketCap", "pe", "peg", "epsDilTtm", "epsDilGrowth", "analystRating"],

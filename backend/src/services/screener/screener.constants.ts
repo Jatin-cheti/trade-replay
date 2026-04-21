@@ -13,7 +13,6 @@ export type ScreenerRouteType =
 export type ScreenerTabKey =
   | "overview"
   | "performance"
-  | "extended-hours"
   | "valuation"
   | "dividends"
   | "profitability"
@@ -162,11 +161,6 @@ export const SCREENER_TABS: Array<{ key: ScreenerTabKey; label: string; defaultC
       "sector",
       "analystRating",
     ],
-  },
-  {
-    key: "extended-hours",
-    label: "Extended Hours",
-    defaultColumns: ["symbol", "price", "changePercent", "perfPercent", "volume", "relVolume", "sector"],
   },
   {
     key: "valuation",

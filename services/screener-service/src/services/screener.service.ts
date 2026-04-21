@@ -300,7 +300,6 @@ export async function getScreenerMeta() {
     tabs: [
       { key: "overview", label: "Overview", defaultColumns: ["symbol","price","changePercent","volume","relVolume","marketCap","pe","epsDilTtm","epsDilGrowth","divYieldPercent","sector","analystRating"] },
       { key: "performance", label: "Performance", defaultColumns: ["symbol","price","changePercent","perfPercent","volume","relVolume","marketCap","beta"] },
-      { key: "extended-hours", label: "Extended Hours", defaultColumns: ["symbol","price","changePercent","perfPercent","volume","relVolume","sector"] },
       { key: "valuation", label: "Valuation", defaultColumns: ["symbol","price","marketCap","pe","peg","priceToBook","epsDilTtm","divYieldPercent","revenue","revenueGrowth"] },
       { key: "dividends", label: "Dividends", defaultColumns: ["symbol","price","divYieldPercent","marketCap","sector"] },
       { key: "profitability", label: "Profitability", defaultColumns: ["symbol","price","grossMargin","operatingMargin","profitMargin","roe","revenue"] },

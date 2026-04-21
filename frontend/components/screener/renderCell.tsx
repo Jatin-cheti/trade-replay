@@ -17,14 +17,19 @@ export default function renderCell(item: ScreenerItem, columnKey: string) {
       </div>
     );
   }
-  if (columnKey === "changePercent" || columnKey === "perfPercent" || columnKey === "epsDilGrowth") {
+  if (columnKey === "changePercent" || columnKey === "perfPercent" || columnKey === "epsDilGrowth" || columnKey === "revenueGrowth" || columnKey === "roe") {
     const raw = item[columnKey as keyof ScreenerItem];
     if (raw === null || raw === undefined) return <span className="text-xs text-muted-foreground">—</span>;
     const num = Number(raw);
     if (!Number.isFinite(num)) return <span className="text-xs text-muted-foreground">—</span>;
-    // Show "0.00%" for genuine zero (flat movement) — don't treat as missing
     if (num === 0) return <span className="text-xs text-muted-foreground">{formatPercent(0)}</span>;
     return <span className={`text-xs font-semibold tabular-nums ${num > 0 ? "text-emerald-400" : ""} ${num < 0 ? "text-red-400" : "text-muted-foreground"}`}>{formatPercent(num)}</span>;
+  }
+  if (columnKey === "divYieldPercent") {
+    const raw = item.divYieldPercent;
+    const num = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(num) || num === 0) return <span className="text-xs text-muted-foreground">—</span>;
+    return <span className="text-xs tabular-nums text-emerald-400">{formatPercent(num)}</span>;
   }
   if (columnKey === "analystRating") {
     const rating = item.analystRating;

@@ -8,6 +8,7 @@ import type {
   ScreenerMetaResponse,
 } from "@/lib/screener";
 import {
+  ALL_COUNTRIES,
   DEFAULT_FILTER_KEYS,
   FALLBACK_FILTER_CATEGORY_LABELS,
   buildFilterLabel,
@@ -104,7 +105,13 @@ export default function ScreenerFilterBar({
                   {(() => {
                     const countries = (value as string[] | undefined) || [];
                     if (countries.length === 0) return <><CountryFlagImg code="WORLD" size={16} /><span>Entire world</span></>;
-                    if (countries.length === 1) return <><CountryFlagImg code={countries[0]} size={16} /><span>{countries[0]}</span></>;
+                    if (countries.length === 1) {
+                      const code = countries[0];
+                      if (code === "WORLD") return <><CountryFlagImg code="WORLD" size={16} /><span>Entire world</span></>;
+                      const entry = ALL_COUNTRIES.find((c) => c.value === code);
+                      const name = entry?.name ?? code;
+                      return <><CountryFlagImg code={code} size={16} /><span>{name}</span></>;
+                    }
                     return <>{countries.slice(0, 2).map((c) => <CountryFlagImg key={c} code={c} size={14} />)}{countries.length > 2 && <span>+{countries.length - 2}</span>}</>;
                   })()}
                 </span>

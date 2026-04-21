@@ -27,14 +27,21 @@ function deriveInitials(label: string): string {
   return cleaned.slice(0, 2).toUpperCase();
 }
 
+// Only truly dead providers — DNS dead or always 401/403
+function isDeadProvider(url: string): boolean {
+  return (
+    url.includes("logo.clearbit.com") ||
+    url.includes("img.logo.dev") ||
+    url.includes("ui-avatars.com") ||
+    url.includes("logo.uplead.com")
+  );
+}
+
 function isUsableSrc(src?: string | null): boolean {
   if (!src || typeof src !== "string") return false;
   if (src.startsWith("data:")) return true;
   if (!src.startsWith("http")) return false;
-  if (src.includes("logo.clearbit.com")) return false;
-  if (src.includes("img.logo.dev")) return false;
-  if (src.includes("www.google.com/s2/favicons")) return false;
-  if (src.includes("icons.duckduckgo.com")) return false;
+  if (isDeadProvider(src)) return false;
   return true;
 }
 
@@ -47,23 +54,20 @@ export { buildSrcSet, hashColor, deriveInitials };
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    setFailed(false);
-  }, [src]);
+  useEffect(() => { setFailed(false); }, [src]);
 
   const sizeClasses = (imgClassName ?? className ?? "h-8 w-8 rounded-full").trim();
-  const bgColor = hashColor(label || "?");
-  const initials = deriveInitials(label);
 
   if (!isUsableSrc(src) || failed) {
     return (
       <span
         role="img"
         aria-label={label}
+        data-initials-fallback="true"
         className={`inline-flex shrink-0 items-center justify-center overflow-hidden text-[11px] font-bold text-white ${sizeClasses}`}
-        style={{ backgroundColor: bgColor }}
+        style={{ backgroundColor: hashColor(label || "?") }}
       >
-        {initials}
+        {deriveInitials(label)}
       </span>
     );
   }
