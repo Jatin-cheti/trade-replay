@@ -28,11 +28,11 @@ interface SymbolMiniTradingChartProps {
 }
 
 const GREEN_LINE = '#10b981';
-const GREEN_TOP = 'rgba(16, 185, 129, 0.32)';
-const GREEN_BOTTOM = 'rgba(16, 185, 129, 0.02)';
+const GREEN_TOP = 'rgba(16, 185, 129, 0.12)';
+const GREEN_BOTTOM = 'rgba(16, 185, 129, 0.01)';
 const RED_LINE = '#ef4444';
-const RED_TOP = 'rgba(239, 68, 68, 0.32)';
-const RED_BOTTOM = 'rgba(239, 68, 68, 0.02)';
+const RED_TOP = 'rgba(239, 68, 68, 0.12)';
+const RED_BOTTOM = 'rgba(239, 68, 68, 0.01)';
 
 const PREV_CLOSE_COLOR = 'rgba(156, 163, 175, 0.85)';
 

@@ -274,11 +274,12 @@ function niceStep(range: number, steps: number): number {
   return nice * mag;
 }
 
+const _priceFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function fmtPrice(p: number): string {
-  if (Math.abs(p) >= 10000) return p.toFixed(0);
-  if (Math.abs(p) >= 1000) return p.toFixed(1);
-  if (Math.abs(p) >= 1) return p.toFixed(2);
-  return p.toPrecision(4);
+  if (!Number.isFinite(p)) return '';
+  const abs = Math.abs(p);
+  if (abs >= 10000) return new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(p);
+  return _priceFormatter.format(p);
 }
 
 function fmtTime(ts: UTCTimestamp, interval: number, rangeSeconds?: number, prevTs?: UTCTimestamp): string {
@@ -351,9 +352,16 @@ function resolveTimeTickBars(
   }
 
   const ticks: number[] = [];
+  // Generate ticks forward from anchor
   for (let i = start; i <= lastBar; i += stepBars) {
     if (timeAt(i) == null) continue;
     ticks.push(i);
+  }
+  // Also generate ticks backward from anchor so data is covered even when
+  // the first time-boundary falls near the end of the visible range.
+  for (let i = start - stepBars; i >= firstBar; i -= stepBars) {
+    if (timeAt(i) == null) continue;
+    ticks.unshift(i);
   }
 
   if (ticks.length === 0) {

@@ -467,17 +467,66 @@ export default function SymbolPage() {
       if (!stage.length) stage = candles; // fallback to all if filter empties
     } else {
       const now = Date.now();
-      let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
-      if (activeTimePeriod === "ytd") {
-        durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
+      const IST_OFFSET_MS = 5.5 * 3600 * 1000; // +5:30 in ms
+
+      // For periods where x-axis shows intraday HH:MM, we "fake" IST times
+      // by storing (real_IST_time as if it were UTC) so chart's getUTCHours()
+      // returns IST hour values. This matches TradingView's 09:15–15:30 IST display.
+
+      if (activeTimePeriod === '1d') {
+        // Map 50 candles to today's NSE session: 09:15–15:30 IST
+        // Use "fake UTC" trick: store IST times as plain UTC seconds.
+        const istNow = new Date(now + IST_OFFSET_MS);
+        const y = istNow.getUTCFullYear(), mo = istNow.getUTCMonth(), da = istNow.getUTCDate();
+        const fakeOpenMs  = Date.UTC(y, mo, da, 9, 15, 0);   // 09:15 IST as fake UTC
+        const fakeCloseMs = Date.UTC(y, mo, da, 15, 30, 0);  // 15:30 IST as fake UTC
+        const n = candles.length;
+        const step = n > 1 ? (fakeCloseMs - fakeOpenMs) / (n - 1) : 0;
+        stage = candles.map((c, i) => ({
+          ...c,
+          time: String(Math.floor((fakeOpenMs + i * step) / 1000)),
+        }));
+      } else if (activeTimePeriod === '5d') {
+        // 5 trading days: distribute over 5 × NSE session (6h15m each = 22500s)
+        // Map into last 5 trading day slots, using IST fake-UTC trick.
+        const SESSION_MS = 375 * 60 * 1000; // 6h15m = one NSE session
+        const n = candles.length;
+        const barsPerDay = Math.max(1, Math.floor(n / 5));
+        const istNow = new Date(now + IST_OFFSET_MS);
+        // Find the close of the last 5 trading days (skip Sat/Sun) in IST
+        const tradingDayCloses: number[] = [];
+        let probe = new Date(istNow.getTime());
+        while (tradingDayCloses.length < 5) {
+          const dow = probe.getUTCDay(); // 0=Sun in IST
+          if (dow !== 0 && dow !== 6) {
+            const yp = probe.getUTCFullYear(), mp = probe.getUTCMonth(), dp = probe.getUTCDate();
+            tradingDayCloses.unshift(Date.UTC(yp, mp, dp, 15, 30, 0)); // 15:30 IST as fake UTC
+          }
+          probe = new Date(probe.getTime() - 86400000);
+        }
+        // Distribute candles evenly: each day gets barsPerDay bars from 09:15 to 15:30
+        stage = candles.map((c, i) => {
+          const dayIdx = Math.min(4, Math.floor(i / barsPerDay));
+          const posInDay = i - dayIdx * barsPerDay;
+          const stepsInDay = barsPerDay - 1;
+          const dayClose = tradingDayCloses[dayIdx];
+          const dayOpen = dayClose - SESSION_MS;
+          const t = dayOpen + (stepsInDay > 0 ? posInDay / stepsInDay : 0) * SESSION_MS;
+          return { ...c, time: String(Math.floor(t / 1000)) };
+        });
+      } else {
+        let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
+        if (activeTimePeriod === "ytd") {
+          durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
+        }
+        const n = candles.length;
+        const stepMs = n > 1 ? durationMs / (n - 1) : 0;
+        const startMs = now - durationMs;
+        stage = candles.map((c, i) => ({
+          ...c,
+          time: String(Math.floor((startMs + i * stepMs) / 1000)),
+        }));
       }
-      const n = candles.length;
-      const stepMs = n > 1 ? durationMs / (n - 1) : 0;
-      const startMs = now - durationMs;
-      stage = candles.map((c, i) => ({
-        ...c,
-        time: String(Math.floor((startMs + i * stepMs) / 1000)),
-      }));
     }
 
     // Step 2: rescale prices so the last close equals the live detail price.
