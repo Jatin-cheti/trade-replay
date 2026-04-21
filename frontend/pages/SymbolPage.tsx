@@ -145,16 +145,18 @@ function getTabSlug(tab: string): string {
   return tab.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+// Bar-count targets match TradingView's resolution choices for each period
+// on NSE (session 09:15–15:30 = 375 min/day, ~252 trading days/year).
 const TIME_PERIODS = [
-  { label: "1 day",       key: "1d",  limit: 78   },
-  { label: "5 days",      key: "5d",  limit: 390  },
-  { label: "1 month",     key: "1m",  limit: 500  },
-  { label: "6 months",    key: "6m",  limit: 500  },
-  { label: "Year to date",key: "ytd", limit: 500  },
-  { label: "1 year",      key: "1y",  limit: 500  },
-  { label: "5 years",     key: "5y",  limit: 500  },
-  { label: "10 years",    key: "10y", limit: 500  },
-  { label: "All time",    key: "all", limit: 500  },
+  { label: "1 day",        key: "1d",  limit: 375  }, // 1-min bars × 375 (full NSE session)
+  { label: "5 days",       key: "5d",  limit: 375  }, // 5-min bars × 75/day × 5 days
+  { label: "1 month",      key: "1m",  limit: 275  }, // 30-min bars × ~12.5/day × 22 days
+  { label: "6 months",     key: "6m",  limit: 130  }, // daily bars × ~130 trading days
+  { label: "Year to date", key: "ytd", limit: 252  }, // daily bars (Jan 1 → now)
+  { label: "1 year",       key: "1y",  limit: 252  }, // daily bars × 252 trading days
+  { label: "5 years",      key: "5y",  limit: 260  }, // weekly bars × 5 × 52
+  { label: "10 years",     key: "10y", limit: 120  }, // monthly bars × 120
+  { label: "All time",     key: "all", limit: 240  }, // monthly bars ~20 years
 ] as const;
 
 // Duration each period spans in milliseconds — used to re-timestamp
@@ -358,8 +360,8 @@ export default function SymbolPage() {
   const loadCandles = useCallback((limit?: number) => {
     if (!detail?.symbol) return;
     const candleSymbol = detail.fullSymbol || detail.symbol;
-    // Default to 1-day (78 × 5-min bars). Backend hard-caps at 500.
-    const effectiveLimit = Math.max(20, Math.min(500, limit ?? 78));
+    // Default to 1-day (375 × 1-min bars). Backend hard-caps at 500.
+    const effectiveLimit = Math.max(20, Math.min(500, limit ?? 375));
     // Do NOT call setChartLoading(true) here — it would hide the chart and cause flash.
     setChartError(false);
     fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: effectiveLimit })
@@ -403,7 +405,7 @@ export default function SymbolPage() {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
       const period = TIME_PERIODS.find((p) => p.key === activeTimePeriod);
-      loadCandles(period?.limit ?? 78);
+      loadCandles(period?.limit ?? 375);
     };
     const id = setInterval(tick, 10_000);
     return () => clearInterval(id);
@@ -463,46 +465,46 @@ export default function SymbolPage() {
       // returns IST hour values. This matches TradingView's 09:15–15:30 IST display.
 
       if (activeTimePeriod === '1d') {
-        // Map 50 candles to today's NSE session: 09:15–15:30 IST
-        // Use "fake UTC" trick: store IST times as plain UTC seconds.
+        // Map candles to today's NSE session at 1-min resolution: 09:15–15:29 IST.
+        // Use "fake UTC" trick: store IST times as plain UTC seconds so the chart's
+        // getUTCHours() returns IST hour values. Fixed 60-second steps = 1-min bars.
         const istNow = new Date(now + IST_OFFSET_MS);
         const y = istNow.getUTCFullYear(), mo = istNow.getUTCMonth(), da = istNow.getUTCDate();
-        const fakeOpenMs  = Date.UTC(y, mo, da, 9, 15, 0);   // 09:15 IST as fake UTC
-        const fakeCloseMs = Date.UTC(y, mo, da, 15, 30, 0);  // 15:30 IST as fake UTC
-        const n = candles.length;
-        const step = n > 1 ? (fakeCloseMs - fakeOpenMs) / (n - 1) : 0;
+        const fakeOpenSec = Math.floor(Date.UTC(y, mo, da, 9, 15, 0) / 1000); // 09:15 IST as fake UTC
+        const STEP_1MIN_S = 60; // 1-minute bar step
         stage = candles.map((c, i) => ({
           ...c,
-          time: String(Math.floor((fakeOpenMs + i * step) / 1000)),
+          time: String(fakeOpenSec + i * STEP_1MIN_S),
         }));
       } else if (activeTimePeriod === '5d') {
-        // 5 trading days: distribute over 5 × NSE session (6h15m each = 22500s)
-        // Map into last 5 trading day slots, using IST fake-UTC trick.
-        const SESSION_MS = 375 * 60 * 1000; // 6h15m = one NSE session
+        // 5 trading days at 5-min resolution: 75 bars/day (09:15, 09:20, … 15:25 IST).
+        // Use fixed 300-second steps so every bar falls on an exact 5-min boundary.
+        const SESSION_MS = 375 * 60 * 1000; // 09:15–15:30 = 375 min
+        const STEP_5MIN_S = 5 * 60;         // 5-minute bar step in seconds
         const n = candles.length;
-        const barsPerDay = Math.max(1, Math.floor(n / 5));
+        const barsPerDay = Math.max(1, Math.ceil(n / 5));
         const istNow = new Date(now + IST_OFFSET_MS);
-        // Find the close of the last 5 trading days (skip Sat/Sun) in IST
-        const tradingDayCloses: number[] = [];
+        // Find the open of the last 5 trading days (skip Sat/Sun) in IST fake-UTC
+        const tradingDayOpens: number[] = [];
         let probe = new Date(istNow.getTime());
-        while (tradingDayCloses.length < 5) {
-          const dow = probe.getUTCDay(); // 0=Sun in IST
+        while (tradingDayOpens.length < 5) {
+          const dow = probe.getUTCDay(); // 0=Sun, 6=Sat
           if (dow !== 0 && dow !== 6) {
             const yp = probe.getUTCFullYear(), mp = probe.getUTCMonth(), dp = probe.getUTCDate();
-            tradingDayCloses.unshift(Date.UTC(yp, mp, dp, 15, 30, 0)); // 15:30 IST as fake UTC
+            tradingDayOpens.unshift(
+              Math.floor(Date.UTC(yp, mp, dp, 9, 15, 0) / 1000) // 09:15 IST as fake UTC seconds
+            );
           }
           probe = new Date(probe.getTime() - 86400000);
         }
-        // Distribute candles evenly: each day gets barsPerDay bars from 09:15 to 15:30
+        // Each bar steps forward 5 min within its trading day
         stage = candles.map((c, i) => {
           const dayIdx = Math.min(4, Math.floor(i / barsPerDay));
           const posInDay = i - dayIdx * barsPerDay;
-          const stepsInDay = barsPerDay - 1;
-          const dayClose = tradingDayCloses[dayIdx];
-          const dayOpen = dayClose - SESSION_MS;
-          const t = dayOpen + (stepsInDay > 0 ? posInDay / stepsInDay : 0) * SESSION_MS;
-          return { ...c, time: String(Math.floor(t / 1000)) };
+          const t = tradingDayOpens[dayIdx] + posInDay * STEP_5MIN_S;
+          return { ...c, time: String(t) };
         });
+        void SESSION_MS; // referenced above, suppress unused warning
       } else {
         let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
         if (activeTimePeriod === "ytd") {

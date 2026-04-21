@@ -144,15 +144,18 @@ export default function SymbolMiniTradingChart({
     // Update forced tick boundaries whenever timePeriod changes
     if (timePeriod === '1d') {
       // Build 30-min IST boundary timestamps (stored as fake-UTC seconds)
-      // so the x-axis always shows 09:30, 10:00, 10:30 … 15:30 exactly.
+      // so the x-axis always shows 09:15, 10:00, 10:30 … 15:30 exactly.
+      // NSE session: 09:15–15:30 IST. First label at 09:15, then every 30 min.
       const IST_OFFSET_MS = 5.5 * 3600 * 1000;
       const istNow = new Date(Date.now() + IST_OFFSET_MS);
       const y = istNow.getUTCFullYear(), mo = istNow.getUTCMonth(), da = istNow.getUTCDate();
-      // 09:30 to 15:30 IST in 30-min steps (13 ticks)
-      const ticks: number[] = [];
-      for (let minFromMidnight = 9 * 60 + 30; minFromMidnight <= 15 * 60 + 30; minFromMidnight += 30) {
-        ticks.push(Date.UTC(y, mo, da, Math.floor(minFromMidnight / 60), minFromMidnight % 60, 0) / 1000);
-      }
+      // 09:15 to 15:30 IST in 30-min steps (13 ticks: 09:15, 09:45, 10:15 … or clean labels)
+      // Use 09:15, 10:00, 10:30, 11:00, 11:30, 12:00, 12:30, 13:00, 13:30, 14:00, 14:30, 15:00, 15:30
+      const tickMinutes = [9*60+15, 10*60, 10*60+30, 11*60, 11*60+30, 12*60, 12*60+30,
+                           13*60, 13*60+30, 14*60, 14*60+30, 15*60, 15*60+30];
+      const ticks: number[] = tickMinutes.map((minFromMidnight) =>
+        Date.UTC(y, mo, da, Math.floor(minFromMidnight / 60), minFromMidnight % 60, 0) / 1000
+      );
       chartRef.current?.applyOptions({ forcedTimeTicks: ticks });
     } else {
       // Clear forced ticks for all other periods — use automatic heuristic
