@@ -100,6 +100,44 @@ async function fulfillAssets(route: Route): Promise<void> {
   });
 }
 
+function matchesTvFilters(item: AssetFixture, params: URLSearchParams): boolean {
+  const q = (params.get("text") ?? params.get("q") ?? "").trim();
+  const typeParam = (params.get("type") ?? "").trim().toLowerCase();
+  const exchange = (params.get("exchange") ?? "").trim().toUpperCase();
+
+  if (typeParam && typeParam !== "all" && item.category.toLowerCase() !== typeParam && item.type?.toLowerCase() !== typeParam) {
+    return false;
+  }
+  if (exchange && item.country.toUpperCase() !== exchange && item.exchange.toUpperCase() !== exchange) {
+    return false;
+  }
+  if (q) {
+    const matched =
+      includesNormalized(item.ticker, q) ||
+      includesNormalized(item.symbol, q) ||
+      includesNormalized(item.name, q) ||
+      includesNormalized(item.exchange, q);
+    if (!matched) return false;
+  }
+  return true;
+}
+
+async function fulfillTvSymbolSearch(route: Route): Promise<void> {
+  const url = new URL(route.request().url());
+  const start = Math.max(0, Number.parseInt(url.searchParams.get("start") ?? "0", 10) || 0);
+  const limit = Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50);
+  const filtered = fixture.assets.filter((item) => matchesTvFilters(item, url.searchParams));
+  const pageItems = filtered.slice(start, start + limit);
+  const payload = {
+    symbols: pageItems,
+    total: filtered.length,
+    hasMore: start + limit < filtered.length,
+    nextCursor: start + limit < filtered.length ? String(start + limit) : null,
+  };
+  await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+}
+
 export async function installSymbolSearchMock(page: Page): Promise<void> {
   await page.route("**/api/simulation/assets**", fulfillAssets);
+  await page.route("**/api/symbol-search**", fulfillTvSymbolSearch);
 }
