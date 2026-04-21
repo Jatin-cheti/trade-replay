@@ -1,4 +1,4 @@
-﻿import { expect, test } from "./playwright-fixture";
+import { expect, test } from "./playwright-fixture";
 import fs from "node:fs/promises";
 
 test("chart platform types, tools, and object actions", async ({ page }) => {
@@ -25,10 +25,10 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -157,10 +157,10 @@ test("drawing visibility: single drawing appears immediately", async ({ page }) 
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -246,10 +246,10 @@ test("drawing anchoring: coordinates stable across data updates", async ({ page 
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -335,10 +335,10 @@ test("toolbar actions: all controls visible on desktop", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -378,10 +378,10 @@ test("drawing visible regardless of object tree state", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -475,10 +475,10 @@ test("indicators: search and add non-top indicator", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -527,10 +527,10 @@ test("selected tool badge does not block clicks", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -608,10 +608,10 @@ test("tool rail opens submenus on click", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -669,10 +669,10 @@ test("status row and toolbox header are uncluttered", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -715,10 +715,10 @@ test("tool rail: select measure tool via submenu", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -767,10 +767,10 @@ test("OHLC legend row displays structured values", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -821,10 +821,10 @@ test("multi-chart layout switch with drawing in pane", async ({ page }) => {
       });
   expect(authResponse.ok()).toBeTruthy();
 
+  const __authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.locator("input[type=\"password\"]").first().fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, __authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.setViewportSize({ width: 1440, height: 900 });

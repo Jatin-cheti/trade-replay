@@ -26,10 +26,10 @@ async function registerAndLogin(page: Page): Promise<void> {
 
   expect(authResponse.ok()).toBeTruthy();
 
+  const authPayload = await authResponse.json();
   await page.goto("/login");
-  await page.getByPlaceholder("trader@example.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(password);
-  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await page.evaluate((t) => { window.localStorage.setItem("sim_token", t); }, authPayload.token as string);
+  await page.goto("/homepage");
   await expect(page).toHaveURL(/homepage|\/$/);
 }
 
