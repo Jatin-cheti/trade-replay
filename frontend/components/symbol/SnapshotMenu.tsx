@@ -10,8 +10,10 @@ import {
   Loader2,
   Twitter,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import html2canvas from "html2canvas";
+import { toast } from "@/hooks/use-toast";
+import { formatPrice } from "@/lib/numberFormat";
 
 type SnapshotAction = "download" | "copy" | "link" | "newtab" | "tweet";
 
@@ -31,6 +33,8 @@ function useSnapshotMenu() {
   const [pending, setPending] = useState<SnapshotAction | null>(null);
   const [done, setDone] = useState<SnapshotAction | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const doneTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -40,12 +44,23 @@ function useSnapshotMenu() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (doneTimerRef.current !== null) {
+        window.clearTimeout(doneTimerRef.current);
+      }
+    };
+  }, []);
+
   const markDone = (action: SnapshotAction) => {
     setDone(action);
-    setTimeout(() => setDone(null), 2000);
+    if (doneTimerRef.current !== null) {
+      window.clearTimeout(doneTimerRef.current);
+    }
+    doneTimerRef.current = window.setTimeout(() => setDone(null), 2000);
   };
 
-  return { open, setOpen, pending, setPending, done, markDone, ref };
+  return { open, setOpen, pending, setPending, done, markDone, ref, buttonRef };
 }
 
 async function captureChartCanvas(
@@ -85,12 +100,55 @@ export default function SnapshotMenu({
   currency,
   pageUrl,
 }: SnapshotMenuProps) {
-  const { open, setOpen, pending, setPending, done, markDone, ref } = useSnapshotMenu();
-  const [toast, setToast] = useState<{ msg: string; error?: boolean } | null>(null);
+  const { open, setOpen, pending, setPending, done, markDone, ref, buttonRef } = useSnapshotMenu();
+  const menuId = useId();
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const showToast = (msg: string, error = false) => {
-    setToast({ msg, error });
-    setTimeout(() => setToast(null), 3000);
+    toast({
+      title: msg,
+      variant: error ? "destructive" : "default",
+      duration: 2800,
+    });
+  };
+
+  // Escape to close + focus restore
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [buttonRef, open, setOpen]);
+
+  // Focus first item when menu opens
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => itemRefs.current[0]?.focus(), 50);
+    return () => window.clearTimeout(id);
+  }, [open]);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent, index: number) => {
+    const items = itemRefs.current.filter((r): r is HTMLButtonElement => r !== null);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[(index + 1) % items.length]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(index - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    }
   };
 
   const handleAction = async (action: SnapshotAction) => {
@@ -171,7 +229,7 @@ export default function SnapshotMenu({
 </head>
 <body>
   <div class="container">
-    <p class="price">${symbolName} · ${price.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}</p>
+    <p class="price">${symbolName} · ${formatPrice(price)} ${currency}</p>
     <img src="${dataUrl}" alt="${symbol} chart snapshot"/>
     <p class="info">Chart snapshot · ${new Date().toLocaleString()}</p>
   </div>
@@ -196,10 +254,7 @@ export default function SnapshotMenu({
         case "tweet": {
           const url = pageUrl || window.location.href;
           const text = encodeURIComponent(
-            `${symbolName} (${symbol}) — ${price.toLocaleString("en", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })} ${currency} | Check it out on Trade Replay`
+            `${symbolName} (${symbol}) — ${formatPrice(price)} ${currency} | Check it out on Trade Replay`
           );
           const encodedUrl = encodeURIComponent(url);
           const twitterUrl = `https://twitter.com/intent/tweet?text=${text}&url=${encodedUrl}`;
@@ -235,6 +290,7 @@ export default function SnapshotMenu({
     <>
       <div className="relative" ref={ref}>
         <button
+          ref={buttonRef}
           onClick={() => setOpen((v) => !v)}
           disabled={isBusy}
           className={`h-8 w-8 rounded-md border flex items-center justify-center transition-colors
@@ -248,6 +304,7 @@ export default function SnapshotMenu({
           aria-label="Snapshot menu"
           aria-haspopup="true"
           aria-expanded={open}
+          aria-controls={menuId}
         >
           {isBusy ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -263,6 +320,7 @@ export default function SnapshotMenu({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -6 }}
               transition={{ duration: 0.12, ease: "easeOut" }}
+              id={menuId}
               className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-border/50 bg-background/98 backdrop-blur-xl shadow-2xl overflow-hidden"
               role="menu"
             >
@@ -276,10 +334,12 @@ export default function SnapshotMenu({
 
               {/* Actions */}
               <div className="p-1.5">
-                {menuItems.map(({ action, icon: Icon, label, description }) => (
+                {menuItems.map(({ action, icon: Icon, label, description }, index) => (
                   <button
                     key={action}
+                    ref={(el) => { itemRefs.current[index] = el; }}
                     onClick={() => handleAction(action)}
+                    onKeyDown={(e) => handleMenuKeyDown(e, index)}
                     disabled={isBusy}
                     className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-secondary/40 disabled:opacity-50 group text-left"
                     role="menuitem"
@@ -317,30 +377,6 @@ export default function SnapshotMenu({
           )}
         </AnimatePresence>
       </div>
-
-      {/* Toast notification */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 30, x: "-50%" }}
-            animate={{ opacity: 1, y: 0, x: "-50%" }}
-            exit={{ opacity: 0, y: 30, x: "-50%" }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className={`fixed bottom-6 left-1/2 z-[200] flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium shadow-2xl
-              ${toast.error
-                ? "bg-red-950/95 border border-red-500/30 text-red-300"
-                : "bg-secondary/95 border border-border/60 text-foreground"
-              } backdrop-blur-xl`}
-          >
-            {toast.error ? (
-              <span className="text-red-400 text-xs">✗</span>
-            ) : (
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            )}
-            {toast.msg}
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }

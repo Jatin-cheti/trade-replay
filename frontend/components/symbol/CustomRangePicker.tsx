@@ -6,9 +6,9 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Calendar, Check, Clock, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
-import { format, isAfter, isBefore, isValid, parse, parseISO } from "date-fns";
+import { format, isAfter, isBefore, isValid, parse } from "date-fns";
 import "react-day-picker/dist/style.css";
 
 export type RangeMode = "date" | "time" | "datetime";
@@ -46,6 +46,8 @@ export default function CustomRangePicker({
   initialRange,
 }: CustomRangePickerProps) {
   const [mode, setMode] = useState<RangeMode>(initialRange?.mode ?? "date");
+  const titleId = useId();
+  const modeTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   /* date range state */
   const [fromDate, setFromDate] = useState<Date | undefined>(
@@ -68,6 +70,19 @@ export default function CustomRangePicker({
   );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setErrors({});
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
@@ -141,6 +156,27 @@ export default function CustomRangePicker({
 
   const modes: RangeMode[] = ["date", "time", "datetime"];
 
+  const selectMode = (nextMode: RangeMode) => {
+    setMode(nextMode);
+    setErrors({});
+  };
+
+  const handleModeKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+
+    event.preventDefault();
+    const lastIndex = modes.length - 1;
+    let nextIndex = index;
+    if (event.key === "ArrowRight") nextIndex = index === lastIndex ? 0 : index + 1;
+    if (event.key === "ArrowLeft") nextIndex = index === 0 ? lastIndex : index - 1;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = lastIndex;
+
+    const nextMode = modes[nextIndex];
+    selectMode(nextMode);
+    modeTabRefs.current[nextIndex]?.focus();
+  };
+
   return (
     <AnimatePresence>
       {open && (
@@ -163,13 +199,13 @@ export default function CustomRangePicker({
             className="fixed inset-x-4 top-1/2 z-[90] max-w-lg mx-auto -translate-y-1/2 rounded-2xl border border-border/50 bg-background shadow-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
-            aria-label="Custom time range picker"
+            aria-labelledby={titleId}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">Custom Time Range</h2>
+                <h2 id={titleId} className="text-sm font-semibold text-foreground">Custom Time Range</h2>
               </div>
               <button
                 onClick={handleClose}
@@ -181,13 +217,22 @@ export default function CustomRangePicker({
             </div>
 
             {/* Mode selector */}
-            <div className="flex gap-1.5 px-5 pt-4">
-              {modes.map((m) => (
+            <div className="flex gap-1.5 px-5 pt-4" role="tablist" aria-label="Range modes">
+              {modes.map((m, index) => {
+                const selected = mode === m;
+                return (
                 <button
                   key={m}
-                  onClick={() => { setMode(m); setErrors({}); }}
+                  ref={(node) => { modeTabRefs.current[index] = node; }}
+                  onClick={() => selectMode(m)}
+                  onKeyDown={(event) => handleModeKeyDown(event, index)}
+                  role="tab"
+                  id={`custom-range-tab-${m}`}
+                  aria-controls={`custom-range-panel-${m}`}
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
                   className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all
-                    ${mode === m
+                    ${selected
                       ? "border-primary/50 bg-primary/10 text-primary"
                       : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/20"
                     }`}
@@ -196,10 +241,18 @@ export default function CustomRangePicker({
                   <span className="hidden sm:inline">{MODE_LABELS[m]}</span>
                   <span className="sm:hidden">{m.charAt(0).toUpperCase() + m.slice(1)}</span>
                 </button>
-              ))}
+              );})}
             </div>
 
-            <div className="px-5 py-4 space-y-4">
+            <div
+              className="px-5 py-4 space-y-4"
+              role="tabpanel"
+              id={`custom-range-panel-${mode}`}
+              aria-labelledby={`custom-range-tab-${mode}`}
+            >
+              <p className="text-[11px] text-muted-foreground">
+                Times are interpreted in your local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
+              </p>
               {/* Date pickers */}
               {(mode === "date" || mode === "datetime") && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

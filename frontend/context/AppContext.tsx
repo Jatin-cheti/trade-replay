@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { CandleData, scenarios } from '@/data/stockData';
 import { api, getApiErrorCode, getApiErrorMessage, setApiToken } from '@/lib/api';

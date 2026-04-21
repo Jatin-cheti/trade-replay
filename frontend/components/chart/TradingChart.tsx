@@ -439,6 +439,7 @@ export default function TradingChart({
   const activeDefinition = useMemo(() => getToolDefinition(toolState.variant), [toolState.variant]);
   const selectedDrawing = useMemo(
     () => drawingsRef.current.find((drawing) => drawing.id === selectedDrawingId) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawingsRef, selectedDrawingId, toolState.drawings]
   );
 
@@ -2059,6 +2060,7 @@ export default function TradingChart({
 
       getGlobalPerfTelemetry()?.record('overlay', performance.now() - overlayStart);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartRef, drawingsRef, draftRef, getActiveSeries, getVisibleTimeRange, overlayRef, selectedDrawingId, translateAnchors, transformedData]);
 
   resizeCallbackRef.current = renderOverlay;
@@ -2447,6 +2449,7 @@ export default function TradingChart({
     };
     window.addEventListener('keydown', onEscape);
     return () => window.removeEventListener('keydown', onEscape);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragAnchor, fullView]);
 
   useEffect(() => {

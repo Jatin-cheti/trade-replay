@@ -178,6 +178,7 @@ export function useChart(
       isDetachedFromRealtimeRef.current = false;
       setReady(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mountKey, parityMode]);
 
   useEffect(() => {

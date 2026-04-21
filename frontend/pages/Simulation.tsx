@@ -65,6 +65,7 @@ export default function Simulation() {
       map[s.symbol] = stockCache[s.symbol] ?? [];
     });
     return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stockCache, candles, scenario.stocks]);
 
   const totalCandles = candles.length;

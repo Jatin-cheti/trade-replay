@@ -24,4 +24,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
   );
 };
 
+// TODO: `toast` is the canonical sonner re-export path; splitting would duplicate the import surface
+// eslint-disable-next-line react-refresh/only-export-components
 export { Toaster, toast };

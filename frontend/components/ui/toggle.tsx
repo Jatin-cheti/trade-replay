@@ -34,4 +34,6 @@ const Toggle = React.forwardRef<
 
 Toggle.displayName = TogglePrimitive.Root.displayName;
 
+// TODO: moving toggleVariants out would enable HMR but would break shadcn canonical import path
+// eslint-disable-next-line react-refresh/only-export-components
 export { Toggle, toggleVariants };

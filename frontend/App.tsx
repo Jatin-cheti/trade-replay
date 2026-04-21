@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,16 +11,26 @@ import { AppProvider } from "@/context/AppContext";
 import { useApp } from "@/context/AppContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Simulation from "./pages/Simulation";
-import LiveMarket from "./pages/LiveMarket";
-import CreatePortfolio from "./pages/CreatePortfolio";
-import EditPortfolio from "./pages/EditPortfolio";
 import Homepage from "./pages/Homepage";
-import Screener from "./pages/Screener";
-import SymbolPage from "./pages/SymbolPage";
 import NotFound from "./pages/NotFound";
-import ChartPerformanceBench from "./pages/ChartPerformanceBench";
+
+// Heavy pages — code-split into separate chunks
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Simulation = lazy(() => import("./pages/Simulation"));
+const LiveMarket = lazy(() => import("./pages/LiveMarket"));
+const CreatePortfolio = lazy(() => import("./pages/CreatePortfolio"));
+const EditPortfolio = lazy(() => import("./pages/EditPortfolio"));
+const Screener = lazy(() => import("./pages/Screener"));
+const SymbolPage = lazy(() => import("./pages/SymbolPage"));
+const ChartPerformanceBench = lazy(() => import("./pages/ChartPerformanceBench"));
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 const queryClient = new QueryClient();
 
@@ -42,10 +52,12 @@ function AnimatedRoutes() {
 
   if (isBenchRoute) {
     return (
-      <Routes location={location}>
-        <Route path="/__bench/chart-performance" element={<ChartPerformanceBench />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <Suspense fallback={<PageFallback />}>
+        <Routes location={location}>
+          <Route path="/__bench/chart-performance" element={<ChartPerformanceBench />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -61,21 +73,23 @@ function AnimatedRoutes() {
           exit={{ opacity: 0, y: -12, scale: 0.995 }}
           transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
         >
-          <Routes location={location}>
-            <Route path="/" element={<Homepage />} />
-            <Route path="/homepage" element={<Homepage />} />
-            <Route path="/login" element={<Login mode="login" />} />
-            <Route path="/signup" element={<Login mode="signup" />} />
-            <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-            <Route path="/portfolio/create" element={<RequireAuth><CreatePortfolio /></RequireAuth>} />
-            <Route path="/portfolio/edit/:portfolioId" element={<RequireAuth><EditPortfolio /></RequireAuth>} />
-            <Route path="/simulation" element={<RequireAuth><Simulation /></RequireAuth>} />
-            <Route path="/live-market" element={<RequireAuth><LiveMarket /></RequireAuth>} />
-            <Route path="/screener" element={<Navigate to="/screener/stocks" replace />} />
-            <Route path="/screener/:type" element={<Screener />} />
-            <Route path="/symbol/:symbol" element={<SymbolPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<PageFallback />}>
+            <Routes location={location}>
+              <Route path="/" element={<Homepage />} />
+              <Route path="/homepage" element={<Homepage />} />
+              <Route path="/login" element={<Login mode="login" />} />
+              <Route path="/signup" element={<Login mode="signup" />} />
+              <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/portfolio/create" element={<RequireAuth><CreatePortfolio /></RequireAuth>} />
+              <Route path="/portfolio/edit/:portfolioId" element={<RequireAuth><EditPortfolio /></RequireAuth>} />
+              <Route path="/simulation" element={<RequireAuth><Simulation /></RequireAuth>} />
+              <Route path="/live-market" element={<RequireAuth><LiveMarket /></RequireAuth>} />
+              <Route path="/screener" element={<Navigate to="/screener/stocks" replace />} />
+              <Route path="/screener/:type" element={<Screener />} />
+              <Route path="/symbol/:symbol" element={<SymbolPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </motion.div>
       </AnimatePresence>
     </>

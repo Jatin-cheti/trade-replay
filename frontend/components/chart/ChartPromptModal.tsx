@@ -39,6 +39,7 @@ export default function ChartPromptModal({ request, onConfirm, onCancel, portalZ
   const [textBorder, setTextBorder] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const stylePayload = {
     font,
     textSize,
