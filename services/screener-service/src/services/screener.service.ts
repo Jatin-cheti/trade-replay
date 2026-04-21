@@ -305,6 +305,7 @@ export async function getScreenerMeta() {
       { key: "profitability", label: "Profitability", defaultColumns: ["symbol","price","grossMargin","operatingMargin","profitMargin","roe","revenue"] },
       { key: "income-statement", label: "Income Statement", defaultColumns: ["symbol","price","revenue","netIncome","epsDilTtm","epsDilGrowth","sector"] },
       { key: "balance-sheet", label: "Balance Sheet", defaultColumns: ["symbol","price","marketCap","sharesFloat","beta"] },
+      { key: "technicals", label: "Technicals", defaultColumns: ["symbol","price","changePercent","relVolume","beta","analystRating","perfPercent","volume"] },
     ],
     filterCategories: [
       { key: "security-info", label: "Security info" },

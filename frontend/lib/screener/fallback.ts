@@ -55,6 +55,11 @@ export const COMPLETE_SCREENER_META_FALLBACK: ScreenerMetaResponse = {
       label: "Balance Sheet",
       defaultColumns: ["symbol", "price", "marketCap", "sharesFloat", "beta"],
     },
+    {
+      key: "technicals",
+      label: "Technicals",
+      defaultColumns: ["symbol", "price", "changePercent", "relVolume", "beta", "analystRating", "perfPercent", "volume"],
+    },
   ],
   filterCategories: [
     { key: "security-info", label: "Security info" },
