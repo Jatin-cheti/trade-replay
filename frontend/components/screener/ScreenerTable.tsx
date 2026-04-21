@@ -35,7 +35,7 @@ export default function ScreenerTable({
   flashBySymbol: Record<string, "up" | "down">;
   loadingMore: boolean;
   onSort: (field: string) => void;
-  onNavigate: (symbol: string) => void;
+  onNavigate?: (symbol: string) => void;
   onLoadMore: () => void;
   addColumnOpen: boolean;
   setAddColumnOpen: (open: boolean) => void;

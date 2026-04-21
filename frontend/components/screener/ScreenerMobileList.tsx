@@ -11,7 +11,7 @@ export default function ScreenerMobileList({
 }: {
   items: ScreenerItem[];
   loadingMore: boolean;
-  onNavigate: (symbol: string) => void;
+  onNavigate?: (symbol: string) => void;
   onLoadMore: () => void;
 }) {
   return (
