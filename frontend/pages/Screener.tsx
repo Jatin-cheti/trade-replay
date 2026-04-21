@@ -146,8 +146,8 @@ export default function Screener() {
   }, [navigate, routeType, setSearchParams, screens]);
 
   return (
-    <div className="min-h-screen bg-background pb-8 pt-3">
-      <div className="mx-auto max-w-[1480px] px-4 md:px-6">
+    <div className="min-h-screen overflow-x-hidden bg-background pb-8 pt-3">
+      <div className="mx-auto max-w-[1480px] overflow-x-hidden px-4 md:px-6">
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           <span>Screener</span><span className="text-muted-foreground/35">/</span>
           {(() => { const Icon = SCREENER_TYPE_ICONS[currentType?.routeType || "stocks"]; return Icon ? <Icon className="h-3.5 w-3.5" /> : null; })()}
@@ -205,7 +205,20 @@ export default function Screener() {
         ) : (
           <ScreenerTable items={data.items} flashBySymbol={data.flashBySymbol} visibleColumns={visibleColumns} columnLookup={columnLookup} sortField={data.sortField} sortOrder={data.sortOrder} loadingMore={data.loadingMore} onSort={setSort} onNavigate={(sym: string) => navigate(`/symbol/${encodeURIComponent(sym)}`)} onLoadMore={data.loadMore} addColumnOpen={addColumnOpen} setAddColumnOpen={setAddColumnOpen} addColumnSearch={addColumnSearch} setAddColumnSearch={setAddColumnSearch} availableAddColumnFields={availableAddColumnFields} updateSelectedColumns={updateSelectedColumns} addColumnRef={addColumnRef} />
         )}
-        {!data.loading && data.items.length === 0 && <div className="py-16 text-center text-sm text-muted-foreground">No results found. Try adjusting your filters.</div>}
+        {!data.loading && data.items.length === 0 && (
+          <div data-testid="screener-no-results" className="flex flex-col items-center gap-3 py-20 text-center">
+            <div className="text-3xl" aria-hidden>🔍</div>
+            <p className="text-sm font-medium text-foreground">No results found</p>
+            <p className="max-w-xs text-xs text-muted-foreground">Try adjusting your filters or switching to a different market.</p>
+            <button
+              type="button"
+              onClick={() => navigate(`/screener/${routeType}`)}
+              className="mt-1 rounded-lg bg-secondary/40 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/60"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
         {!data.loading && data.total > 0 && (
           <div className="mt-3 flex items-center justify-between px-1">
             <p className="text-xs text-muted-foreground">

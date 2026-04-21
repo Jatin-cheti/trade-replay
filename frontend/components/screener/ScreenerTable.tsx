@@ -212,7 +212,7 @@ export default function ScreenerTable({
                 key={`${item.fullSymbol}-${index}`}
                 data-testid="screener-row"
                 data-symbol={item.fullSymbol || item.symbol}
-                href={`/symbol/${encodeURIComponent(item.symbol)}`}
+                href={`/symbol/${encodeURIComponent(item.fullSymbol || item.symbol)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => {
@@ -221,7 +221,7 @@ export default function ScreenerTable({
                   if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
                   // Keep default browser behaviour (new tab via target="_blank").
                   // onNavigate kept for optional telemetry/prefetch hooks.
-                  onNavigate?.(item.symbol);
+                  onNavigate?.(item.fullSymbol || item.symbol);
                 }}
                 className={`grid w-full items-center gap-2 py-2 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 group md:py-2.5 ${
                   index > 0 ? "border-t border-border/20" : ""

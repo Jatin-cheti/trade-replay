@@ -168,6 +168,26 @@ function buildSrcSet(src: string): string {
 
 export { buildSrcSet };
 
+const AVATAR_PALETTE = [
+  "#3B82F6", "#8B5CF6", "#10B981", "#F59E0B",
+  "#EF4444", "#6366F1", "#EC4899", "#14B8A6",
+  "#F97316", "#84CC16", "#06B6D4", "#A855F7",
+];
+
+function hashColor(label: string): string {
+  let h = 0;
+  for (let i = 0; i < label.length; i++) h = label.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length];
+}
+
+function deriveInitials(label: string): string {
+  const cleaned = (label || "?").replace(/[^A-Za-z0-9\s]/g, "").trim();
+  if (!cleaned) return "?";
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  return cleaned.slice(0, 2).toUpperCase();
+}
+
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [svgFailed, setSvgFailed] = useState(false);
@@ -186,12 +206,20 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
     setCandidateIndex(0);
   }, [src]);
 
+  const hasValidSrc = imageCandidates.length > 0;
   const displaySrc = imageFailed ? fallbackIcon : currentSrc;
-  const initials = label.slice(0, 2).toUpperCase();
+  const initials = deriveInitials(label);
+  const bgColor = hashColor(label || "?");
 
-  if (svgFailed) {
+  // No src at all, or final fallback SVG failed → colored initials badge (never grey square)
+  if (!hasValidSrc || svgFailed) {
     return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-primary/40 to-primary/20 text-xs font-bold text-primary ${containerClasses}`}>
+      <div
+        role="img"
+        aria-label={label}
+        className={`flex items-center justify-center text-[11px] font-bold text-white ${containerClasses}`}
+        style={{ backgroundColor: bgColor }}
+      >
         {initials}
       </div>
     );
