@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
@@ -27,4 +26,6 @@ function Badge({ className, variant, ...props }: BadgeProps) {
   return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
+// TODO: splitting badgeVariants into a separate file would enable HMR but break shadcn canonical import paths used across the app
+// eslint-disable-next-line react-refresh/only-export-components
 export { Badge, badgeVariants };

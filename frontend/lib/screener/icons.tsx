@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+// TODO: refactor this file to use explicit function-declaration components so react-refresh can detect them; currently the const + ComponentType pattern trips the rule across 10 icon exports
 import type { ComponentType, SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;

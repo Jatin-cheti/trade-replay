@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
   AlignHorizontalSpaceAround,
@@ -59,8 +60,7 @@ import { toolGroups, type CursorMode, type ToolCategory, type ToolGroup, type To
 import IconToolPanel, { type IconPresetSelection } from '@/components/chart/IconToolPanel';
 
 /* ── Icon map ───────────────────────────────────────────────── */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const railIconMap: Record<string, React.ComponentType<any>> = {
+const railIconMap: Record<string, LucideIcon> = {
   Activity, AlignHorizontalSpaceAround, ArrowDown, ArrowRight, ArrowUp, Box, Circle,
   Clock3, CornerRightUp, Crosshair, Eraser, Eye, EyeOff, Fan, Flag, GitFork, GitMerge, Info,
   Layers, Layers3, Lock, Magnet, MessageCircle, MessageSquare, MessageSquareText, Minus, Mountain,

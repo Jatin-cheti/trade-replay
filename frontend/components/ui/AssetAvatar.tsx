@@ -166,6 +166,7 @@ function buildSrcSet(src: string): string {
   return "";
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- intentional helper co-located with component; moving to a new file would fragment the avatar API
 export { buildSrcSet };
 
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {

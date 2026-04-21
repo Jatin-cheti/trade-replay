@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, toast } from "sonner";
 
@@ -25,4 +24,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
   );
 };
 
+// TODO: `toast` is the canonical sonner re-export path; splitting would duplicate the import surface
+// eslint-disable-next-line react-refresh/only-export-components
 export { Toaster, toast };

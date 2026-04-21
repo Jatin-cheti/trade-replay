@@ -129,8 +129,17 @@ export default function Screener() {
     URL.revokeObjectURL(url);
   }, [visibleColumns, data.items, routeType]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const loadScreenState = useCallback((screen: any) => {
+  type SavedScreen = {
+    _id: string;
+    tab?: string;
+    columns?: string[];
+    sort?: string;
+    order?: string;
+    query?: string;
+    filters?: Record<string, unknown>;
+    screenerType?: string;
+  };
+  const loadScreenState = useCallback((screen: SavedScreen) => {
     screens.setActiveScreenId(screen._id); screens.setScreenDirty(false);
     const p = new URLSearchParams();
     p.set("tab", screen.tab || "overview");

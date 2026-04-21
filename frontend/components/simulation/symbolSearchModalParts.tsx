@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { useMemo, useState } from "react";
 import { Check, ChevronDown, Globe, Search } from "lucide-react";
 import AssetAvatar from "@/components/ui/AssetAvatar";
@@ -11,6 +10,8 @@ const marketIconByCategory = marketMeta.reduce((accumulator, item) => {
   return accumulator;
 }, {} as Record<AssetCategory, string>);
 
+// TODO: SYMBOL_CATEGORIES is a shared constant consumed alongside the modal parts; splitting would require a new module
+// eslint-disable-next-line react-refresh/only-export-components
 export const SYMBOL_CATEGORIES: Array<{ id: "all" | AssetCategory; label: string; iconUrl?: string }> = [
   { id: "all", label: "All" },
   { id: "stocks", label: "Stocks", iconUrl: marketIconByCategory.stocks },

@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 
 type Theme = "dark" | "light";
@@ -42,6 +41,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// TODO: useTheme is a hook co-located with ThemeProvider; standard React context pattern
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTheme() {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider");

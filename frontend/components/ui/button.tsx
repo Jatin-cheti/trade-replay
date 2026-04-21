@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -45,4 +44,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
+// TODO: moving buttonVariants out would enable HMR but would break shadcn canonical import path `@/components/ui/button`
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants };
