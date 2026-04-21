@@ -1,12 +1,22 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import type { RangeFilterValue, DateRangeFilterValue } from "@/lib/screener";
+import type { RangePreset, DatePreset } from "@/lib/screener/filterPresets";
+import { resolveDatePreset } from "@/lib/screener/filterPresets";
 
 export function RangeEditor({
   value,
   onChange,
+  presets,
+  intervals,
+  activeInterval,
+  onIntervalChange,
 }: {
   value?: RangeFilterValue;
   onChange: (next?: RangeFilterValue) => void;
+  presets?: RangePreset[];
+  intervals?: string[];
+  activeInterval?: string;
+  onIntervalChange?: (next: string) => void;
 }) {
   const [minValue, setMinValue] = useState(value?.min !== undefined ? String(value.min) : "");
   const [maxValue, setMaxValue] = useState(value?.max !== undefined ? String(value.max) : "");
@@ -18,8 +28,47 @@ export function RangeEditor({
     onChange(min === undefined && max === undefined ? undefined : { min, max });
   };
 
+  const applyPreset = (preset: RangePreset) => {
+    setMinValue(preset.min !== undefined ? String(preset.min) : "");
+    setMaxValue(preset.max !== undefined ? String(preset.max) : "");
+    onChange(preset.min === undefined && preset.max === undefined ? undefined : { min: preset.min, max: preset.max });
+  };
+
   return (
-    <div className="w-[280px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur-xl">
+    <div className="w-[300px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur-xl">
+      {intervals && intervals.length > 0 && (
+        <div className="mb-2 flex gap-1 rounded-md border border-border/40 bg-secondary/20 p-0.5" data-testid="range-interval-tabs">
+          {intervals.map((iv) => {
+            const active = iv === activeInterval;
+            return (
+              <button
+                key={iv}
+                type="button"
+                onClick={() => onIntervalChange?.(iv)}
+                className={`flex-1 rounded px-2 py-1 text-[11px] font-semibold transition-colors ${
+                  active ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {iv}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {presets && presets.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1" data-testid="range-presets">
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => applyPreset(p)}
+              className="rounded-md border border-border/40 bg-secondary/20 px-2 py-1 text-[11px] font-medium text-foreground/85 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <input
           value={minValue}
@@ -53,15 +102,38 @@ export function RangeEditor({
 export function DateRangeEditor({
   value,
   onChange,
+  presets,
 }: {
   value?: DateRangeFilterValue;
   onChange: (next?: DateRangeFilterValue) => void;
+  presets?: DatePreset[];
 }) {
   const [from, setFrom] = useState(value?.from || "");
   const [to, setTo] = useState(value?.to || "");
 
+  const applyPreset = (preset: DatePreset) => {
+    const { from: f, to: t } = resolveDatePreset(preset);
+    setFrom(f || "");
+    setTo(t || "");
+    onChange(f || t ? { from: f, to: t } : undefined);
+  };
+
   return (
-    <div className="w-[280px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur-xl">
+    <div className="w-[300px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur-xl">
+      {presets && presets.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1" data-testid="date-presets">
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => applyPreset(p)}
+              className="rounded-md border border-border/40 bg-secondary/20 px-2 py-1 text-[11px] font-medium text-foreground/85 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <input
           type="date"
