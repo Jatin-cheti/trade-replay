@@ -1,0 +1,29 @@
+# Loop 3 gitleaks configuration.
+# Uses default rules + project-specific allowlists to exclude E2E test fixtures
+# and documentation examples that trigger false positives.
+
+title = "Trade Replay"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "E2E test fixture credentials (never used in production)"
+regexes = [
+  '''"pass1234"''',
+  '''"test-?password"''',
+  '''"placeholder"''',
+]
+paths = [
+  '''e2e/.*\.spec\.ts$''',
+  '''tests/integration/e2e/.*\.(spec|test)\.ts$''',
+  '''tests/integration/e2e/test-results/.*''',
+]
+
+[[allowlists]]
+description = "Documentation example keys"
+paths = [
+  '''.*\.md$''',
+  '''reports/.*''',
+  '''docs/.*''',
+]
