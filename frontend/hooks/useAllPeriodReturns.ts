@@ -10,7 +10,13 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { api } from "@/lib/api";
+import axios from "axios";
+
+// Use a relative-URL axios instance so requests go through the Vite proxy in
+// development (→ localhost:4000) and through the Vercel rewrite in production
+// (→ api.tradereplay.me).  The `api` singleton has an absolute production base
+// URL baked in via VITE_API_URL, which bypasses the local backend entirely.
+const candlesAxios = axios.create({ baseURL: "/api" });
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Period start-date helpers
@@ -87,11 +93,7 @@ export function useAllPeriodReturns(
         const exchangeParam = exchange ? `&exchange=${encodeURIComponent(exchange)}` : "";
         const url = `/candles/${encodeURIComponent(symbol)}?resolution=D&from=${from}&to=${to}&limit=1${exchangeParam}`;
 
-        if (process.env.NODE_ENV !== "production") {
-          console.log(`[PeriodReturn] ${period} URL:`, (api.defaults.baseURL ?? "") + url);
-        }
-
-        const res = await api.get<{ candles: { close: number; time: number }[] }>(url, {
+        const res = await candlesAxios.get<{ candles: { close: number; time: number }[] }>(url, {
           signal: ac.signal,
         });
 
