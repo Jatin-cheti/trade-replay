@@ -108,6 +108,9 @@ export default function Screener() {
     setSearchParams((prev) => { const n = new URLSearchParams(prev); if (l.mode === "auto") n.delete("layout"); else n.set("layout", String(l.cols)); return n; }, { replace: true });
   }, [setSearchParams]);
 
+  // Custom date range (not URL-persisted, session-only)
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
+
   /* ── Hooks ── */
   const data = useScreenerData(routeType, selectedColumns, viewMode === "chart");
   const filters = useScreenerFilters(meta, data.parsedFilters);
@@ -250,6 +253,8 @@ export default function Screener() {
             onViewModeChange={setViewMode}
             period={chartPeriod}
             onPeriodChange={setChartPeriod}
+            customRange={customRange}
+            onCustomRange={setCustomRange}
             chartType={chartType}
             onChartTypeChange={setChartType}
             layout={chartLayout}
@@ -270,6 +275,7 @@ export default function Screener() {
             layout={chartLayout}
             chartType={chartType}
             period={chartPeriod}
+            customRange={customRange}
             onLoadMore={data.loadMore}
             hasMore={data.items.length < data.total}
             loadingMore={data.loadingMore}

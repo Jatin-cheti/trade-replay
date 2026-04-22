@@ -10,6 +10,7 @@ interface Props {
   items: ScreenerItem[];
   chartType: ChartType;
   period: string;
+  customRange?: { from: Date; to: Date } | null;
   layout: ChartLayout;
   /** Called to fetch the next page of screener items from the backend. */
   onLoadMore?: () => void;
@@ -48,6 +49,7 @@ export default function ScreenerChartGrid({
   layout,
   chartType,
   period,
+  customRange,
   onLoadMore,
   hasMore = false,
   loadingMore = false,
@@ -111,7 +113,7 @@ export default function ScreenerChartGrid({
 
   // Fetch chart data for visible symbols
   const symbols = useMemo(() => visibleItems.map((i) => i.fullSymbol || i.symbol), [visibleItems]);
-  const { data: chartDataMap } = useScreenerChartData(symbols, period);
+  const { data: chartDataMap } = useScreenerChartData(symbols, period, customRange ?? undefined);
 
   if (items.length === 0) {
     return (
