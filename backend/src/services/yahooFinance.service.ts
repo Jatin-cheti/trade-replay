@@ -115,6 +115,25 @@ function cacheTtlMs(interval: string): number {
   return 5 * 60 * 1000;
 }
 
+// Intraday intervals require the `range` query param instead of period1/period2
+// because Yahoo Finance returns 422 for NSE when using explicit timestamps.
+const INTRADAY_INTERVALS = new Set(["1m", "2m", "5m", "15m", "30m"]);
+
+/**
+ * Infers the Yahoo Finance `range` string for intraday intervals.
+ * 1m supports max 7 days; 5m/15m/30m support up to 60 days.
+ */
+function inferYahooRange(interval: string): string {
+  switch (interval) {
+    case "1m":  return "1d";   // 1D period: today's session only
+    case "2m":
+    case "5m":  return "5d";   // 5D period: last 5 trading days
+    case "15m":
+    case "30m": return "1mo";  // 1M period: last month
+    default:    return "1mo";
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Public helpers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -153,14 +172,15 @@ export async function fetchYahooCandles(
 
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`;
 
+  // For intraday intervals, Yahoo Finance requires `range` instead of period1/period2
+  // Using period1/period2 with 1m/5m/15m/30m causes 422 for NSE stocks.
+  const useRange = INTRADAY_INTERVALS.has(interval);
+  const queryParams = useRange
+    ? { range: inferYahooRange(interval), interval, includePrePost: "false" }
+    : { period1: String(Math.floor(fromSec)), period2: String(Math.floor(toSec)), interval, includePrePost: "false", events: "div,splits" };
+
   const res = await axios.get<unknown>(url, {
-    params: {
-      period1:        String(Math.floor(fromSec)),
-      period2:        String(Math.floor(toSec)),
-      interval,
-      includePrePost: "false",
-      events:         "div,splits",
-    },
+    params: queryParams,
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; FinancialApp/2.0)",
       "Accept":     "application/json",

@@ -52,6 +52,8 @@ export default function SymbolMiniTradingChart({
   const [ready, setReady] = useState(false);
 
   const transformed = useMemo(() => transformChartData(data, data.length), [data]);
+  // Ref that always holds the latest ohlcRows — readable from the (once-mounted) crosshair handler.
+  const rowsRef = useRef<typeof transformed.ohlcRows>([]);
 
   const isUp = useMemo(() => {
     if (periodReturn != null) return periodReturn >= 0;
@@ -59,6 +61,11 @@ export default function SymbolMiniTradingChart({
     if (rows.length < 2) return true;
     return rows[rows.length - 1].close >= rows[0].close;
   }, [periodReturn, transformed]);
+
+  // Keep rowsRef in sync so the crosshair handler can always access the latest rows.
+  useEffect(() => {
+    rowsRef.current = transformed.ohlcRows;
+  }, [transformed]);
 
   const [tooltip, setTooltip] = useState<{
     x: number;
@@ -105,11 +112,34 @@ export default function SymbolMiniTradingChart({
         price: number | null;
         source?: string;
       };
-      if (!p || !p.point || p.time == null || p.price == null || p.source === 'leave') {
+      // Hide tooltip only when mouse leaves the chart area entirely.
+      if (!p?.point || p.source === 'leave') {
         setTooltip(null);
         return;
       }
-      setTooltip({ x: p.point.x, y: p.point.y, price: p.price, time: p.time });
+      const rows = rowsRef.current;
+      if (!rows.length) { setTooltip(null); return; }
+
+      let snapTime: UTCTimestamp;
+      let snapPrice: number;
+
+      if (p.time != null && p.price != null) {
+        // Mouse is over an actual data bar — use it directly.
+        snapTime  = p.time;
+        snapPrice = p.price;
+      } else {
+        // Mouse is in empty space (before first bar or after last bar).
+        // Snap to the nearest row using the x fraction across the container.
+        const containerWidth = containerRef.current?.clientWidth ?? 800;
+        const fraction = Math.max(0, Math.min(1, p.point.x / containerWidth));
+        const nearestIndex = Math.round(fraction * (rows.length - 1));
+        const clamped = Math.max(0, Math.min(rows.length - 1, nearestIndex));
+        const nearestRow = rows[clamped];
+        snapTime  = nearestRow.time as UTCTimestamp;
+        snapPrice = nearestRow.close;
+      }
+
+      setTooltip({ x: p.point.x, y: p.point.y, price: snapPrice, time: snapTime });
     };
     chart.subscribeCrosshairMove(onCross);
 
@@ -148,11 +178,20 @@ export default function SymbolMiniTradingChart({
 
     const times = transformed.ohlcRows;
     if (times.length >= 2) {
-      // Clamp visible range to the data span. (Backend serves daily candles,
-      // so intraday 09:15 IST clamping for 1D is handled by the backend — we
-      // simply render what we receive.)
       const fromTs = times[0].time;
       const toTs = times[times.length - 1].time;
+
+      // Compute bar spacing so all bars fill the container width exactly.
+      const containerWidth = containerRef.current?.clientWidth ?? 800;
+      const idealBarSpacing = Math.max(0.5, Math.min((containerWidth - 60) / times.length, 8));
+      chartRef.current?.timeScale().applyOptions({
+        barSpacing: idealBarSpacing,
+        rightOffset: 0,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+      });
+
+      // Set exact visible range so all bars span the full container width.
       try {
         chartRef.current?.timeScale().setVisibleRange({ from: fromTs, to: toTs });
       } catch {
@@ -205,14 +244,18 @@ export default function SymbolMiniTradingChart({
 
     if (!tooltip || !activeSeries) return;
 
-    // Snap the dot to the actual data price coordinate, not the raw mouse y
+    // Snap dot to the bar's price coordinate (not raw mouse Y) and the
+    // bar's time coordinate (not raw mouse X) — keeps dot exactly on the line.
     const dotY = activeSeries.priceToCoordinate(tooltip.price);
     if (dotY == null || !Number.isFinite(dotY)) return;
+
+    const dotX = chartRef.current?.timeScale().timeToCoordinate(tooltip.time);
+    if (dotX == null || !Number.isFinite(dotX)) return;
 
     const lineColor = isUp ? GREEN_LINE : RED_LINE;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(tooltip.x, dotY, 4, 0, Math.PI * 2);
+    ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
     ctx.fillStyle = lineColor;
     ctx.fill();
     ctx.lineWidth = 2;
@@ -258,8 +301,25 @@ export default function SymbolMiniTradingChart({
           data-testid="chart-tooltip"
           className="pointer-events-none absolute rounded-md border border-border/40 bg-popover/95 px-2 py-1 text-[11px] leading-tight shadow-md backdrop-blur-sm"
           style={{
-            left: Math.min(Math.max(tooltip.x + 12, 8), Math.max(0, (containerRef.current?.clientWidth ?? 0) - 140)),
-            top: Math.min(Math.max(tooltip.y + 12, 8), Math.max(0, (containerRef.current?.clientHeight ?? 0) - 60)),
+            // Smart quadrant positioning: tooltip moves away from whichever edge cursor is near.
+            left: (() => {
+              const containerW = containerRef.current?.clientWidth ?? 800;
+              const tooltipW = 140;
+              if (tooltip.x > containerW / 2) {
+                return Math.max(4, tooltip.x - tooltipW - 16);
+              } else {
+                return Math.min(containerW - tooltipW - 4, tooltip.x + 16);
+              }
+            })(),
+            top: (() => {
+              const containerH = containerRef.current?.clientHeight ?? 400;
+              const tooltipH = 60;
+              if (tooltip.y > containerH / 2) {
+                return Math.max(4, tooltip.y - tooltipH - 8);
+              } else {
+                return Math.min(containerH - tooltipH - 4, tooltip.y + 8);
+              }
+            })(),
             zIndex: 5,
           }}
         >

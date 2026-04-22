@@ -187,8 +187,8 @@ function getNseDayOpen(daysBack = 0): number {
 
 // Per-period resolution + time-range config for real Yahoo Finance candles.
 const PERIOD_CANDLE_PARAMS: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
-  "1d":  { resolution: "60", fromSec: () => getNseDayOpen(0),              toSec: () => Math.floor(Date.now() / 1000) },
-  "5d":  { resolution: "60", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "1d":  { resolution: "1",  fromSec: () => getNseDayOpen(0),              toSec: () => Math.floor(Date.now() / 1000) },
+  "5d":  { resolution: "5",  fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400, toSec: () => Math.floor(Date.now() / 1000) },
   "1m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400, toSec: () => Math.floor(Date.now() / 1000) },
   "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
   "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
@@ -1070,7 +1070,7 @@ export default function SymbolPage() {
                   We never show a loading spinner here — old data stays visible until new data
                   arrives, eliminating the flash / page-shake on period switches. */}
               {chartError && displayCandles.length === 0 ? (
-                <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                <div ref={chartContainerRef} style={{ height: "clamp(380px, 58vh, 680px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
                     <button
@@ -1082,7 +1082,7 @@ export default function SymbolPage() {
                   </div>
                 </div>
               ) : displayCandles.length > 0 ? (
-                <div ref={chartContainerRef} style={{ height: "clamp(220px, 38vh, 340px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
+                <div ref={chartContainerRef} style={{ height: "clamp(380px, 58vh, 680px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
                     data={displayCandles}
                     height="100%"
@@ -1100,7 +1100,7 @@ export default function SymbolPage() {
                 <div
                   onClick={() => navigate(simulationHref)}
                   ref={chartContainerRef}
-                  style={{ height: "clamp(220px, 38vh, 340px)" }}
+                  style={{ height: "clamp(380px, 58vh, 680px)" }}
                   className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
