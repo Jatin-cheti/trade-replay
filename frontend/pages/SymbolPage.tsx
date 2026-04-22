@@ -201,6 +201,26 @@ const PERIOD_CANDLE_PARAMS: Record<string, { resolution: string; fromSec: () => 
   "all": { resolution: "M",  fromSec: () => 946684800,                                                           toSec: () => Math.floor(Date.now() / 1000) },
 };
 
+// OHLC chart types need wider bar intervals so candles have enough pixel width to render clearly.
+// (375 × 1m bars at 1200px = 3.2px/candle → illegible; 75 × 5m bars = 16px/candle → perfect)
+const OHLC_FAMILY = new Set<ChartType>(['candlestick', 'bar', 'ohlc', 'heikinAshi', 'hollowCandles', 'renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick']);
+
+// Wider-interval resolution table for OHLC-family charts.
+// Intraday periods (1d/5d/1m) use 5m / 30m / 1h instead of 1m / 15m / 30m.
+// Daily+ periods are identical to the line table.
+const PERIOD_CANDLE_PARAMS_OHLC: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
+  "1d":  { resolution: "5",  fromSec: () => getNseDayOpen(0),                                                    toSec: () => Math.floor(Date.now() / 1000) },
+  "5d":  { resolution: "30", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "1m":  { resolution: "60", fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "3m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
+  "1y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
+  "10y": { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 3700 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
+  "all": { resolution: "M",  fromSec: () => 946684800,                                                           toSec: () => Math.floor(Date.now() / 1000) },
+};
+
 const chartTypeIconMap: Partial<Record<ChartType, typeof CandlestickChart>> = {
   candlestick: CandlestickChart,
   line: LineChart,
@@ -369,6 +389,11 @@ export default function SymbolPage() {
   const [chartError, setChartError] = useState(false);
   // Resolution used for the most recently loaded candles (needed for IST-offset logic).
   const [candleResolution, setCandleResolution] = useState<string>("1");
+  // Tracks whether the current chart type is in the OHLC family (candlestick/bar/ohlc/…).
+  // Stored in a ref so loadChartCandles can read the live value without being re-memoized.
+  const isOhlcFamilyRef = useRef(false);
+  // Used to detect family transitions and trigger a reload (line ↔ OHLC).
+  const prevChartFamilyRef = useRef<'line' | 'ohlc'>('line');
 
   // Per-period performance % — fetched via useAllPeriodReturns (real Yahoo Finance data).
   const { returns: perfByPeriod } = useAllPeriodReturns(
@@ -391,7 +416,9 @@ export default function SymbolPage() {
   // Old candles are intentionally kept visible until new data arrives (no flash).
   const loadChartCandles = useCallback((periodKey: string) => {
     if (!detail?.symbol) return;
-    const params = PERIOD_CANDLE_PARAMS[periodKey] ?? PERIOD_CANDLE_PARAMS["1d"];
+    // Pick the correct resolution table based on current chart type family.
+    const paramsTable = isOhlcFamilyRef.current ? PERIOD_CANDLE_PARAMS_OHLC : PERIOD_CANDLE_PARAMS;
+    const params = paramsTable[periodKey] ?? PERIOD_CANDLE_PARAMS["1d"];
     const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
     setChartError(false);
     setCandleResolution(params.resolution);
@@ -416,11 +443,27 @@ export default function SymbolPage() {
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
+      if (!activeTimePeriod) return; // custom range active — don't clobber it
       loadChartCandles(activeTimePeriod);
     };
     const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
   }, [activeTimePeriod, loadChartCandles]);
+
+  // Reload candles when the user switches between line-type and OHLC-type chart families,
+  // because the bar interval must change (area can use 1m; candlestick needs 5m for 1D).
+  useEffect(() => {
+    const family: 'line' | 'ohlc' = OHLC_FAMILY.has(overviewChartType) ? 'ohlc' : 'line';
+    isOhlcFamilyRef.current = family === 'ohlc';
+    if (prevChartFamilyRef.current === family) return; // no family change
+    prevChartFamilyRef.current = family;
+    if (customRange) {
+      handleCustomRangeApply(customRange);
+    } else if (activeTimePeriod) {
+      loadChartCandles(activeTimePeriod);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overviewChartType]);
 
   const handleTimePeriodChange = useCallback((key: string) => {
     setActiveTimePeriod(key);
@@ -437,14 +480,23 @@ export default function SymbolPage() {
     const from = Math.floor(range.from.getTime() / 1000);
     const to   = Math.floor(range.to.getTime()   / 1000);
     const days = (to - from) / 86400;
+    const isOhlc = isOhlcFamilyRef.current;
 
-    // Pick resolution based on the span so bars fill the chart (match the period table).
+    // OHLC charts need wider bars: use 5m/30m/1h instead of 1m/15m/30m for intraday spans.
     let resolution: string;
-    if      (days <= 2)   resolution = "1";   // 1m bars for ≤2 days
-    else if (days <= 7)   resolution = "15";  // 15m bars for ≤7 days
-    else if (days <= 35)  resolution = "30";  // 30m bars for ≤35 days
-    else if (days <= 400) resolution = "D";   // daily bars for ≤1 year
-    else                  resolution = "W";   // weekly bars for >1 year
+    if (isOhlc) {
+      if      (days <= 2)   resolution = "5";   // 5m bars ≤2d → ~75 candles/session
+      else if (days <= 7)   resolution = "30";  // 30m bars ≤7d → ~60 candles/session
+      else if (days <= 35)  resolution = "60";  // 1h bars  ≤35d → ~130 candles
+      else if (days <= 400) resolution = "D";
+      else                  resolution = "W";
+    } else {
+      if      (days <= 2)   resolution = "1";   // 1m bars for ≤2 days
+      else if (days <= 7)   resolution = "15";  // 15m bars for ≤7 days
+      else if (days <= 35)  resolution = "30";  // 30m bars for ≤35 days
+      else if (days <= 400) resolution = "D";   // daily bars for ≤1 year
+      else                  resolution = "W";   // weekly bars for >1 year
+    }
 
     const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
     setChartError(false);
@@ -469,8 +521,8 @@ export default function SymbolPage() {
   const displayCandles = useMemo(() => {
     if (!candles.length) return candles;
     const IST_OFFSET_SEC = 19800; // 5h30m
-    // Intraday resolutions that need the IST fake-UTC trick
-    const INTRADAY = new Set(["1", "2", "5", "15", "30"]);
+    // Intraday resolutions that need the IST fake-UTC trick (includes 1h = "60")
+    const INTRADAY = new Set(["1", "2", "5", "15", "30", "60"]);
     const isIntraday = INTRADAY.has(candleResolution);
 
     if (customRange) {
@@ -497,6 +549,22 @@ export default function SymbolPage() {
 
     return candles;
   }, [candles, customRange, candleResolution]);
+
+  // Previous-close reference line value.
+  //   1D + line/area type : API-reported yesterday's close (most accurate).
+  //   Multi-day + line/area: first bar's close = "period start" reference.
+  //   OHLC chart types    : null — the open is already visible inside each candle.
+  const prevCloseValue = useMemo(() => {
+    if (!detail) return null;
+    if (OHLC_FAMILY.has(overviewChartType)) return null; // candles encode their own open
+    if (activeTimePeriod === "1d" && !customRange) {
+      if (typeof detail.price === "number" && typeof detail.change === "number" && detail.change !== 0) {
+        return detail.price - detail.change;
+      }
+    }
+    // All other periods: use the close of the first loaded bar as the period-start reference.
+    return displayCandles.length > 1 ? (displayCandles[0].close ?? null) : null;
+  }, [detail, overviewChartType, activeTimePeriod, customRange, displayCandles]);
 
   // Close symbol picker on outside click
   useEffect(() => {
@@ -1111,11 +1179,7 @@ export default function SymbolPage() {
                     data={displayCandles}
                     height="100%"
                     chartType={overviewChartType}
-                    prevClose={
-                      detail && typeof detail.price === "number" && typeof detail.change === "number"
-                        ? detail.price - detail.change
-                        : null
-                    }
+                    prevClose={prevCloseValue}
                     periodReturn={perfPercent}
                     timePeriod={activeTimePeriod}
                   />
@@ -1134,11 +1198,26 @@ export default function SymbolPage() {
                 </div>
               )}
 
-              {/* Time period chips — TradingView exact layout with performance % */}
+              {/* Time period chips — active custom range shows as first chip */}
               <div className="mt-3 flex flex-col gap-2">
-                <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
+                  {/* Active custom period chip — shown BEFORE predefined periods */}
+                  {customRange && (
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      title="Click to edit custom range"
+                      className="flex flex-col items-center px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[90px] bg-primary/10 text-foreground border-2 border-primary shrink-0"
+                    >
+                      <span className="font-semibold text-[11px] leading-tight">
+                        {format(customRange.from, "MMM d")} – {format(customRange.to, "MMM d, yy")}
+                      </span>
+                      <span className={`text-[10px] tabular-nums mt-0.5 ${perfPercent >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                        {perfPercent >= 0 ? "+" : ""}{perfPercent.toFixed(2)}%
+                      </span>
+                    </button>
+                  )}
                 {TIME_PERIODS.map((p) => {
-                  // All chips use perfByPeriod[p.key].
                   // All chips use real period returns from useAllPeriodReturns (Yahoo Finance data).
                   const pctValue = perfByPeriod[p.key];
                   const hasPct = pctValue != null && Number.isFinite(pctValue);
@@ -1153,12 +1232,12 @@ export default function SymbolPage() {
                       data-period={p.key}
                       onClick={() => handleTimePeriodChange(p.key)}
                       className={`flex flex-col items-center px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[80px] ${
-                        activeTimePeriod === p.key
+                        activeTimePeriod === p.key && !customRange
                           ? "bg-primary/10 text-foreground border-2 border-primary"
                           : "border-2 border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/20"
                       }`}
                     >
-                      <span className={activeTimePeriod === p.key ? "text-foreground font-semibold" : ""}>{p.label}</span>
+                      <span className={activeTimePeriod === p.key && !customRange ? "text-foreground font-semibold" : ""}>{p.label}</span>
                       {hasPct ? (
                         <span data-percent className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
                           {pctValue >= 0 ? "+" : ""}{(pctValue as number).toFixed(2)}%
@@ -1174,22 +1253,24 @@ export default function SymbolPage() {
                   <button
                     type="button"
                     onClick={() => setPickerOpen(true)}
-                    className={`h-9 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors ${
-                      customRange ? "border-primary/40 bg-primary/10 text-primary" : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/20"
-                    }`}
+                    className="h-9 shrink-0 rounded-lg border border-border/40 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/20 transition-colors whitespace-nowrap"
                   >
-                    Custom period
+                    {customRange ? "Edit range" : "Custom period"}
                   </button>
                   {customRange && (
                     <button
                       type="button"
                       onClick={() => {
+                        const fallback = "1d";
                         setCustomRange(null);
                         setActiveSavedPeriodId(undefined);
+                        setActiveTimePeriod(fallback);
+                        loadChartCandles(fallback);
                       }}
-                      className="h-9 shrink-0 rounded-lg border border-border/30 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                      title="Clear custom range"
+                      className="h-9 shrink-0 rounded-lg border border-border/30 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/20 transition-colors"
                     >
-                      Clear
+                      ✕
                     </button>
                   )}
                   <Suspense fallback={null}>
@@ -1200,7 +1281,7 @@ export default function SymbolPage() {
                       setActiveSavedPeriodId(period.id);
                       setActiveTimePeriod("");
                       setCustomRange(period.range);
-                      loadCandles(9999);
+                      handleCustomRangeApply(period.range);
                     }}
                     onOpenCustom={() => setPickerOpen(true)}
                     onEdit={(id, name) => {

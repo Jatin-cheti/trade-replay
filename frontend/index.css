@@ -947,4 +947,32 @@
     background: hsl(var(--secondary) / 0.25);
     border-radius: 6px;
   }
+
+  /* Style the native <select> inside the month/year dropdown to match dark theme */
+  .symbol-rdp select.rdp-dropdown,
+  .symbol-rdp .rdp-dropdown_month select,
+  .symbol-rdp .rdp-dropdown_year select {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border) / 0.6);
+    border-radius: 4px;
+    padding: 2px 4px;
+    cursor: pointer;
+    outline: none;
+    -webkit-appearance: auto;
+    appearance: auto;
+  }
+
+  .symbol-rdp .rdp-day {
+    color: hsl(var(--foreground));
+  }
+
+  .symbol-rdp .rdp-day_today:not(.rdp-day_selected) {
+    color: hsl(var(--primary));
+    font-weight: 700;
+  }
+
+  .symbol-rdp .rdp-day_outside {
+    opacity: 0.35;
+  }
 }
