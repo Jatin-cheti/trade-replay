@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef } from "react";
+import { RotateCcw, Bell, TrendingDown, TrendingUp, LayoutGrid, Settings, ChevronRight } from "lucide-react";
 
 interface ChartContextMenuProps {
   open: boolean;
@@ -20,10 +21,13 @@ interface ChartContextMenuProps {
   onLoadTemplate: () => void;
   onRemoveIndicators: () => void;
   onSettings: () => void;
+  onSellOrder?: (price: number) => void;
+  onBuyOrder?: (price: number) => void;
+  onAddOrder?: (price: number) => void;
 }
 
-const MENU_WIDTH = 248;
-const MENU_EST_HEIGHT = 340;
+const MENU_WIDTH = 268;
+const MENU_EST_HEIGHT = 440;
 
 export default function ChartContextMenu({
   open,
@@ -44,6 +48,9 @@ export default function ChartContextMenu({
   onLoadTemplate,
   onRemoveIndicators,
   onSettings,
+  onSellOrder,
+  onBuyOrder,
+  onAddOrder,
 }: ChartContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -74,16 +81,25 @@ export default function ChartContextMenu({
 
   const priceLabel = cursorPrice != null ? cursorPrice.toFixed(2) : "—";
 
-  function item(label: string, shortcut: string | null, onClick: () => void, className = "") {
+  type LucideIcon = React.FC<{ size?: number; className?: string }>;
+
+  function item(
+    label: string,
+    shortcut: string | null,
+    onClick: () => void,
+    className = "",
+    Icon?: LucideIcon,
+  ) {
     return (
       <button
         key={label}
         type="button"
         onClick={() => { onClick(); onClose(); }}
-        className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[12px] text-foreground hover:bg-primary/10 active:bg-primary/20 active:text-primary ${className}`}
+        className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-[12px] text-foreground hover:bg-primary/10 active:bg-primary/20 active:text-primary ${className}`}
       >
-        <span>{label}</span>
-        {shortcut && <span className="text-[10px] text-muted-foreground">{shortcut}</span>}
+        {Icon ? <Icon size={13} className="shrink-0 text-muted-foreground" /> : <span className="w-[13px] shrink-0" />}
+        <span className="flex-1 text-left">{label}</span>
+        {shortcut && <span className="ml-auto text-[10px] text-muted-foreground">{shortcut}</span>}
       </button>
     );
   }
@@ -92,23 +108,46 @@ export default function ChartContextMenu({
     <div
       ref={menuRef}
       data-testid="chart-context-menu"
-      className="fixed z-[200] w-[248px] rounded-xl border border-primary/20 bg-background/95 py-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
+      className="fixed z-[200] w-[268px] rounded-xl border border-primary/20 bg-background/95 py-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
       style={{ left: menuX, top: menuY }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {item("Reset chart view", "Alt+R", onResetView)}
+      {item("Reset chart view", "Alt+R", onResetView, "", RotateCcw)}
       {item(`Copy price ${priceLabel}`, null, onCopyPrice)}
       {item("Paste", "Ctrl+V", () => {})}
 
       <div className="my-1 mx-3 border-t border-border/40" />
 
-      {item(`Add alert on ${symbol} at ${priceLabel}...`, "Alt+A", onAddAlert)}
+      {item(`Add alert on ${symbol} at ${priceLabel}...`, "Alt+A", onAddAlert, "", Bell)}
+      {item(
+        `Sell 1 ${symbol} @ ${priceLabel} limit`,
+        "Alt+Shift+S",
+        () => onSellOrder?.(cursorPrice ?? 0),
+        "text-rose-400 hover:bg-rose-500/10",
+        TrendingDown,
+      )}
+      {item(
+        `Buy 1 ${symbol} @ ${priceLabel} stop`,
+        null,
+        () => onBuyOrder?.(cursorPrice ?? 0),
+        "text-emerald-400 hover:bg-emerald-500/10",
+        TrendingUp,
+      )}
+      {item(
+        `Add order on ${symbol}...`,
+        "Shift+T",
+        () => onAddOrder?.(cursorPrice ?? 0),
+        "",
+        LayoutGrid,
+      )}
+
       <button
         type="button"
         onClick={() => { onToggleLockCrosshair(); onClose(); }}
-        className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[12px] hover:bg-primary/10 active:bg-primary/20 active:text-primary ${lockedCrosshair ? "text-primary" : "text-foreground"}`}
+        className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-[12px] hover:bg-primary/10 active:bg-primary/20 active:text-primary ${lockedCrosshair ? "text-primary" : "text-foreground"}`}
       >
-        <span>Lock vertical cursor line by time</span>
+        <span className="w-[13px] shrink-0" />
+        <span className="flex-1 text-left">Lock vertical cursor line by time</span>
         {lockedCrosshair && <span className="text-[10px] text-primary">●</span>}
       </button>
 
@@ -121,10 +160,11 @@ export default function ChartContextMenu({
       <div className="group relative">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[12px] text-foreground hover:bg-primary/10"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-[12px] text-foreground hover:bg-primary/10"
         >
-          <span>Chart template</span>
-          <span className="text-[10px] text-muted-foreground">▸</span>
+          <span className="w-[13px] shrink-0" />
+          <span className="flex-1 text-left">Chart template</span>
+          <ChevronRight size={12} className="ml-auto text-muted-foreground" />
         </button>
         <div className="absolute left-full top-0 z-10 hidden w-40 rounded-xl border border-primary/20 bg-background/95 py-1.5 shadow-2xl backdrop-blur-xl group-hover:block">
           {item("Save template...", null, onSaveTemplate)}
@@ -145,7 +185,7 @@ export default function ChartContextMenu({
       )}
 
       <div className="my-1 mx-3 border-t border-border/40" />
-      {item("Settings...", null, onSettings)}
+      {item("Settings...", null, onSettings, "", Settings)}
     </div>
   );
 

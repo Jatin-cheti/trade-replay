@@ -39,13 +39,15 @@ export function createTradingChart(container: HTMLElement, options?: TradingChar
         color: 'rgba(120, 123, 134, 0.8)',
         width: 1,
         style: 2,
-        labelBackgroundColor: '#787b86',
+        labelBackgroundColor: '#131722',
+        labelVisible: true,
       },
       horzLine: {
         color: 'rgba(120, 123, 134, 0.8)',
         width: 1,
         style: 2,
-        labelBackgroundColor: '#787b86',
+        labelBackgroundColor: '#131722',
+        labelVisible: true,
       },
     },
     rightPriceScale: {

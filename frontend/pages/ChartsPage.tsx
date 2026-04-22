@@ -407,24 +407,19 @@ export default function ChartsPage() {
               visibleCount={candles.length}
               symbol={baseSymbol}
               mode="live"
+              ohlcLegend={
+                legendRow ? (
+                  <ChartOhlcLegendOverlay
+                    symbol={baseSymbol}
+                    exchange={exchange}
+                    row={legendRow}
+                    prevClose={prevClose}
+                  />
+                ) : null
+              }
             />
           )}
         </div>
-
-        {/* OHLC legend overlay — top-left inside the chart area, over TradingChart */}
-        {candles.length > 0 && legendRow && (
-          <div className="absolute left-0 top-0 z-30 pointer-events-none">
-            {/* Offset to sit below TradingChart's own top bar (~40px) and leave space for ToolRail */}
-            <div className="ml-14 mt-11">
-              <ChartOhlcLegendOverlay
-                symbol={baseSymbol}
-                exchange={exchange}
-                row={legendRow}
-                prevClose={prevClose}
-              />
-            </div>
-          </div>
-        )}
 
         {/* Right mini strip */}
         <ChartRightMiniStrip
@@ -455,6 +450,9 @@ export default function ChartsPage() {
           onLoadTemplate={handleLoadTemplate}
           onRemoveIndicators={handleRemoveIndicators}
           onSettings={() => setSettingsOpen(true)}
+          onSellOrder={(price) => toast.info(`Sell order at ₹${price.toFixed(2)} — order placement coming soon`)}
+          onBuyOrder={(price) => toast.info(`Buy order at ₹${price.toFixed(2)} — order placement coming soon`)}
+          onAddOrder={(price) => toast.info(`Add order at ₹${price.toFixed(2)} — order placement coming soon`)}
         />
       </div>
 

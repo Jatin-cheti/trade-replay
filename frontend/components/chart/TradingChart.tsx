@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent, LineStyle } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -42,6 +42,8 @@ interface TradingChartProps {
   syncBus?: ChartSyncBus;
   syncId?: string;
   parityMode?: boolean;
+  /** Optional overlay rendered inside chart-interaction-surface at top-left (over canvas, not over tool rail) */
+  ohlcLegend?: React.ReactNode;
 }
 
 type TouchTooltipState = {
@@ -245,6 +247,7 @@ export default function TradingChart({
   syncBus,
   syncId,
   parityMode = false,
+  ohlcLegend,
 }: TradingChartProps) {
   const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>(() => (parityMode ? 'volumeCandles' : 'candlestick'));
@@ -378,6 +381,34 @@ export default function TradingChart({
     if (toolState.variant === 'emoji' || toolState.variant === 'sticker' || toolState.variant === 'iconTool') return;
     setSelectedIconPreset(null);
   }, [toolState.variant]);
+
+  // Last price sticky badge on Y-axis
+  const lastPriceLineRef = useRef<ReturnType<NonNullable<ReturnType<typeof getActiveSeries>>['createPriceLine']> | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    const series = getActiveSeries();
+    if (!series) return;
+    if (lastPriceLineRef.current) {
+      try { series.removePriceLine(lastPriceLineRef.current); } catch { /* disposed */ }
+      lastPriceLineRef.current = null;
+    }
+    const rows = transformedData.ohlcRows;
+    if (rows.length < 1) return;
+    const last = rows[rows.length - 1] as { close?: number; value?: number };
+    const lastPrice = last.close ?? last.value;
+    if (lastPrice == null || !Number.isFinite(lastPrice)) return;
+    const prev = rows.length >= 2 ? (rows[rows.length - 2] as typeof last) : null;
+    const prevPrice = prev ? (prev.close ?? prev.value) : null;
+    const isUp = prevPrice == null || lastPrice >= prevPrice;
+    lastPriceLineRef.current = series.createPriceLine({
+      price: lastPrice,
+      color: isUp ? '#26a69a' : '#ef5350',
+      lineWidth: 1,
+      lineStyle: LineStyle.Solid,
+      axisLabelVisible: true,
+      title: '',
+    });
+  }, [ready, transformedData, getActiveSeries]);
 
   const addIndicator = useCallback((indicatorId: string) => {
     setEnabledIndicators((prev) => {
@@ -3163,6 +3194,13 @@ export default function TradingChart({
             <div className="chart-wrapper h-full w-full touch-pan-y">
               <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} overlayInteractive={overlayInteractive} overlayCursor={overlayCursor} containerCursor={overlayCursor} />
             </div>
+
+            {/* External OHLC legend — rendered at top-left INSIDE the chart canvas, never over ToolRail */}
+            {ohlcLegend ? (
+              <div className="pointer-events-none absolute left-2 top-2 z-30">
+                {ohlcLegend}
+              </div>
+            ) : null}
 
             {patternWizardHint ? (
               <div
