@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, getDetectedCountry } from "@/lib/api";
+import { api } from "@/lib/api";
 import type {
   DateRangeFilterValue,
   ParsedFilters,
@@ -27,6 +27,7 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [prevRequestKey, setPrevRequestKey] = useState("");
 
   const fetchKeyRef = useRef("");
   const fetchCounterRef = useRef(0);
@@ -39,15 +40,8 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
 
   const parsedFilters = useMemo(() => {
     const f = parseFiltersFromSearch(searchParams);
-    // Default stock/etf/bond screeners to user's detected country
-    const countryTypes = new Set(["stocks", "etfs", "bonds"]);
-    if (!f.marketCountries && countryTypes.has(routeType)) {
-      const userCountry = getDetectedCountry();
-      if (userCountry && userCountry !== "WORLD") {
-        f.marketCountries = [userCountry];
-      }
-      // If no country detected yet, show all (no filter)
-    }
+    // No auto-country detection — screener defaults to global universe.
+    // Users can apply country filters via quick-buttons or the filter panel.
     return f;
   }, [searchParams, routeType]);
   const activeTab = searchParams.get("tab") || "overview";
@@ -57,6 +51,14 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
   const requestKey = useMemo(() => {
     return JSON.stringify({ routeType, tab: activeTab, sortField, sortOrder, query: searchParams.get("q") || "", columns: selectedColumns, filters: parsedFilters });
   }, [activeTab, parsedFilters, routeType, searchParams, selectedColumns, sortField, sortOrder]);
+
+  // Synchronously reset count/items when filters change so the stale count
+  // disappears from the DOM in the same render cycle as the filter change.
+  if (requestKey !== prevRequestKey) {
+    setPrevRequestKey(requestKey);
+    setTotal(0);
+    setItems([]);
+  }
 
   const buildRequestParams = useCallback((offset: number) => {
     const params: Record<string, string | number | boolean> = {
@@ -118,6 +120,7 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
 
   const refreshList = useCallback(async () => {
     setLoading(true); setLoadingMore(false);
+    setItems([]); setTotal(0);
     prefetchedRef.current = null; hasMoreRef.current = true; offsetRef.current = 0;
     const key = requestKey; fetchKeyRef.current = key;
     const fetchId = ++fetchCounterRef.current;

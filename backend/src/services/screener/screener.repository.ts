@@ -77,6 +77,12 @@ function buildBaseQuery(params: ScreenerRepositoryQuery): FilterQuery<ScreenerAs
     query.$or = [{ symbol: q }, { name: q }, { fullSymbol: q }];
   }
 
+  // Exclude synthetic placeholder stocks (INS-series injected data) from screener results
+  query.$nor = [
+    { isSynthetic: true },
+    { symbol: { $regex: "^INS[0-9]+" } },
+  ];
+
   return query;
 }
 
@@ -99,6 +105,26 @@ export async function listAssets(
 ): Promise<ScreenerAssetDoc[]> {
   const query = buildBaseQuery(params);
   const mongoSort = toMongoSort(sort);
+
+  // When a search query is present, boost exact symbol matches to the top
+  if (params.query?.trim()) {
+    const queryUpper = params.query.trim().toUpperCase();
+    const result = await CleanAssetModel.aggregate([
+      { $match: query },
+      { $addFields: {
+        _exactMatch: { $cond: {
+          if: { $eq: [{ $toUpper: "$symbol" }, queryUpper] },
+          then: 1,
+          else: 0,
+        } },
+      } },
+      { $sort: { _exactMatch: -1, ...mongoSort } },
+      { $skip: offset },
+      { $limit: limit },
+      { $unset: "_exactMatch" },
+    ]).exec();
+    return result as ScreenerAssetDoc[];
+  }
 
   return CleanAssetModel.find(query)
     .sort(mongoSort)

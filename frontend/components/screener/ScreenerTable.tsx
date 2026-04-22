@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 import { ArrowUpDown, Check, Plus, Search, X, TrendingDown, TrendingUp } from "lucide-react";
 import type { ScreenerColumnField, ScreenerItem } from "@/lib/screener";
@@ -70,6 +71,7 @@ export default function ScreenerTable({
     return Math.max(480, total + 44);
   }, [visibleColumns]);
 
+  const navigate = useNavigate();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; symbol: string; fullSymbol: string; name: string } | null>(null);
   const { getFlag, setFlag } = useSymbolFlags();
 
@@ -233,19 +235,16 @@ export default function ScreenerTable({
                 data-testid="screener-row"
                 data-symbol={item.fullSymbol || item.symbol}
                 href={`/symbol/${encodeURIComponent(item.fullSymbol || item.symbol)}`}
-                target="_blank"
-                rel="noopener noreferrer"
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setContextMenu({ x: e.clientX, y: e.clientY, symbol: item.symbol, fullSymbol: item.fullSymbol || item.symbol, name: item.name || item.symbol });
                 }}
                 onClick={(e) => {
-                  // If caller provided an in-page navigator (legacy), still allow it
-                  // when modifier keys are NOT used, otherwise let the browser handle it.
-                  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
-                  // Keep default browser behaviour (new tab via target="_blank").
-                  // onNavigate kept for optional telemetry/prefetch hooks.
-                  onNavigate?.(item.fullSymbol || item.symbol);
+                  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // let browser open new tab
+                  e.preventDefault();
+                  const sym = item.fullSymbol || item.symbol;
+                  navigate(`/symbol/${encodeURIComponent(sym)}`);
+                  onNavigate?.(sym);
                 }}
                 className={`grid w-full items-center gap-2 py-2 pl-3 pr-[14px] text-left transition-colors hover:bg-secondary/30 group md:py-2.5 ${
                   index > 0 ? "border-t border-border/20" : ""

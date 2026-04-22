@@ -407,7 +407,7 @@ export const SCREENER_COLUMN_FIELDS: ScreenerColumnDefinition[] = [
   { key: "changePercent", label: "Change %", category: "market-data", numeric: true },
   { key: "volume", label: "Volume", category: "market-data", numeric: true },
   { key: "relVolume", label: "Rel Volume", category: "market-data", numeric: true },
-  { key: "marketCap", label: "Market cap", category: "valuation", numeric: true },
+  { key: "marketCap", label: "Market Cap", category: "valuation", numeric: true },
   { key: "pe", label: "P/E", category: "valuation", numeric: true },
   { key: "epsDilTtm", label: "EPS dil (TTM)", category: "financials", numeric: true },
   { key: "epsDilGrowth", label: "EPS dil growth", category: "growth", numeric: true },

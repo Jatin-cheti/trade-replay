@@ -116,7 +116,7 @@ export const COMPLETE_SCREENER_META_FALLBACK: ScreenerMetaResponse = {
     { key: "changePercent", label: "Change %", category: "market-data", numeric: true },
     { key: "volume", label: "Volume", category: "market-data", numeric: true },
     { key: "relVolume", label: "Rel Volume", category: "market-data", numeric: true },
-    { key: "marketCap", label: "Market cap", category: "market-data", numeric: true },
+    { key: "marketCap", label: "Market Cap", category: "market-data", numeric: true },
     { key: "pe", label: "P/E", category: "valuation", numeric: true },
     { key: "epsDilTtm", label: "EPS dil TTM", category: "valuation", numeric: true },
     { key: "epsDilGrowth", label: "EPS dil growth", category: "growth", numeric: true },
