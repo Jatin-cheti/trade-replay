@@ -11,6 +11,12 @@ interface Props {
   chartType: ChartType;
   period: string;
   layout: ChartLayout;
+  /** Called to fetch the next page of screener items from the backend. */
+  onLoadMore?: () => void;
+  /** Whether more items are available to load from the backend. */
+  hasMore?: boolean;
+  /** Whether a backend load is already in-flight. */
+  loadingMore?: boolean;
 }
 
 function useAutoColumns(): number {
@@ -37,7 +43,15 @@ function cardHeightForCols(cols: number): number {
 const INITIAL_COUNT = 50;
 const PAGE_SIZE = 50;
 
-export default function ScreenerChartGrid({ items, layout, chartType, period }: Props) {
+export default function ScreenerChartGrid({
+  items,
+  layout,
+  chartType,
+  period,
+  onLoadMore,
+  hasMore = false,
+  loadingMore = false,
+}: Props) {
   const autoColumns = useAutoColumns();
   const columns = useMemo(() => {
     if (layout.mode === "auto") return autoColumns;
@@ -46,28 +60,51 @@ export default function ScreenerChartGrid({ items, layout, chartType, period }: 
 
   const cardHeight = cardHeightForCols(columns);
 
-  // Incremental loading - expands as user scrolls to the sentinel element
+  // --- Lazy visible count: mount chart instances progressively for perf ---
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
+  // Reset when items array changes (filter/search change)
   useEffect(() => {
-    // Reset visible count when items change (filter/period change)
     setVisibleCount(INITIAL_COUNT);
   }, [items]);
+
+  // Keep refs fresh so the observer callback never captures stale closures
+  const itemsLengthRef = useRef(items.length);
+  itemsLengthRef.current = items.length;
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+  const loadingMoreRef = useRef(loadingMore);
+  loadingMoreRef.current = loadingMore;
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  const visibleCountRef = useRef(visibleCount);
+  visibleCountRef.current = visibleCount;
+
+  // Single always-present sentinel observed by IntersectionObserver.
+  // Re-attach whenever items.length changes so new items are detected.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setVisibleCount((c) => Math.min(c + PAGE_SIZE, items.length));
+        if (!entries[0]?.isIntersecting) return;
+        const currentVisible = visibleCountRef.current;
+        const totalLoaded = itemsLengthRef.current;
+        if (currentVisible < totalLoaded) {
+          // Reveal more already-loaded items
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, totalLoaded));
+        } else if (hasMoreRef.current && !loadingMoreRef.current) {
+          // All loaded items shown → fetch next page from backend
+          onLoadMoreRef.current?.();
         }
       },
-      { rootMargin: "400px" },
+      { rootMargin: "600px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
 
   const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
@@ -115,9 +152,15 @@ export default function ScreenerChartGrid({ items, layout, chartType, period }: 
           })}
         </div>
       ))}
-      {visibleCount < items.length && (
-        <div ref={sentinelRef} className="h-px" aria-hidden />
-      )}
+      {/* Sentinel: always present so IntersectionObserver can fire when user nears the bottom */}
+      <div ref={sentinelRef} aria-hidden>
+        {loadingMore && visibleCount >= items.length && (
+          <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            Loading more charts…
+          </div>
+        )}
+      </div>
     </div>
   );
 }

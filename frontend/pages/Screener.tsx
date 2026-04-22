@@ -270,6 +270,9 @@ export default function Screener() {
             layout={chartLayout}
             chartType={chartType}
             period={chartPeriod}
+            onLoadMore={data.loadMore}
+            hasMore={data.items.length < data.total}
+            loadingMore={data.loadingMore}
           />
         ) : isMobile ? (
           <ScreenerMobileList items={data.items} loadingMore={data.loadingMore} onLoadMore={data.loadMore} />

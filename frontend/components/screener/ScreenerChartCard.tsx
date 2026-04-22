@@ -91,8 +91,17 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
     seriesMapRef.current = seriesMap;
 
     const resize = () => {
-      if (!chartRef.current || !containerRef.current || !overlayRef.current) return;
-      try { resizeChartSurface(chartRef.current, containerRef.current, overlayRef.current); } catch { /* ignore */ }
+      const c = chartRef.current;
+      const ct = containerRef.current;
+      const ov = overlayRef.current;
+      if (!c || !ct || !ov) return;
+      try {
+        resizeChartSurface(c, ct, ov);
+        // Re-fit content after resize so bars fill the new dimensions
+        if (ct.clientWidth > 0 && ct.clientHeight > 0) {
+          c.timeScale().fitContent();
+        }
+      } catch { /* ignore */ }
     };
     resize();
     const resizeObserver = new ResizeObserver(resize);
