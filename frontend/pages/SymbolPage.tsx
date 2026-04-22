@@ -26,7 +26,7 @@ const SnapshotMenu = lazy(() => import("@/components/symbol/SnapshotMenu"));
 const CustomRangePicker = lazy(() => import("@/components/symbol/CustomRangePicker"));
 const SavedPeriodsMenu = lazy(() => import("@/components/symbol/SavedPeriodsMenu"));
 import type { CustomRange } from "@/components/symbol/CustomRangePicker";
-import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
+import axios from "axios";
 import type { CandleData } from "@/data/stockData";
 import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
 import { useAllPeriodReturns } from "@/hooks/useAllPeriodReturns";
@@ -160,19 +160,42 @@ const TIME_PERIODS = [
   { label: "All time",     key: "all", limit: 240  }, // monthly bars ~20 years
 ] as const;
 
-// Duration each period spans in milliseconds — used to re-timestamp
-// synthetic backend candles so the chart x-axis shows real recent dates.
-// Use calendar durations so multi-day/month/year periods show date labels.
-const PERIOD_DURATION_MS: Record<string, number> = {
-  "1d":  6.5 * 60 * 60 * 1000,               // 6.5 trading hours → intraday HH:MM
-  "5d":  5 * 24 * 60 * 60 * 1000,            // 5 calendar days
-  "1m":  30 * 24 * 60 * 60 * 1000,           // 30 days
-  "6m":  180 * 24 * 60 * 60 * 1000,          // ~6 months
-  "ytd": 0,                                   // computed at runtime (Jan 1 → now)
-  "1y":  365 * 24 * 60 * 60 * 1000,          // 1 year
-  "5y":  5 * 365 * 24 * 60 * 60 * 1000,      // 5 years
-  "10y": 10 * 365 * 24 * 60 * 60 * 1000,     // 10 years
-  "all": 20 * 365 * 24 * 60 * 60 * 1000,     // ~20 years
+// Axios instance using a relative baseURL so requests route via the Vite proxy
+// in development and through the Vercel rewrite in production.
+const chartCandlesAxios = axios.create({ baseURL: "/api" });
+
+/** Returns the most recent NSE trading day's 09:15 IST open (as UTC seconds).
+ *  If the current UTC time is before today's 03:45 UTC (09:15 IST), steps back
+ *  to the previous weekday so fromSec is always in the past. */
+function getNseDayOpen(daysBack = 0): number {
+  const IST_OPEN_UTC_H = 3, IST_OPEN_UTC_M = 45; // 09:15 IST = 03:45 UTC
+  const now = Date.now();
+  let d = new Date(now);
+  d.setUTCHours(IST_OPEN_UTC_H, IST_OPEN_UTC_M, 0, 0);
+  let candidate = Math.floor(d.getTime() / 1000);
+  // If today's open is in the future, shift back 1 day
+  if (candidate > Math.floor(now / 1000)) candidate -= 86400;
+  candidate -= daysBack * 86400;
+  // Skip backwards over weekends
+  let probe = new Date(candidate * 1000);
+  while (probe.getUTCDay() === 0 || probe.getUTCDay() === 6) {
+    candidate -= 86400;
+    probe = new Date(candidate * 1000);
+  }
+  return candidate;
+}
+
+// Per-period resolution + time-range config for real Yahoo Finance candles.
+const PERIOD_CANDLE_PARAMS: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
+  "1d":  { resolution: "60", fromSec: () => getNseDayOpen(0),              toSec: () => Math.floor(Date.now() / 1000) },
+  "5d":  { resolution: "60", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "1m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
+  "1y":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "10y": { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 3700 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "all": { resolution: "M",  fromSec: () => 946684800, toSec: () => Math.floor(Date.now() / 1000) },
 };
 
 const chartTypeIconMap: Partial<Record<ChartType, typeof CandlestickChart>> = {
@@ -359,197 +382,97 @@ export default function SymbolPage() {
       .finally(() => setLoading(false));
   }, [symbol]);
 
-  // Fetch candle data for chart.
-  // IMPORTANT: We never clear `candles` before the fetch completes — old candles
-  // stay visible during loading to eliminate the blank-screen / page-shake flash.
-  const loadCandles = useCallback((limit?: number) => {
+  // Fetch real historical candles from /api/candles (Yahoo Finance) for a given period.
+  // Old candles are intentionally kept visible until new data arrives (no flash).
+  const loadChartCandles = useCallback((periodKey: string) => {
     if (!detail?.symbol) return;
-    const candleSymbol = detail.fullSymbol || detail.symbol;
-    // Default to 1-day (375 × 1-min bars). Backend hard-caps at 500.
-    const effectiveLimit = Math.max(20, Math.min(500, limit ?? 375));
-    // Do NOT call setChartLoading(true) here — it would hide the chart and cause flash.
+    const params = PERIOD_CANDLE_PARAMS[periodKey] ?? PERIOD_CANDLE_PARAMS["1d"];
+    const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
     setChartError(false);
-    fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: effectiveLimit })
-      .then((snap) => {
-        const c = snap.candlesBySymbol?.[candleSymbol];
+    chartCandlesAxios
+      .get<{ candles: CandleData[] }>(
+        `/candles/${encodeURIComponent(detail.symbol)}?resolution=${params.resolution}&from=${params.fromSec()}&to=${params.toSec()}${exchangeParam}`
+      )
+      .then((res) => {
+        const c = res.data?.candles;
         if (c?.length) setCandles(c);
         else setChartError(true);
       })
       .catch(() => setChartError(true));
-  }, [detail?.fullSymbol, detail?.symbol]);
+  }, [detail?.symbol, detail?.exchange]);
 
-  // Initial load for default period
+  // Load on symbol/exchange change
   useEffect(() => {
-    loadCandles(TIME_PERIODS.find((p) => p.key === "1d")?.limit);
-  }, [loadCandles]);
+    loadChartCandles(activeTimePeriod);
+  }, [loadChartCandles]); // loadChartCandles changes when symbol/exchange changes
 
-  // Live polling: keep chart data fresh while the tab is visible
+  // Live polling: refresh every 30 s while the tab is visible
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
-      const period = TIME_PERIODS.find((p) => p.key === activeTimePeriod);
-      loadCandles(period?.limit ?? 375);
+      loadChartCandles(activeTimePeriod);
     };
-    const id = setInterval(tick, 10_000);
+    const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
-  }, [activeTimePeriod, loadCandles]);
+  }, [activeTimePeriod, loadChartCandles]);
 
   const handleTimePeriodChange = useCallback((key: string) => {
     setActiveTimePeriod(key);
     setCustomRange(null);
     setActiveSavedPeriodId(undefined);
-    const period = TIME_PERIODS.find((p) => p.key === key);
-    loadCandles(period?.limit);
-  }, [loadCandles]);
+    loadChartCandles(key);
+  }, [loadChartCandles]);
 
   const handleCustomRangeApply = useCallback((range: CustomRange) => {
     setCustomRange(range);
     setActiveTimePeriod("");
     setActiveSavedPeriodId(undefined);
-    // Load a generous amount of candles for filtering
-    loadCandles(9999);
-  }, [loadCandles]);
+    if (!detail?.symbol) return;
+    const from = Math.floor(range.from.getTime() / 1000);
+    const to   = Math.floor(range.to.getTime()   / 1000);
+    const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
+    setChartError(false);
+    chartCandlesAxios
+      .get<{ candles: CandleData[] }>(
+        `/candles/${encodeURIComponent(detail.symbol)}?resolution=D&from=${from}&to=${to}${exchangeParam}`
+      )
+      .then((res) => {
+        const c = res.data?.candles;
+        if (c?.length) setCandles(c);
+        else setChartError(true);
+      })
+      .catch(() => setChartError(true));
+  }, [detail?.symbol, detail?.exchange]);
 
-  // Candles for the chart — re-timestamped to the selected period ending at "now"
-  // AND rescaled so the last close matches `detail.price` (screener quote).
-  // The backend serves synthetic candles whose absolute prices often disagree
-  // with the live quote; without rescaling the y-axis shows unrelated values.
+  // Candles for the chart.
+  // For custom range: filter by the selected date window.
+  // For 1d/5d intraday: add IST offset (19 800 s) to real UTC timestamps so the
+  //   chart's x-axis displays IST local times (Yahoo Finance serves UTC epochs).
+  // For all other periods: use real timestamps and prices as-is.
   const displayCandles = useMemo(() => {
     if (!candles.length) return candles;
+    const IST_OFFSET_SEC = 19800; // 5h30m
 
-    // Step 1: re-timestamp or filter by custom range
-    let stage: CandleData[];
     if (customRange) {
       const from = customRange.from.getTime();
-      const to = customRange.to.getTime();
-      stage = candles.filter((c) => {
-        // c.time can be "YYYY-MM-DD", unix-seconds number, or numeric string
-        let ms: number;
-        if (typeof c.time === "number") {
-          ms = c.time < 1e11 ? c.time * 1000 : c.time;
-        } else {
-          const s = String(c.time);
-          if (/^-?\d+(?:\.\d+)?$/.test(s)) {
-            const n = Number(s);
-            ms = n < 1e11 ? n * 1000 : n;
-          } else {
-            ms = new Date(s).getTime();
-          }
-        }
+      const to   = customRange.to.getTime();
+      const filtered = candles.filter((c) => {
+        const t  = typeof c.time === "number" ? c.time : Number(c.time);
+        const ms = t < 1e11 ? t * 1000 : t;
         return Number.isFinite(ms) && ms >= from && ms <= to;
       });
-      if (!stage.length) stage = candles; // fallback to all if filter empties
-    } else {
-      const now = Date.now();
-      const IST_OFFSET_MS = 5.5 * 3600 * 1000; // +5:30 in ms
-
-      // For periods where x-axis shows intraday HH:MM, we "fake" IST times
-      // by storing (real_IST_time as if it were UTC) so chart's getUTCHours()
-      // returns IST hour values. This matches TradingView's 09:15–15:30 IST display.
-
-      if (activeTimePeriod === '1d') {
-        // Map candles to today's NSE session at 1-min resolution: 09:15–15:29 IST.
-        // Use "fake UTC" trick: store IST times as plain UTC seconds so the chart's
-        // getUTCHours() returns IST hour values. Fixed 60-second steps = 1-min bars.
-        const istNow = new Date(now + IST_OFFSET_MS);
-        const y = istNow.getUTCFullYear(), mo = istNow.getUTCMonth(), da = istNow.getUTCDate();
-        const fakeOpenSec = Math.floor(Date.UTC(y, mo, da, 9, 15, 0) / 1000); // 09:15 IST as fake UTC
-        const STEP_1MIN_S = 60; // 1-minute bar step
-        stage = candles.map((c, i) => ({
-          ...c,
-          time: String(fakeOpenSec + i * STEP_1MIN_S),
-        }));
-      } else if (activeTimePeriod === '5d') {
-        // 5 trading days at 5-min resolution: 75 bars/day (09:15, 09:20, … 15:25 IST).
-        // Use fixed 300-second steps so every bar falls on an exact 5-min boundary.
-        const SESSION_MS = 375 * 60 * 1000; // 09:15–15:30 = 375 min
-        const STEP_5MIN_S = 5 * 60;         // 5-minute bar step in seconds
-        const n = candles.length;
-        const barsPerDay = Math.max(1, Math.ceil(n / 5));
-        const istNow = new Date(now + IST_OFFSET_MS);
-        // Find the open of the last 5 trading days (skip Sat/Sun) in IST fake-UTC
-        const tradingDayOpens: number[] = [];
-        let probe = new Date(istNow.getTime());
-        while (tradingDayOpens.length < 5) {
-          const dow = probe.getUTCDay(); // 0=Sun, 6=Sat
-          if (dow !== 0 && dow !== 6) {
-            const yp = probe.getUTCFullYear(), mp = probe.getUTCMonth(), dp = probe.getUTCDate();
-            tradingDayOpens.unshift(
-              Math.floor(Date.UTC(yp, mp, dp, 9, 15, 0) / 1000) // 09:15 IST as fake UTC seconds
-            );
-          }
-          probe = new Date(probe.getTime() - 86400000);
-        }
-        // Each bar steps forward 5 min within its trading day
-        stage = candles.map((c, i) => {
-          const dayIdx = Math.min(4, Math.floor(i / barsPerDay));
-          const posInDay = i - dayIdx * barsPerDay;
-          const t = tradingDayOpens[dayIdx] + posInDay * STEP_5MIN_S;
-          return { ...c, time: String(t) };
-        });
-        void SESSION_MS; // referenced above, suppress unused warning
-      } else {
-        let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
-        if (activeTimePeriod === "ytd") {
-          durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
-        }
-        const n = candles.length;
-        const stepMs = n > 1 ? durationMs / (n - 1) : 0;
-        const startMs = now - durationMs;
-        stage = candles.map((c, i) => ({
-          ...c,
-          time: String(Math.floor((startMs + i * stepMs) / 1000)),
-        }));
-      }
+      return filtered.length ? filtered : candles;
     }
 
-    // Step 2: Dual-anchor rescale — interpolate scale factor so that:
-    //   bar[0].close  → prevClose  (or targetPrice when prevClose unavailable)
-    //   bar[N-1].close → targetPrice (live quote)
-    // This compresses the y-axis to show only the actual period swing, not
-    // the full historical price range of the synthetic candles.
-    const targetPrice = detail?.price;
-    if (!targetPrice || targetPrice <= 0 || stage.length === 0) return stage;
-    const rawFirst = stage[0].close;
-    const rawLast  = stage[stage.length - 1].close;
-    if (!rawFirst || rawFirst <= 0 || !rawLast || rawLast <= 0) return stage;
-
-    const prevClosePrice = (detail?.price != null && detail?.change != null)
-      ? detail.price - detail.change
-      : null;
-    // anchorFirst: what we want bar[0].close to be
-    const anchorFirst = (prevClosePrice != null && prevClosePrice > 0) ? prevClosePrice : targetPrice;
-    const anchorLast  = targetPrice;
-
-    const s0 = anchorFirst / rawFirst;
-    const s1 = anchorLast  / rawLast;
-
-    // If both anchors produce the same scale (< 0.01% difference), use uniform scale
-    if (Math.abs(s0 - s1) < 1e-6) {
-      const scale = s0;
-      if (Math.abs(scale - 1) < 1e-6) return stage;
-      return stage.map((c) => ({
+    if (activeTimePeriod === "1d" || activeTimePeriod === "5d") {
+      return candles.map((c) => ({
         ...c,
-        open:  c.open  * scale,
-        high:  c.high  * scale,
-        low:   c.low   * scale,
-        close: c.close * scale,
+        time: String((c.time as number) + IST_OFFSET_SEC),
       }));
     }
 
-    const n = stage.length;
-    return stage.map((c, i) => {
-      const alpha = n > 1 ? i / (n - 1) : 1;
-      const si = s0 + (s1 - s0) * alpha;
-      return {
-        ...c,
-        open:  c.open  * si,
-        high:  c.high  * si,
-        low:   c.low   * si,
-        close: c.close * si,
-      };
-    });
-  }, [candles, customRange, activeTimePeriod, detail?.price]);
+    return candles;
+  }, [candles, customRange, activeTimePeriod]);
 
   // Close symbol picker on outside click
   useEffect(() => {
@@ -1151,7 +1074,7 @@ export default function SymbolPage() {
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
                     <button
-                      onClick={() => loadCandles(TIME_PERIODS.find((p) => p.key === activeTimePeriod)?.limit)}
+                      onClick={() => loadChartCandles(activeTimePeriod)}
                       className="text-xs text-primary hover:underline"
                     >
                       Retry
@@ -1159,7 +1082,7 @@ export default function SymbolPage() {
                   </div>
                 </div>
               ) : displayCandles.length > 0 ? (
-                <div ref={chartContainerRef} style={{ height: "clamp(420px, 62vh, 720px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
+                <div ref={chartContainerRef} style={{ height: "clamp(220px, 38vh, 340px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
                     data={displayCandles}
                     height="100%"
@@ -1177,7 +1100,7 @@ export default function SymbolPage() {
                 <div
                   onClick={() => navigate(simulationHref)}
                   ref={chartContainerRef}
-                  style={{ height: "clamp(420px, 62vh, 720px)" }}
+                  style={{ height: "clamp(220px, 38vh, 340px)" }}
                   className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">

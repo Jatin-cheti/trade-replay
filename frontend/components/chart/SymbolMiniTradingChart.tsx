@@ -142,26 +142,9 @@ export default function SymbolMiniTradingChart({
     seriesMap.line.applyOptions({ color: lineColor });
     seriesMap.stepLine.applyOptions({ color: lineColor });
 
-    // Update forced tick boundaries whenever timePeriod changes
-    if (timePeriod === '1d') {
-      // Build 30-min IST boundary timestamps (stored as fake-UTC seconds)
-      // so the x-axis always shows 09:15, 10:00, 10:30 … 15:30 exactly.
-      // NSE session: 09:15–15:30 IST. First label at 09:15, then every 30 min.
-      const IST_OFFSET_MS = 5.5 * 3600 * 1000;
-      const istNow = new Date(Date.now() + IST_OFFSET_MS);
-      const y = istNow.getUTCFullYear(), mo = istNow.getUTCMonth(), da = istNow.getUTCDate();
-      // 09:15 to 15:30 IST in 30-min steps (13 ticks: 09:15, 09:45, 10:15 … or clean labels)
-      // Use 09:15, 10:00, 10:30, 11:00, 11:30, 12:00, 12:30, 13:00, 13:30, 14:00, 14:30, 15:00, 15:30
-      const tickMinutes = [9*60+15, 10*60, 10*60+30, 11*60, 11*60+30, 12*60, 12*60+30,
-                           13*60, 13*60+30, 14*60, 14*60+30, 15*60, 15*60+30];
-      const ticks: number[] = tickMinutes.map((minFromMidnight) =>
-        Date.UTC(y, mo, da, Math.floor(minFromMidnight / 60), minFromMidnight % 60, 0) / 1000
-      );
-      chartRef.current?.applyOptions({ forcedTimeTicks: ticks });
-    } else {
-      // Clear forced ticks for all other periods — use automatic heuristic
-      chartRef.current?.applyOptions({ forcedTimeTicks: undefined });
-    }
+    // Clear any previously forced ticks — let the chart auto-generate appropriate
+    // time labels for the current data range and resolution.
+    chartRef.current?.applyOptions({ forcedTimeTicks: undefined });
 
     const times = transformed.ohlcRows;
     if (times.length >= 2) {
@@ -206,6 +189,37 @@ export default function SymbolMiniTradingChart({
   const latest = transformed.ohlcRows[transformed.ohlcRows.length - 1] ?? null;
   const latestY = latest && activeSeries ? activeSeries.priceToCoordinate(latest.close) : null;
   const pillDown = prevClose != null && latest ? latest.close < prevClose : !isUp;
+
+  // Draw crosshair dot on the overlay canvas whenever tooltip position changes.
+  // The dot is a filled circle at the series value (not raw mouse y) for accuracy.
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    // Re-apply the DPR transform (canvas size assignment resets context state)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
+
+    if (!tooltip || !activeSeries) return;
+
+    // Snap the dot to the actual data price coordinate, not the raw mouse y
+    const dotY = activeSeries.priceToCoordinate(tooltip.price);
+    if (dotY == null || !Number.isFinite(dotY)) return;
+
+    const lineColor = isUp ? GREEN_LINE : RED_LINE;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(tooltip.x, dotY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#131722'; // chart background — creates a halo effect
+    ctx.stroke();
+    ctx.restore();
+  }, [tooltip, isUp, activeSeries]);
 
   // Prev-close label Y coordinate (computed on active series, which shares the price scale).
   const prevCloseY = prevClose != null && activeSeries
