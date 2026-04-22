@@ -137,23 +137,10 @@ export default function SymbolMiniTradingChart({
     const topColor = isUp ? GREEN_TOP : RED_TOP;
     const bottomColor = isUp ? GREEN_BOTTOM : RED_BOTTOM;
 
-    if (chartType === 'line') {
-      // TradingView "line" chart = prominent line + subtle gradient fill beneath it.
-      // applySeriesVisibility hid the area series; re-show it as a fill-only layer
-      // by setting lineColor to transparent so only the gradient fill is visible.
-      seriesMap.line.applyOptions({ color: lineColor });
-      seriesMap.area.applyOptions({
-        lineColor: 'rgba(0,0,0,0)',
-        topColor,
-        bottomColor,
-        visible: true,
-      });
-    } else {
-      seriesMap.area.applyOptions({ lineColor, topColor, bottomColor });
-      seriesMap.mountainArea.applyOptions({ lineColor, topColor, bottomColor });
-      seriesMap.line.applyOptions({ color: lineColor });
-      seriesMap.stepLine.applyOptions({ color: lineColor });
-    }
+    seriesMap.area.applyOptions({ lineColor, topColor, bottomColor });
+    seriesMap.mountainArea.applyOptions({ lineColor, topColor, bottomColor });
+    seriesMap.line.applyOptions({ color: lineColor });
+    seriesMap.stepLine.applyOptions({ color: lineColor });
 
     // Update forced tick boundaries whenever timePeriod changes
     if (timePeriod === '1d') {

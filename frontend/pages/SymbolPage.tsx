@@ -306,7 +306,7 @@ export default function SymbolPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
-  const [overviewChartType, setOverviewChartType] = useState<ChartType>("line");
+  const [overviewChartType, setOverviewChartType] = useState<ChartType>("area");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
 
   // Custom range + saved periods state

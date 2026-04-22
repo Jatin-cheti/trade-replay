@@ -17,6 +17,7 @@ export function createTradingChart(container: HTMLElement, options?: TradingChar
   const passive = options?.passive ?? false;
   const backgroundColor = parityMode ? '#0f0f0f' : '#131722';
   const gridColor = parityMode ? 'rgba(42, 46, 57, 0.42)' : 'rgba(42, 46, 57, 0.72)';
+  const passiveGridColor = 'rgba(42, 46, 57, 0.28)';
   const axisColor = parityMode ? 'rgba(42, 46, 57, 0.62)' : 'rgba(42, 46, 57, 0.95)';
   const rightOffset = parityMode ? 1.8 : 2;
 
@@ -29,8 +30,8 @@ export function createTradingChart(container: HTMLElement, options?: TradingChar
       fontSize: 11,
     },
     grid: {
-      vertLines: { color: gridColor },
-      horzLines: { color: gridColor },
+      vertLines: { color: passive ? 'transparent' : gridColor, visible: !passive },
+      horzLines: { color: passive ? passiveGridColor : gridColor },
     },
     crosshair: {
       mode: 0,
@@ -49,9 +50,11 @@ export function createTradingChart(container: HTMLElement, options?: TradingChar
     },
     rightPriceScale: {
       borderColor: axisColor,
+      borderVisible: !passive,
     },
     timeScale: {
       borderColor: axisColor,
+      borderVisible: !passive,
       timeVisible: true,
       secondsVisible: false,
       rightBarStaysOnScroll: true,
