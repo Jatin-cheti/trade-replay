@@ -29,6 +29,7 @@ import type { CustomRange } from "@/components/symbol/CustomRangePicker";
 import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
 import type { CandleData } from "@/data/stockData";
 import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
+import { useAllPeriodReturns } from "@/hooks/useAllPeriodReturns";
 
 interface SymbolDetail {
   symbol: string;
@@ -340,9 +341,13 @@ export default function SymbolPage() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState(false);
-  // Per-period performance % (for TradingView-style chip labels). Populated
-  // lazily in parallel after the symbol detail loads.
-  const [perfByPeriod, setPerfByPeriod] = useState<Record<string, number>>({});
+
+  // Per-period performance % — fetched via useAllPeriodReturns (real Yahoo Finance data).
+  const { returns: perfByPeriod } = useAllPeriodReturns(
+    detail?.symbol,
+    detail?.exchange,
+    detail?.price,
+  );
 
   useEffect(() => {
     if (!symbol) return;
@@ -377,28 +382,6 @@ export default function SymbolPage() {
   useEffect(() => {
     loadCandles(TIME_PERIODS.find((p) => p.key === "1d")?.limit);
   }, [loadCandles]);
-
-  // Seed 1D % immediately from the screener detail (accurate from the live quote API).
-  // This overrides the fallback computed from synthetic candles which is always wrong.
-  useEffect(() => {
-    if (detail?.changePercent != null) {
-      setPerfByPeriod((prev) => ({ ...prev, '1d': detail.changePercent }));
-    }
-  }, [detail?.changePercent]);
-
-  // Populate per-chip performance % by fetching each period's candles in
-  // parallel. Fire-and-forget; chips render a placeholder until results land.
-  // NOTE: We skip '1d' — it is seeded directly from detail.changePercent above.
-  // For non-1D periods, the backend returns the same synthetic 50 daily bars
-  // regardless of limit — raw returns from those bars are historically huge and
-  // meaningless. We therefore only populate per-chip % when the period is
-  // ACTIVE (the active chip uses `perfPercent` from the dual-anchor rescaled
-  // displayCandles, which correctly shows the period return vs. prevClose).
-  // Inactive non-1D chips show "—" until the user clicks them.
-  useEffect(() => {
-    // No parallel fetch needed — inactive chips show "—" for non-1D periods.
-    // They will get their real % from `perfPercent` once the user activates them.
-  }, [detail?.fullSymbol, detail?.symbol, detail?.price]);
 
   // Live polling: keep chart data fresh while the tab is visible
   useEffect(() => {
@@ -1209,13 +1192,11 @@ export default function SymbolPage() {
                 <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 {TIME_PERIODS.map((p) => {
                   // All chips use perfByPeriod[p.key].
-                  // '1d' is seeded from detail.changePercent (accurate live %).
-                  // Non-1D chips are undefined (blank) — synthetic data can't give
-                  // meaningful historical returns without real backend candles.
+                  // All chips use real period returns from useAllPeriodReturns (Yahoo Finance data).
                   const pctValue = perfByPeriod[p.key];
                   const hasPct = pctValue != null && Number.isFinite(pctValue);
                   const pctColor = hasPct
-                    ? (pctValue as number) >= 0
+                    ? pctValue >= 0
                       ? "text-emerald-500"
                       : "text-red-500"
                     : "";
@@ -1233,7 +1214,7 @@ export default function SymbolPage() {
                       <span className={activeTimePeriod === p.key ? "text-foreground font-semibold" : ""}>{p.label}</span>
                       {hasPct ? (
                         <span data-percent className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
-                          {(pctValue as number) >= 0 ? "+" : ""}{(pctValue as number).toFixed(2)}%
+                          {pctValue >= 0 ? "+" : ""}{(pctValue as number).toFixed(2)}%
                         </span>
                       ) : (
                         <span data-percent className="text-[10px] tabular-nums mt-0.5 text-muted-foreground/40">

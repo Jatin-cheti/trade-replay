@@ -25,6 +25,7 @@ import { createChartRoutes } from "./routes/chartRoutes";
 import { createAlertsRoutes } from "./routes/alertsRoutes";
 import { createDatafeedRoutes } from "./routes/datafeedRoutes";
 import { createScreenerRoutes } from "./routes/screenerRoutes";
+import { createCandlesRoutes } from "./routes/candlesRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
 import { createSymbolController } from "./controllers/symbolController";
@@ -455,6 +456,7 @@ export function createApp() {
   app.use("/api/trade", createTradeRoutes(engine));
   app.use("/api/symbols", createSymbolRoutes());
   app.use("/api/screener", createScreenerRoutes());
+  app.use("/api/candles", createCandlesRoutes());
   app.use("/api/chart", createChartRoutes());
   app.use("/api/alerts", createAlertsRoutes());
   app.use("/api/datafeed", createDatafeedRoutes());
