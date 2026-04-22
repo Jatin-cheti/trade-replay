@@ -30,6 +30,7 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
   const seriesMapRef = useRef<ChartSeriesMap | null>(null);
   const [ready, setReady] = useState(false);
+  const [visible, setVisible] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const { getFlag, setFlag } = useSymbolFlags();
@@ -40,8 +41,21 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
 
   const transformed = useMemo(() => transformChartData(candles, candles.length), [candles]);
 
-  // Chart init (once on mount)
+  // Observe card visibility — defer chart init until the card enters the viewport
   useEffect(() => {
+    const root = containerRef.current?.closest('[data-testid="screener-chart-card"]') ?? containerRef.current;
+    if (!root) { setVisible(true); return; }
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); io.disconnect(); } },
+      { rootMargin: "200px" }
+    );
+    io.observe(root);
+    return () => io.disconnect();
+  }, []);
+
+  // Chart init (once, after card is visible)
+  useEffect(() => {
+    if (!visible) return;
     const container = containerRef.current;
     const overlay = overlayRef.current;
     if (!container || !overlay) return;
@@ -125,7 +139,7 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
       seriesMapRef.current = null;
       setReady(false);
     };
-  }, []);
+  }, [visible]);
 
   // Data + colour effect
   useEffect(() => {

@@ -19,7 +19,7 @@ import {
   parseFiltersFromSearch,
 } from "@/lib/screener";
 
-export function useScreenerData(routeType: string, selectedColumns: string[]) {
+export function useScreenerData(routeType: string, selectedColumns: string[], paused = false) {
   const [searchParams] = useSearchParams();
 
   const [items, setItems] = useState<ScreenerItem[]>([]);
@@ -151,9 +151,9 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
   useEffect(() => { void refreshListRef.current(); }, [requestKey]);
 
   useEffect(() => {
-    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void refreshListRef.current(); }, 12000);
+    const poll = window.setInterval(() => { if (!paused && document.visibilityState === "visible") void refreshListRef.current(); }, 12000);
     return () => { window.clearInterval(poll); if (flashClearTimerRef.current !== null) { window.clearTimeout(flashClearTimerRef.current); flashClearTimerRef.current = null; } };
-  }, []);
+  }, [paused]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMoreRef.current) return;
