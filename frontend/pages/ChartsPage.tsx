@@ -79,11 +79,19 @@ const getChartDebug = (): any => (window as unknown as Record<string, unknown>).
 
 /* ── Main page component ────────────────────────────────────────────── */
 
+/** Strip exchange prefix like "NSE:RELIANCE" → "RELIANCE", preserving plain symbols */
+function stripExchange(raw: string): { bare: string; exchange: string | null } {
+  const colonIdx = raw.indexOf(":");
+  if (colonIdx < 0) return { bare: raw, exchange: null };
+  return { bare: raw.slice(colonIdx + 1), exchange: raw.slice(0, colonIdx) };
+}
+
 export default function ChartsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const symbol = searchParams.get("symbol") ?? "RELIANCE";
+  const rawSymbol = searchParams.get("symbol") ?? "RELIANCE";
+  const { bare: symbol, exchange: symbolExchange } = useMemo(() => stripExchange(rawSymbol), [rawSymbol]);
   const [period, setPeriod] = useState("1y");
   const [adjEnabled, setAdjEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -123,8 +131,9 @@ export default function ChartsPage() {
   const fetchCandles = useCallback(
     (periodKey: string) => {
       const cfg = PERIOD_CONFIG[periodKey] ?? PERIOD_CONFIG["1y"];
-      const exchangeParam = symbolDetail?.exchange
-        ? `&exchange=${encodeURIComponent(symbolDetail.exchange)}`
+      const exchangeStr = symbolDetail?.exchange || symbolExchange || "";
+      const exchangeParam = exchangeStr
+        ? `&exchange=${encodeURIComponent(exchangeStr)}`
         : "";
       setLoading(true);
       setResolution(cfg.resolution);
@@ -146,7 +155,7 @@ export default function ChartsPage() {
         })
         .finally(() => setLoading(false));
     },
-    [symbol, symbolDetail?.exchange],
+    [symbol, symbolExchange, symbolDetail?.exchange],
   );
 
   // Reload on period change or symbol change
