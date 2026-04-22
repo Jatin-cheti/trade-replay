@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent, LineStyle } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -404,7 +404,7 @@ export default function TradingChart({
       price: lastPrice,
       color: isUp ? '#26a69a' : '#ef5350',
       lineWidth: 1,
-      lineStyle: LineStyle.Solid,
+      lineStyle: 0, // LineStyle.Solid
       axisLabelVisible: true,
       title: '',
     });
