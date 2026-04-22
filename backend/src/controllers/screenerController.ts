@@ -378,6 +378,8 @@ export async function chartData(req: Request, res: Response) {
   try {
     const rawSymbols = (req.query.symbols as string) || "";
     const period = (req.query.period as string) || "5D";
+    const fromParam = req.query.from as string | undefined;
+    const toParam = req.query.to as string | undefined;
     const symbols = rawSymbols
       .split(",")
       .map((s) => s.trim())
@@ -386,7 +388,22 @@ export async function chartData(req: Request, res: Response) {
 
     if (!symbols.length) return res.json({});
 
-    const chartQuery = PERIOD_CHART_MAP[period] ?? PERIOD_CHART_MAP["5D"];
+    // Determine chart query params
+    let chartQuery: { timeframe: string; limit: number };
+    if (fromParam && toParam) {
+      // Custom date range: compute number of trading days and pick appropriate timeframe
+      const fromMs = new Date(fromParam).getTime();
+      const toMs = new Date(toParam).getTime();
+      const daysDiff = Math.ceil((toMs - fromMs) / (1000 * 60 * 60 * 24));
+      if (daysDiff <= 5) chartQuery = { timeframe: "5m", limit: daysDiff * 78 };
+      else if (daysDiff <= 30) chartQuery = { timeframe: "30m", limit: daysDiff * 13 };
+      else if (daysDiff <= 365) chartQuery = { timeframe: "1D", limit: daysDiff };
+      else chartQuery = { timeframe: "1W", limit: Math.ceil(daysDiff / 7) };
+      // Cap limit
+      chartQuery.limit = Math.min(chartQuery.limit, 2000);
+    } else {
+      chartQuery = PERIOD_CHART_MAP[period] ?? PERIOD_CHART_MAP["5D"];
+    }
     // Use the configured chart service URL (defaults to http://127.0.0.1:3001 locally)
     const chartServiceBase = (CONFIG.chartServiceUrl ?? "http://127.0.0.1:3001")
       .replace(/\/api\/chart.*$/, "")

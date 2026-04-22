@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  RefreshCw, ChevronDown, LayoutGrid, Search,
+  RefreshCw, ChevronDown, LayoutGrid, Search, Calendar,
 } from "lucide-react";
 import type { ChartType } from "@/services/chart/dataTransforms";
 import { COMING_SOON_CHART_TYPES } from "@/services/chart/dataTransforms";
@@ -114,6 +114,8 @@ interface Props {
   onViewModeChange: (mode: "table" | "chart") => void;
   period: ChartPeriod;
   onPeriodChange: (p: ChartPeriod) => void;
+  customRange?: { from: Date; to: Date } | null;
+  onCustomRange?: (range: { from: Date; to: Date } | null) => void;
   chartType: ChartType;
   onChartTypeChange: (t: ChartType) => void;
   layout: ChartLayout;
@@ -128,6 +130,8 @@ export default function ScreenerChartToolbar({
   onViewModeChange,
   period,
   onPeriodChange,
+  customRange,
+  onCustomRange,
   chartType,
   onChartTypeChange,
   layout,
@@ -140,6 +144,9 @@ export default function ScreenerChartToolbar({
   const [typeOpen, setTypeOpen] = useState(false);
   const [typeSearch, setTypeSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [fromInput, setFromInput] = useState("");
+  const [toInput, setToInput] = useState("");
 
   // Custom grid picker state
   const [hoverGrid, setHoverGrid] = useState<[number, number] | null>(null);
@@ -147,6 +154,21 @@ export default function ScreenerChartToolbar({
 
   const GRID_ROWS = 4;
   const GRID_COLS = 6;
+
+  // Format date for input[type=date] value
+  function toDateInputValue(d: Date): string {
+    return d.toISOString().slice(0, 10);
+  }
+
+  function applyCustomRange() {
+    if (!fromInput || !toInput) return;
+    const from = new Date(fromInput);
+    const to = new Date(toInput);
+    to.setHours(23, 59, 59, 999);
+    if (isNaN(from.getTime()) || isNaN(to.getTime()) || from >= to) return;
+    onCustomRange?.({ from, to });
+    setDatePickerOpen(false);
+  }
 
   // Focus search input when dropdown opens
   useEffect(() => {
@@ -339,11 +361,11 @@ export default function ScreenerChartToolbar({
             key={p}
             type="button"
             data-testid={`screener-period-${p}`}
-            aria-pressed={period === p}
+            aria-pressed={!customRange && period === p}
             aria-label={`${p} period`}
-            onClick={() => onPeriodChange(p)}
+            onClick={() => { onPeriodChange(p); onCustomRange?.(null); setDatePickerOpen(false); }}
             className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors ${
-              period === p
+              !customRange && period === p
                 ? "bg-primary text-primary-foreground font-semibold"
                 : "text-muted-foreground hover:text-foreground"
             }`}
@@ -351,6 +373,76 @@ export default function ScreenerChartToolbar({
             {p}
           </button>
         ))}
+
+        {/* Custom date range picker */}
+        <div className="relative ml-1">
+          <button
+            type="button"
+            aria-label="Custom date range"
+            onClick={() => { setDatePickerOpen((o) => !o); if (!fromInput && customRange) setFromInput(toDateInputValue(customRange.from)); if (!toInput && customRange) setToInput(toDateInputValue(customRange.to)); }}
+            className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors border ${
+              customRange
+                ? "border-primary/60 bg-primary/15 text-primary"
+                : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+            }`}
+          >
+            <Calendar className="h-3 w-3" />
+            {customRange
+              ? `${customRange.from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${customRange.to.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+              : "Custom"}
+          </button>
+
+          {datePickerOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-border/50 bg-background p-3 shadow-xl">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Date Range</p>
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-muted-foreground">From</span>
+                  <input
+                    type="date"
+                    value={fromInput}
+                    max={toInput || undefined}
+                    onChange={(e) => setFromInput(e.target.value)}
+                    className="rounded border border-border/40 bg-secondary/20 px-2 py-1 text-xs text-foreground focus:border-primary/60 focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-muted-foreground">To</span>
+                  <input
+                    type="date"
+                    value={toInput}
+                    min={fromInput || undefined}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setToInput(e.target.value)}
+                    className="rounded border border-border/40 bg-secondary/20 px-2 py-1 text-xs text-foreground focus:border-primary/60 focus:outline-none"
+                  />
+                </label>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={applyCustomRange}
+                    disabled={!fromInput || !toInput}
+                    className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
+                  >
+                    Apply
+                  </button>
+                  {customRange && (
+                    <button
+                      type="button"
+                      onClick={() => { onCustomRange?.(null); setDatePickerOpen(false); setFromInput(""); setToInput(""); }}
+                      className="rounded-md border border-border/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          {datePickerOpen && (
+            <div className="fixed inset-0 z-40" onClick={() => setDatePickerOpen(false)} />
+          )}
+        </div>
       </div>
 
       {/* ── Right side: total + refresh ── */}
