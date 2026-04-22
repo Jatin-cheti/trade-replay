@@ -37,7 +37,7 @@ interface ContextMenuState {
 function getNseDayOpen(daysBack = 0): number {
   const IST_OPEN_UTC_H = 3, IST_OPEN_UTC_M = 45;
   const now = Date.now();
-  let d = new Date(now);
+  const d = new Date(now);
   d.setUTCHours(IST_OPEN_UTC_H, IST_OPEN_UTC_M, 0, 0);
   let candidate = Math.floor(d.getTime() / 1000);
   if (candidate > Math.floor(now / 1000)) candidate -= 86400;
