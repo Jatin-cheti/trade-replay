@@ -173,5 +173,12 @@ export function useScreenerData(routeType: string, selectedColumns: string[]) {
     } finally { if (fetchCounterRef.current === fetchId) setLoadingMore(false); }
   }, [fetchBatch, loading, loadingMore, schedulePrefetch]);
 
-  return { items, flashBySymbol, total, loading, loadingMore, parsedFilters, activeTab, sortField, sortOrder, refreshList, loadMore };
+  // Exposed for callers that need to synchronously clear the count before triggering a filter change.
+  // Wrap in flushSync at the call site for immediate DOM commit.
+  const resetForFilterChange = useCallback(() => {
+    setTotal(0);
+    setItems([]);
+  }, []);
+
+  return { items, flashBySymbol, total, loading, loadingMore, parsedFilters, activeTab, sortField, sortOrder, refreshList, loadMore, resetForFilterChange };
 }

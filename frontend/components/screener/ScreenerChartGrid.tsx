@@ -34,8 +34,8 @@ function cardHeightForCols(cols: number): number {
   return 240;
 }
 
-const INITIAL_ROWS = 1;
-const PAGE_ROWS = 10;
+const INITIAL_COUNT = 50;
+const PAGE_SIZE = 50;
 
 export default function ScreenerChartGrid({ items, layout, chartType, period }: Props) {
   const autoColumns = useAutoColumns();
@@ -47,13 +47,13 @@ export default function ScreenerChartGrid({ items, layout, chartType, period }: 
   const cardHeight = cardHeightForCols(columns);
 
   // Incremental loading - expands as user scrolls to the sentinel element
-  const [visibleCount, setVisibleCount] = useState(INITIAL_ROWS * columns);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // Reset visible count when items or columns change
-    setVisibleCount(INITIAL_ROWS * columns);
-  }, [items, columns]);
+    // Reset visible count when items change (filter/period change)
+    setVisibleCount(INITIAL_COUNT);
+  }, [items]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -61,14 +61,14 @@ export default function ScreenerChartGrid({ items, layout, chartType, period }: 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          setVisibleCount((c) => Math.min(c + PAGE_ROWS * columns, items.length));
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, items.length));
         }
       },
-      { rootMargin: "200px" },
+      { rootMargin: "400px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [columns, items.length]);
+  }, [items.length]);
 
   const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, getDetectedCountry } from "@/lib/api";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -207,6 +208,9 @@ export default function Screener() {
                     type="button"
                     data-testid={`screener-country-${c.code || "global"}`}
                     onClick={() => {
+                      // Synchronously clear the count BEFORE the URL navigation so
+                      // Playwright's poll (and users) see a blank count immediately.
+                      flushSync(() => { data.resetForFilterChange(); });
                       if (c.code === "") {
                         filters.setMultiFilter("marketCountries", []);
                         return;
