@@ -14,6 +14,10 @@ import ScreenerFilterBar from "@/components/screener/ScreenerFilterBar";
 import ScreenerTabBar from "@/components/screener/ScreenerTabBar";
 import ScreenerTable from "@/components/screener/ScreenerTable";
 import ScreenerMobileList from "@/components/screener/ScreenerMobileList";
+import ScreenerChartToolbar from "@/components/screener/ScreenerChartToolbar";
+import ScreenerChartGrid from "@/components/screener/ScreenerChartGrid";
+import type { ChartPeriod, ChartLayout } from "@/components/screener/ScreenerChartToolbar";
+import type { ChartType } from "@/services/chart/dataTransforms";
 import "@/styles/screener.css";
 
 export default function Screener() {
@@ -31,6 +35,17 @@ export default function Screener() {
   const [addColumnSearch, setAddColumnSearch] = useState("");
   const typeMenuRef = useRef<HTMLDivElement | null>(null);
   const addColumnRef = useRef<HTMLDivElement | null>(null);
+
+  /* ── Chart view state (URL-persisted) ── */
+  const viewMode = (searchParams.get("view") === "chart" ? "chart" : "table") as "table" | "chart";
+  const chartPeriod = (searchParams.get("period") || "5D") as ChartPeriod;
+  const chartType = (searchParams.get("chartType") || "area") as ChartType;
+  const chartLayout: ChartLayout = (() => {
+    const l = searchParams.get("layout");
+    if (!l || l === "auto") return { mode: "auto" };
+    const cols = parseInt(l, 10);
+    return Number.isFinite(cols) && cols > 0 ? { mode: "custom", cols } : { mode: "auto" };
+  })();
 
   /* ── Route ── */
   const availableRouteTypes = useMemo(
@@ -77,6 +92,20 @@ export default function Screener() {
 
   const updateSearch = useCallback((apply: (n: URLSearchParams) => void) => { setSearchParams((p) => { const n = new URLSearchParams(p); apply(n); if (!n.get("tab")) n.set("tab", "overview"); return n; }, { replace: true }); }, [setSearchParams]);
   const updateSelectedColumns = useCallback((next: string[]) => { const d = dedupe(next); if (!d.includes("symbol")) d.unshift("symbol"); updateSearch((n) => n.set("columns", d.join(","))); }, [updateSearch]);
+
+  /* ── Chart view setters (URL-persisted) ── */
+  const setViewMode = useCallback((mode: "table" | "chart") => {
+    setSearchParams((p) => { const n = new URLSearchParams(p); if (mode === "chart") n.set("view", "chart"); else n.delete("view"); return n; }, { replace: true });
+  }, [setSearchParams]);
+  const setChartPeriod = useCallback((p: ChartPeriod) => {
+    setSearchParams((prev) => { const n = new URLSearchParams(prev); n.set("period", p); return n; }, { replace: true });
+  }, [setSearchParams]);
+  const setChartType = useCallback((t: ChartType) => {
+    setSearchParams((prev) => { const n = new URLSearchParams(prev); n.set("chartType", t); return n; }, { replace: true });
+  }, [setSearchParams]);
+  const setChartLayout = useCallback((l: ChartLayout) => {
+    setSearchParams((prev) => { const n = new URLSearchParams(prev); if (l.mode === "auto") n.delete("layout"); else n.set("layout", String(l.cols)); return n; }, { replace: true });
+  }, [setSearchParams]);
 
   /* ── Hooks ── */
   const data = useScreenerData(routeType, selectedColumns);
@@ -201,11 +230,43 @@ export default function Screener() {
             </div>
           );
         })()}
-        <ScreenerTabBar tabs={meta?.tabs || []} activeTab={activeTab} loading={data.loading} onTabSelect={onTabSelect} onRefresh={data.refreshList} />
+        <ScreenerTabBar tabs={meta?.tabs || []} activeTab={activeTab} loading={data.loading} onTabSelect={onTabSelect} onRefresh={data.refreshList} viewMode={viewMode} onViewModeChange={setViewMode} />
+        {data.total > 0 && (
+          <span data-testid="screener-result-count" className="text-[11px] text-muted-foreground/60">
+            {data.total.toLocaleString()}
+          </span>
+        )}
       </div>{/* end padded section */}
-      <div className="w-full min-w-0">{/* full-width table section */}
+
+      {/* ── Chart toolbar — shown only in chart mode ── */}
+      {viewMode === "chart" && (
+        <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10">
+          <ScreenerChartToolbar
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            period={chartPeriod}
+            onPeriodChange={setChartPeriod}
+            chartType={chartType}
+            onChartTypeChange={setChartType}
+            layout={chartLayout}
+            onLayoutChange={setChartLayout}
+            total={data.total}
+            loading={data.loading}
+            onRefresh={data.refreshList}
+          />
+        </div>
+      )}
+
+      <div className="w-full min-w-0">{/* full-width section */}
         {data.loading && data.items.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />Loading screener…</div>
+        ) : viewMode === "chart" ? (
+          <ScreenerChartGrid
+            items={data.items}
+            layout={chartLayout}
+            chartType={chartType}
+            period={chartPeriod}
+          />
         ) : isMobile ? (
           <ScreenerMobileList items={data.items} loadingMore={data.loadingMore} onLoadMore={data.loadMore} />
         ) : (

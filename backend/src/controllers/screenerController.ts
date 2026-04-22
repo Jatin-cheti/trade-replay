@@ -9,6 +9,90 @@ import { getScreenerFilterOptions, getScreenerMeta, getScreenerStats } from "../
 import { getSymbolBySymbolOrFullSymbol, getSymbols } from "../services/screener/symbolQuery.service";
 import type { ScreenerFiltersInput } from "../services/screener/screener.types";
 
+/* ── Deterministic seeded RNG (mulberry32) ── */
+function seededRng(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s += 0x6d2b79f5;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function symbolSeed(sym: string): number {
+  let h = 5381;
+  for (let i = 0; i < sym.length; i++) {
+    h = (Math.imul(h, 33) ^ sym.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function periodToDays(period: string): number {
+  switch (period) {
+    case "1D": return 1;
+    case "5D": return 5;
+    case "1M": return 21;
+    case "3M": return 63;
+    case "6M": return 126;
+    case "YTD": return Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000) || 1;
+    case "1Y": return 252;
+    case "5Y": return 252 * 5;
+    case "All": return 252 * 10;
+    default: return 5;
+  }
+}
+
+function generateCandles(symbol: string, currentPrice: number, changePercent: number, period: string) {
+  const days = periodToDays(period);
+  const rng = seededRng(symbolSeed(symbol + period));
+  const candles: { time: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
+
+  // Work backwards from today so the last candle reflects current data
+  const endPrice = currentPrice > 0 ? currentPrice : 10;
+  const startPrice = endPrice / (1 + changePercent / 100);
+  let price = Math.max(startPrice, 0.01);
+
+  const now = new Date();
+  // daily volatility proportional to |changePercent| but bounded
+  const volatility = Math.min(0.03 + Math.abs(changePercent) / 100 * 0.01, 0.06);
+
+  for (let i = 0; i < days; i++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - (days - 1 - i));
+    // Skip weekends (simple)
+    const dow = date.getDay();
+    if (dow === 0 || dow === 6) continue;
+
+    const change = (rng() - 0.48) * volatility * price;
+    const open = price;
+    const close = Math.max(open + change, 0.01);
+    const hi = Math.max(open, close) * (1 + rng() * volatility * 0.5);
+    const lo = Math.min(open, close) * (1 - rng() * volatility * 0.5);
+    const vol = Math.round((rng() * 900000 + 100000) * (endPrice / 100 || 1));
+
+    candles.push({
+      time: date.toISOString().slice(0, 10),
+      open: parseFloat(open.toFixed(4)),
+      high: parseFloat(hi.toFixed(4)),
+      low: parseFloat(lo.toFixed(4)),
+      close: parseFloat(close.toFixed(4)),
+      volume: vol,
+    });
+    price = close;
+  }
+
+  // Force last candle close to match actual current price
+  if (candles.length > 0) {
+    const last = candles[candles.length - 1];
+    last.close = parseFloat(endPrice.toFixed(4));
+    last.high = Math.max(last.high, last.close);
+    last.low = Math.min(last.low, last.close);
+  }
+
+  return candles;
+}
+
 const LIVE_SCREENER_CACHE_TTL = {
   l1TtlMs: 4_000,
   l2TtlS: 8,
@@ -345,6 +429,48 @@ export async function fastSearch(req: Request, res: Response) {
     });
   } catch (err) {
     logger.error("screener_fast_search_error", { error: (err as Error).message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function chartData(req: Request, res: Response) {
+  try {
+    const rawSymbols = (req.query.symbols as string) || "";
+    const period = (req.query.period as string) || "5D";
+    const symbols = rawSymbols
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .slice(0, 50); // hard cap per batch
+
+    if (!symbols.length) return res.json({});
+
+    // Try to match by fullSymbol first, then symbol
+    const docs = await CleanAssetModel.find({
+      $or: [
+        { fullSymbol: { $in: symbols } },
+        { symbol: { $in: symbols } },
+      ],
+    })
+      .select("symbol fullSymbol price changePercent")
+      .lean();
+
+    const result: Record<string, unknown> = {};
+    for (const doc of docs) {
+      const key = symbols.find((s) => s === doc.fullSymbol) || doc.symbol;
+      const currentPrice = (doc as { price?: number }).price || 100;
+      const changePercent = (doc as { changePercent?: number }).changePercent || 0;
+      result[key] = {
+        symbol: doc.symbol,
+        currentPrice,
+        changePercent,
+        candles: generateCandles(doc.symbol, currentPrice, changePercent, period),
+      };
+    }
+
+    return res.json(result);
+  } catch (err) {
+    logger.error("screener_chart_data_error", { error: (err as Error).message });
     return res.status(500).json({ error: "Internal server error" });
   }
 }
