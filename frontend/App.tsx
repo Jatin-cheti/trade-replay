@@ -23,6 +23,7 @@ const EditPortfolio = lazy(() => import("./pages/EditPortfolio"));
 const Screener = lazy(() => import("./pages/Screener"));
 const SymbolPage = lazy(() => import("./pages/SymbolPage"));
 const ChartPerformanceBench = lazy(() => import("./pages/ChartPerformanceBench"));
+const ChartsPage = lazy(() => import("./pages/ChartsPage"));
 
 function PageFallback() {
   return (
@@ -87,6 +88,7 @@ function AnimatedRoutes() {
               <Route path="/screener" element={<Navigate to="/screener/stocks" replace />} />
               <Route path="/screener/:type" element={<Screener />} />
               <Route path="/symbol/:symbol" element={<SymbolPage />} />
+              <Route path="/charts" element={<ChartsPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

@@ -1,0 +1,495 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import axios from "axios";
+import { ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
+import { toast } from "sonner";
+
+import TradingChart from "@/components/chart/TradingChart";
+import ChartContextMenu from "@/components/chart/ChartContextMenu";
+import ChartTimeRangeBar from "@/components/chart/ChartTimeRangeBar";
+import ChartSettingsModal from "@/components/chart/ChartSettingsModal";
+import ChartAlertModal from "@/components/chart/ChartAlertModal";
+import ChartTableViewModal from "@/components/chart/ChartTableViewModal";
+import ChartRightMiniStrip from "@/components/chart/ChartRightMiniStrip";
+import SymbolSearchInput from "@/components/chart/SymbolSearchInput";
+import ChartOhlcLegendOverlay from "@/components/chart/ChartOhlcLegendOverlay";
+import type { CandleData } from "@/data/stockData";
+
+/* ── Types ──────────────────────────────────────────────────────────── */
+
+interface SymbolDetail {
+  symbol: string;
+  fullSymbol?: string;
+  name: string;
+  exchange: string;
+  type: string;
+  price?: number;
+}
+
+interface ContextMenuState {
+  open: boolean;
+  x: number;
+  y: number;
+}
+
+/* ── Period → resolution + time-range config (mirrors SymbolPage) ─── */
+
+function getNseDayOpen(daysBack = 0): number {
+  const IST_OPEN_UTC_H = 3, IST_OPEN_UTC_M = 45;
+  const now = Date.now();
+  let d = new Date(now);
+  d.setUTCHours(IST_OPEN_UTC_H, IST_OPEN_UTC_M, 0, 0);
+  let candidate = Math.floor(d.getTime() / 1000);
+  if (candidate > Math.floor(now / 1000)) candidate -= 86400;
+  candidate -= daysBack * 86400;
+  let probe = new Date(candidate * 1000);
+  while (probe.getUTCDay() === 0 || probe.getUTCDay() === 6) {
+    candidate -= 86400;
+    probe = new Date(candidate * 1000);
+  }
+  return candidate;
+}
+
+const PERIOD_CONFIG: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
+  "1d":  { resolution: "5",  fromSec: () => getNseDayOpen(0),                                                     toSec: () => Math.floor(Date.now() / 1000) },
+  "5d":  { resolution: "30", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "1m":  { resolution: "60", fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "3m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
+  "1y":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "all": { resolution: "M",  fromSec: () => 946684800,                                                            toSec: () => Math.floor(Date.now() / 1000) },
+};
+
+const INTRADAY_RESOLUTIONS = new Set(["1", "2", "5", "15", "30", "60"]);
+const IST_OFFSET_S = 19800;
+
+function applyIstOffset(candles: CandleData[], resolution: string): CandleData[] {
+  if (!INTRADAY_RESOLUTIONS.has(resolution)) return candles;
+  return candles.map((c) => ({
+    ...c,
+    time: String(Number(c.time) + IST_OFFSET_S),
+  }));
+}
+
+// Access TradingChart's debug API (exposed on window by TradingChart itself)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getChartDebug = (): any => (window as unknown as Record<string, unknown>).__chartDebug;
+
+/* ── Main page component ────────────────────────────────────────────── */
+
+/** Strip exchange prefix like "NSE:RELIANCE" → "RELIANCE", preserving plain symbols */
+function stripExchange(raw: string): { bare: string; exchange: string | null } {
+  const colonIdx = raw.indexOf(":");
+  if (colonIdx < 0) return { bare: raw, exchange: null };
+  return { bare: raw.slice(colonIdx + 1), exchange: raw.slice(0, colonIdx) };
+}
+
+export default function ChartsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const rawSymbol = searchParams.get("symbol") ?? "RELIANCE";
+  const { bare: symbol, exchange: symbolExchange } = useMemo(() => stripExchange(rawSymbol), [rawSymbol]);
+  const [period, setPeriod] = useState("1y");
+  const [adjEnabled, setAdjEnabled] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Data state
+  const [candles, setCandles] = useState<CandleData[]>([]);
+  const [resolution, setResolution] = useState("D");
+  const [loading, setLoading] = useState(false);
+  const [symbolDetail, setSymbolDetail] = useState<SymbolDetail | null>(null);
+  const [prevClose, setPrevClose] = useState<number | null>(null);
+
+  // Hover tracking for OHLC legend & context menu price
+  const [hoverData, setHoverData] = useState<{ time: number; price: number } | null>(null);
+  const hoverRafRef = useRef<number | null>(null);
+
+  // Modals
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ open: false, x: 0, y: 0 });
+  const [contextMenuPrice, setContextMenuPrice] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertPrice, setAlertPrice] = useState<number | null>(null);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [objectTreeVisible, setObjectTreeVisible] = useState(false);
+  const [lockedCrosshair, setLockedCrosshair] = useState(false);
+  const [activeIndicatorsCount] = useState(0); // reads from chart state eventually
+
+  // Fetch symbol detail
+  useEffect(() => {
+    if (!symbol) return;
+    axios
+      .get<SymbolDetail>(`/api/screener/symbol/${encodeURIComponent(symbol)}`)
+      .then((res) => setSymbolDetail(res.data))
+      .catch(() => setSymbolDetail(null));
+  }, [symbol]);
+
+  // Fetch candle data
+  const fetchCandles = useCallback(
+    (periodKey: string) => {
+      const cfg = PERIOD_CONFIG[periodKey] ?? PERIOD_CONFIG["1y"];
+      const exchangeStr = symbolDetail?.exchange || symbolExchange || "";
+      const exchangeParam = exchangeStr
+        ? `&exchange=${encodeURIComponent(exchangeStr)}`
+        : "";
+      setLoading(true);
+      setResolution(cfg.resolution);
+      axios
+        .get<{ candles: CandleData[] }>(
+          `/api/candles/${encodeURIComponent(symbol)}?resolution=${cfg.resolution}&from=${cfg.fromSec()}&to=${cfg.toSec()}${exchangeParam}`,
+        )
+        .then((res) => {
+          const raw = res.data.candles ?? [];
+          const withOffset = applyIstOffset(raw, cfg.resolution);
+          setCandles(withOffset);
+          // Derive prevClose from first candle
+          if (withOffset.length >= 2) {
+            setPrevClose(withOffset[withOffset.length - 2].close);
+          }
+        })
+        .catch(() => {
+          setCandles([]);
+        })
+        .finally(() => setLoading(false));
+    },
+    [symbol, symbolExchange, symbolDetail?.exchange],
+  );
+
+  // Reload on period change or symbol change
+  useEffect(() => {
+    fetchCandles(period);
+  }, [period, fetchCandles]);
+
+  // Live polling every 30s when tab visible
+  useEffect(() => {
+    function refreshIfVisible() {
+      if (document.visibilityState === "visible") fetchCandles(period);
+    }
+    const intervalId = setInterval(refreshIfVisible, 30_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [period, fetchCandles]);
+
+  // Track hover point from chart debug API via RAF loop
+  useEffect(() => {
+    function track() {
+      const debug = getChartDebug();
+      if (debug) {
+        const hp = debug.getHoverPoint?.();
+        setHoverData(hp ?? null);
+      }
+      hoverRafRef.current = requestAnimationFrame(track);
+    }
+    hoverRafRef.current = requestAnimationFrame(track);
+    return () => {
+      if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+    };
+  }, []);
+
+  // Derive OHLC legend row from hover data
+  const legendRow = useMemo(() => {
+    const fallback = candles.length > 0 ? candles[candles.length - 1] : null;
+    if (!hoverData || !candles.length) {
+      if (!fallback) return null;
+      return {
+        time: new Date(fallback.time).getTime() / 1000,
+        open: fallback.open,
+        high: fallback.high,
+        low: fallback.low,
+        close: fallback.close,
+        volume: fallback.volume,
+      };
+    }
+    // Find nearest candle by time
+    const hoverSec = hoverData.time;
+    let nearest = candles[candles.length - 1];
+    let minDiff = Infinity;
+    for (const c of candles) {
+      const cSec = new Date(c.time).getTime() / 1000;
+      const diff = Math.abs(cSec - hoverSec);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearest = c;
+      }
+    }
+    return {
+      time: new Date(nearest.time).getTime() / 1000,
+      open: nearest.open,
+      high: nearest.high,
+      low: nearest.low,
+      close: nearest.close,
+      volume: nearest.volume,
+    };
+  }, [candles, hoverData]);
+
+  // Context menu handler — intercepts right-click on chart area
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const debug = getChartDebug();
+    const hp = debug?.getHoverPoint?.();
+    const price = hp?.price ?? (candles.length > 0 ? candles[candles.length - 1].close : null);
+    setContextMenuPrice(price);
+    setContextMenu({ open: true, x: e.clientX, y: e.clientY });
+  }, [candles]);
+
+  // Context menu actions
+  function handleResetView() {
+    getChartDebug()?.scrollToPosition?.(0);
+  }
+
+  function handleCopyPrice() {
+    const p = contextMenuPrice;
+    if (p == null) return;
+    navigator.clipboard.writeText(p.toFixed(2)).then(() => {
+      toast.success(`Copied price ${p.toFixed(2)}`);
+    }).catch(() => {});
+  }
+
+  function handleAddAlert() {
+    setAlertPrice(contextMenuPrice);
+    setAlertOpen(true);
+  }
+
+  function handleSaveTemplate() {
+    const templateName = `template-${Date.now()}`;
+    try {
+      localStorage.setItem(`chart-template-${symbol}`, templateName);
+      toast.success("Template saved");
+    } catch {
+      toast.error("Failed to save template");
+    }
+  }
+
+  function handleLoadTemplate() {
+    const saved = localStorage.getItem(`chart-template-${symbol}`);
+    if (saved) {
+      toast.success(`Loaded template: ${saved}`);
+    } else {
+      toast.info("No saved template found");
+    }
+  }
+
+  function handleRemoveIndicators() {
+    // Remove all indicators — signals TradingChart indirectly via no accessible API
+    toast.info("Use the Indicators button in the chart top bar to manage indicators");
+  }
+
+  function handleSymbolSelect(newSymbol: string) {
+    setSearchParams({ symbol: newSymbol });
+    setCandles([]);
+    setHoverData(null);
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  }
+
+  useEffect(() => {
+    function onFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const displayName = symbolDetail?.name ?? symbol;
+  const exchange = symbolDetail?.exchange ?? "";
+  const baseSymbol = symbol.includes(":") ? symbol.split(":")[1] : symbol;
+  const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : null;
+  const prevPrice = candles.length >= 2 ? candles[candles.length - 2].close : null;
+  const priceChange = currentPrice != null && prevPrice != null ? currentPrice - prevPrice : null;
+  const priceChangePct = prevPrice != null && prevPrice !== 0 && priceChange != null ? (priceChange / prevPrice) * 100 : null;
+  const isPositive = priceChange != null ? priceChange >= 0 : null;
+
+  return (
+    <div
+      data-testid="charts-page"
+      className="flex h-screen w-screen flex-col overflow-hidden bg-background"
+    >
+      {/* ── Top bar ───────────────────────────────────────────────────── */}
+      <div className="flex shrink-0 items-center gap-3 border-b border-primary/15 bg-background/90 px-3 py-1.5 backdrop-blur-xl">
+        {/* Back */}
+        <button
+          type="button"
+          data-testid="charts-back-btn"
+          onClick={() => navigate(-1)}
+          className="rounded-md p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
+          title="Go back"
+        >
+          <ArrowLeft size={16} />
+        </button>
+
+        {/* Symbol search + display */}
+        <SymbolSearchInput currentSymbol={baseSymbol} onSelect={handleSymbolSelect} />
+
+        {/* Exchange badge */}
+        {exchange && (
+          <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary/80">
+            {exchange}
+          </span>
+        )}
+
+        {/* Company name + price */}
+        <div className="hidden min-w-0 flex-1 sm:flex sm:items-center sm:gap-2">
+          <span className="truncate text-[12px] text-muted-foreground">{displayName}</span>
+          {currentPrice != null && (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[13px] font-bold tabular-nums text-foreground">
+                {currentPrice.toFixed(2)}
+              </span>
+              {priceChange != null && priceChangePct != null && (
+                <span className={`text-[11px] tabular-nums ${isPositive ? "text-emerald-300" : "text-rose-300"}`}>
+                  {isPositive ? "+" : ""}{priceChange.toFixed(2)} ({isPositive ? "+" : ""}{priceChangePct.toFixed(2)}%)
+                </span>
+              )}
+            </div>
+          )}
+          {loading && (
+            <div className="h-3.5 w-3.5 animate-spin rounded-full border border-primary/40 border-t-transparent" />
+          )}
+        </div>
+
+        {/* Fullscreen toggle */}
+        <button
+          type="button"
+          data-testid="charts-fullscreen-btn"
+          onClick={toggleFullscreen}
+          className="ml-auto rounded-md p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
+          title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
+      </div>
+
+      {/* ── Main chart area ────────────────────────────────────────────── */}
+      <div
+        className="relative flex min-h-0 flex-1 overflow-hidden"
+        onContextMenu={handleContextMenu}
+      >
+        {/* TradingChart — fills all space */}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {candles.length === 0 && loading ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/40 border-t-primary" />
+                <span className="text-[12px] text-muted-foreground">Loading {baseSymbol}…</span>
+              </div>
+            </div>
+          ) : candles.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <p className="text-[14px] font-semibold text-foreground">{baseSymbol}</p>
+                <p className="mt-1 text-[12px] text-muted-foreground">No data available for this period.</p>
+                <button
+                  type="button"
+                  onClick={() => fetchCandles(period)}
+                  className="mt-3 rounded-md bg-primary/20 px-4 py-1.5 text-[12px] font-semibold text-primary hover:bg-primary/30 transition"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : (
+            <TradingChart
+              data={candles}
+              visibleCount={candles.length}
+              symbol={baseSymbol}
+              mode="live"
+            />
+          )}
+        </div>
+
+        {/* OHLC legend overlay — top-left inside the chart area, over TradingChart */}
+        {candles.length > 0 && legendRow && (
+          <div className="absolute left-0 top-0 z-30 pointer-events-none">
+            {/* Offset to sit below TradingChart's own top bar (~40px) and leave space for ToolRail */}
+            <div className="ml-14 mt-11">
+              <ChartOhlcLegendOverlay
+                symbol={baseSymbol}
+                exchange={exchange}
+                row={legendRow}
+                prevClose={prevClose}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Right mini strip */}
+        <ChartRightMiniStrip
+          onObjectTree={() => setObjectTreeVisible((v) => !v)}
+          onSettings={() => setSettingsOpen(true)}
+          onWatchlist={() => toast.info("Watchlist panel coming soon")}
+          onAlerts={() => setAlertOpen(true)}
+          onHelp={() => window.open("https://tradereplay.me/docs", "_blank", "noopener")}
+        />
+
+        {/* Context menu */}
+        <ChartContextMenu
+          open={contextMenu.open}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          symbol={baseSymbol}
+          cursorPrice={contextMenuPrice}
+          activeIndicatorsCount={activeIndicatorsCount}
+          lockedCrosshair={lockedCrosshair}
+          onClose={() => setContextMenu((s) => ({ ...s, open: false }))}
+          onResetView={handleResetView}
+          onCopyPrice={handleCopyPrice}
+          onAddAlert={handleAddAlert}
+          onToggleLockCrosshair={() => setLockedCrosshair((v) => !v)}
+          onTableView={() => setTableOpen(true)}
+          onObjectTree={() => setObjectTreeVisible((v) => !v)}
+          onSaveTemplate={handleSaveTemplate}
+          onLoadTemplate={handleLoadTemplate}
+          onRemoveIndicators={handleRemoveIndicators}
+          onSettings={() => setSettingsOpen(true)}
+        />
+      </div>
+
+      {/* ── Time range bar ────────────────────────────────────────────── */}
+      <ChartTimeRangeBar
+        period={period}
+        onPeriodChange={(p) => {
+          setPeriod(p);
+          setCandles([]);
+        }}
+        adjEnabled={adjEnabled}
+        onToggleAdj={() => setAdjEnabled((v) => !v)}
+      />
+
+      {/* ── Modals ─────────────────────────────────────────────────────── */}
+      <ChartSettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        symbol={baseSymbol}
+      />
+
+      <ChartAlertModal
+        open={alertOpen}
+        onOpenChange={setAlertOpen}
+        symbol={baseSymbol}
+        cursorPrice={alertPrice ?? contextMenuPrice}
+      />
+
+      <ChartTableViewModal
+        open={tableOpen}
+        onOpenChange={setTableOpen}
+        symbol={baseSymbol}
+        candles={candles}
+        resolution={resolution}
+      />
+    </div>
+  );
+}
