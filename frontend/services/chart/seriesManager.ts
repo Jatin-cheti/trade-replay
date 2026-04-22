@@ -32,7 +32,20 @@ export type ChartSeriesKey =
   | 'maLine'
   | 'emaLine'
   | 'vwapLine'
-  | 'priceChange';
+  | 'priceChange'
+  // Analytical series
+  | 'rsiLine'
+  | 'macdHistogram'
+  | 'macdSignal'
+  | 'equityCurve'
+  | 'drawdownChart'
+  | 'returnsHistogram'
+  | 'zScoreLine'
+  | 'volumeOscillator'
+  | 'regressionMid'
+  | 'regressionUpper'
+  | 'regressionLower'
+  | 'seasonalityLine';
 
 export type ChartSeriesMap = {
   candlestick: ISeriesApi<'Candlestick'>;
@@ -63,6 +76,19 @@ export type ChartSeriesMap = {
   emaLine: ISeriesApi<'Line'>;
   vwapLine: ISeriesApi<'Line'>;
   priceChange: ISeriesApi<'Line'>;
+  // Analytical series
+  rsiLine: ISeriesApi<'Line'>;
+  macdHistogram: ISeriesApi<'Histogram'>;
+  macdSignal: ISeriesApi<'Line'>;
+  equityCurve: ISeriesApi<'Area'>;
+  drawdownChart: ISeriesApi<'Area'>;
+  returnsHistogram: ISeriesApi<'Histogram'>;
+  zScoreLine: ISeriesApi<'Line'>;
+  volumeOscillator: ISeriesApi<'Line'>;
+  regressionMid: ISeriesApi<'Line'>;
+  regressionUpper: ISeriesApi<'Line'>;
+  regressionLower: ISeriesApi<'Line'>;
+  seasonalityLine: ISeriesApi<'Line'>;
 };
 
 type ChartSeriesOptions = {
@@ -87,13 +113,21 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   // Price Action
   renko: ['renko'], rangeBars: ['rangeBars'], lineBreak: ['lineBreak'],
   kagi: ['kagi'], pointFigure: ['pointFigure'], brick: ['brick'],
-  // Coming Soon — no series visible (overlay shown instead)
-  equityCurve: [], drawdownChart: [], returnsHistogram: [],
-  zScoreLine: [], rsiLine: [], macdHistogram: [], volumeOscillator: [],
+  // Analytical — now implemented
+  equityCurve: ['equityCurve'],
+  drawdownChart: ['drawdownChart'],
+  returnsHistogram: ['returnsHistogram'],
+  zScoreLine: ['zScoreLine'],
+  rsiLine: ['rsiLine'],
+  macdHistogram: ['macdHistogram', 'macdSignal'],
+  volumeOscillator: ['volumeOscillator'],
+  regressionChannel: ['regressionMid', 'regressionUpper', 'regressionLower'],
+  seasonality: ['seasonalityLine'],
+  // Canvas-based — still coming soon
   scatterPlot: [], bubblePlot: [], boxPlot: [], heatMap: [],
   radarChart: [], treemap: [], waterfallChart: [], sunburst: [],
   yieldCurve: [], volatilitySurface: [], correlationMatrix: [],
-  optionsPayoff: [], monteCarlo: [], seasonality: [], regressionChannel: [],
+  optionsPayoff: [], monteCarlo: [],
   fanChart: [], paretoChart: [], funnelChart: [], networkGraph: [],
   donutChart: [], stackedArea: [],
 };
@@ -175,6 +209,19 @@ export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions
     emaLine: chart.addSeries('Line', { color: '#f97316', lineWidth: 2, visible: false }),
     vwapLine: chart.addSeries('Line', { color: '#2dd4bf', lineWidth: 2, visible: false }),
     priceChange: chart.addSeries('Line', { color: '#4ade80', lineWidth: 2, visible: false }),
+    // Analytical series
+    rsiLine: chart.addSeries('Line', { color: '#c084fc', lineWidth: 2, visible: false }),
+    macdHistogram: chart.addSeries('Histogram', { priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, base: 0, visible: false }),
+    macdSignal: chart.addSeries('Line', { color: '#f59e0b', lineWidth: 1, lineStyle: 2, visible: false }),
+    equityCurve: chart.addSeries('Area', { lineColor: '#22d3ee', topColor: 'rgba(34,211,238,0.25)', bottomColor: 'rgba(34,211,238,0.02)', lineWidth: 2, visible: false }),
+    drawdownChart: chart.addSeries('Area', { lineColor: '#f87171', topColor: 'rgba(248,113,113,0.25)', bottomColor: 'rgba(248,113,113,0.02)', lineWidth: 2, visible: false }),
+    returnsHistogram: chart.addSeries('Histogram', { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
+    zScoreLine: chart.addSeries('Line', { color: '#a3e635', lineWidth: 2, visible: false }),
+    volumeOscillator: chart.addSeries('Line', { color: '#38bdf8', lineWidth: 2, visible: false }),
+    regressionMid: chart.addSeries('Line', { color: '#fbbf24', lineWidth: 2, visible: false }),
+    regressionUpper: chart.addSeries('Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
+    regressionLower: chart.addSeries('Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
+    seasonalityLine: chart.addSeries('Line', { color: '#e879f9', lineWidth: 2, visible: false }),
   };
 
   map.volume.priceScale().applyOptions({
@@ -215,6 +262,19 @@ export function applySeriesData(map: ChartSeriesMap, data: TransformedData): voi
   map.emaLine.setData(data.emaRows);
   map.vwapLine.setData(data.vwapRows);
   map.priceChange.setData(data.priceChangeRows);
+  // Analytical
+  map.rsiLine.setData(data.rsiRows);
+  map.macdHistogram.setData(data.macdRows);
+  map.macdSignal.setData(data.macdSignalRows);
+  map.equityCurve.setData(data.equityCurveRows);
+  map.drawdownChart.setData(data.drawdownRows);
+  map.returnsHistogram.setData(data.returnsHistogramRows);
+  map.zScoreLine.setData(data.zScoreRows);
+  map.volumeOscillator.setData(data.volumeOscillatorRows);
+  map.regressionMid.setData(data.regressionMidRows);
+  map.regressionUpper.setData(data.regressionUpperRows);
+  map.regressionLower.setData(data.regressionLowerRows);
+  map.seasonalityLine.setData(data.seasonalityRows);
 }
 
 export function updateSeriesData(map: ChartSeriesMap, data: TransformedData): void {

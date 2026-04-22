@@ -13,6 +13,7 @@ import AssetAvatar from "@/components/ui/AssetAvatar";
 import ScreenerRowContextMenu from "@/components/screener/ScreenerRowContextMenu";
 import { useSymbolFlags } from "@/hooks/useSymbolFlags";
 import { formatPriceUs } from "@/lib/numberFormat";
+import type { ISeriesApi } from "@tradereplay/charts";
 
 interface Props {
   item: ScreenerItem;
@@ -39,6 +40,7 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
   const seriesMapRef = useRef<ChartSeriesMap | null>(null);
+  const prevCloseLineRef = useRef<ReturnType<ISeriesApi<"Area">["createPriceLine"]> | null>(null);
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -90,11 +92,15 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
         handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false, vertTouchDrag: false },
         timeScale: {
           rightOffset: 0,
-          barSpacing: 3,
+          barSpacing: 4,
           minBarSpacing: 0.5,
-          fixLeftEdge: true,
+          // Do NOT fix either edge — let setVisibleRange position freely
+          fixLeftEdge: false,
           fixRightEdge: false,
-          lockVisibleTimeRangeOnResize: true,
+          lockVisibleTimeRangeOnResize: false,
+          timeVisible: true,
+          secondsVisible: false,
+          borderVisible: true,
         },
         rightPriceScale: {
           scaleMargins: { top: 0.08, bottom: 0.08 },
@@ -152,8 +158,14 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
       if (!c || !ct || !ov) return;
       try {
         resizeChartSurface(c, ct, ov);
+        // Re-anchor from left after resize
         if (ct.clientWidth > 0 && ct.clientHeight > 0) {
-          c.timeScale().fitContent();
+          const sm = seriesMapRef.current;
+          if (sm) {
+            // Get the visible series' first/last time from ohlcRows stored in ref
+            // We just call fitContent as fallback; the data effect handles setVisibleRange
+            c.timeScale().fitContent();
+          }
         }
       } catch { /* ignore */ }
     };
@@ -182,7 +194,8 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
   // Data + colour effect — re-run when candles or chartType change
   useEffect(() => {
     const seriesMap = seriesMapRef.current;
-    if (!ready || !seriesMap) return;
+    const chart = chartRef.current;
+    if (!ready || !seriesMap || !chart) return;
 
     try {
       applySeriesData(seriesMap, transformed);
@@ -192,13 +205,18 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
       const areaBotColor = isPositive ? "rgba(16,185,129,0.00)" : "rgba(239,68,68,0.00)";
       seriesMap.area.applyOptions({ lineColor, topColor: areaTopColor, bottomColor: areaBotColor });
       seriesMap.mountainArea.applyOptions({ lineColor, topColor: areaTopColor, bottomColor: areaBotColor });
+      seriesMap.equityCurve.applyOptions({ lineColor, topColor: areaTopColor, bottomColor: areaBotColor });
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      // Add prev-close reference line if we have a price-axis reference
-      if (prevClose != null && seriesMap.area) {
-        try {
-          seriesMap.area.createPriceLine({
+      // Manage prev-close reference line (remove old before adding new)
+      try {
+        if (prevCloseLineRef.current) {
+          seriesMap.area.removePriceLine(prevCloseLineRef.current);
+          prevCloseLineRef.current = null;
+        }
+        if (prevClose != null) {
+          prevCloseLineRef.current = seriesMap.area.createPriceLine({
             price: prevClose,
             color: "rgba(180,180,180,0.5)",
             lineWidth: 1,
@@ -206,11 +224,21 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
             axisLabelVisible: false,
             title: "",
           });
-        } catch { /* ignore if createPriceLine not supported */ }
-      }
+        }
+      } catch { /* createPriceLine may not be available in all env */ }
 
-      if (transformed.ohlcRows.length > 0) {
-        chartRef.current?.timeScale().fitContent();
+      // Anchor chart from first bar to last bar — always left-aligned
+      const rows = transformed.ohlcRows;
+      if (rows.length >= 2) {
+        const firstTime = rows[0].time;
+        const lastTime = rows[rows.length - 1].time;
+        try {
+          chart.timeScale().setVisibleRange({ from: firstTime, to: lastTime });
+        } catch {
+          chart.timeScale().fitContent();
+        }
+      } else if (rows.length === 1) {
+        chart.timeScale().fitContent();
       }
     } catch { /* ignore data application errors */ }
   }, [chartType, isPositive, lineColor, prevClose, ready, transformed]);

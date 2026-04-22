@@ -41,12 +41,11 @@ export type ChartType =
 
 /** Chart types not yet implemented — show a "coming soon" overlay in the chart panel. */
 export const COMING_SOON_CHART_TYPES: ReadonlySet<ChartType> = new Set<ChartType>([
-  'equityCurve', 'drawdownChart', 'returnsHistogram',
-  'zScoreLine', 'rsiLine', 'macdHistogram', 'volumeOscillator',
+  // Canvas-based charts that cannot be rendered in LightweightCharts
   'scatterPlot', 'bubblePlot', 'boxPlot', 'heatMap',
   'radarChart', 'treemap', 'waterfallChart', 'sunburst',
   'yieldCurve', 'volatilitySurface', 'correlationMatrix',
-  'optionsPayoff', 'monteCarlo', 'seasonality', 'regressionChannel',
+  'optionsPayoff', 'monteCarlo',
   'fanChart', 'paretoChart', 'funnelChart', 'networkGraph',
   'donutChart', 'stackedArea',
 ]);
@@ -165,6 +164,154 @@ function computeVWAP(rows: OhlcRow[]): LineData[] {
   });
 }
 
+function computeRSI(rows: OhlcRow[], period = 14): LineData[] {
+  if (rows.length < period + 1) return rows.map((r) => ({ time: r.time, value: 50 }));
+  const output: LineData[] = [];
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = rows[i].close - rows[i - 1].close;
+    if (diff >= 0) avgGain += diff; else avgLoss += -diff;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  const pushRsi = (i: number, ag: number, al: number) => {
+    const rs = al === 0 ? 100 : ag / al;
+    output.push({ time: rows[i].time, value: 100 - 100 / (1 + rs) });
+  };
+  // pad nulls before warmup
+  for (let i = 0; i < period; i++) output.push({ time: rows[i].time, value: 50 });
+  pushRsi(period, avgGain, avgLoss);
+  for (let i = period + 1; i < rows.length; i++) {
+    const diff = rows[i].close - rows[i - 1].close;
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    pushRsi(i, avgGain, avgLoss);
+  }
+  return output;
+}
+
+function computeMACD(rows: OhlcRow[], fast = 12, slow = 26, signal = 9): { macd: HistogramData[]; signalLine: LineData[] } {
+  const ema = (data: number[], p: number): number[] => {
+    const k = 2 / (p + 1);
+    const out: number[] = [data[0]];
+    for (let i = 1; i < data.length; i++) out.push(data[i] * k + out[i - 1] * (1 - k));
+    return out;
+  };
+  const closes = rows.map((r) => r.close);
+  const emaFast = ema(closes, fast);
+  const emaSlow = ema(closes, slow);
+  const macdLine = emaFast.map((v, i) => v - emaSlow[i]);
+  const signalArr = ema(macdLine.slice(slow - 1), signal);
+  const macdHist: HistogramData[] = rows.map((r, i) => {
+    const m = macdLine[i];
+    const s = i >= slow - 1 ? signalArr[i - (slow - 1)] : 0;
+    const hist = m - s;
+    return {
+      time: r.time,
+      value: hist,
+      color: hist >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)',
+    };
+  });
+  const signalLineData: LineData[] = rows.map((r, i) => ({
+    time: r.time,
+    value: i >= slow - 1 ? signalArr[i - (slow - 1)] : 0,
+  }));
+  return { macd: macdHist, signalLine: signalLineData };
+}
+
+function computeEquityCurve(rows: OhlcRow[]): LineData[] {
+  if (!rows.length) return [];
+  const first = rows[0].close;
+  return rows.map((r) => ({ time: r.time, value: ((r.close - first) / first) * 100 }));
+}
+
+function computeDrawdown(rows: OhlcRow[]): LineData[] {
+  if (!rows.length) return [];
+  let peak = rows[0].close;
+  return rows.map((r) => {
+    if (r.close > peak) peak = r.close;
+    const dd = peak > 0 ? ((r.close - peak) / peak) * 100 : 0;
+    return { time: r.time, value: dd };
+  });
+}
+
+function computeReturnsHistogram(rows: OhlcRow[]): HistogramData[] {
+  // Daily returns as histogram bars ordered by time (not by return bucket)
+  return rows.map((r, i) => {
+    const prev = rows[i - 1]?.close ?? r.close;
+    const ret = prev > 0 ? ((r.close - prev) / prev) * 100 : 0;
+    return {
+      time: r.time,
+      value: ret,
+      color: ret >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)',
+    };
+  });
+}
+
+function computeZScore(rows: OhlcRow[], period = 20): LineData[] {
+  return rows.map((r, i) => {
+    const start = Math.max(0, i - period + 1);
+    const slice = rows.slice(start, i + 1).map((x) => x.close);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const std = Math.sqrt(slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length);
+    return { time: r.time, value: std > 0 ? (r.close - mean) / std : 0 };
+  });
+}
+
+function computeVolumeOscillator(rows: OhlcRow[], fast = 5, slow = 20): LineData[] {
+  const k1 = 2 / (fast + 1);
+  const k2 = 2 / (slow + 1);
+  let emaFast = rows[0]?.volume ?? 0;
+  let emaSlow = rows[0]?.volume ?? 0;
+  return rows.map((r) => {
+    emaFast = r.volume * k1 + emaFast * (1 - k1);
+    emaSlow = r.volume * k2 + emaSlow * (1 - k2);
+    return { time: r.time, value: emaSlow > 0 ? ((emaFast - emaSlow) / emaSlow) * 100 : 0 };
+  });
+}
+
+function computeRegressionChannel(rows: OhlcRow[]): { mid: LineData[]; upper: LineData[]; lower: LineData[] } {
+  const n = rows.length;
+  if (n < 2) return { mid: rows.map((r) => ({ time: r.time, value: r.close })), upper: [], lower: [] };
+  const xs = rows.map((_, i) => i);
+  const ys = rows.map((r) => r.close);
+  const sumX = xs.reduce((a, b) => a + b, 0);
+  const sumY = ys.reduce((a, b) => a + b, 0);
+  const sumXY = xs.reduce((a, x, i) => a + x * ys[i], 0);
+  const sumX2 = xs.reduce((a, x) => a + x * x, 0);
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  const predicted = xs.map((x) => slope * x + intercept);
+  const residuals = ys.map((y, i) => y - predicted[i]);
+  const stdDev = Math.sqrt(residuals.reduce((a, b) => a + b * b, 0) / n);
+  return {
+    mid: rows.map((r, i) => ({ time: r.time, value: predicted[i] })),
+    upper: rows.map((r, i) => ({ time: r.time, value: predicted[i] + 2 * stdDev })),
+    lower: rows.map((r, i) => ({ time: r.time, value: predicted[i] - 2 * stdDev })),
+  };
+}
+
+function computeSeasonality(rows: OhlcRow[]): LineData[] {
+  // Average monthly return plotted per bar (same month avg return shown flat across that month)
+  const monthAvg: Record<number, { sum: number; count: number }> = {};
+  for (let i = 1; i < rows.length; i++) {
+    const d = new Date((rows[i].time as number) * 1000);
+    const m = d.getUTCMonth();
+    const ret = rows[i - 1].close > 0 ? ((rows[i].close - rows[i - 1].close) / rows[i - 1].close) * 100 : 0;
+    if (!monthAvg[m]) monthAvg[m] = { sum: 0, count: 0 };
+    monthAvg[m].sum += ret;
+    monthAvg[m].count++;
+  }
+  return rows.map((r) => {
+    const m = new Date((r.time as number) * 1000).getUTCMonth();
+    const avg = monthAvg[m];
+    return { time: r.time, value: avg ? avg.sum / avg.count : 0 };
+  });
+}
+
 export type TransformedData = {
   ohlcRows: OhlcRow[];
   renkoRows: OhlcRow[];
@@ -188,6 +335,19 @@ export type TransformedData = {
   emaRows: LineData[];
   vwapRows: LineData[];
   priceChangeRows: LineData[];
+  // Analytical rows
+  rsiRows: LineData[];
+  macdRows: HistogramData[];
+  macdSignalRows: LineData[];
+  equityCurveRows: LineData[];
+  drawdownRows: LineData[];
+  returnsHistogramRows: HistogramData[];
+  zScoreRows: LineData[];
+  volumeOscillatorRows: LineData[];
+  regressionMidRows: LineData[];
+  regressionUpperRows: LineData[];
+  regressionLowerRows: LineData[];
+  seasonalityRows: LineData[];
   times: UTCTimestamp[];
 };
 
@@ -352,6 +512,22 @@ export function transformChartData(data: CandleData[], visibleCount: number, par
       const first = ohlcRows[0]?.close ?? 0;
       return ohlcRows.map((row) => ({ time: row.time, value: row.close - first }));
     })(),
+    // Analytical
+    rsiRows: computeRSI(ohlcRows),
+    ...(() => {
+      const { macd, signalLine } = computeMACD(ohlcRows);
+      return { macdRows: macd, macdSignalRows: signalLine };
+    })(),
+    equityCurveRows: computeEquityCurve(ohlcRows),
+    drawdownRows: computeDrawdown(ohlcRows),
+    returnsHistogramRows: computeReturnsHistogram(ohlcRows),
+    zScoreRows: computeZScore(ohlcRows),
+    volumeOscillatorRows: computeVolumeOscillator(ohlcRows),
+    ...(() => {
+      const { mid, upper, lower } = computeRegressionChannel(ohlcRows);
+      return { regressionMidRows: mid, regressionUpperRows: upper, regressionLowerRows: lower };
+    })(),
+    seasonalityRows: computeSeasonality(ohlcRows),
     times: ohlcRows.map((row) => row.time),
   };
 }
