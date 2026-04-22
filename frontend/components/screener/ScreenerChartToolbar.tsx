@@ -1,14 +1,113 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  RefreshCw, ChevronDown, LayoutGrid,
+  RefreshCw, ChevronDown, LayoutGrid, Search,
 } from "lucide-react";
 import type { ChartType } from "@/services/chart/dataTransforms";
-import { chartTypeGroups, chartTypeLabels } from "@/services/chart/dataTransforms";
+import { COMING_SOON_CHART_TYPES } from "@/services/chart/dataTransforms";
 
 export type ChartPeriod = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "All";
 export type ChartLayout = { mode: "auto" } | { mode: "custom"; cols: number };
 
 const PERIODS: ChartPeriod[] = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "5Y", "All"];
+
+/** Full catalog matching the user's JSON schema */
+interface ChartCatalogItem { id: ChartType; name: string }
+interface ChartCatalogGroup { group: string; label: string; items: ChartCatalogItem[] }
+
+const CHART_CATALOG: ChartCatalogGroup[] = [
+  {
+    group: "Standard", label: "Time-Series", items: [
+      { id: "line", name: "Line Chart" },
+      { id: "candlestick", name: "Japanese Candlestick" },
+      { id: "bar", name: "Bar Chart (OHLC)" },
+      { id: "hlcBar", name: "HLC Bar" },
+      { id: "area", name: "Area Chart" },
+      { id: "baseline", name: "Baseline Chart" },
+      { id: "heikinAshi", name: "Heikin-Ashi" },
+      { id: "hollowCandles", name: "Hollow Candles" },
+      { id: "ohlc", name: "Colored Bar" },
+      { id: "stepLine", name: "Step Line" },
+      { id: "mountainArea", name: "Mountain Chart" },
+      { id: "dotChart", name: "Dot Chart" },
+      { id: "rangeArea", name: "High-Low Chart" },
+      { id: "openClose", name: "Open-Close Chart" },
+      { id: "avgPriceBar", name: "Average Price Bar" },
+    ],
+  },
+  {
+    group: "Price Action", label: "Non-Time Based", items: [
+      { id: "renko", name: "Renko" },
+      { id: "pointFigure", name: "Point & Figure" },
+      { id: "kagi", name: "Kagi" },
+      { id: "lineBreak", name: "3-Line Break" },
+      { id: "rangeBars", name: "Range Bars" },
+      { id: "brick", name: "Brick Chart" },
+    ],
+  },
+  {
+    group: "Volume", label: "Volume & Order Flow", items: [
+      { id: "volumeCandles", name: "Candles + Volume" },
+      { id: "volumeLine", name: "Line + Volume" },
+      { id: "histogram", name: "Volume Histogram" },
+    ],
+  },
+  {
+    group: "Indicators", label: "Indicators & Overlays", items: [
+      { id: "maLine", name: "MA Line (20)" },
+      { id: "emaLine", name: "EMA Line (20)" },
+      { id: "vwapLine", name: "VWAP" },
+      { id: "priceChange", name: "Price Change" },
+      { id: "rsiLine", name: "RSI Line" },
+      { id: "macdHistogram", name: "MACD Histogram" },
+      { id: "volumeOscillator", name: "Volume Oscillator" },
+      { id: "zScoreLine", name: "Z-Score Line" },
+    ],
+  },
+  {
+    group: "Analysis", label: "Statistical & Quantitative", items: [
+      { id: "equityCurve", name: "Equity Curve" },
+      { id: "drawdownChart", name: "Drawdown Chart" },
+      { id: "returnsHistogram", name: "Returns Histogram" },
+      { id: "scatterPlot", name: "Scatter Plot" },
+      { id: "bubblePlot", name: "Bubble Plot" },
+      { id: "boxPlot", name: "Box Plot" },
+      { id: "heatMap", name: "Heat Map" },
+      { id: "regressionChannel", name: "Regression Channel" },
+      { id: "seasonality", name: "Seasonality" },
+      { id: "monteCarlo", name: "Monte Carlo" },
+    ],
+  },
+  {
+    group: "Advanced", label: "Advanced Analytics", items: [
+      { id: "radarChart", name: "Radar Chart" },
+      { id: "treemap", name: "Treemap" },
+      { id: "waterfallChart", name: "Waterfall Chart" },
+      { id: "sunburst", name: "Sunburst Chart" },
+      { id: "fanChart", name: "Fan Chart" },
+      { id: "paretoChart", name: "Pareto Chart" },
+      { id: "funnelChart", name: "Funnel Chart" },
+      { id: "networkGraph", name: "Network Graph" },
+    ],
+  },
+  {
+    group: "Layouts", label: "Economic & Layouts", items: [
+      { id: "yieldCurve", name: "Yield Curve" },
+      { id: "volatilitySurface", name: "Volatility Surface" },
+      { id: "correlationMatrix", name: "Correlation Matrix" },
+      { id: "optionsPayoff", name: "Options Payoff" },
+      { id: "donutChart", name: "Donut Chart" },
+      { id: "stackedArea", name: "Stacked Area" },
+    ],
+  },
+];
+
+/** Flat map: id → name for quick lookup */
+const CHART_NAME_MAP: Record<string, string> = {};
+for (const g of CHART_CATALOG) for (const item of g.items) CHART_NAME_MAP[item.id] = item.name;
+
+function getChartName(t: ChartType): string {
+  return CHART_NAME_MAP[t] ?? t;
+}
 
 interface Props {
   viewMode: "table" | "chart";
@@ -39,6 +138,8 @@ export default function ScreenerChartToolbar({
 }: Props) {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
+  const [typeSearch, setTypeSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Custom grid picker state
   const [hoverGrid, setHoverGrid] = useState<[number, number] | null>(null);
@@ -46,6 +147,27 @@ export default function ScreenerChartToolbar({
 
   const GRID_ROWS = 4;
   const GRID_COLS = 6;
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (typeOpen) {
+      setTypeSearch("");
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [typeOpen]);
+
+  const filteredGroups = useMemo(() => {
+    const q = typeSearch.trim().toLowerCase();
+    if (!q) return CHART_CATALOG;
+    return CHART_CATALOG
+      .map((g) => ({
+        ...g,
+        items: g.items.filter((item) =>
+          item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [typeSearch]);
 
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-border/25 pb-1.5">
@@ -142,39 +264,67 @@ export default function ScreenerChartToolbar({
         )}
       </div>
 
-      {/* ── Chart type picker ── */}
+      {/* ── Chart type picker with search ── */}
       <div className="relative hidden sm:block" data-testid="screener-chart-type-picker">
         <button
           type="button"
           onClick={() => { setTypeOpen((o) => !o); setLayoutOpen(false); }}
           className="flex items-center gap-1.5 rounded-md border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-xs text-foreground hover:bg-secondary/40 transition-colors"
         >
-          <span>{chartTypeLabels[chartType] ?? "Area"}</span>
+          <span>{getChartName(chartType)}</span>
+          {COMING_SOON_CHART_TYPES.has(chartType) && (
+            <span className="ml-0.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-semibold text-amber-400">SOON</span>
+          )}
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
 
         {typeOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-xl border border-border/50 bg-background py-1.5 shadow-xl max-h-80 overflow-y-auto">
-            {chartTypeGroups.map((group) => (
-              <div key={group.id}>
-                <p className="px-3 pt-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  {group.label}
-                </p>
-                {group.types.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    aria-selected={chartType === t}
-                    onClick={() => { onChartTypeChange(t); setTypeOpen(false); }}
-                    className={`flex w-full items-center px-3 py-1.5 text-xs transition-colors hover:bg-secondary/40 ${
-                      chartType === t ? "font-semibold text-primary" : "text-foreground/85"
-                    }`}
-                  >
-                    {chartTypeLabels[t]}
-                  </button>
-                ))}
-              </div>
-            ))}
+          <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-border/50 bg-background shadow-xl flex flex-col" style={{ maxHeight: "420px" }}>
+            {/* Search box */}
+            <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2 shrink-0">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search chart types…"
+                value={typeSearch}
+                onChange={(e) => setTypeSearch(e.target.value)}
+                className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
+              />
+            </div>
+
+            {/* Type list */}
+            <div className="overflow-y-auto py-1">
+              {filteredGroups.length === 0 && (
+                <p className="px-4 py-3 text-xs text-muted-foreground/60">No chart types found</p>
+              )}
+              {filteredGroups.map((g) => (
+                <div key={g.group}>
+                  <p className="px-3 pt-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    {g.group} — {g.label}
+                  </p>
+                  {g.items.map((item) => {
+                    const isSoon = COMING_SOON_CHART_TYPES.has(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-selected={chartType === item.id}
+                        onClick={() => { onChartTypeChange(item.id); setTypeOpen(false); }}
+                        className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors hover:bg-secondary/40 ${
+                          chartType === item.id ? "font-semibold text-primary" : "text-foreground/85"
+                        }`}
+                      >
+                        <span>{item.name}</span>
+                        {isSoon && (
+                          <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold text-amber-400">SOON</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {typeOpen && (
@@ -224,3 +374,7 @@ export default function ScreenerChartToolbar({
     </div>
   );
 }
+
+
+export type ChartPeriod = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "All";
+export type ChartLayout = { mode: "auto" } | { mode: "custom"; cols: number };

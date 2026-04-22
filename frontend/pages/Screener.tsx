@@ -109,7 +109,7 @@ export default function Screener() {
   }, [setSearchParams]);
 
   /* ── Hooks ── */
-  const data = useScreenerData(routeType, selectedColumns);
+  const data = useScreenerData(routeType, selectedColumns, viewMode === "chart");
   const filters = useScreenerFilters(meta, data.parsedFilters);
   const screens = useScreenerScreens(routeType);
 
