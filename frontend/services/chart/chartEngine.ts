@@ -1,4 +1,4 @@
-import { createChart, type IChartApi } from '@tradereplay/charts';
+import { createChart, type IChartApi, type UTCTimestamp } from '@tradereplay/charts';
 
 type TradingChartEngineOptions = {
   parityMode?: boolean;
@@ -97,4 +97,43 @@ export function resizeChartSurface(
   const ctx = overlay.getContext('2d');
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/**
+ * Fits all data bars to fill the container width from left to right.
+ * Call this after setting series data AND inside ResizeObserver / requestAnimationFrame
+ * to guarantee correct sizing even when the container width isn't yet settled.
+ *
+ * - Sets barSpacing so (numBars × barSpacing) fills the available canvas width.
+ * - Removes fixLeftEdge / fixRightEdge so setVisibleRange can position freely.
+ * - Calls setVisibleRange to pin firstTime → lastTime to the container edges.
+ */
+export function fitChartContent(
+  chart: IChartApi,
+  container: HTMLElement,
+  firstTime: UTCTimestamp,
+  lastTime: UTCTimestamp,
+  numBars: number,
+): void {
+  const width = container.clientWidth;
+  if (width <= 0 || numBars < 2) return;
+
+  // Reserve ~60 px for the right price-scale axis
+  const PRICE_SCALE_W = 60;
+  const available = Math.max(1, width - PRICE_SCALE_W);
+  const barSpacing = Math.max(0.5, Math.min(available / numBars, 12));
+
+  // Remove edge locks so setVisibleRange can position the view freely
+  chart.timeScale().applyOptions({
+    barSpacing,
+    rightOffset: 0,
+    fixLeftEdge: false,
+    fixRightEdge: false,
+  });
+
+  try {
+    chart.timeScale().setVisibleRange({ from: firstTime, to: lastTime });
+  } catch {
+    // Fails when data isn't populated yet — barSpacing alone still improves layout
+  }
 }

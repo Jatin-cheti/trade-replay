@@ -149,14 +149,15 @@ function getTabSlug(tab: string): string {
 // Bar-count targets match TradingView's resolution choices for each period
 // on NSE (session 09:15–15:30 = 375 min/day, ~252 trading days/year).
 const TIME_PERIODS = [
-  { label: "1 day",        key: "1d",  limit: 375  }, // 1-min bars × 375 (full NSE session)
-  { label: "5 days",       key: "5d",  limit: 375  }, // 5-min bars × 75/day × 5 days
-  { label: "1 month",      key: "1m",  limit: 275  }, // 30-min bars × ~12.5/day × 22 days
+  { label: "1 day",        key: "1d",  limit: 375  }, // 1m  bars × ~375/session
+  { label: "5 days",       key: "5d",  limit: 375  }, // 15m bars × 75/day × 5 days
+  { label: "1 month",      key: "1m",  limit: 300  }, // 30m bars × ~12/day × 22 days
+  { label: "3 months",     key: "3m",  limit: 65   }, // daily bars × ~65 trading days
   { label: "6 months",     key: "6m",  limit: 130  }, // daily bars × ~130 trading days
   { label: "Year to date", key: "ytd", limit: 252  }, // daily bars (Jan 1 → now)
-  { label: "1 year",       key: "1y",  limit: 252  }, // daily bars × 252 trading days
+  { label: "1 year",       key: "1y",  limit: 52   }, // weekly bars × 52
   { label: "5 years",      key: "5y",  limit: 260  }, // weekly bars × 5 × 52
-  { label: "10 years",     key: "10y", limit: 120  }, // monthly bars × 120
+  { label: "10 years",     key: "10y", limit: 520  }, // weekly bars × 10 × 52
   { label: "All time",     key: "all", limit: 240  }, // monthly bars ~20 years
 ] as const;
 
@@ -186,16 +187,18 @@ function getNseDayOpen(daysBack = 0): number {
 }
 
 // Per-period resolution + time-range config for real Yahoo Finance candles.
+// Resolution codes: "1"=1m, "15"=15m, "30"=30m, "D"=1d, "W"=1wk, "M"=1mo
 const PERIOD_CANDLE_PARAMS: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
-  "1d":  { resolution: "1",  fromSec: () => getNseDayOpen(0),              toSec: () => Math.floor(Date.now() / 1000) },
-  "5d":  { resolution: "5",  fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400, toSec: () => Math.floor(Date.now() / 1000) },
-  "1m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400, toSec: () => Math.floor(Date.now() / 1000) },
-  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
+  "1d":  { resolution: "1",  fromSec: () => getNseDayOpen(0),                                                    toSec: () => Math.floor(Date.now() / 1000) },
+  "5d":  { resolution: "15", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "1m":  { resolution: "30", fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "3m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
   "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
-  "1y":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
-  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
-  "10y": { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 3700 * 86400, toSec: () => Math.floor(Date.now() / 1000) },
-  "all": { resolution: "M",  fromSec: () => 946684800, toSec: () => Math.floor(Date.now() / 1000) },
+  "1y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
+  "10y": { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 3700 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
+  "all": { resolution: "M",  fromSec: () => 946684800,                                                           toSec: () => Math.floor(Date.now() / 1000) },
 };
 
 const chartTypeIconMap: Partial<Record<ChartType, typeof CandlestickChart>> = {
@@ -364,6 +367,8 @@ export default function SymbolPage() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState(false);
+  // Resolution used for the most recently loaded candles (needed for IST-offset logic).
+  const [candleResolution, setCandleResolution] = useState<string>("1");
 
   // Per-period performance % — fetched via useAllPeriodReturns (real Yahoo Finance data).
   const { returns: perfByPeriod } = useAllPeriodReturns(
@@ -389,6 +394,7 @@ export default function SymbolPage() {
     const params = PERIOD_CANDLE_PARAMS[periodKey] ?? PERIOD_CANDLE_PARAMS["1d"];
     const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
     setChartError(false);
+    setCandleResolution(params.resolution);
     chartCandlesAxios
       .get<{ candles: CandleData[] }>(
         `/candles/${encodeURIComponent(detail.symbol)}?resolution=${params.resolution}&from=${params.fromSec()}&to=${params.toSec()}${exchangeParam}`
@@ -430,11 +436,22 @@ export default function SymbolPage() {
     if (!detail?.symbol) return;
     const from = Math.floor(range.from.getTime() / 1000);
     const to   = Math.floor(range.to.getTime()   / 1000);
+    const days = (to - from) / 86400;
+
+    // Pick resolution based on the span so bars fill the chart (match the period table).
+    let resolution: string;
+    if      (days <= 2)   resolution = "1";   // 1m bars for ≤2 days
+    else if (days <= 7)   resolution = "15";  // 15m bars for ≤7 days
+    else if (days <= 35)  resolution = "30";  // 30m bars for ≤35 days
+    else if (days <= 400) resolution = "D";   // daily bars for ≤1 year
+    else                  resolution = "W";   // weekly bars for >1 year
+
     const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
     setChartError(false);
+    setCandleResolution(resolution);
     chartCandlesAxios
       .get<{ candles: CandleData[] }>(
-        `/candles/${encodeURIComponent(detail.symbol)}?resolution=D&from=${from}&to=${to}${exchangeParam}`
+        `/candles/${encodeURIComponent(detail.symbol)}?resolution=${resolution}&from=${from}&to=${to}${exchangeParam}`
       )
       .then((res) => {
         const c = res.data?.candles;
@@ -445,26 +462,33 @@ export default function SymbolPage() {
   }, [detail?.symbol, detail?.exchange]);
 
   // Candles for the chart.
-  // For custom range: filter by the selected date window.
-  // For 1d/5d intraday: add IST offset (19 800 s) to real UTC timestamps so the
+  // For custom range: filter by the selected date window, then apply IST offset for intraday.
+  // For preset intraday periods (1d, 5d, 1m with 30m bars): add IST offset (19 800 s) so the
   //   chart's x-axis displays IST local times (Yahoo Finance serves UTC epochs).
-  // For all other periods: use real timestamps and prices as-is.
+  // For daily/weekly/monthly periods: use timestamps as-is.
   const displayCandles = useMemo(() => {
     if (!candles.length) return candles;
     const IST_OFFSET_SEC = 19800; // 5h30m
+    // Intraday resolutions that need the IST fake-UTC trick
+    const INTRADAY = new Set(["1", "2", "5", "15", "30"]);
+    const isIntraday = INTRADAY.has(candleResolution);
 
     if (customRange) {
       const from = customRange.from.getTime();
       const to   = customRange.to.getTime();
-      const filtered = candles.filter((c) => {
+      let filtered = candles.filter((c) => {
         const t  = typeof c.time === "number" ? c.time : Number(c.time);
         const ms = t < 1e11 ? t * 1000 : t;
         return Number.isFinite(ms) && ms >= from && ms <= to;
       });
-      return filtered.length ? filtered : candles;
+      if (!filtered.length) filtered = candles;
+      if (isIntraday) {
+        return filtered.map((c) => ({ ...c, time: String((c.time as number) + IST_OFFSET_SEC) }));
+      }
+      return filtered;
     }
 
-    if (activeTimePeriod === "1d" || activeTimePeriod === "5d") {
+    if (isIntraday) {
       return candles.map((c) => ({
         ...c,
         time: String((c.time as number) + IST_OFFSET_SEC),
@@ -472,7 +496,7 @@ export default function SymbolPage() {
     }
 
     return candles;
-  }, [candles, customRange, activeTimePeriod]);
+  }, [candles, customRange, candleResolution]);
 
   // Close symbol picker on outside click
   useEffect(() => {

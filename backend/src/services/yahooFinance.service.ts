@@ -121,15 +121,17 @@ const INTRADAY_INTERVALS = new Set(["1m", "2m", "5m", "15m", "30m"]);
 
 /**
  * Infers the Yahoo Finance `range` string for intraday intervals.
- * 1m supports max 7 days; 5m/15m/30m support up to 60 days.
+ * 1m:  max 7-day range  → use "1d"  (today's session)
+ * 15m: max 60-day range → use "5d"  (~375 bars = 75/day × 5 trading days)
+ * 30m: max 60-day range → use "1mo" (~300 bars for one month)
  */
 function inferYahooRange(interval: string): string {
   switch (interval) {
-    case "1m":  return "1d";   // 1D period: today's session only
+    case "1m":  return "1d";   // today's session (~375 1m bars for NSE)
     case "2m":
-    case "5m":  return "5d";   // 5D period: last 5 trading days
-    case "15m":
-    case "30m": return "1mo";  // 1M period: last month
+    case "5m":  return "5d";   // last 5 trading days
+    case "15m": return "5d";   // 5d → ~375 15m bars (75/day × 5)
+    case "30m": return "1mo";  // 1 month → ~260–300 30m bars
     default:    return "1mo";
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CandleData } from '@/data/stockData';
-import { createTradingChart, resizeChartSurface } from '@/services/chart/chartEngine';
+import { createTradingChart, resizeChartSurface, fitChartContent } from '@/services/chart/chartEngine';
 import {
   activeSeriesForType,
   applySeriesData,
@@ -54,6 +54,10 @@ export default function SymbolMiniTradingChart({
   const transformed = useMemo(() => transformChartData(data, data.length), [data]);
   // Ref that always holds the latest ohlcRows — readable from the (once-mounted) crosshair handler.
   const rowsRef = useRef<typeof transformed.ohlcRows>([]);
+  // Ref for current chart type so onCross (defined once) can read the live value.
+  const chartTypeRef = useRef<ChartType>(chartType);
+  // Ref to the current fit function — called by ResizeObserver to refit after container resize.
+  const refitFnRef = useRef<(() => void) | null>(null);
 
   const isUp = useMemo(() => {
     if (periodReturn != null) return periodReturn >= 0;
@@ -66,12 +70,18 @@ export default function SymbolMiniTradingChart({
   useEffect(() => {
     rowsRef.current = transformed.ohlcRows;
   }, [transformed]);
+  // Keep chartTypeRef in sync so onCross can read the live chart type.
+  useEffect(() => {
+    chartTypeRef.current = chartType;
+  }, [chartType]);
 
   const [tooltip, setTooltip] = useState<{
     x: number;
     y: number;
     price: number;
     time: UTCTimestamp;
+    /** Present for OHLC-style chart types (candlestick, bar, ohlc, heikinAshi, hollowCandles). */
+    ohlc?: { open: number; high: number; low: number; close: number };
   } | null>(null);
 
   useEffect(() => {
@@ -102,9 +112,14 @@ export default function SymbolMiniTradingChart({
 
     resize();
 
-    const observer = new ResizeObserver(() => resize());
+    const observer = new ResizeObserver(() => {
+      resize();
+      // Re-fit bars to fill the new container width.
+      refitFnRef.current?.();
+    });
     observer.observe(container);
 
+    const OHLC_CHART_TYPES = new Set(['candlestick', 'ohlc', 'bar', 'heikinAshi', 'hollowCandles']);
     const onCross = (param: unknown) => {
       const p = param as {
         point: { x: number; y: number } | null;
@@ -120,26 +135,37 @@ export default function SymbolMiniTradingChart({
       const rows = rowsRef.current;
       if (!rows.length) { setTooltip(null); return; }
 
+      const isOhlcChart = OHLC_CHART_TYPES.has(chartTypeRef.current);
       let snapTime: UTCTimestamp;
       let snapPrice: number;
+      let snapOhlc: { open: number; high: number; low: number; close: number } | undefined;
 
-      if (p.time != null && p.price != null) {
-        // Mouse is over an actual data bar — use it directly.
-        snapTime  = p.time;
-        snapPrice = p.price;
+      if (p.time != null) {
+        // Mouse is over a data bar — look up the exact row for OHLC data.
+        snapTime = p.time;
+        const matchRow = rows.find(r => r.time === snapTime);
+        if (matchRow) {
+          snapPrice = matchRow.close;
+          if (isOhlcChart) {
+            snapOhlc = { open: matchRow.open, high: matchRow.high, low: matchRow.low, close: matchRow.close };
+          }
+        } else {
+          snapPrice = p.price ?? rows[rows.length - 1]?.close ?? 0;
+        }
       } else {
-        // Mouse is in empty space (before first bar or after last bar).
-        // Snap to the nearest row using the x fraction across the container.
+        // Mouse is in empty space — snap to the nearest row by x fraction.
         const containerWidth = containerRef.current?.clientWidth ?? 800;
         const fraction = Math.max(0, Math.min(1, p.point.x / containerWidth));
-        const nearestIndex = Math.round(fraction * (rows.length - 1));
-        const clamped = Math.max(0, Math.min(rows.length - 1, nearestIndex));
-        const nearestRow = rows[clamped];
+        const idx = Math.max(0, Math.min(rows.length - 1, Math.round(fraction * (rows.length - 1))));
+        const nearestRow = rows[idx];
         snapTime  = nearestRow.time as UTCTimestamp;
         snapPrice = nearestRow.close;
+        if (isOhlcChart) {
+          snapOhlc = { open: nearestRow.open, high: nearestRow.high, low: nearestRow.low, close: nearestRow.close };
+        }
       }
 
-      setTooltip({ x: p.point.x, y: p.point.y, price: snapPrice, time: snapTime });
+      setTooltip({ x: p.point.x, y: p.point.y, price: snapPrice, time: snapTime, ohlc: snapOhlc });
     };
     chart.subscribeCrosshairMove(onCross);
 
@@ -179,25 +205,21 @@ export default function SymbolMiniTradingChart({
     const times = transformed.ohlcRows;
     if (times.length >= 2) {
       const fromTs = times[0].time;
-      const toTs = times[times.length - 1].time;
+      const toTs   = times[times.length - 1].time;
 
-      // Compute bar spacing so all bars fill the container width exactly.
-      const containerWidth = containerRef.current?.clientWidth ?? 800;
-      const idealBarSpacing = Math.max(0.5, Math.min((containerWidth - 60) / times.length, 8));
-      chartRef.current?.timeScale().applyOptions({
-        barSpacing: idealBarSpacing,
-        rightOffset: 0,
-        fixLeftEdge: true,
-        fixRightEdge: true,
-      });
+      // Build a refit closure and store it so ResizeObserver can call it too.
+      const doFit = () => {
+        if (!chartRef.current || !containerRef.current) return;
+        fitChartContent(chartRef.current, containerRef.current, fromTs, toTs, times.length);
+      };
+      refitFnRef.current = doFit;
 
-      // Set exact visible range so all bars span the full container width.
-      try {
-        chartRef.current?.timeScale().setVisibleRange({ from: fromTs, to: toTs });
-      } catch {
-        chartRef.current?.timeScale().scrollToRealTime();
-      }
+      // Fit immediately, then again on the next animation frame so the
+      // browser has had a chance to settle the container's final layout width.
+      doFit();
+      requestAnimationFrame(doFit);
     } else {
+      refitFnRef.current = null;
       chartRef.current?.timeScale().scrollToRealTime();
     }
   }, [chartType, ready, transformed, isUp, timePeriod]);
@@ -304,7 +326,7 @@ export default function SymbolMiniTradingChart({
             // Smart quadrant positioning: tooltip moves away from whichever edge cursor is near.
             left: (() => {
               const containerW = containerRef.current?.clientWidth ?? 800;
-              const tooltipW = 140;
+              const tooltipW = tooltip.ohlc ? 180 : 140;
               if (tooltip.x > containerW / 2) {
                 return Math.max(4, tooltip.x - tooltipW - 16);
               } else {
@@ -313,7 +335,7 @@ export default function SymbolMiniTradingChart({
             })(),
             top: (() => {
               const containerH = containerRef.current?.clientHeight ?? 400;
-              const tooltipH = 60;
+              const tooltipH = tooltip.ohlc ? 76 : 60;
               if (tooltip.y > containerH / 2) {
                 return Math.max(4, tooltip.y - tooltipH - 8);
               } else {
@@ -323,7 +345,18 @@ export default function SymbolMiniTradingChart({
             zIndex: 5,
           }}
         >
-          <div className="font-semibold tabular-nums text-foreground">{tooltipBits.price}</div>
+          {tooltip.ohlc ? (
+            <div className="tabular-nums text-[10px] leading-relaxed">
+              <div className="grid grid-cols-2 gap-x-2">
+                <span><span className="text-muted-foreground">O </span><span className="text-foreground font-medium">{formatPriceUs(tooltip.ohlc.open)}</span></span>
+                <span><span className="text-muted-foreground">H </span><span className="text-emerald-400 font-medium">{formatPriceUs(tooltip.ohlc.high)}</span></span>
+                <span><span className="text-muted-foreground">L </span><span className="text-red-400 font-medium">{formatPriceUs(tooltip.ohlc.low)}</span></span>
+                <span><span className="text-muted-foreground">C </span><span className="text-foreground font-medium">{formatPriceUs(tooltip.ohlc.close)}</span></span>
+              </div>
+            </div>
+          ) : (
+            <div className="font-semibold tabular-nums text-foreground">{tooltipBits.price}</div>
+          )}
           <div className="text-muted-foreground">{tooltipBits.date}</div>
           <div className="text-muted-foreground">{tooltipBits.time} UTC+5:30</div>
         </div>
