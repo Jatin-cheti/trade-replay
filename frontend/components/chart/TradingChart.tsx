@@ -382,32 +382,23 @@ export default function TradingChart({
     setSelectedIconPreset(null);
   }, [toolState.variant]);
 
-  // Last price sticky badge on Y-axis
-  const lastPriceLineRef = useRef<ReturnType<NonNullable<ReturnType<typeof getActiveSeries>>['createPriceLine']> | null>(null);
+  // Last price sticky badge — positioned via priceToCoordinate (createPriceLine not available)
+  const [lastPriceBadge, setLastPriceBadge] = useState<{ y: number; price: number; isUp: boolean } | null>(null);
   useEffect(() => {
     if (!ready) return;
     const series = getActiveSeries();
     if (!series) return;
-    if (lastPriceLineRef.current) {
-      try { series.removePriceLine(lastPriceLineRef.current); } catch { /* disposed */ }
-      lastPriceLineRef.current = null;
-    }
     const rows = transformedData.ohlcRows;
-    if (rows.length < 1) return;
+    if (rows.length < 1) { setLastPriceBadge(null); return; }
     const last = rows[rows.length - 1] as { close?: number; value?: number };
     const lastPrice = last.close ?? last.value;
-    if (lastPrice == null || !Number.isFinite(lastPrice)) return;
+    if (lastPrice == null || !Number.isFinite(lastPrice)) { setLastPriceBadge(null); return; }
     const prev = rows.length >= 2 ? (rows[rows.length - 2] as typeof last) : null;
     const prevPrice = prev ? (prev.close ?? prev.value) : null;
     const isUp = prevPrice == null || lastPrice >= prevPrice;
-    lastPriceLineRef.current = series.createPriceLine({
-      price: lastPrice,
-      color: isUp ? '#26a69a' : '#ef5350',
-      lineWidth: 1,
-      lineStyle: 0, // LineStyle.Solid
-      axisLabelVisible: true,
-      title: '',
-    });
+    const y = series.priceToCoordinate(lastPrice);
+    if (y == null) { setLastPriceBadge(null); return; }
+    setLastPriceBadge({ y, price: lastPrice, isUp });
   }, [ready, transformedData, getActiveSeries]);
 
   const addIndicator = useCallback((indicatorId: string) => {
@@ -3199,6 +3190,21 @@ export default function TradingChart({
             {ohlcLegend ? (
               <div className="pointer-events-none absolute left-2 top-2 z-30">
                 {ohlcLegend}
+              </div>
+            ) : null}
+
+            {/* Last price Y-axis badge */}
+            {lastPriceBadge != null ? (
+              <div
+                className="pointer-events-none absolute right-0 z-30 flex items-center"
+                style={{ top: lastPriceBadge.y - 10 }}
+              >
+                <div
+                  className="rounded-l px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums"
+                  style={{ backgroundColor: lastPriceBadge.isUp ? '#26a69a' : '#ef5350' }}
+                >
+                  {lastPriceBadge.price.toFixed(2)}
+                </div>
               </div>
             ) : null}
 
