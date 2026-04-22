@@ -11,7 +11,7 @@ export interface ScreenerChartSymbolData {
 
 type DataMap = Record<string, ScreenerChartSymbolData>;
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 50;
 
 function cacheTtl(period: string): number {
   if (period === "1D") return 30_000;

@@ -3,15 +3,12 @@ import {
   RefreshCw, ChevronDown, LayoutGrid,
 } from "lucide-react";
 import type { ChartType } from "@/services/chart/dataTransforms";
-import { chartTypeLabels } from "@/services/chart/dataTransforms";
+import { chartTypeGroups, chartTypeLabels } from "@/services/chart/dataTransforms";
 
 export type ChartPeriod = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "All";
 export type ChartLayout = { mode: "auto" } | { mode: "custom"; cols: number };
 
 const PERIODS: ChartPeriod[] = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "5Y", "All"];
-
-// Subset of chart types to expose in the screener chart toolbar
-const SCREENER_CHART_TYPES: ChartType[] = ["area", "line", "candlestick", "bar", "heikinAshi"];
 
 interface Props {
   viewMode: "table" | "chart";
@@ -157,19 +154,26 @@ export default function ScreenerChartToolbar({
         </button>
 
         {typeOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-36 rounded-xl border border-border/50 bg-background py-1.5 shadow-xl">
-            {SCREENER_CHART_TYPES.map((t) => (
-              <button
-                key={t}
-                type="button"
-                aria-selected={chartType === t}
-                onClick={() => { onChartTypeChange(t); setTypeOpen(false); }}
-                className={`flex w-full items-center px-3 py-2 text-xs transition-colors hover:bg-secondary/40 ${
-                  chartType === t ? "font-semibold text-primary" : "text-foreground/85"
-                }`}
-              >
-                {chartTypeLabels[t]}
-              </button>
+          <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-xl border border-border/50 bg-background py-1.5 shadow-xl max-h-80 overflow-y-auto">
+            {chartTypeGroups.map((group) => (
+              <div key={group.id}>
+                <p className="px-3 pt-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  {group.label}
+                </p>
+                {group.types.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-selected={chartType === t}
+                    onClick={() => { onChartTypeChange(t); setTypeOpen(false); }}
+                    className={`flex w-full items-center px-3 py-1.5 text-xs transition-colors hover:bg-secondary/40 ${
+                      chartType === t ? "font-semibold text-primary" : "text-foreground/85"
+                    }`}
+                  >
+                    {chartTypeLabels[t]}
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         )}

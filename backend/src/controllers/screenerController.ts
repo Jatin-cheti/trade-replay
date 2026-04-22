@@ -9,89 +9,29 @@ import { getScreenerFilterOptions, getScreenerMeta, getScreenerStats } from "../
 import { getSymbolBySymbolOrFullSymbol, getSymbols } from "../services/screener/symbolQuery.service";
 import type { ScreenerFiltersInput } from "../services/screener/screener.types";
 
-/* ── Deterministic seeded RNG (mulberry32) ── */
-function seededRng(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s += 0x6d2b79f5;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/* ── Chart-service integration for screener chart data ── */
+
+interface OHLCVCandle {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
-function symbolSeed(sym: string): number {
-  let h = 5381;
-  for (let i = 0; i < sym.length; i++) {
-    h = (Math.imul(h, 33) ^ sym.charCodeAt(i)) >>> 0;
-  }
-  return h;
-}
-
-function periodToDays(period: string): number {
-  switch (period) {
-    case "1D": return 1;
-    case "5D": return 5;
-    case "1M": return 21;
-    case "3M": return 63;
-    case "6M": return 126;
-    case "YTD": return Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000) || 1;
-    case "1Y": return 252;
-    case "5Y": return 252 * 5;
-    case "All": return 252 * 10;
-    default: return 5;
-  }
-}
-
-function generateCandles(symbol: string, currentPrice: number, changePercent: number, period: string) {
-  const days = periodToDays(period);
-  const rng = seededRng(symbolSeed(symbol + period));
-  const candles: { time: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
-
-  // Work backwards from today so the last candle reflects current data
-  const endPrice = currentPrice > 0 ? currentPrice : 10;
-  const startPrice = endPrice / (1 + changePercent / 100);
-  let price = Math.max(startPrice, 0.01);
-
-  const now = new Date();
-  // daily volatility proportional to |changePercent| but bounded
-  const volatility = Math.min(0.03 + Math.abs(changePercent) / 100 * 0.01, 0.06);
-
-  for (let i = 0; i < days; i++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - (days - 1 - i));
-    // Skip weekends (simple)
-    const dow = date.getDay();
-    if (dow === 0 || dow === 6) continue;
-
-    const change = (rng() - 0.48) * volatility * price;
-    const open = price;
-    const close = Math.max(open + change, 0.01);
-    const hi = Math.max(open, close) * (1 + rng() * volatility * 0.5);
-    const lo = Math.min(open, close) * (1 - rng() * volatility * 0.5);
-    const vol = Math.round((rng() * 900000 + 100000) * (endPrice / 100 || 1));
-
-    candles.push({
-      time: date.toISOString().slice(0, 10),
-      open: parseFloat(open.toFixed(4)),
-      high: parseFloat(hi.toFixed(4)),
-      low: parseFloat(lo.toFixed(4)),
-      close: parseFloat(close.toFixed(4)),
-      volume: vol,
-    });
-    price = close;
-  }
-
-  // Force last candle close to match actual current price
-  if (candles.length > 0) {
-    const last = candles[candles.length - 1];
-    last.close = parseFloat(endPrice.toFixed(4));
-    last.high = Math.max(last.high, last.close);
-    last.low = Math.min(last.low, last.close);
-  }
-
-  return candles;
-}
+/** Map screener period strings to chart-service timeframe + bar count */
+const PERIOD_CHART_MAP: Record<string, { timeframe: string; limit: number }> = {
+  "1D":  { timeframe: "5m",  limit: 78  },  // 6.5 h × 12 bars/h
+  "5D":  { timeframe: "30m", limit: 65  },  // 5 days × 13 bars/day
+  "1M":  { timeframe: "1D",  limit: 22  },
+  "3M":  { timeframe: "1D",  limit: 66  },
+  "6M":  { timeframe: "1D",  limit: 132 },
+  "YTD": { timeframe: "1D",  limit: 120 },
+  "1Y":  { timeframe: "1W",  limit: 52  },
+  "5Y":  { timeframe: "1W",  limit: 260 },
+  "All": { timeframe: "1M",  limit: 120 },
+};
 
 const LIVE_SCREENER_CACHE_TTL = {
   l1TtlMs: 4_000,
@@ -445,26 +385,82 @@ export async function chartData(req: Request, res: Response) {
 
     if (!symbols.length) return res.json({});
 
-    // Try to match by fullSymbol first, then symbol
+    const chartQuery = PERIOD_CHART_MAP[period] ?? PERIOD_CHART_MAP["5D"];
+    const chartServiceBase = (process.env.CHART_SERVICE_URL ?? "http://127.0.0.1:3001").replace(/\/api\/chart.*$/, "");
+
+    // Fetch real candle data from chart-service via POST /multi
+    // chart-service multi schema: { symbols: string[], timeframe, limit } — max 25 per batch
+    let candlesBySymbol: Record<string, OHLCVCandle[]> = {};
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 30_000);
+      const CHART_BATCH = 25;
+      const batches: string[][] = [];
+      for (let i = 0; i < symbols.length; i += CHART_BATCH) {
+        batches.push(symbols.slice(i, i + CHART_BATCH));
+      }
+      await Promise.all(
+        batches.map(async (batch) => {
+          const body = JSON.stringify({
+            symbols: batch,
+            timeframe: chartQuery.timeframe,
+            limit: chartQuery.limit,
+          });
+          const chartResp = await fetch(`${chartServiceBase}/api/chart/multi`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            signal: ctrl.signal,
+          });
+          if (chartResp.ok) {
+            const json = await chartResp.json() as { ok?: boolean; data?: Record<string, OHLCVCandle[]> };
+            if (json?.ok && json.data) {
+              Object.assign(candlesBySymbol, json.data);
+            }
+          } else {
+            logger.warn("screener_chart_service_non_ok", { status: chartResp.status });
+          }
+        }),
+      );
+      clearTimeout(timer);
+    } catch (err) {
+      logger.warn("screener_chart_service_error", { error: (err as Error).message });
+    }
+
+    // Fetch symbol metadata for price/changePercent from DB
     const docs = await CleanAssetModel.find({
-      $or: [
-        { fullSymbol: { $in: symbols } },
-        { symbol: { $in: symbols } },
-      ],
+      $or: [{ fullSymbol: { $in: symbols } }, { symbol: { $in: symbols } }],
     })
       .select("symbol fullSymbol price changePercent")
       .lean();
 
-    const result: Record<string, unknown> = {};
+    const docMap = new Map<string, { price: number; changePercent: number }>();
     for (const doc of docs) {
-      const key = symbols.find((s) => s === doc.fullSymbol) || doc.symbol;
-      const currentPrice = (doc as { price?: number }).price || 100;
-      const changePercent = (doc as { changePercent?: number }).changePercent || 0;
-      result[key] = {
-        symbol: doc.symbol,
-        currentPrice,
-        changePercent,
-        candles: generateCandles(doc.symbol, currentPrice, changePercent, period),
+      const d = doc as unknown as { symbol: string; fullSymbol?: string; price?: number; changePercent?: number };
+      const key = symbols.find((s) => s === d.fullSymbol) ?? d.symbol;
+      docMap.set(key, { price: d.price ?? 0, changePercent: d.changePercent ?? 0 });
+    }
+
+    const result: Record<string, unknown> = {};
+    for (const sym of symbols) {
+      const meta = docMap.get(sym) ?? { price: 0, changePercent: 0 };
+      const ohlcvs = candlesBySymbol[sym] ?? [];
+      const candles = ohlcvs
+        .filter((c) => c.timestamp && Number.isFinite(c.close) && c.close > 0)
+        .map((c) => ({
+          // Keep as ISO string — dataTransforms.toTimestamp handles it correctly
+          time: new Date(c.timestamp).toISOString(),
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        }));
+      result[sym] = {
+        symbol: sym,
+        currentPrice: meta.price,
+        changePercent: meta.changePercent,
+        candles,
       };
     }
 

@@ -57,8 +57,25 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
 
     try {
       chart.applyOptions({
+        // Mini screener cards: disable all interaction
         handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: { time: false, price: false } },
         handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false, vertTouchDrag: false },
+        // Remove right offset so data fills the full width (starts from left)
+        timeScale: {
+          rightOffset: 0,
+          barSpacing: 3,
+          minBarSpacing: 0.5,
+          fixLeftEdge: true,
+          fixRightEdge: false,
+          lockVisibleTimeRangeOnResize: true,
+        },
+        // Compact price axis for mini cards
+        rightPriceScale: {
+          scaleMargins: { top: 0.08, bottom: 0.08 },
+          autoScale: true,
+        },
+        // Compact crosshair for mini cards
+        crosshair: { mode: 0 },
       });
     } catch { /* non-fatal */ }
 
@@ -123,7 +140,10 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      if (transformed.ohlcRows.length > 0) chartRef.current?.timeScale().fitContent();
+      if (transformed.ohlcRows.length > 0) {
+        // fitContent ensures all bars are visible; scrollToRealTime=false keeps left edge locked
+        chartRef.current?.timeScale().fitContent();
+      }
     } catch { /* ignore data application errors */ }
   }, [chartType, isPositive, lineColor, ready, transformed]);
 
