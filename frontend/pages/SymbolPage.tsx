@@ -540,15 +540,28 @@ export default function SymbolPage() {
       return filtered;
     }
 
+    // For the "1d" predefined period with intraday resolution, filter to today's session only.
+    // Yahoo Finance returns range=5d for 5m resolution (needed for OHLC readability), but
+    // for 1D we only want today's bars (from NSE open onward).
+    let baseCandles = candles;
+    if (!customRange && activeTimePeriod === "1d" && isIntraday) {
+      const todayOpenSec = getNseDayOpen(0);
+      const filtered = candles.filter((c) => {
+        const t = typeof c.time === "number" ? c.time : Number(c.time);
+        return t >= todayOpenSec;
+      });
+      if (filtered.length > 0) baseCandles = filtered;
+    }
+
     if (isIntraday) {
-      return candles.map((c) => ({
+      return baseCandles.map((c) => ({
         ...c,
         time: String((c.time as number) + IST_OFFSET_SEC),
       }));
     }
 
-    return candles;
-  }, [candles, customRange, candleResolution]);
+    return baseCandles;
+  }, [candles, customRange, candleResolution, activeTimePeriod]);
 
   // Previous-close reference line value.
   //   1D + line/area type : API-reported yesterday's close (most accurate).
