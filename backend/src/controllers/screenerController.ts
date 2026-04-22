@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { CleanAssetModel } from "../models/CleanAsset";
 import { logger } from "../utils/logger";
+import { CONFIG } from "../config";
 import { buildScreenerCacheKey, getCachedRaw } from "../services/screenerCache.service";
 import { trieSearchSymbols, isTrieReady } from "../services/trieSearch.service";
 import { DEFAULT_VISIBLE_COLUMNS, SCREENER_TABS, SCREENER_TYPES, type ScreenerTabKey } from "../services/screener/screener.constants";
@@ -386,7 +387,10 @@ export async function chartData(req: Request, res: Response) {
     if (!symbols.length) return res.json({});
 
     const chartQuery = PERIOD_CHART_MAP[period] ?? PERIOD_CHART_MAP["5D"];
-    const chartServiceBase = (process.env.CHART_SERVICE_URL ?? "http://127.0.0.1:3001").replace(/\/api\/chart.*$/, "");
+    // Use the configured chart service URL (defaults to http://127.0.0.1:3001 locally)
+    const chartServiceBase = (CONFIG.chartServiceUrl ?? "http://127.0.0.1:3001")
+      .replace(/\/api\/chart.*$/, "")
+      .replace(/\/$/, "");
 
     // Fetch real candle data from chart-service via POST /multi
     // chart-service multi schema: { symbols: string[], timeframe, limit } — max 25 per batch

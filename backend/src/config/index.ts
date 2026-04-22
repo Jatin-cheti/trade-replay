@@ -292,7 +292,7 @@ export const CONFIG = {
     return raw ? raw.split(",").map(origin => origin.trim()).filter(Boolean) : [requiredEnv("CLIENT_URL")];
   })(),
   chartServiceEnabled: optionalEnv("CHART_SERVICE_ENABLED") === "true",
-  chartServiceUrl: optionalEnv("CHART_SERVICE_URL") || "http://127.0.0.1:4010",
+  chartServiceUrl: optionalEnv("CHART_SERVICE_URL") || "http://127.0.0.1:3001",
   chartServiceAuthEnabled: optionalEnv("CHART_SERVICE_AUTH_ENABLED") === "true",
   chartServiceAuthToken: optionalEnv("CHART_SERVICE_AUTH_TOKEN"),
   chartServiceTimeoutMs: optionalEnv("CHART_SERVICE_TIMEOUT_MS") ? Number(optionalEnv("CHART_SERVICE_TIMEOUT_MS")) : 1500,
