@@ -1245,7 +1245,14 @@ export function createChart(
       } else {
         const v = row.value;
         min = Math.min(min, v);
-        if (s.type === 'Baseline' || s.type === 'Histogram') min = Math.min(min, 0);
+        if (s.type === 'Baseline') {
+          // Use the actual baseValue.price (prevClose) as the floor, not 0.
+          // This prevents the price axis from spanning 0–1400 when the baseline is at 1315.
+          const basePrice = s.opts.baseValue?.price ?? 0;
+          min = Math.min(min, basePrice);
+        } else if (s.type === 'Histogram') {
+          min = Math.min(min, 0);
+        }
         max = Math.max(max, v);
       }
     }

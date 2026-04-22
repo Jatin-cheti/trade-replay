@@ -8,7 +8,7 @@ import {
   createChartSeries,
   type ChartSeriesMap,
 } from '@/services/chart/seriesManager';
-import { transformChartData, type ChartType } from '@/services/chart/dataTransforms';
+import { transformChartData, type ChartType, COMING_SOON_CHART_TYPES, chartTypeLabels } from '@/services/chart/dataTransforms';
 import { formatPriceUs } from '@/lib/numberFormat';
 import type { ISeriesApi, UTCTimestamp } from '@tradereplay/charts';
 
@@ -224,11 +224,51 @@ export default function SymbolMiniTradingChart({
     }
   }, [chartType, ready, transformed, isUp, timePeriod]);
 
+  // Baseline: update baseValue price to the reference price so the chart
+  // splits green/red at the correct level (prevClose or first bar's close).
+  useEffect(() => {
+    const seriesMap = seriesMapRef.current;
+    if (!ready || !seriesMap || chartType !== 'baseline') return;
+    const rows = transformed.ohlcRows;
+    const basePrice =
+      prevClose != null && Number.isFinite(prevClose)
+        ? prevClose
+        : (rows[0]?.close ?? 0);
+    seriesMap.baseline.applyOptions({
+      baseValue: { type: 'price', price: basePrice },
+    });
+    // Re-set the data after updating the baseValue so the chart engine
+    // recalculates the price-scale range with the correct baseline reference.
+    const closeRows = transformed.closeRows;
+    if (closeRows.length > 0) {
+      seriesMap.baseline.setData(closeRows);
+    }
+    // Trigger price-scale auto-scale via the series' own price scale API.
+    // This causes the chart to recalculate visible range based on the new baseValue.
+    try {
+      const ps = seriesMap.baseline.priceScale();
+      ps.applyOptions({ autoScale: false });
+      ps.applyOptions({ autoScale: true });
+    } catch { /* API may not be available in this chart build */ }
+    // Re-fit the time range as a fallback — triggers price auto-scale recalculation.
+    if (rows.length >= 2 && chartRef.current && containerRef.current) {
+      const fromTs = rows[0].time;
+      const toTs = rows[rows.length - 1].time;
+      fitChartContent(chartRef.current, containerRef.current, fromTs, toTs, rows.length);
+    }
+  }, [chartType, ready, prevClose, transformed]);
+
   useEffect(() => {
     const series = prevCloseSeriesRef.current;
     const rows = transformed.ohlcRows;
     if (!series || !ready) return;
-    if (prevClose == null || !Number.isFinite(prevClose) || rows.length < 2) {
+    // Histogram: prevClose line forces price scale to 0-1400, dwarfing ±50 bars.
+    // Baseline: chart itself draws the reference line via baseValue — no duplicate.
+    // priceChange: data is close - close[0] (0-50 range), prevClose is ~1400 — incompatible scales.
+    // Coming-soon types: no chart is rendered, so prevClose is irrelevant.
+    const hideForType = chartType === 'histogram' || chartType === 'baseline'
+      || chartType === 'priceChange' || COMING_SOON_CHART_TYPES.has(chartType);
+    if (hideForType || prevClose == null || !Number.isFinite(prevClose) || rows.length < 2) {
       series.applyOptions({ visible: false });
       series.setData([]);
       return;
@@ -240,7 +280,7 @@ export default function SymbolMiniTradingChart({
       { time: last, value: prevClose },
     ]);
     series.applyOptions({ visible: true });
-  }, [prevClose, ready, transformed]);
+  }, [chartType, prevClose, ready, transformed]);
 
   const hasData = transformed.ohlcRows.length > 1;
   const activeSeries = ready && seriesMapRef.current
@@ -312,7 +352,21 @@ export default function SymbolMiniTradingChart({
       <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }} />
       <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
 
-      {!hasData && (
+      {/* Coming-soon overlay — rendered over the empty chart canvas */}
+      {COMING_SOON_CHART_TYPES.has(chartType) && (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-background/70 backdrop-blur-sm rounded-xl">
+          <svg viewBox="0 0 48 48" className="h-10 w-10 text-muted-foreground/40" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <rect x="4" y="4" width="40" height="40" rx="6" />
+            <path d="M14 34 L20 24 L26 28 L34 16" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className="text-center">
+            <p className="text-sm font-semibold text-foreground/80">{chartTypeLabels[chartType]}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Coming soon — stay tuned!</p>
+          </div>
+        </div>
+      )}
+
+      {!hasData && !COMING_SOON_CHART_TYPES.has(chartType) && (
         <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
           No chart data available
         </div>

@@ -14,55 +14,112 @@ import {
 import type { CandleData } from '@/data/stockData';
 
 export type ChartType =
-  | 'candlestick'
-  | 'line'
-  | 'area'
-  | 'baseline'
-  | 'histogram'
-  | 'bar'
-  | 'heikinAshi'
-  | 'ohlc'
-  | 'hollowCandles'
-  | 'stepLine'
-  | 'rangeArea'
-  | 'mountainArea'
-  | 'volumeCandles'
-  | 'volumeLine'
-  | 'renko'
-  | 'rangeBars'
-  | 'lineBreak'
-  | 'kagi'
-  | 'pointFigure'
-  | 'brick';
+  // ── Standard ─────────────────────────────────────────────────────────
+  | 'candlestick' | 'line' | 'area' | 'baseline' | 'histogram'
+  | 'bar' | 'ohlc' | 'heikinAshi' | 'hollowCandles' | 'stepLine'
+  // ── Derived Price (implementable with existing engine) ────────────────
+  | 'hlcBar' | 'avgPriceBar' | 'openClose' | 'dotChart'
+  | 'maLine' | 'emaLine' | 'vwapLine' | 'priceChange'
+  // ── Overlays ──────────────────────────────────────────────────────────
+  | 'rangeArea' | 'mountainArea'
+  // ── Volume ────────────────────────────────────────────────────────────
+  | 'volumeCandles' | 'volumeLine'
+  // ── Price Action ─────────────────────────────────────────────────────
+  | 'renko' | 'rangeBars' | 'lineBreak' | 'kagi' | 'pointFigure' | 'brick'
+  // ── Analytical — Coming Soon ─────────────────────────────────────────
+  | 'equityCurve' | 'drawdownChart' | 'returnsHistogram'
+  | 'zScoreLine' | 'rsiLine' | 'macdHistogram' | 'volumeOscillator'
+  // ── Advanced Statistical — Coming Soon ───────────────────────────────
+  | 'scatterPlot' | 'bubblePlot' | 'boxPlot' | 'heatMap'
+  | 'radarChart' | 'treemap' | 'waterfallChart' | 'sunburst'
+  // ── Financial — Coming Soon ──────────────────────────────────────────
+  | 'yieldCurve' | 'volatilitySurface' | 'correlationMatrix'
+  | 'optionsPayoff' | 'monteCarlo' | 'seasonality' | 'regressionChannel'
+  // ── Layouts — Coming Soon ─────────────────────────────────────────────
+  | 'fanChart' | 'paretoChart' | 'funnelChart' | 'networkGraph'
+  | 'donutChart' | 'stackedArea';
+
+/** Chart types not yet implemented — show a "coming soon" overlay in the chart panel. */
+export const COMING_SOON_CHART_TYPES: ReadonlySet<ChartType> = new Set<ChartType>([
+  'equityCurve', 'drawdownChart', 'returnsHistogram',
+  'zScoreLine', 'rsiLine', 'macdHistogram', 'volumeOscillator',
+  'scatterPlot', 'bubblePlot', 'boxPlot', 'heatMap',
+  'radarChart', 'treemap', 'waterfallChart', 'sunburst',
+  'yieldCurve', 'volatilitySurface', 'correlationMatrix',
+  'optionsPayoff', 'monteCarlo', 'seasonality', 'regressionChannel',
+  'fanChart', 'paretoChart', 'funnelChart', 'networkGraph',
+  'donutChart', 'stackedArea',
+]);
 
 export const chartTypeGroups: Array<{ id: string; label: string; types: ChartType[] }> = [
-  { id: 'core', label: 'Core', types: ['candlestick', 'line', 'area', 'baseline', 'histogram', 'bar', 'ohlc'] },
-  { id: 'advanced', label: 'Advanced', types: ['heikinAshi', 'hollowCandles', 'stepLine', 'rangeArea', 'mountainArea'] },
-  { id: 'premium', label: 'Premium', types: ['renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick'] },
-  { id: 'volume', label: 'Volume', types: ['volumeCandles', 'volumeLine'] },
+  {
+    id: 'standard', label: 'Standard',
+    types: ['candlestick', 'line', 'area', 'baseline', 'histogram', 'bar', 'ohlc', 'stepLine'],
+  },
+  {
+    id: 'derived', label: 'Derived Price',
+    types: ['heikinAshi', 'hollowCandles', 'hlcBar', 'avgPriceBar', 'openClose', 'dotChart', 'mountainArea', 'rangeArea'],
+  },
+  {
+    id: 'indicators', label: 'Indicators',
+    types: ['maLine', 'emaLine', 'vwapLine', 'priceChange'],
+  },
+  {
+    id: 'volume', label: 'Volume',
+    types: ['volumeCandles', 'volumeLine'],
+  },
+  {
+    id: 'priceAction', label: 'Price Action',
+    types: ['renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick'],
+  },
+  {
+    id: 'analytical', label: 'Analytical',
+    types: ['equityCurve', 'drawdownChart', 'returnsHistogram', 'zScoreLine', 'rsiLine', 'macdHistogram', 'volumeOscillator'],
+  },
+  {
+    id: 'statistical', label: 'Statistical',
+    types: ['scatterPlot', 'bubblePlot', 'boxPlot', 'heatMap', 'radarChart', 'treemap', 'waterfallChart', 'sunburst'],
+  },
+  {
+    id: 'financial', label: 'Financial',
+    types: ['yieldCurve', 'volatilitySurface', 'correlationMatrix', 'optionsPayoff', 'monteCarlo', 'seasonality', 'regressionChannel'],
+  },
+  {
+    id: 'layouts', label: 'Layouts',
+    types: ['fanChart', 'paretoChart', 'funnelChart', 'networkGraph', 'donutChart', 'stackedArea'],
+  },
 ];
 
 export const chartTypeLabels: Record<ChartType, string> = {
-  candlestick: 'Candlestick',
-  line: 'Line',
-  area: 'Area',
-  baseline: 'Baseline',
-  histogram: 'Histogram',
-  bar: 'Bar',
-  heikinAshi: 'Heikin Ashi',
-  ohlc: 'OHLC',
-  hollowCandles: 'Hollow Candles',
-  stepLine: 'Step Line',
-  rangeArea: 'Range Area',
-  mountainArea: 'Mountain Area',
-  volumeCandles: 'Candles + Volume',
-  volumeLine: 'Line + Volume',
-  renko: 'Renko',
-  rangeBars: 'Range Bars',
-  lineBreak: '3-Line Break',
-  kagi: 'Kagi',
-  pointFigure: 'Point & Figure',
-  brick: 'Brick',
+  // Standard
+  candlestick: 'Candlestick', line: 'Line', area: 'Area', baseline: 'Baseline',
+  histogram: 'Histogram', bar: 'Bar', ohlc: 'OHLC', stepLine: 'Step Line',
+  // Derived Price
+  heikinAshi: 'Heikin Ashi', hollowCandles: 'Hollow Candles',
+  hlcBar: 'HLC Bar', avgPriceBar: 'Avg Price Bar', openClose: 'Open-Close',
+  dotChart: 'Dot Chart', mountainArea: 'Mountain Area', rangeArea: 'Range Area',
+  // Indicators
+  maLine: 'MA Line (20)', emaLine: 'EMA Line (20)', vwapLine: 'VWAP', priceChange: 'Price Change',
+  // Volume
+  volumeCandles: 'Candles + Volume', volumeLine: 'Line + Volume',
+  // Price Action
+  renko: 'Renko', rangeBars: 'Range Bars', lineBreak: '3-Line Break',
+  kagi: 'Kagi', pointFigure: 'Point & Figure', brick: 'Brick',
+  // Analytical (coming soon)
+  equityCurve: 'Equity Curve', drawdownChart: 'Drawdown Chart',
+  returnsHistogram: 'Returns Histogram', zScoreLine: 'Z-Score Line',
+  rsiLine: 'RSI Line', macdHistogram: 'MACD Histogram', volumeOscillator: 'Volume Oscillator',
+  // Statistical (coming soon)
+  scatterPlot: 'Scatter Plot', bubblePlot: 'Bubble Plot', boxPlot: 'Box Plot',
+  heatMap: 'Heat Map', radarChart: 'Radar Chart', treemap: 'Treemap',
+  waterfallChart: 'Waterfall Chart', sunburst: 'Sunburst Chart',
+  // Financial (coming soon)
+  yieldCurve: 'Yield Curve', volatilitySurface: 'Volatility Surface',
+  correlationMatrix: 'Correlation Matrix', optionsPayoff: 'Options Payoff',
+  monteCarlo: 'Monte Carlo', seasonality: 'Seasonality', regressionChannel: 'Regression Channel',
+  // Layouts (coming soon)
+  fanChart: 'Fan Chart', paretoChart: 'Pareto Chart', funnelChart: 'Funnel Chart',
+  networkGraph: 'Network Graph', donutChart: 'Donut Chart', stackedArea: 'Stacked Area',
 };
 
 export type OhlcRow = {
@@ -73,6 +130,40 @@ export type OhlcRow = {
   close: number;
   volume: number;
 };
+
+// ── Derived transform helpers ─────────────────────────────────────────────
+
+function computeSMA(rows: OhlcRow[], period = 20): LineData[] {
+  return rows.map((row, i) => {
+    const start = Math.max(0, i - period + 1);
+    let sum = 0;
+    for (let j = start; j <= i; j++) sum += rows[j].close;
+    return { time: row.time, value: sum / (i - start + 1) };
+  });
+}
+
+function computeEMA(rows: OhlcRow[], period = 20): LineData[] {
+  if (!rows.length) return [];
+  const k = 2 / (period + 1);
+  const output: LineData[] = [];
+  let ema = rows[0].close;
+  for (const row of rows) {
+    ema = row.close * k + ema * (1 - k);
+    output.push({ time: row.time, value: ema });
+  }
+  return output;
+}
+
+function computeVWAP(rows: OhlcRow[]): LineData[] {
+  let cumPV = 0;
+  let cumV = 0;
+  return rows.map((row) => {
+    const tp = (row.high + row.low + row.close) / 3;
+    cumPV += tp * row.volume;
+    cumV += row.volume;
+    return { time: row.time, value: cumV > 0 ? cumPV / cumV : row.close };
+  });
+}
 
 export type TransformedData = {
   ohlcRows: OhlcRow[];
@@ -89,6 +180,14 @@ export type TransformedData = {
   histogramRows: HistogramData[];
   volumeRows: HistogramData[];
   heikinRows: CandlestickData[];
+  // Derived price rows
+  hlcBarRows: LineData[];
+  avgPriceRows: LineData[];
+  openCloseRows: LineData[];
+  maRows: LineData[];
+  emaRows: LineData[];
+  vwapRows: LineData[];
+  priceChangeRows: LineData[];
   times: UTCTimestamp[];
 };
 
@@ -233,6 +332,26 @@ export function transformChartData(data: CandleData[], visibleCount: number, par
       color: row.close >= row.open ? volumeUpColor : volumeDownColor,
     })),
     heikinRows: heikinAshiTransform(ohlcRows),
+    // Derived price rows
+    hlcBarRows: ohlcRows.map((row) => ({
+      time: row.time,
+      value: (row.high + row.low + row.close) / 3,
+    })),
+    avgPriceRows: ohlcRows.map((row) => ({
+      time: row.time,
+      value: (row.open + row.high + row.low + row.close) / 4,
+    })),
+    openCloseRows: ohlcRows.map((row) => ({
+      time: row.time,
+      value: (row.open + row.close) / 2,
+    })),
+    maRows: computeSMA(ohlcRows, 20),
+    emaRows: computeEMA(ohlcRows, 20),
+    vwapRows: computeVWAP(ohlcRows),
+    priceChangeRows: (() => {
+      const first = ohlcRows[0]?.close ?? 0;
+      return ohlcRows.map((row) => ({ time: row.time, value: row.close - first }));
+    })(),
     times: ohlcRows.map((row) => row.time),
   };
 }

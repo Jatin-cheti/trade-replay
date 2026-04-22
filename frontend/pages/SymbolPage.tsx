@@ -28,7 +28,7 @@ const SavedPeriodsMenu = lazy(() => import("@/components/symbol/SavedPeriodsMenu
 import type { CustomRange } from "@/components/symbol/CustomRangePicker";
 import axios from "axios";
 import type { CandleData } from "@/data/stockData";
-import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
+import { chartTypeGroups, chartTypeLabels, COMING_SOON_CHART_TYPES, type ChartType } from "@/services/chart/dataTransforms";
 import { useAllPeriodReturns } from "@/hooks/useAllPeriodReturns";
 
 interface SymbolDetail {
@@ -355,6 +355,7 @@ export default function SymbolPage() {
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
   const [overviewChartType, setOverviewChartType] = useState<ChartType>("area");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
+  const [chartTypeSearch, setChartTypeSearch] = useState("");
 
   // Custom range + saved periods state
   const [customRange, setCustomRange] = useState<CustomRange | null>(null);
@@ -1090,7 +1091,7 @@ export default function SymbolPage() {
                   {/* Chart type dropdown */}
                   <div className="relative" ref={chartTypeRef}>
                     <button
-                      onClick={() => setChartTypeOpen((v) => !v)}
+                      onClick={() => { setChartTypeOpen((v) => !v); setChartTypeSearch(""); }}
                       className="flex items-center gap-1.5 h-8 rounded-md border border-border/40 px-2.5 text-xs font-medium text-foreground hover:bg-secondary/30 transition-colors"
                       title="Chart type"
                       aria-label="Change chart type"
@@ -1108,30 +1109,76 @@ export default function SymbolPage() {
                     </button>
 
                     {chartTypeOpen && (
-                      <div className="absolute right-0 mt-1 max-h-[60vh] w-56 overflow-y-auto rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30 p-1.5">
-                        {chartTypeGroups.map((group) => (
-                          <div key={group.id} className="mb-1.5 last:mb-0">
-                            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              {group.label}
-                            </div>
-                            {group.types.map((type) => (
-                              <button
-                                key={type}
-                                onClick={() => {
-                                  setOverviewChartType(type);
-                                  setChartTypeOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-                                  overviewChartType === type
-                                    ? "bg-secondary/50 text-foreground"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
-                                }`}
-                              >
-                                {chartTypeLabels[type]}
-                              </button>
-                            ))}
+                      <div className="absolute right-0 mt-1 max-h-[70vh] w-64 flex flex-col rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30">
+                        {/* Search box */}
+                        <div className="p-2 border-b border-border/30 shrink-0">
+                          <div className="relative">
+                            <svg className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 L14 14" strokeLinecap="round" />
+                            </svg>
+                            <input
+                              autoFocus
+                              value={chartTypeSearch}
+                              onChange={(e) => setChartTypeSearch(e.target.value)}
+                              placeholder="Search chart types…"
+                              className="w-full rounded border border-border/30 bg-secondary/20 py-1 pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
+                            />
                           </div>
-                        ))}
+                        </div>
+                        {/* Grouped list */}
+                        <div className="overflow-y-auto p-1.5">
+                          {(() => {
+                            const q = chartTypeSearch.trim().toLowerCase();
+                            const filtered = chartTypeGroups
+                              .map((group) => ({
+                                ...group,
+                                types: q
+                                  ? group.types.filter((t) =>
+                                      chartTypeLabels[t].toLowerCase().includes(q) ||
+                                      group.label.toLowerCase().includes(q)
+                                    )
+                                  : group.types,
+                              }))
+                              .filter((g) => g.types.length > 0);
+                            if (!filtered.length) {
+                              return (
+                                <p className="py-6 text-center text-xs text-muted-foreground">No chart types found</p>
+                              );
+                            }
+                            return filtered.map((group) => (
+                              <div key={group.id} className="mb-1.5 last:mb-0">
+                                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  {group.label}
+                                </div>
+                                {group.types.map((type) => {
+                                  const isSoon = COMING_SOON_CHART_TYPES.has(type);
+                                  return (
+                                    <button
+                                      key={type}
+                                      onClick={() => {
+                                        setOverviewChartType(type);
+                                        setChartTypeOpen(false);
+                                        setChartTypeSearch("");
+                                      }}
+                                      className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1.5 ${
+                                        overviewChartType === type
+                                          ? "bg-secondary/50 text-foreground"
+                                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                                      }`}
+                                    >
+                                      <span className="flex-1">{chartTypeLabels[type]}</span>
+                                      {isSoon && (
+                                        <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 px-1 py-0.5 rounded leading-none shrink-0">
+                                          Soon
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ));
+                          })()}
+                        </div>
                       </div>
                     )}
                   </div>

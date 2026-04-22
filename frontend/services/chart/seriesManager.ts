@@ -23,7 +23,16 @@ export type ChartSeriesKey =
   | 'kagi'
   | 'pointFigure'
   | 'brick'
-  | 'volume';
+  | 'volume'
+  // Derived price series
+  | 'hlcBar'
+  | 'avgPriceBar'
+  | 'openClose'
+  | 'dotChart'
+  | 'maLine'
+  | 'emaLine'
+  | 'vwapLine'
+  | 'priceChange';
 
 export type ChartSeriesMap = {
   candlestick: ISeriesApi<'Candlestick'>;
@@ -45,6 +54,15 @@ export type ChartSeriesMap = {
   pointFigure: ISeriesApi<'Candlestick'>;
   brick: ISeriesApi<'Candlestick'>;
   volume: ISeriesApi<'Histogram'>;
+  // Derived price series
+  hlcBar: ISeriesApi<'Line'>;
+  avgPriceBar: ISeriesApi<'Line'>;
+  openClose: ISeriesApi<'Line'>;
+  dotChart: ISeriesApi<'Line'>;
+  maLine: ISeriesApi<'Line'>;
+  emaLine: ISeriesApi<'Line'>;
+  vwapLine: ISeriesApi<'Line'>;
+  priceChange: ISeriesApi<'Line'>;
 };
 
 type ChartSeriesOptions = {
@@ -52,26 +70,32 @@ type ChartSeriesOptions = {
 };
 
 export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
-  candlestick: ['candlestick'],
-  line: ['line'],
-  area: ['area'],
-  baseline: ['baseline'],
-  histogram: ['histogram'],
-  bar: ['bar'],
-  heikinAshi: ['heikinAshi'],
-  ohlc: ['ohlc'],
-  hollowCandles: ['hollowCandles'],
-  stepLine: ['stepLine'],
-  rangeArea: ['rangeArea'],
-  mountainArea: ['mountainArea'],
-  renko: ['renko'],
-  rangeBars: ['rangeBars'],
-  lineBreak: ['lineBreak'],
-  kagi: ['kagi'],
-  pointFigure: ['pointFigure'],
-  brick: ['brick'],
-  volumeCandles: ['candlestick', 'volume'],
-  volumeLine: ['line', 'volume'],
+  // Standard
+  candlestick: ['candlestick'], line: ['line'], area: ['area'],
+  baseline: ['baseline'], histogram: ['histogram'], bar: ['bar'],
+  ohlc: ['ohlc'], stepLine: ['stepLine'],
+  // Derived price
+  heikinAshi: ['heikinAshi'], hollowCandles: ['hollowCandles'],
+  hlcBar: ['hlcBar'], avgPriceBar: ['avgPriceBar'],
+  openClose: ['openClose'], dotChart: ['dotChart'],
+  mountainArea: ['mountainArea'], rangeArea: ['rangeArea'],
+  // Indicators
+  maLine: ['maLine'], emaLine: ['emaLine'],
+  vwapLine: ['vwapLine'], priceChange: ['priceChange'],
+  // Volume
+  volumeCandles: ['candlestick', 'volume'], volumeLine: ['line', 'volume'],
+  // Price Action
+  renko: ['renko'], rangeBars: ['rangeBars'], lineBreak: ['lineBreak'],
+  kagi: ['kagi'], pointFigure: ['pointFigure'], brick: ['brick'],
+  // Coming Soon — no series visible (overlay shown instead)
+  equityCurve: [], drawdownChart: [], returnsHistogram: [],
+  zScoreLine: [], rsiLine: [], macdHistogram: [], volumeOscillator: [],
+  scatterPlot: [], bubblePlot: [], boxPlot: [], heatMap: [],
+  radarChart: [], treemap: [], waterfallChart: [], sunburst: [],
+  yieldCurve: [], volatilitySurface: [], correlationMatrix: [],
+  optionsPayoff: [], monteCarlo: [], seasonality: [], regressionChannel: [],
+  fanChart: [], paretoChart: [], funnelChart: [], networkGraph: [],
+  donutChart: [], stackedArea: [],
 };
 
 export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions): ChartSeriesMap {
@@ -142,6 +166,15 @@ export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions
       wickUpColor: '#85c1e9', wickDownColor: '#f8c471', visible: false,
     }),
     volume: chart.addSeries('Histogram', { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
+    // Derived price series
+    hlcBar: chart.addSeries('Line', { color: '#a78bfa', lineWidth: 2, visible: false }),
+    avgPriceBar: chart.addSeries('Line', { color: '#f87171', lineWidth: 2, visible: false }),
+    openClose: chart.addSeries('Line', { color: '#60a5fa', lineWidth: 2, visible: false }),
+    dotChart: chart.addSeries('Line', { color: '#fb923c', lineWidth: 2, lineStyle: 1, visible: false }),
+    maLine: chart.addSeries('Line', { color: '#facc15', lineWidth: 2, visible: false }),
+    emaLine: chart.addSeries('Line', { color: '#f97316', lineWidth: 2, visible: false }),
+    vwapLine: chart.addSeries('Line', { color: '#2dd4bf', lineWidth: 2, visible: false }),
+    priceChange: chart.addSeries('Line', { color: '#4ade80', lineWidth: 2, visible: false }),
   };
 
   map.volume.priceScale().applyOptions({
@@ -173,6 +206,15 @@ export function applySeriesData(map: ChartSeriesMap, data: TransformedData): voi
   map.pointFigure.setData(data.pointFigureRows);
   map.brick.setData(data.brickRows);
   map.volume.setData(data.volumeRows);
+  // Derived price series
+  map.hlcBar.setData(data.hlcBarRows);
+  map.avgPriceBar.setData(data.avgPriceRows);
+  map.openClose.setData(data.openCloseRows);
+  map.dotChart.setData(data.closeRows);
+  map.maLine.setData(data.maRows);
+  map.emaLine.setData(data.emaRows);
+  map.vwapLine.setData(data.vwapRows);
+  map.priceChange.setData(data.priceChangeRows);
 }
 
 export function updateSeriesData(map: ChartSeriesMap, data: TransformedData): void {
@@ -233,9 +275,9 @@ export function applySeriesVisibility(map: ChartSeriesMap, chartType: ChartType)
   });
 }
 
-export function activeSeriesForType(map: ChartSeriesMap, chartType: ChartType) {
+export function activeSeriesForType(map: ChartSeriesMap, chartType: ChartType): ISeriesApi<'Line'> | ISeriesApi<'Candlestick'> | ISeriesApi<'Bar'> | ISeriesApi<'Area'> | ISeriesApi<'Baseline'> | ISeriesApi<'Histogram'> {
   if (chartType === 'volumeLine') return map.line;
   if (chartType === 'volumeCandles') return map.candlestick;
-  if (chartType === 'hollowCandles') return map.hollowCandles;
-  return map[chartType as Exclude<ChartType, 'volumeLine' | 'volumeCandles'>] ?? map.candlestick;
+  // For coming-soon types (no series), fall back to candlestick (hidden, coordinate queries return null)
+  return (map as Record<string, ISeriesApi<'Line'>>)[chartType] ?? map.candlestick;
 }
