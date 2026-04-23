@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -33,6 +33,7 @@ import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 import IndicatorsModal from '@/components/chart/IndicatorsModal';
 import ChartPromptModal, { type ChartPromptRequest } from '@/components/chart/ChartPromptModal';
 import type { IconPresetSelection } from '@/components/chart/IconToolPanel';
+import { toast } from 'sonner';
 
 interface TradingChartProps {
   data: CandleData[];
@@ -44,6 +45,8 @@ interface TradingChartProps {
   parityMode?: boolean;
   /** Optional overlay rendered inside chart-interaction-surface at top-left (over canvas, not over tool rail) */
   ohlcLegend?: React.ReactNode;
+  /** Called when user clicks "Add alert" in the crosshair Y-axis menu */
+  onAddAlert?: (price: number) => void;
 }
 
 type TouchTooltipState = {
@@ -248,6 +251,7 @@ export default function TradingChart({
   syncId,
   parityMode = false,
   ohlcLegend,
+  onAddAlert,
 }: TradingChartProps) {
   const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>(() => (parityMode ? 'volumeCandles' : 'candlestick'));
@@ -542,71 +546,106 @@ export default function TradingChart({
     setEnabledIndicators((prev) => prev.filter((id) => id !== indicatorId));
   }, []);
 
-  // Custom scroll/zoom handler:
-  // - Normal scroll → zoom anchored at rightmost visible candle (TradingView default)
-  // - Ctrl+scroll   → zoom anchored at candle under cursor
-  // Runs in capture phase to intercept wheel before the chart library's canvas listener.
+  // ── Custom wheel/zoom handler ─────────────────────────────────────────────
+  // Behaviour matches TradingView exactly:
+  //  • Normal scroll on chart   → time-scale zoom anchored at cursor X
+  //  • Ctrl+scroll on chart     → price-scale zoom anchored at cursor Y
+  //  • Scroll on Y-axis area    → price-scale zoom anchored at cursor Y
+  //  • Min visible bars: 2 (full zoom-in)
+  //  • Max visible bars: all available data (no empty space on left)
+  //  • Zoom speed: ~11% change per standard scroll notch (120 delta units)
+  // Runs in capture phase so it intercepts events before the chart canvas.
   useEffect(() => {
     const container = chartContainerRef.current;
-    const chart = chartRef.current;
+    const chart = chartRef.current as (IChartApi & { zoomPriceScale?: (d: number, y: number) => void; resetPriceScale?: (y: number) => void }) | null;
     if (!container || !chart || !ready) return;
 
-    let isCtrlHeld = false;
-    let accumDelta = 0;
-    let rafId: number | null = null;
-    let lastCursorX = 0;
+    // Width of the right price-axis panel (matches chart engine constant)
+    const PRICE_AXIS_W = 68;
+    const MIN_BARS = 2;
 
-    const MIN_BARS = 3;
-    const MAX_BARS = 5000;
+    let isCtrlHeld = false;
+    let accumTimeScale = 0;
+    let accumPriceScale = 0;
+    let rafTimeId: number | null = null;
+    let rafPriceId: number | null = null;
+    let lastCursorX = 0;
+    let lastCursorY = 0;
 
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Control') isCtrlHeld = true; };
     const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Control') isCtrlHeld = false; };
+
+    // Track cursor so RAF uses the up-to-date position
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      lastCursorX = e.clientX - rect.left;
+      lastCursorY = e.clientY - rect.top;
+    };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
 
+      const rect = container.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      lastCursorX = cx;
+      lastCursorY = cy;
+
+      const containerW = container.clientWidth || 1;
+      // Y-axis area = rightmost PRICE_AXIS_W pixels
+      const onYAxis = cx > containerW - PRICE_AXIS_W;
+      const doYZoom = onYAxis || isCtrlHeld || e.ctrlKey;
+
       const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
-      accumDelta += e.deltaY * deltaScale;
-      lastCursorX = e.offsetX;
-      const useCtrlAnchor = isCtrlHeld || e.ctrlKey;
+      const scaled = e.deltaY * deltaScale;
 
-      if (rafId != null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        const delta = accumDelta;
-        accumDelta = 0;
-        if (Math.abs(delta) < 0.5) return;
+      if (doYZoom) {
+        // ── Price-scale zoom ──────────────────────────────────────────────
+        accumPriceScale += scaled;
+        if (rafPriceId != null) return;
+        rafPriceId = requestAnimationFrame(() => {
+          rafPriceId = null;
+          const d = accumPriceScale;
+          accumPriceScale = 0;
+          if (Math.abs(d) < 0.5) return;
+          chart.zoomPriceScale?.(d, Math.max(0, lastCursorY));
+        });
+      } else {
+        // ── Time-scale zoom anchored at cursor X (TradingView default) ────
+        accumTimeScale += scaled;
+        if (rafTimeId != null) return;
+        rafTimeId = requestAnimationFrame(() => {
+          rafTimeId = null;
+          const d = accumTimeScale;
+          accumTimeScale = 0;
+          if (Math.abs(d) < 0.5) return;
 
-        const timeScale = chart.timeScale();
-        const range = timeScale.getVisibleLogicalRange();
-        if (!range) return;
-        const currentBars = range.to - range.from;
-        if (!Number.isFinite(currentBars) || currentBars <= 0) return;
+          const timeScale = chart.timeScale();
+          const range = timeScale.getVisibleLogicalRange();
+          if (!range) return;
+          const currentBars = range.to - range.from;
+          if (!Number.isFinite(currentBars) || currentBars <= 0) return;
 
-        const zoomFactor = Math.exp(-delta * 0.0015);
-        const rawBars = currentBars / zoomFactor;
-        const newBars = Math.max(MIN_BARS, Math.min(MAX_BARS, rawBars));
+          // TV zoom speed: Math.exp(-120 * 0.001) ≈ 0.887  → ~11% per notch
+          const zoomFactor = Math.exp(-d * 0.001);
+          // Max bars = total available bars (range.to ≈ dataLength-1+offset)
+          const maxBars = Math.max(10, range.to);
+          const newBars = Math.max(MIN_BARS, Math.min(maxBars, currentBars / zoomFactor));
 
-        if (useCtrlAnchor) {
-          // Zoom centered at cursor candle
-          const containerW = container.clientWidth || 1;
-          const cursorFraction = Math.max(0, Math.min(1, lastCursorX / containerW));
-          const cursorBar = range.from + cursorFraction * currentBars;
-          const newFrom = cursorBar - cursorFraction * newBars;
+          // Anchor at cursor X fraction
+          const f = Math.max(0, Math.min(1, lastCursorX / containerW));
+          const cursorBar = range.from + f * currentBars;
+          let newFrom = cursorBar - f * newBars;
+          // TradingView never shows empty space before the first bar
+          newFrom = Math.max(0, newFrom);
           timeScale.setVisibleLogicalRange({ from: newFrom, to: newFrom + newBars });
-        } else {
-          // Zoom anchored at rightmost candle (range.to stays fixed)
-          timeScale.setVisibleLogicalRange({ from: range.to - newBars, to: range.to });
-        }
-      });
+        });
+      }
     };
-
-    const onMouseMove = (e: MouseEvent) => { lastCursorX = e.offsetX; };
 
     window.addEventListener('keydown', onKeyDown, { passive: true });
     window.addEventListener('keyup', onKeyUp, { passive: true });
-    // capture=true: fires before the chart canvas's own wheel listener
     container.addEventListener('wheel', onWheel, { capture: true, passive: false });
     container.addEventListener('mousemove', onMouseMove, { passive: true });
 
@@ -615,7 +654,8 @@ export default function TradingChart({
       window.removeEventListener('keyup', onKeyUp);
       container.removeEventListener('wheel', onWheel, { capture: true });
       container.removeEventListener('mousemove', onMouseMove);
-      if (rafId != null) cancelAnimationFrame(rafId);
+      if (rafTimeId != null) cancelAnimationFrame(rafTimeId);
+      if (rafPriceId != null) cancelAnimationFrame(rafPriceId);
     };
   }, [chartContainerRef, chartRef, ready]);
 
@@ -3411,7 +3451,7 @@ export default function TradingChart({
                 style={{ top: lastPriceBadge.y - 10 }}
               >
                 <div
-                  className="rounded-l px-1.5 py-0.5 text-[12px] font-bold text-white tabular-nums"
+                  className="rounded-l px-2 py-0.5 text-[13px] font-bold text-white tabular-nums"
                   style={{ backgroundColor: lastPriceBadge.isUp ? '#26a69a' : '#ef5350' }}
                 >
                   {lastPriceBadge.price.toFixed(2)}
@@ -3428,7 +3468,7 @@ export default function TradingChart({
               style={{ display: 'none', top: 0 }}
             >
               <div
-                className="rounded-l px-1.5 py-0.5 text-[12px] font-bold text-white tabular-nums opacity-90"
+                className="rounded-l px-2 py-0.5 text-[13px] font-bold text-white tabular-nums opacity-90"
               >
                 <span ref={hoveredClosePriceTextRef} />
               </div>
@@ -3444,7 +3484,7 @@ export default function TradingChart({
             >
               <button
                 type="button"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-l bg-[#1e222d] text-[13px] font-bold text-white hover:bg-[#2a2e39] leading-none border-r border-white/10"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-l bg-[#1e222d] text-[14px] font-bold text-white hover:bg-[#2a2e39] leading-none border-r border-white/10"
                 title="Add alert / order / drawing"
                 onMouseEnter={cancelHide}
                 onClick={(e) => {
@@ -3464,7 +3504,7 @@ export default function TradingChart({
               >
                 +
               </button>
-              <div className="rounded-r bg-[#131722] px-2 py-0.5 text-[12px] font-bold text-white tabular-nums whitespace-nowrap">
+              <div className="rounded-r bg-[#131722] px-2.5 py-0.5 text-[13px] font-bold text-white tabular-nums whitespace-nowrap">
                 <span ref={crosshairYPriceTextRef} />
               </div>
             </div>
@@ -3472,37 +3512,87 @@ export default function TradingChart({
             {/* "+" context menu panel (state-driven, only shown on click) */}
             {plusMenuOpen && plusMenuPrice != null ? (
               <div
-                className="absolute z-50 w-[280px] rounded-xl border border-white/10 bg-[#1e222d] py-1.5 shadow-2xl"
+                className="absolute z-50 w-[296px] overflow-hidden rounded-xl border border-white/10 bg-[#1e222d] py-1.5 shadow-2xl"
                 style={{
                   top: Math.max(4, plusMenuY - 20),
-                  right: 76,
+                  right: 84,
                   pointerEvents: 'auto',
                 }}
+                // Keep the Y-label visible while hovering the menu
+                onMouseEnter={cancelHide}
               >
-                {([
-                  { label: `Add alert on ${symbol} at ${plusMenuPrice.toFixed(2)}`, shortcut: 'Alt+A' },
-                  { label: `Buy 1 ${symbol} @ ${plusMenuPrice.toFixed(2)} limit`, shortcut: 'Alt+Shift+B' },
-                  { label: `Sell 1 ${symbol} @ ${plusMenuPrice.toFixed(2)} stop`, shortcut: '' },
-                  { label: `Add order on ${symbol} at ${plusMenuPrice.toFixed(2)}…`, shortcut: 'Shift+T' },
-                  { label: `Draw horizontal line at ${plusMenuPrice.toFixed(2)}`, shortcut: 'Alt+H' },
-                ] as { label: string; shortcut: string }[]).map(({ label, shortcut }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
-                    onClick={() => setPlusMenuOpen(false)}
-                  >
-                    <span className="flex-1 leading-snug">{label}</span>
-                    {shortcut ? <span className="shrink-0 text-[10px] text-white/40">{shortcut}</span> : null}
-                  </button>
-                ))}
+                {/* Add alert */}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    onAddAlert?.(plusMenuPrice);
+                  }}
+                >
+                  <span className="flex-1 leading-snug">Add alert on {symbol} at {plusMenuPrice.toFixed(2)}</span>
+                  <span className="shrink-0 text-[10px] text-white/40">Alt+A</span>
+                </button>
+
+                {/* Buy */}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    toast.info(`Buy order at ${plusMenuPrice.toFixed(2)} — trading coming soon`);
+                  }}
+                >
+                  <span className="flex-1 leading-snug">Buy 1 {symbol} @ {plusMenuPrice.toFixed(2)} limit</span>
+                  <span className="shrink-0 text-[10px] text-white/40">Alt+Shift+B</span>
+                </button>
+
+                {/* Sell */}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    toast.info(`Sell order at ${plusMenuPrice.toFixed(2)} — trading coming soon`);
+                  }}
+                >
+                  <span className="flex-1 leading-snug">Sell 1 {symbol} @ {plusMenuPrice.toFixed(2)} stop</span>
+                </button>
+
+                {/* Add order */}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    toast.info(`Order at ${plusMenuPrice.toFixed(2)} — trading coming soon`);
+                  }}
+                >
+                  <span className="flex-1 leading-snug">Add order on {symbol} at {plusMenuPrice.toFixed(2)}…</span>
+                  <span className="shrink-0 text-[10px] text-white/40">Shift+T</span>
+                </button>
+
+                <div className="my-1 border-t border-white/10" />
+
+                {/* Draw horizontal line */}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    handleVariantSelect('lines', 'hline');
+                  }}
+                >
+                  <span className="flex-1 leading-snug">Draw horizontal line at {plusMenuPrice.toFixed(2)}</span>
+                  <span className="shrink-0 text-[10px] text-white/40">Alt+H</span>
+                </button>
               </div>
             ) : null}
 
             {/* X-axis crosshair time label */}
             <div
               ref={crosshairXLabelRef}
-              className="pointer-events-none absolute bottom-0 z-[31] -translate-x-1/2 rounded-t bg-[#131722] px-2 py-0.5 text-[11px] font-semibold text-white tabular-nums whitespace-nowrap"
+              className="pointer-events-none absolute bottom-0 z-[31] -translate-x-1/2 rounded-t bg-[#131722] px-2.5 py-1 text-[12px] font-semibold text-white tabular-nums whitespace-nowrap"
               style={{ display: 'none', left: 0 }}
             />
 

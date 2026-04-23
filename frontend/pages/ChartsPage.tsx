@@ -438,6 +438,10 @@ export default function ChartsPage() {
               visibleCount={candles.length}
               symbol={baseSymbol}
               mode="live"
+              onAddAlert={(price) => {
+                setAlertPrice(price);
+                setAlertOpen(true);
+              }}
               ohlcLegend={
                 legendRow ? (
                   <ChartOhlcLegendOverlay

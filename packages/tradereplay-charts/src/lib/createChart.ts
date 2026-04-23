@@ -220,6 +220,15 @@ export interface IChartApi {
   addIndicator(indicatorId: string, params?: Record<string, number>): string;
   /** Remove a previously added indicator instance and its output series/pane. */
   removeIndicator(instanceId: string): void;
+  /**
+   * Zoom the price scale for the pane at the given canvas Y coordinate.
+   * Positive deltaY = zoom out (expand visible price range).
+   * Negative deltaY = zoom in (shrink visible price range).
+   * Anchors at the price under the cursor so that price stays in place.
+   */
+  zoomPriceScale(deltaY: number, anchorY: number): void;
+  /** Reset the price scale for the pane at the given canvas Y to auto-fit. */
+  resetPriceScale(anchorY: number): void;
 }
 
 export interface CrosshairMoveEvent {
@@ -235,7 +244,7 @@ const PRICE_AXIS_W = 68;
 const TIME_AXIS_H = 28;
 const DEFAULT_BAR_WIDTH = 8;
 const MIN_BAR_WIDTH = 2;
-const MAX_BAR_WIDTH = 60;
+const MAX_BAR_WIDTH = 500;
 const PRICE_PADDING = 0.1;
 const PARITY_COMPACT_PRICE_AXIS_WIDTH = 56;
 const PARITY_COMPACT_PRICE_AXIS_MAX_VIEWPORT_WIDTH = 500;
@@ -2711,6 +2720,29 @@ export function createChart(
         const h = heights[pane.id];
         if (typeof h === 'number' && h > 0) pane.height = Math.max(MIN_PANE_HEIGHT, h);
       }
+      scheduleRender();
+    },
+    zoomPriceScale(deltaY: number, anchorY: number): void {
+      const rs = computeRenderState();
+      const pane = getPaneAtY(rs, anchorY);
+      if (!pane) return;
+      const startRange = pane.max - pane.min || 1;
+      // Map wheel delta → zoom factor (same scale as drag: 0.001 per pixel-equivalent)
+      const zoomFactor = Math.exp(deltaY * 0.001);
+      const minRange = Math.max(Math.abs(pane.min), Math.abs(pane.max), 1) * 0.0001;
+      const nextRange = Math.max(minRange, Math.min(startRange * 50, startRange * zoomFactor));
+      const anchorPrice = yToPrice(anchorY, pane.min, pane.max, pane.top, pane.h);
+      const anchorRatio = (anchorPrice - pane.min) / startRange;
+      const nextMin = anchorPrice - anchorRatio * nextRange;
+      const nextMax = nextMin + nextRange;
+      setPanePriceScaleManual(pane.id, nextMin, nextMax);
+      scheduleRender();
+    },
+    resetPriceScale(anchorY: number): void {
+      const rs = computeRenderState();
+      const pane = getPaneAtY(rs, anchorY);
+      if (!pane) return;
+      setPanePriceScaleAuto(pane.id);
       scheduleRender();
     },
     remove(): void {
