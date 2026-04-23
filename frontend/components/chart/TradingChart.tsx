@@ -465,9 +465,16 @@ export default function TradingChart({
   const crosshairHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // "+" menu — state is fine since it only changes on click (not every frame)
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const plusMenuOpenRef = useRef(false); // ref copy so timers/callbacks can read current value
   const [plusMenuPrice, setPlusMenuPrice] = useState<number | null>(null);
   const [plusMenuTime, setPlusMenuTime] = useState<number | null>(null);
   const [plusMenuY, setPlusMenuY] = useState(0);
+
+  // Demo mode (TradingView "Demonstration" cursor)
+  const [demoAltActive, setDemoAltActive] = useState(false);
+  const demoAltActiveRef = useRef(false);
+  const [showDemoHint, setShowDemoHint] = useState(true);
+  const demoCursorDivRef = useRef<HTMLDivElement>(null);
 
   // ── Countdown timer to next candle on X-axis (ref-based, no re-renders) ─
   const countdownDivRef = useRef<HTMLDivElement>(null);
@@ -483,6 +490,9 @@ export default function TradingChart({
     }
   }, []);
 
+  // Sync plusMenuOpen into a ref so timers/callbacks can read current value
+  useEffect(() => { plusMenuOpenRef.current = plusMenuOpen; }, [plusMenuOpen]);
+
   const hideCrosshairOverlay = useCallback(() => {
     const yLabel = crosshairYLabelRef.current;
     const xLabel = crosshairXLabelRef.current;
@@ -493,7 +503,14 @@ export default function TradingChart({
     crosshairPriceRef.current = null;
     crosshairTimeRef.current = null;
     setPlusMenuOpen(false);
+    plusMenuOpenRef.current = false;
   }, []);
+
+  // Timerized hide — used on Y-label/menu mouseLeave so mouse can traverse the gap
+  const scheduleHide = useCallback(() => {
+    if (crosshairHideTimerRef.current != null) clearTimeout(crosshairHideTimerRef.current);
+    crosshairHideTimerRef.current = setTimeout(hideCrosshairOverlay, 200);
+  }, [hideCrosshairOverlay]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -509,9 +526,11 @@ export default function TradingChart({
       const hovText = hoveredClosePriceTextRef.current;
 
       if (!ev || ev.source === 'leave' || !ev.point) {
-        // Delay hide so cursor can move onto the "+" button before disappearing
+        // Delay hide so cursor can move onto the "+" button or menu before disappearing
         if (crosshairHideTimerRef.current != null) clearTimeout(crosshairHideTimerRef.current);
         crosshairHideTimerRef.current = setTimeout(() => {
+          // Don't hide Y-label while plus-menu is open — user may be hovering the menu
+          if (plusMenuOpenRef.current) return;
           if (yLabel) yLabel.style.display = 'none';
           if (xLabel) xLabel.style.display = 'none';
           if (hovBadge) hovBadge.style.display = 'none';
@@ -3228,7 +3247,8 @@ export default function TradingChart({
     cross: 'crosshair',
     dot: buildDotCursor(),
     arrow: 'default',
-    demo: 'pointer',
+    // demo: hide system cursor when red overlay circle is shown; switch to crosshair when Alt held
+    demo: demoAltActive ? 'crosshair' : 'none',
     eraser: buildEraserCursor(),
   };
 
@@ -3236,7 +3256,8 @@ export default function TradingChart({
     const chart = chartRef.current;
     if (!chart) return;
 
-    const showCrosshair = toolState.variant !== 'none' || (cursorMode !== 'arrow' && cursorMode !== 'demo');
+    // Show crosshair for: active drawing tool, non-arrow/demo cursor modes, or when Alt held in demo mode
+    const showCrosshair = toolState.variant !== 'none' || (cursorMode !== 'arrow' && (cursorMode !== 'demo' || demoAltActive));
     const hiddenColor = 'rgba(0, 0, 0, 0)';
     const crosshairPalette = parityMode
       ? {
@@ -3273,7 +3294,70 @@ export default function TradingChart({
       setHoverPoint(null);
       setHoveredDrawingId(null);
     }
-  }, [chartRef, cursorMode, parityMode, toolState.variant]);
+  }, [chartRef, cursorMode, demoAltActive, parityMode, toolState.variant]);
+
+  // ── Demo mode: track Alt key to temporarily enable crosshair/drawing ──────
+  useEffect(() => {
+    if (cursorMode !== 'demo') {
+      // Reset when leaving demo mode
+      demoAltActiveRef.current = false;
+      setDemoAltActive(false);
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        e.preventDefault();
+        demoAltActiveRef.current = true;
+        setDemoAltActive(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        demoAltActiveRef.current = false;
+        setDemoAltActive(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      demoAltActiveRef.current = false;
+      setDemoAltActive(false);
+    };
+  }, [cursorMode]);
+
+  // ── Demo mode: update red cursor circle position via mousemove ────────────
+  useEffect(() => {
+    const el = demoCursorDivRef.current;
+    if (!el) return;
+    if (cursorMode !== 'demo') {
+      el.style.display = 'none';
+      return;
+    }
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const surface = container.closest<HTMLDivElement>('[data-testid="chart-interaction-surface"]') ?? container;
+    const onMove = (e: MouseEvent) => {
+      const rect = surface.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      el.style.display = demoAltActiveRef.current ? 'none' : 'block';
+    };
+    const onLeave = () => { el.style.display = 'none'; };
+    const onEnter = () => { if (!demoAltActiveRef.current) el.style.display = 'block'; };
+    surface.addEventListener('mousemove', onMove);
+    surface.addEventListener('mouseleave', onLeave);
+    surface.addEventListener('mouseenter', onEnter);
+    return () => {
+      surface.removeEventListener('mousemove', onMove);
+      surface.removeEventListener('mouseleave', onLeave);
+      surface.removeEventListener('mouseenter', onEnter);
+      el.style.display = 'none';
+    };
+  }, [cursorMode, chartContainerRef]);
 
   const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser';
   const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];
@@ -3633,7 +3717,7 @@ export default function TradingChart({
               className="absolute right-0 z-[31] flex items-center"
               style={{ display: 'none', top: 0, pointerEvents: 'auto' }}
               onMouseEnter={cancelHide}
-              onMouseLeave={hideCrosshairOverlay}
+              onMouseLeave={scheduleHide}
               onDoubleClick={(e) => {
                 // Double-click on Y-axis label resets price scale to auto (TV parity)
                 const chart = chartRef.current as (IChartApi & { resetPriceScale?: (y: number) => void }) | null;
@@ -3687,8 +3771,9 @@ export default function TradingChart({
                   right: 84,
                   pointerEvents: 'auto',
                 }}
-                // Keep the Y-label visible while hovering the menu
+                // Keep the Y-label visible while hovering the menu; hide after leaving
                 onMouseEnter={cancelHide}
+                onMouseLeave={scheduleHide}
               >
                 {/* Add alert */}
                 <button
@@ -3782,6 +3867,41 @@ export default function TradingChart({
               className="pointer-events-none absolute bottom-0 z-[30] -translate-x-1/2 rounded-t px-2 py-0.5 text-[11px] font-bold tabular-nums whitespace-nowrap"
               style={{ display: 'none', left: 0, backgroundColor: '#2962ff', color: '#ffffff' }}
             />
+
+            {/* ── Demo mode: reddish cursor circle (follows mouse via ref) ── */}
+            <div
+              ref={demoCursorDivRef}
+              data-testid="demo-cursor-circle"
+              className="pointer-events-none absolute z-[60]"
+              style={{
+                display: 'none',
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: 'rgba(211, 47, 47, 0.18)',
+                border: '1.5px solid rgba(211, 47, 47, 0.85)',
+                boxShadow: '0 0 6px 1px rgba(211,47,47,0.18)',
+                transform: 'translate(-50%, -50%)',
+              }}
+            />
+
+            {/* ── Demo mode: "Hold Alt for temporary drawing" hint ── */}
+            {cursorMode === 'demo' && showDemoHint && !demoAltActive ? (
+              <div
+                data-testid="demo-hint"
+                className="pointer-events-auto absolute bottom-9 left-1/2 z-[55] flex -translate-x-1/2 items-center gap-2 rounded border border-white/10 bg-[#1e222d] px-3 py-1.5 text-[12px] text-white shadow-lg"
+              >
+                <span>Hold <kbd className="rounded bg-white/10 px-1 py-0.5 text-[11px] font-mono">Alt</kbd> for temporary drawing</span>
+                <button
+                  type="button"
+                  className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white/50 hover:text-white"
+                  title="Dismiss"
+                  onClick={() => setShowDemoHint(false)}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
 
             {patternWizardHint ? (
               <div
