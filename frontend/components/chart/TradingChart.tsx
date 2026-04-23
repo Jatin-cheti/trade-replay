@@ -2679,7 +2679,10 @@ export default function TradingChart({
             }
           }
         }
-        if (event.currentTarget.setPointerCapture) {
+        // Only capture the pointer when actually dragging a drawing — not when panning.
+        // If we capture without dragging, the canvas loses its own pointer capture and
+        // its dragStart never clears, causing the chart to continue panning after release.
+        if ((dragMoveRef.current || dragAnchorMoveRef.current) && event.currentTarget.setPointerCapture) {
           event.currentTarget.setPointerCapture(event.pointerId);
         }
         renderOverlay();
