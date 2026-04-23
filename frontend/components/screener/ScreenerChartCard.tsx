@@ -485,8 +485,18 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
 
         {/* Chart area — NO padding so canvas coordinates align with LWC chart coordinates */}
         <div className="relative flex-1 min-h-0">
-          {/* LWC container — NEVER put React children inside here */}
-          <div ref={containerRef} className="absolute inset-0" />
+          {/* LWC container wrapper — stays `absolute inset-0` so the LWC
+              container (which lightweight-charts forces to `position: relative`
+              via inline style) inherits full width/height from this wrapper. */}
+          <div className="absolute inset-0">
+            {/* LWC container — NEVER put React children inside here.
+                `width:100%;height:100%` inline so that even when LWC rewrites
+                the position style, the container continues to fill its parent. */}
+            <div
+              ref={containerRef}
+              style={{ width: "100%", height: "100%" }}
+            />
+          </div>
           {/* Canvas for hover dot + axis labels (drawn directly via canvas API) */}
           <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ zIndex: 10 }} />
 
