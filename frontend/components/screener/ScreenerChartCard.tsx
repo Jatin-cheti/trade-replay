@@ -50,6 +50,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
   const lastTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
   const numBarsRef = useRef<number>(0);
   const [ready, setReady] = useState(false);
+  const [chartInitFailed, setChartInitFailed] = useState(false);
   const [visible, setVisible] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
@@ -111,6 +112,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     try {
       chart = createTradingChart(container, { parityMode: false, viewMode: "normal" });
     } catch {
+      setChartInitFailed(true);
       return;
     }
 
@@ -148,10 +150,12 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     try {
       seriesMap = createChartSeries(chart, { parityMode: false });
     } catch {
+      setChartInitFailed(true);
       try { chart.remove(); } catch { /* ignore */ }
       return;
     }
 
+    setChartInitFailed(false);
     chartRef.current = chart;
     seriesMapRef.current = seriesMap;
 
@@ -272,6 +276,59 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       setReady(false);
     };
   }, [visible]);
+
+  // Fallback renderer: draw a simple sparkline on the overlay canvas if chart init fails.
+  useEffect(() => {
+    if (!chartInitFailed) return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const host = overlay.parentElement;
+    if (!host) return;
+
+    const width = host.clientWidth;
+    const height = host.clientHeight;
+    if (width < 10 || height < 10) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    overlay.width = Math.max(1, Math.round(width * dpr));
+    overlay.height = Math.max(1, Math.round(height * dpr));
+    overlay.style.width = `${width}px`;
+    overlay.style.height = `${height}px`;
+
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const rows = transformed.ohlcRows;
+    if (rows.length < 2) return;
+
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const row of rows) {
+      if (row.low < min) min = row.low;
+      if (row.high > max) max = row.high;
+    }
+    const span = Math.max(0.000001, max - min);
+    const leftPad = 8;
+    const rightPad = 8;
+    const topPad = 8;
+    const bottomPad = 10;
+    const plotW = Math.max(1, width - leftPad - rightPad);
+    const plotH = Math.max(1, height - topPad - bottomPad);
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = lineColor;
+    ctx.beginPath();
+    rows.forEach((row, idx) => {
+      const x = leftPad + (idx / (rows.length - 1)) * plotW;
+      const y = topPad + (1 - (row.close - min) / span) * plotH;
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }, [chartInitFailed, lineColor, transformed.ohlcRows]);
 
   // Data + colour + axis effect — re-run when candles, period, or chartType change
   useEffect(() => {
@@ -411,8 +468,11 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
 
         {/* Chart area — NO padding so canvas coordinates align with LWC chart coordinates */}
         <div className="relative flex-1 min-h-0">
-          {/* LWC container — NEVER put React children inside here */}
-          <div ref={containerRef} className="absolute inset-0" />
+          {/* Stable wrapper keeps chart area sized even if chart library mutates inner container classes. */}
+          <div className="absolute inset-0">
+            {/* LWC container — NEVER put React children inside here */}
+            <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+          </div>
           {/* Canvas for hover dot + axis labels (drawn directly via canvas API) */}
           <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ zIndex: 10 }} />
 
