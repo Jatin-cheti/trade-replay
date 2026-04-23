@@ -668,11 +668,17 @@ export default function TradingChart({
   //  • Min visible bars: 2 (full zoom-in)
   //  • Max visible bars: all available data
   //  • Zoom speed: ~11% change per standard scroll notch (120 delta units)
-  // Runs in capture phase so it intercepts events before the chart canvas.
+  // Attached to the chart-interaction-surface ancestor (capture phase) so the
+  // handler fires even when the cursor is over the Y-axis HTML overlay elements
+  // (price label + "+" button) that live outside chartContainerRef.
   useEffect(() => {
     const container = chartContainerRef.current;
     const chart = chartRef.current as (IChartApi & { zoomPriceScale?: (d: number, y: number) => void; resetPriceScale?: (y: number) => void }) | null;
     if (!container || !chart || !ready) return;
+
+    // Attach wheel to the chart-interaction-surface ancestor so that events
+    // targeting HTML overlays (price label, + button) are also captured.
+    const surface = container.closest<HTMLDivElement>('[data-testid="chart-interaction-surface"]') ?? container;
 
     // Width of the right price-axis panel (must match chart engine constant)
     const PRICE_AXIS_W = 68;
@@ -692,7 +698,7 @@ export default function TradingChart({
 
     // Track cursor so RAF uses the up-to-date position
     const onMouseMove = (e: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
+      const rect = surface.getBoundingClientRect();
       lastCursorX = e.clientX - rect.left;
       lastCursorY = e.clientY - rect.top;
     };
@@ -701,15 +707,14 @@ export default function TradingChart({
       e.preventDefault();
       e.stopPropagation();
 
-      const rect = container.getBoundingClientRect();
+      const rect = surface.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
       lastCursorX = cx;
       lastCursorY = cy;
 
-      const containerW = container.clientWidth || 1;
-      // Y-axis area = rightmost PRICE_AXIS_W pixels → price-scale zoom only
-      // Y-axis area = rightmost PRICE_AXIS_W pixels → price-scale zoom only
+      const containerW = surface.clientWidth || 1;
+      // Y-axis area = rightmost PRICE_AXIS_W pixels → price-scale zoom only,
       // unless Ctrl is held, where TradingView uses time zoom around cursor.
       const onYAxis = cx > containerW - PRICE_AXIS_W;
       const ctrlActive = isCtrlHeld || e.metaKey;
@@ -732,9 +737,9 @@ export default function TradingChart({
         // ── Time-scale zoom ───────────────────────────────────────────────
         // Ctrl+scroll: anchor at cursor X (zoom around mouse pointer)
         // Normal scroll: anchor at right edge (last visible bar stays fixed)
-        const ctrlActive = isCtrlHeld || e.ctrlKey || e.metaKey;
+        const useCtrl = isCtrlHeld || e.ctrlKey || e.metaKey;
         accumTimeScale += scaled;
-        accumTimeCtrl = ctrlActive;
+        accumTimeCtrl = useCtrl;
         if (rafTimeId != null) return;
         rafTimeId = requestAnimationFrame(() => {
           rafTimeId = null;
@@ -775,16 +780,33 @@ export default function TradingChart({
       }
     };
 
+    const onDblClick = (e: MouseEvent) => {
+      const rect = surface.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const containerW = surface.clientWidth || 1;
+      // Only handle double-click in the Y-axis price area (rightmost 68px)
+      if (cx > containerW - PRICE_AXIS_W) {
+        // cy must be relative to the canvas element, not the surface.
+        // Use the canvas (inside container) bounding rect for accuracy.
+        const canvasEl = container.querySelector('canvas');
+        const canvasRect = canvasEl ? canvasEl.getBoundingClientRect() : rect;
+        const cy = e.clientY - canvasRect.top;
+        chart.resetPriceScale?.(cy);
+      }
+    };
+
     window.addEventListener('keydown', onKeyDown, { passive: true });
     window.addEventListener('keyup', onKeyUp, { passive: true });
-    container.addEventListener('wheel', onWheel, { capture: true, passive: false });
-    container.addEventListener('mousemove', onMouseMove, { passive: true });
+    surface.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    surface.addEventListener('mousemove', onMouseMove, { passive: true });
+    surface.addEventListener('dblclick', onDblClick);
 
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      container.removeEventListener('wheel', onWheel, { capture: true });
-      container.removeEventListener('mousemove', onMouseMove);
+      surface.removeEventListener('wheel', onWheel, { capture: true });
+      surface.removeEventListener('mousemove', onMouseMove);
+      surface.removeEventListener('dblclick', onDblClick);
       if (rafTimeId != null) cancelAnimationFrame(rafTimeId);
       if (rafPriceId != null) cancelAnimationFrame(rafPriceId);
     };
@@ -3612,6 +3634,17 @@ export default function TradingChart({
               style={{ display: 'none', top: 0, pointerEvents: 'auto' }}
               onMouseEnter={cancelHide}
               onMouseLeave={hideCrosshairOverlay}
+              onDoubleClick={(e) => {
+                // Double-click on Y-axis label resets price scale to auto (TV parity)
+                const chart = chartRef.current as (IChartApi & { resetPriceScale?: (y: number) => void }) | null;
+                if (chart?.resetPriceScale) {
+                  // Use canvas-relative Y so getPaneAtY works correctly
+                  const canvasEl = chartContainerRef.current?.querySelector('canvas');
+                  const canvasRect = canvasEl?.getBoundingClientRect();
+                  const cy = canvasRect ? e.clientY - canvasRect.top : e.clientY;
+                  chart.resetPriceScale(cy);
+                }
+              }}
             >
               <button
                 type="button"
@@ -3620,7 +3653,11 @@ export default function TradingChart({
                 onMouseEnter={cancelHide}
                 onClick={(e) => {
                   e.stopPropagation();
-                  const price = crosshairPriceRef.current;
+                  // Primary: use tracked crosshair price; fallback: parse the displayed label text
+                  // (handles race where cursor briefly left canvas before clicking "+" button)
+                  const rawPrice = crosshairPriceRef.current
+                    ?? parseFloat(crosshairYPriceTextRef.current?.textContent ?? '');
+                  const price = Number.isFinite(rawPrice) ? rawPrice : null;
                   if (price == null) return;
                   const yEl = crosshairYLabelRef.current;
                   const topPx = yEl ? parseInt(yEl.style.top || '0', 10) : 0;

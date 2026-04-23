@@ -1471,7 +1471,7 @@ export function createChart(
     if (hideParityPriceTicks) return;
 
     ctx.fillStyle = textColor;
-    ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.font = `500 ${fontSize}px ${fontFamily}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 

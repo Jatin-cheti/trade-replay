@@ -27,7 +27,7 @@ export function createTradingChart(container: HTMLElement, options?: TradingChar
       background: { type: 'solid', color: backgroundColor },
       textColor: '#b2b5be',
       fontFamily: 'Trebuchet MS, Arial, sans-serif',
-      fontSize: 11,
+      fontSize: 12,
     },
     grid: {
       vertLines: { color: passive ? 'transparent' : gridColor, visible: !passive },
