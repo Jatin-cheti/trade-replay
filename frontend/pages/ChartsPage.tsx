@@ -55,18 +55,18 @@ function getNseDayOpen(daysBack = 0): number {
 }
 
 const PERIOD_CONFIG: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
-  "1d":  { resolution: "5",  fromSec: () => getNseDayOpen(0),                                                     toSec: () => Math.floor(Date.now() / 1000) },
-  "5d":  { resolution: "30", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
-  "1m":  { resolution: "60", fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
-  "3m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
-  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
-  "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
-  "1y":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
-  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "all": { resolution: "M",  fromSec: () => 946684800,                                                            toSec: () => Math.floor(Date.now() / 1000) },
+  "1d":  { resolution: "1",   fromSec: () => getNseDayOpen(0),                                                     toSec: () => Math.floor(Date.now() / 1000) },
+  "5d":  { resolution: "5",   fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "1m":  { resolution: "30",  fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "3m":  { resolution: "60",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "6m":  { resolution: "120", fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "ytd": { resolution: "D",   fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
+  "1y":  { resolution: "D",   fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                         toSec: () => Math.floor(Date.now() / 1000) },
+  "5y":  { resolution: "W",   fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
+  "all": { resolution: "M",   fromSec: () => 946684800,                                                            toSec: () => Math.floor(Date.now() / 1000) },
 };
 
-const INTRADAY_RESOLUTIONS = new Set(["1", "2", "5", "15", "30", "60"]);
+const INTRADAY_RESOLUTIONS = new Set(["1", "2", "5", "15", "30", "60", "120"]);
 const IST_OFFSET_S = 19800;
 
 function applyIstOffset(candles: CandleData[], resolution: string): CandleData[] {
@@ -437,6 +437,7 @@ export default function ChartsPage() {
               data={candles}
               visibleCount={candles.length}
               symbol={baseSymbol}
+              resolution={resolution}
               mode="live"
               onAddAlert={(price) => {
                 setAlertPrice(price);

@@ -5,7 +5,7 @@ import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent, type I
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
-import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory, type ToolVariant } from '@/services/tools/toolRegistry';
+import { buildToolOptions, getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory, type ToolVariant } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
 import {
   compareDrawingRenderOrder,
@@ -39,6 +39,9 @@ interface TradingChartProps {
   data: CandleData[];
   visibleCount: number;
   symbol: string;
+  /** Active chart resolution string (e.g. "1", "5", "30", "60", "120", "D", "W", "M").
+   * Used to compute the countdown timer for the next candle on the X-axis. */
+  resolution?: string;
   mode?: 'simulation' | 'live';
   syncBus?: ChartSyncBus;
   syncId?: string;
@@ -47,6 +50,28 @@ interface TradingChartProps {
   ohlcLegend?: React.ReactNode;
   /** Called when user clicks "Add alert" in the crosshair Y-axis menu */
   onAddAlert?: (price: number) => void;
+}
+
+/** Convert a resolution string to candle duration in seconds. */
+function resolutionToSeconds(res: string | undefined): number {
+  if (!res) return 60;
+  if (res === 'D') return 86400;
+  if (res === 'W') return 7 * 86400;
+  if (res === 'M') return 30 * 86400;
+  const n = parseInt(res, 10);
+  return Number.isFinite(n) && n > 0 ? n * 60 : 60;
+}
+
+/** Format seconds as MM:SS or HH:MM:SS. */
+function formatCountdown(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(sec).padStart(2, '0');
+  if (h > 0) return `${String(h).padStart(2, '0')}:${mm}:${ss}`;
+  return `${mm}:${ss}`;
 }
 
 type TouchTooltipState = {
@@ -246,6 +271,7 @@ export default function TradingChart({
   data,
   visibleCount,
   symbol,
+  resolution,
   mode = 'simulation',
   syncBus,
   syncId,
@@ -416,6 +442,9 @@ export default function TradingChart({
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuPrice, setPlusMenuPrice] = useState<number | null>(null);
   const [plusMenuY, setPlusMenuY] = useState(0);
+
+  // ── Countdown timer to next candle on X-axis ───────────────────────────
+  const [candleCountdown, setCandleCountdown] = useState<{ text: string; x: number } | null>(null);
   // Track latest crosshair price for the "+" click handler
   const crosshairPriceRef = useRef<number | null>(null);
 
@@ -546,13 +575,47 @@ export default function TradingChart({
     setEnabledIndicators((prev) => prev.filter((id) => id !== indicatorId));
   }, []);
 
+  // ── Countdown timer to next candle ────────────────────────────────────────
+  useEffect(() => {
+    if (!ready) return;
+    const candleSec = resolutionToSeconds(resolution);
+
+    const tick = () => {
+      const chart = chartRef.current;
+      const times = transformedData.times;
+      if (!chart || !times.length) { setCandleCountdown(null); return; }
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      // Next candle boundary: ceil(now+1 / interval) * interval
+      const nextCandle = Math.ceil((nowSec + 1) / candleSec) * candleSec;
+      const remaining = nextCandle - nowSec;
+
+      const lastTime = times[times.length - 1];
+      // X pixel coordinate of the last data bar
+      const x = chart.timeScale().timeToCoordinate(lastTime as import('@tradereplay/charts').UTCTimestamp);
+      const containerW = chartContainerRef.current?.clientWidth ?? 0;
+      const containerH = chartContainerRef.current?.clientHeight ?? 0;
+      // Only show if the last bar is visible and not in the price-axis zone
+      if (x == null || !Number.isFinite(x) || x < 0 || x > containerW - 68 || containerH === 0) {
+        setCandleCountdown(null);
+        return;
+      }
+
+      setCandleCountdown({ text: formatCountdown(remaining), x });
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [ready, resolution, transformedData.times, chartRef, chartContainerRef]);
+
   // ── Custom wheel/zoom handler ─────────────────────────────────────────────
-  // Behaviour matches TradingView exactly:
-  //  • Normal scroll on chart   → time-scale zoom anchored at cursor X
-  //  • Ctrl+scroll on chart     → price-scale zoom anchored at cursor Y
-  //  • Scroll on Y-axis area    → price-scale zoom anchored at cursor Y
+  // TradingView-accurate behavior:
+  //  • Normal scroll on chart     → time-scale zoom, right edge stays fixed
+  //  • Ctrl+scroll on chart       → time-scale zoom anchored at cursor X
+  //  • Scroll on Y-axis area      → price-scale zoom anchored at cursor Y
   //  • Min visible bars: 2 (full zoom-in)
-  //  • Max visible bars: all available data (no empty space on left)
+  //  • Max visible bars: all available data
   //  • Zoom speed: ~11% change per standard scroll notch (120 delta units)
   // Runs in capture phase so it intercepts events before the chart canvas.
   useEffect(() => {
@@ -560,12 +623,13 @@ export default function TradingChart({
     const chart = chartRef.current as (IChartApi & { zoomPriceScale?: (d: number, y: number) => void; resetPriceScale?: (y: number) => void }) | null;
     if (!container || !chart || !ready) return;
 
-    // Width of the right price-axis panel (matches chart engine constant)
+    // Width of the right price-axis panel (must match chart engine constant)
     const PRICE_AXIS_W = 68;
     const MIN_BARS = 2;
 
     let isCtrlHeld = false;
     let accumTimeScale = 0;
+    let accumTimeCtrl = false; // ctrl state at last time-scale event
     let accumPriceScale = 0;
     let rafTimeId: number | null = null;
     let rafPriceId: number | null = null;
@@ -593,15 +657,14 @@ export default function TradingChart({
       lastCursorY = cy;
 
       const containerW = container.clientWidth || 1;
-      // Y-axis area = rightmost PRICE_AXIS_W pixels
+      // Y-axis area = rightmost PRICE_AXIS_W pixels → price-scale zoom only
       const onYAxis = cx > containerW - PRICE_AXIS_W;
-      const doYZoom = onYAxis || isCtrlHeld || e.ctrlKey;
 
       const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
       const scaled = e.deltaY * deltaScale;
 
-      if (doYZoom) {
-        // ── Price-scale zoom ──────────────────────────────────────────────
+      if (onYAxis) {
+        // ── Price-scale zoom (hover on Y-axis) ───────────────────────────
         accumPriceScale += scaled;
         if (rafPriceId != null) return;
         rafPriceId = requestAnimationFrame(() => {
@@ -612,34 +675,46 @@ export default function TradingChart({
           chart.zoomPriceScale?.(d, Math.max(0, lastCursorY));
         });
       } else {
-        // ── Time-scale zoom anchored at cursor X (TradingView default) ────
+        // ── Time-scale zoom ───────────────────────────────────────────────
+        // Ctrl+scroll: anchor at cursor X (zoom around mouse pointer)
+        // Normal scroll: anchor at right edge (last visible bar stays fixed)
+        const ctrlActive = isCtrlHeld || e.ctrlKey || e.metaKey;
         accumTimeScale += scaled;
+        accumTimeCtrl = ctrlActive;
         if (rafTimeId != null) return;
         rafTimeId = requestAnimationFrame(() => {
           rafTimeId = null;
           const d = accumTimeScale;
+          const useCtrlAnchor = accumTimeCtrl;
           accumTimeScale = 0;
+          accumTimeCtrl = false;
           if (Math.abs(d) < 0.5) return;
 
-          const timeScale = chart.timeScale();
+          const currentChart = chartRef.current;
+          if (!currentChart) return;
+          const timeScale = currentChart.timeScale();
           const range = timeScale.getVisibleLogicalRange();
           if (!range) return;
           const currentBars = range.to - range.from;
           if (!Number.isFinite(currentBars) || currentBars <= 0) return;
 
-          // TV zoom speed: Math.exp(-120 * 0.001) ≈ 0.887  → ~11% per notch
+          // TV zoom speed: ~11% per notch
           const zoomFactor = Math.exp(-d * 0.001);
-          // Max bars = total available bars (range.to ≈ dataLength-1+offset)
           const maxBars = Math.max(10, range.to);
           const newBars = Math.max(MIN_BARS, Math.min(maxBars, currentBars / zoomFactor));
 
-          // Anchor at cursor X fraction
-          const f = Math.max(0, Math.min(1, lastCursorX / containerW));
-          const cursorBar = range.from + f * currentBars;
-          let newFrom = cursorBar - f * newBars;
-          // TradingView never shows empty space before the first bar
-          newFrom = Math.max(0, newFrom);
-          timeScale.setVisibleLogicalRange({ from: newFrom, to: newFrom + newBars });
+          if (useCtrlAnchor) {
+            // Ctrl: anchor at cursor X position
+            const f = Math.max(0, Math.min(1, lastCursorX / containerW));
+            const cursorBar = range.from + f * currentBars;
+            const newFrom = Math.max(0, cursorBar - f * newBars);
+            timeScale.setVisibleLogicalRange({ from: newFrom, to: newFrom + newBars });
+          } else {
+            // Normal scroll (TV default): keep right edge fixed, zoom from left
+            const newTo = range.to;
+            const newFrom = Math.max(0, newTo - newBars);
+            timeScale.setVisibleLogicalRange({ from: newFrom, to: newTo });
+          }
         });
       }
     };
@@ -3574,13 +3649,23 @@ export default function TradingChart({
 
                 <div className="my-1 border-t border-white/10" />
 
-                {/* Draw horizontal line */}
+                {/* Draw horizontal line — placed immediately at exact price */}
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    handleVariantSelect('lines', 'hline');
+                    const price = plusMenuPrice;
+                    if (price == null) return;
+                    const times = transformedData.times;
+                    if (!times.length) return;
+                    const lastTime = times[times.length - 1];
+                    const pt: DrawPoint = { time: lastTime as DrawPoint['time'], price };
+                    const hlineOpts = buildToolOptions('hline');
+                    const drawing = createDrawing('hline', hlineOpts, pt, pt);
+                    updateAllDrawings((prev) => [...prev, drawing]);
+                    setSelectedDrawingId(drawing.id);
+                    renderOverlay();
                   }}
                 >
                   <span className="flex-1 leading-snug">Draw horizontal line at {plusMenuPrice.toFixed(2)}</span>
@@ -3595,6 +3680,21 @@ export default function TradingChart({
               className="pointer-events-none absolute bottom-0 z-[31] -translate-x-1/2 rounded-t bg-[#131722] px-2.5 py-1 text-[12px] font-semibold text-white tabular-nums whitespace-nowrap"
               style={{ display: 'none', left: 0 }}
             />
+
+            {/* ── Countdown timer: time until next candle on X-axis ── */}
+            {candleCountdown != null ? (
+              <div
+                data-testid="candle-countdown"
+                className="pointer-events-none absolute bottom-0 z-[30] -translate-x-1/2 rounded-t px-2 py-0.5 text-[11px] font-bold tabular-nums whitespace-nowrap"
+                style={{
+                  left: candleCountdown.x,
+                  backgroundColor: '#2962ff',
+                  color: '#ffffff',
+                }}
+              >
+                {candleCountdown.text}
+              </div>
+            ) : null}
 
             {patternWizardHint ? (
               <div
