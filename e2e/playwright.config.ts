@@ -9,7 +9,7 @@ export default defineConfig({
   workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : 1,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:8080",
+    baseURL: useExternalStack ? "https://tradereplay.me" : "http://localhost:8080",
     trace: "on-first-retry",
   },
   webServer: useExternalStack

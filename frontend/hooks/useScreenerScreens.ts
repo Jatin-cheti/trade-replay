@@ -17,7 +17,7 @@ export function useScreenerScreens(routeType: string) {
   const loadScreens = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
-      const res = await api.get<{ screens: SavedScreen[] }>("/screens");
+      const res = await api.get<{ screens: SavedScreen[] }>("/screener/screens");
       setSavedScreens(res.data.screens);
     } catch { /* ignore */ }
   }, [isAuthenticated]);
@@ -41,9 +41,9 @@ export function useScreenerScreens(routeType: string) {
     };
     try {
       if (activeScreenId) {
-        await api.put(`/screens/${activeScreenId}`, payload);
+        await api.put(`/screener/screens/${activeScreenId}`, payload);
       } else {
-        const res = await api.post<{ screen: SavedScreen }>("/screens", payload);
+        const res = await api.post<{ screen: SavedScreen }>("/screener/screens", payload);
         setActiveScreenId(res.data.screen._id);
       }
       setScreenDirty(false);
@@ -53,7 +53,7 @@ export function useScreenerScreens(routeType: string) {
 
   const deleteScreenById = useCallback(async (id: string) => {
     try {
-      await api.delete(`/screens/${id}`);
+      await api.delete(`/screener/screens/${id}`);
       if (activeScreenId === id) setActiveScreenId(null);
       void loadScreens();
     } catch { /* ignore */ }
@@ -61,14 +61,14 @@ export function useScreenerScreens(routeType: string) {
 
   const copyScreenById = useCallback(async (id: string) => {
     try {
-      await api.post(`/screens/${id}/copy`);
+      await api.post(`/screener/screens/${id}/copy`);
       void loadScreens();
     } catch { /* ignore */ }
   }, [loadScreens]);
 
   const renameScreenById = useCallback(async (id: string, newName: string) => {
     try {
-      await api.put(`/screens/${id}`, { name: newName });
+      await api.put(`/screener/screens/${id}`, { name: newName });
       void loadScreens();
     } catch { /* ignore */ }
   }, [loadScreens]);
