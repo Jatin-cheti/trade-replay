@@ -166,7 +166,7 @@ export default function ScreenerTable({
 
               {/* Add column dropdown */}
               {addColumnOpen && (
-                <div className="absolute right-0 top-full z-40 mt-1.5 w-[280px] md:w-[340px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl max-h-96 flex flex-col">
+                <div data-dropdown-panel className="absolute right-0 top-full z-40 mt-1.5 w-[280px] md:w-[340px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl max-h-96 flex flex-col">
                   <div className="mb-2 border-b border-border/40 pb-2 flex-shrink-0">
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />

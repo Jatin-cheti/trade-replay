@@ -6,11 +6,13 @@ export function createLiveMarketRoutes() {
   const router = Router();
   const controller = createLiveMarketController();
 
+  // Public endpoints — no auth required
   router.get("/snapshot/public", controller.publicSnapshotGet);
   router.post("/snapshot/public", controller.publicSnapshotPost);
-
-  router.use(verifyToken);
   router.get("/candles", controller.candles);
+
+  // Auth-required endpoints
+  router.use(verifyToken);
   router.get("/quotes", controller.quotes);
   router.post("/snapshot", controller.snapshot);
   router.post("/snapshot/ingest", controller.ingestSnapshot);

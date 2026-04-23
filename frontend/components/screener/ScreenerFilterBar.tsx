@@ -164,7 +164,7 @@ export default function ScreenerFilterBar({
               </button>
             )}
             {editingFilterKey === field.key && (
-              <div className="absolute left-0 top-full z-40 mt-1.5">
+              <div data-dropdown-panel className="absolute left-0 top-full z-40 mt-1.5">
                 <FilterEditorSwitch field={field} parsedFilters={parsedFilters} meta={meta} setMultiFilter={setMultiFilter} setRangeFilter={setRangeFilter} setDateFilter={setDateFilter} setToggleFilter={setToggleFilter} />
               </div>
             )}
@@ -182,7 +182,7 @@ export default function ScreenerFilterBar({
           Add filter
         </button>
         {addFilterOpen && (
-          <div className="absolute left-0 top-full z-40 mt-1.5 w-[340px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
+          <div data-dropdown-panel className="absolute left-0 top-full z-40 mt-1.5 w-[340px] rounded-xl border border-border/60 bg-background/95 p-2 shadow-xl backdrop-blur-xl">
             <div className="mb-2 border-b border-border/40 pb-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />

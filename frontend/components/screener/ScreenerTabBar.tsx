@@ -78,7 +78,8 @@ export default function ScreenerTabBar({
         </div>
       )}
 
-      {/* ── Column tabs — horizontally scrollable section ── */}
+      {/* ── Column tabs — hidden in chart mode (chart toolbar handles type/period) ── */}
+      {viewMode !== "chart" && (
       <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide">
         {tabList.map((tab) => {
           const active = tab.key === activeTab;
@@ -100,6 +101,7 @@ export default function ScreenerTabBar({
           );
         })}
       </div>
+      )}
 
       {/* ── Refresh — hidden in chart mode (chart toolbar has its own) ── */}
       {viewMode !== "chart" && (

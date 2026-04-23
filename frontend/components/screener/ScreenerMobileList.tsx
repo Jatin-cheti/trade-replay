@@ -25,13 +25,16 @@ export default function ScreenerMobileList({
           // Section 2 spec (SYM-NEWTAB-001): new tab on row click.
           <a
             href={`/symbol/${encodeURIComponent(item.fullSymbol || item.symbol)}`}
-            target="_blank"
+            target={onNavigate ? "_self" : "_blank"}
             rel="noopener noreferrer"
-            data-testid="screener-row-mobile"
+            data-testid="screener-row"
             data-symbol={item.fullSymbol || item.symbol}
             onClick={(e) => {
               if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-              onNavigate?.(item.fullSymbol || item.symbol);
+              if (onNavigate) {
+                e.preventDefault();
+                onNavigate(item.fullSymbol || item.symbol);
+              }
             }}
             className={`flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-left transition-colors hover:bg-secondary/35 ${
               index > 0 ? "border-t border-border/20" : ""

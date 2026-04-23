@@ -63,7 +63,7 @@ export default function ScreenerToolbar({
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
         {typeMenuOpen && (
-          <div className="absolute left-0 top-full z-40 mt-1.5 w-[280px] rounded-xl border border-border/60 bg-background/95 p-1.5 shadow-xl backdrop-blur-xl">
+          <div data-dropdown-panel className="absolute left-0 top-full z-40 mt-1.5 w-[280px] rounded-xl border border-border/60 bg-background/95 p-1.5 shadow-xl backdrop-blur-xl">
             {(meta?.screenerTypes || FALLBACK_SCREENER_TYPES).map((entry) => {
               const active = entry.routeType === routeType;
               return (

@@ -4,6 +4,7 @@ import { createTradingChart, fitChartContent, resizeChartSurface } from "@/servi
 import {
   applySeriesData,
   applySeriesVisibility,
+  chartVisibilityMap,
   createChartSeries,
   type ChartSeriesMap,
 } from "@/services/chart/seriesManager";
@@ -14,25 +15,9 @@ import AssetAvatar from "@/components/ui/AssetAvatar";
 import ScreenerRowContextMenu from "@/components/screener/ScreenerRowContextMenu";
 import { useSymbolFlags } from "@/hooks/useSymbolFlags";
 import { formatPriceUs } from "@/lib/numberFormat";
-import type { ISeriesApi, UTCTimestamp } from "@tradereplay/charts";
+import type { UTCTimestamp } from "@tradereplay/charts";
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-// Format a timestamp into a compact axis label appropriate for the given period
-function formatAxisLabel(time: number, period: string): string {
-  const d = new Date(time * 1000);
-  const h = d.getUTCHours();
-  const min = d.getUTCMinutes();
-  const mon = MONTHS[d.getUTCMonth()];
-  const dom = d.getUTCDate();
-  const yr2 = d.getUTCFullYear().toString().slice(2);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  if (period === '1D') return min === 0 ? `${h}:00` : `${pad(h)}:${pad(min)}`;
-  if (period === '5D') return `${mon} ${dom}`;
-  if (period === '1M' || period === '3M') return `${mon} ${dom}`;
-  return `${mon} '${yr2}`;
-}
+const OHLC_CHART_TYPES = new Set<ChartType>(["candlestick", "bar", "ohlc", "heikinAshi", "hollowCandles"]);
 
 interface Props {
   item: ScreenerItem;
@@ -52,6 +37,7 @@ interface HoverInfo {
   close?: number;
   volume?: number;
   date: string;
+  time: string;
 }
 
 export default function ScreenerChartCard({ item, candles, chartType, period, height = 200 }: Props) {
@@ -59,7 +45,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
   const seriesMapRef = useRef<ChartSeriesMap | null>(null);
-  const prevCloseLineRef = useRef<ReturnType<ISeriesApi<"Area">["createPriceLine"]> | null>(null);
+  const prevCloseLineRef = useRef<any>(null);
   const firstTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
   const lastTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
   const numBarsRef = useRef<number>(0);
@@ -97,11 +83,10 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
   // Refs updated every render so event handlers set up once always have current values
   const lineColorRef = useRef(lineColor);
   lineColorRef.current = lineColor;
-  const periodRef = useRef(period);
-  periodRef.current = period;
-
-  // Axis label data for canvas drawing (ref — no React re-render needed)
-  const axisLabelDataRef = useRef<Array<{ x: number; text: string }>>([]);
+  const chartTypeRef = useRef(chartType);
+  chartTypeRef.current = chartType;
+  const rowsRef = useRef(transformed.ohlcRows);
+  rowsRef.current = transformed.ohlcRows;
 
   // Observe card visibility — defer chart init until the card enters the viewport
   useEffect(() => {
@@ -130,20 +115,21 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     }
 
     try {
-      chart.applyOptions({
+      (chart as any).applyOptions({
         handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: { time: false, price: false } },
         handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false, vertTouchDrag: false },
         timeScale: {
           rightOffset: 0,
           barSpacing: 4,
           minBarSpacing: 0.5,
-          // Do NOT fix either edge — let setVisibleRange position freely
           fixLeftEdge: false,
           fixRightEdge: false,
           lockVisibleTimeRangeOnResize: false,
           timeVisible: true,
           secondsVisible: false,
-          borderVisible: true,
+          borderVisible: false,
+          // Use only the built-in axis labels to avoid duplicated X labels.
+          visible: true,
         },
         rightPriceScale: {
           scaleMargins: { top: 0.08, bottom: 0.08 },
@@ -151,9 +137,9 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         },
         crosshair: {
           mode: 1,
-          // Hide LW's built-in crosshair labels — we render our own hover info
           vertLine: { labelVisible: false },
-          horzLine: { labelVisible: false },
+          // Show LWC's built-in horizontal price label on Y axis during hover
+          horzLine: { labelVisible: true, style: 3, width: 1, color: 'rgba(155,160,170,0.4)' },
         },
       });
     } catch { /* non-fatal */ }
@@ -169,96 +155,81 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     chartRef.current = chart;
     seriesMapRef.current = seriesMap;
 
-    // Crosshair move → draw dot on canvas + update hover tooltip
-    chart.subscribeCrosshairMove((param) => {
+    // Crosshair move -> draw dot on active series and update tooltip.
+    (chart as any).subscribeCrosshairMove((param: any) => {
       const overlay = overlayRef.current;
       const ctx = overlay?.getContext('2d');
 
-      // Always clear and redraw axis labels on every crosshair event
       if (ctx && overlay) {
         const dpr = window.devicePixelRatio || 1;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
-        const labels = axisLabelDataRef.current;
-        if (labels.length > 0) {
-          ctx.save();
-          ctx.font = '8px system-ui, -apple-system, Arial, sans-serif';
-          ctx.fillStyle = 'rgba(155, 160, 170, 0.65)';
-          ctx.textAlign = 'center';
-          const bottomY = overlay.height / dpr - 3;
-          for (const { x, text } of labels) ctx.fillText(text, x, bottomY);
-          ctx.restore();
-        }
       }
 
-      if (!param.time || !param.point) {
+      if (!param.point) {
         setHoverInfo(null);
         return;
       }
 
-      // Try all series to find data at crosshair position
-      let foundOhlc: { open?: number; high?: number; low?: number; close?: number } | undefined;
-      let foundValue: number | undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let dotSeries: ISeriesApi<any> | null = null;
-      let dotPrice: number | null = null;
-      try {
-        if (param.seriesData) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          for (const [ser, v] of param.seriesData as Map<ISeriesApi<any>, unknown>) {
-            const d = v as Record<string, number>;
-            if (d.close != null && d.open != null) {
-              foundOhlc = d as { open?: number; high?: number; low?: number; close?: number };
-              if (dotSeries == null) { dotSeries = ser; dotPrice = d.close; }
-              break;
-            }
-            if (d.value != null && foundValue == null) {
-              foundValue = d.value;
-              if (dotSeries == null) { dotSeries = ser; dotPrice = d.value; }
-            }
-          }
-        }
-      } catch { /* ignore */ }
+      const rows = rowsRef.current;
+      if (!rows.length) {
+        setHoverInfo(null);
+        return;
+      }
 
-      // Draw colored dot snapped to series line on canvas
-      if (ctx && overlay && dotSeries && dotPrice != null) {
+      let idx = rows.length - 1;
+      if (param.time != null) {
+        const found = rows.findIndex((r) => r.time === (param.time as UTCTimestamp));
+        if (found >= 0) idx = found;
+      } else {
+        const width = containerRef.current?.clientWidth ?? 1;
+        const ratio = Math.max(0, Math.min(1, param.point.x / width));
+        idx = Math.max(0, Math.min(rows.length - 1, Math.round(ratio * (rows.length - 1))));
+      }
+
+      const row = rows[idx];
+      const visibleKeys = chartVisibilityMap[chartTypeRef.current] ?? ['area'];
+      const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
+      const primarySeries = seriesMapRef.current?.[primaryKey] as any;
+      const hoverTime = (param.time ?? row.time) as UTCTimestamp;
+      const dotX = chartRef.current?.timeScale().timeToCoordinate(hoverTime);
+      const dotY = primarySeries?.priceToCoordinate(row.close);
+
+      if (ctx && overlay && dotX != null && dotY != null && Number.isFinite(dotX) && Number.isFinite(dotY)) {
         try {
-          const dotY = dotSeries.priceToCoordinate(dotPrice);
-          const dotX = chartRef.current?.timeScale().timeToCoordinate(param.time as UTCTimestamp);
-          if (dotY != null && dotX != null && Number.isFinite(dotY) && Number.isFinite(dotX) && dotY > 0) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
-            ctx.fillStyle = lineColorRef.current;
-            ctx.fill();
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = '#131722';
-            ctx.stroke();
-            ctx.restore();
-          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+          ctx.fillStyle = lineColorRef.current;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#131722';
+          ctx.stroke();
+          ctx.restore();
         } catch { /* ignore */ }
       }
 
-      const currentPeriod = periodRef.current;
-      const ts = typeof param.time === "number" ? param.time * 1000 : 0;
-      const d = new Date(ts);
-      let dateStr = "";
-      if (ts) {
-        if (currentPeriod === "1D") {
-          dateStr = `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
-        } else if (currentPeriod === "5D") {
-          dateStr = `${DAYS[d.getUTCDay()]} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
-        } else {
-          dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: currentPeriod === "1Y" || currentPeriod === "5Y" || currentPeriod === "All" ? "numeric" : undefined });
-        }
-      }
+      const dt = new Date((row.time as number) * 1000);
+      const date = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const time = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
 
-      if (foundOhlc && foundOhlc.close != null) {
-        setHoverInfo({ price: foundOhlc.close, open: foundOhlc.open, high: foundOhlc.high, low: foundOhlc.low, close: foundOhlc.close, date: dateStr });
-      } else if (foundValue != null) {
-        setHoverInfo({ price: foundValue, date: dateStr });
+      if (OHLC_CHART_TYPES.has(chartTypeRef.current)) {
+        setHoverInfo({
+          price: row.close,
+          open: row.open,
+          high: row.high,
+          low: row.low,
+          close: row.close,
+          volume: row.volume,
+          date,
+          time,
+        });
       } else {
-        setHoverInfo(null);
+        setHoverInfo({
+          price: row.close,
+          date,
+          time,
+        });
       }
     });
 
@@ -275,7 +246,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
           const lt = lastTimeRef.current;
           const nb = numBarsRef.current;
           if (ft != null && lt != null && nb > 0) {
-            try { fitChartContent(c, ct, ft, lt, nb); } catch { c.timeScale().fitContent(); }
+            try { fitChartContent(c, ct, ft, lt, nb); } catch { /* ignore */ }
           }
         }
       } catch { /* ignore */ }
@@ -321,25 +292,36 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      // Hide LWC's built-in tick text — our canvas draws the labels
+      // Ensure current-value labels are shown on visible series.
       try {
-        chart.timeScale().applyOptions({ tickMarkFormatter: () => '' });
+        const visibleKeys = chartVisibilityMap[chartType] ?? ['area'];
+        for (const key of visibleKeys) {
+          const visibleSeries = seriesMap[key as keyof ChartSeriesMap];
+          if (!visibleSeries) continue;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (visibleSeries as any).applyOptions({ lastValueVisible: true, priceLineVisible: true });
+        }
       } catch { /* ignore */ }
 
-      // Manage prev-close reference line with axis label
+      // Manage prev-close reference line on the primary visible series
       try {
+        const visibleKeys = chartVisibilityMap[chartType] ?? ['area'];
+        const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const primarySeries = (seriesMap[primaryKey] ?? seriesMap.area) as any;
         if (prevCloseLineRef.current) {
-          seriesMap.area.removePriceLine(prevCloseLineRef.current);
+          try { (seriesMap.area as any).removePriceLine(prevCloseLineRef.current); } catch { /* ignore */ }
+          try { primarySeries.removePriceLine(prevCloseLineRef.current); } catch { /* ignore */ }
           prevCloseLineRef.current = null;
         }
         if (prevClose != null) {
-          prevCloseLineRef.current = seriesMap.area.createPriceLine({
+          prevCloseLineRef.current = primarySeries.createPriceLine({
             price: prevClose,
-            color: "rgba(160,160,160,0.6)",
+            color: 'rgba(160,160,160,0.55)',
             lineWidth: 1,
             lineStyle: 2, // dashed
             axisLabelVisible: true,
-            title: "",
+            title: 'Prev',
           });
         }
       } catch { /* createPriceLine may not be available */ }
@@ -352,52 +334,10 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         firstTimeRef.current = ft;
         lastTimeRef.current = lt;
         numBarsRef.current = rows.length;
-        try { fitChartContent(chart, container, ft, lt, rows.length); } catch { chart.timeScale().fitContent(); }
+        try { fitChartContent(chart, container, ft, lt, rows.length); } catch { /* ignore */ }
 
-        // Compute evenly-spaced axis labels using exact timeToCoordinate positions, then draw on canvas
-        requestAnimationFrame(() => {
-          const c = chartRef.current;
-          const ct = containerRef.current;
-          const overlay = overlayRef.current;
-          if (!c || !ct || !overlay || rows.length < 2) return;
-          const PRICE_SCALE_W = 58;
-          const dataW = Math.max(20, ct.clientWidth - PRICE_SCALE_W);
-          const firstT = rows[0].time as number;
-          const lastT = rows[rows.length - 1].time as number;
-          if (lastT <= firstT) return;
-          const count = Math.max(3, Math.min(7, Math.floor(dataW / 42)));
-          const newLabels: Array<{ x: number; text: string }> = [];
-          const currentPeriod = periodRef.current;
-          for (let i = 1; i <= count; i++) {
-            const frac = i / (count + 1);
-            const targetT = firstT + frac * (lastT - firstT);
-            let idx = rows.findIndex(r => (r.time as number) >= targetT);
-            if (idx < 0) idx = rows.length - 1;
-            const row = rows[idx];
-            // Use exact pixel position from LWC time scale
-            const x = c.timeScale().timeToCoordinate(row.time as UTCTimestamp);
-            if (x == null || !Number.isFinite(x) || x < 0 || x > ct.clientWidth) continue;
-            newLabels.push({ x, text: formatAxisLabel(row.time as number, currentPeriod) });
-          }
-          axisLabelDataRef.current = newLabels;
-          // Draw labels on canvas immediately
-          const ctx = overlay.getContext('2d');
-          if (!ctx) return;
-          const dpr = window.devicePixelRatio || 1;
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
-          if (newLabels.length > 0) {
-            ctx.save();
-            ctx.font = '8px system-ui, -apple-system, Arial, sans-serif';
-            ctx.fillStyle = 'rgba(155, 160, 170, 0.65)';
-            ctx.textAlign = 'center';
-            const bottomY = overlay.height / dpr - 3;
-            for (const { x, text } of newLabels) ctx.fillText(text, x, bottomY);
-            ctx.restore();
-          }
-        });
       } else if (rows.length === 1) {
-        chart.timeScale().fitContent();
+        try { fitChartContent(chart, container, rows[0].time, rows[0].time, 1); } catch { /* ignore */ }
       }
     } catch { /* ignore data application errors */ }
   }, [chartType, isPositive, lineColor, period, prevClose, ready, transformed]);
@@ -502,6 +442,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
               {hoverInfo.open != null ? (
                 <div className="flex flex-col gap-0.5">
                   <span className="text-white/60">{hoverInfo.date}</span>
+                  <span className="text-white/60">{hoverInfo.time}</span>
                   <div className="flex gap-2 text-[9px]">
                     <span className="text-white/70">O<span className="ml-0.5 text-white">{hoverInfo.open.toFixed(2)}</span></span>
                     <span className="text-white/70">H<span className="ml-0.5 text-emerald-400">{hoverInfo.high?.toFixed(2)}</span></span>
@@ -512,6 +453,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
               ) : (
                 <div className="flex flex-col gap-0.5">
                   <span className="text-white/60">{hoverInfo.date}</span>
+                  <span className="text-white/60">{hoverInfo.time}</span>
                   <span className="font-semibold text-white">{hoverInfo.price.toFixed(2)}</span>
                 </div>
               )}

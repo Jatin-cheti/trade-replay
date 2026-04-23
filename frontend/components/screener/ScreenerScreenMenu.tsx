@@ -85,6 +85,22 @@ export default function ScreenerScreenMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
+  // Close on outside page scroll/wheel, but keep menu open for scroll inside dropdown panels.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleScrollOrWheel = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-dropdown-panel]")) return;
+      close();
+    };
+    window.addEventListener("scroll", handleScrollOrWheel, true);
+    window.addEventListener("wheel", handleScrollOrWheel, true);
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrWheel, true);
+      window.removeEventListener("wheel", handleScrollOrWheel, true);
+    };
+  }, [menuOpen]);
+
   const openSaveModal = useCallback((asNew: boolean) => {
     setSaveAsNew(asNew);
     setSaveInput(asNew ? "New screen" : activeScreenName);
@@ -158,7 +174,7 @@ export default function ScreenerScreenMenu({
         </button>
 
         {menuOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1.5 w-[260px] rounded-xl border border-border/60 bg-background/98 shadow-2xl backdrop-blur-xl">
+          <div data-dropdown-panel className="absolute left-0 top-full z-50 mt-1.5 w-[260px] rounded-xl border border-border/60 bg-background/98 shadow-2xl backdrop-blur-xl">
             {/* Header */}
             <div className="border-b border-border/40 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">Screen</p>
@@ -235,7 +251,7 @@ export default function ScreenerScreenMenu({
                   <ChevronDown className={`ml-auto h-3 w-3 text-muted-foreground transition-transform ${shareExpanded ? "rotate-180" : ""}`} />
                 </button>
                 {shareExpanded && (
-                  <div className="mx-2 mb-1 rounded-lg border border-border/40 bg-secondary/20 p-2">
+                  <div data-dropdown-panel className="mx-2 mb-1 rounded-lg border border-border/40 bg-secondary/20 p-2">
                     <p className="mb-1.5 text-[11px] text-muted-foreground">Copy the current view link</p>
                     <button
                       type="button"
@@ -275,7 +291,7 @@ export default function ScreenerScreenMenu({
                       <ChevronDown className={`ml-auto h-3 w-3 text-muted-foreground transition-transform ${openScreensOpen ? "rotate-180" : ""}`} />
                     </button>
                     {openScreensOpen && (
-                      <div className="mx-2 mb-1 max-h-52 overflow-auto rounded-lg border border-border/40 bg-secondary/20">
+                      <div data-dropdown-panel className="mx-2 mb-1 max-h-52 overflow-auto rounded-lg border border-border/40 bg-secondary/20">
                         {savedScreens.map((screen) => (
                           <div key={screen._id} className="group flex items-center gap-1 px-1 py-0.5">
                             <button
@@ -311,7 +327,7 @@ export default function ScreenerScreenMenu({
                       <ChevronDown className={`ml-auto h-3 w-3 text-muted-foreground transition-transform ${recentlyUsedOpen ? "rotate-180" : ""}`} />
                     </button>
                     {recentlyUsedOpen && (
-                      <div className="mx-2 mb-1 rounded-lg border border-border/40 bg-secondary/20 p-1">
+                      <div data-dropdown-panel className="mx-2 mb-1 rounded-lg border border-border/40 bg-secondary/20 p-1">
                         {recentScreens.map((screen) => (
                           <button
                             key={screen._id}
