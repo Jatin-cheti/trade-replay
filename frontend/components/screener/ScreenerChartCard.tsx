@@ -244,6 +244,16 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       if (!c || !ct || !ov) return;
       try {
         resizeChartSurface(c, ct, ov);
+        // Clear stale crosshair dot so it doesn't appear misaligned after resize
+        try {
+          const ctx = ov.getContext('2d');
+          if (ctx) {
+            const dpr = window.devicePixelRatio || 1;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, ov.width / dpr, ov.height / dpr);
+          }
+        } catch { /* ignore */ }
+        setHoverInfo(null);
         // After resize, re-fit content using stored time refs
         if (ct.clientWidth > 0 && ct.clientHeight > 0) {
           const ft = firstTimeRef.current;
