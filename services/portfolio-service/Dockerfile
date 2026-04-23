@@ -1,7 +1,10 @@
 FROM node:20-alpine
+
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
+
+COPY package.json ./
+RUN npm install --no-package-lock
+
 COPY . .
-EXPOSE 3006
-CMD ["npx", "tsx", "src/index.ts"]
+
+CMD ["npm", "run", "start"]

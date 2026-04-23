@@ -1,10 +1,13 @@
-import "dotenv/config";
+import { CONFIG } from "./index";
 
 export const env = {
-  PORT: Number(process.env.PORT) || 3006,
-  MONGO_URI: process.env.MONGO_URI || "",
-  REDIS_URL: process.env.REDIS_URL || "redis://localhost:6379",
-  JWT_SECRET: process.env.JWT_SECRET || "change-me",
+  NODE_ENV: CONFIG.nodeEnv,
+  PORT: CONFIG.port,
+  MONGO_URI: CONFIG.mongoUri,
+  REDIS_URL: CONFIG.redisUrl,
+  KAFKA_ENABLED: CONFIG.kafkaEnabled,
+  KAFKA_BROKERS: CONFIG.kafkaBroker,
+  KAFKA_SASL_MECHANISM: CONFIG.kafkaSaslMechanism,
+  KAFKA_SASL_USERNAME: CONFIG.kafkaSaslUsername,
+  KAFKA_SASL_PASSWORD: CONFIG.kafkaSaslPassword,
 };
-
-if (!env.MONGO_URI) throw new Error("MONGO_URI is required");
