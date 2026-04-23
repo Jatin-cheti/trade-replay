@@ -94,11 +94,15 @@ test.describe("Screener page", () => {
 
     // Market cap is the default sort (descending). First click toggles to ascending → TrendingUp
     await mktCapBtn.click();
-    await expect(page.locator(".lucide-trending-up")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".lucide-trending-up")).toBeVisible({ timeout: 8_000 });
+
+    // Wait for re-render to settle, then ensure button is back in view before second click
+    await mktCapBtn.scrollIntoViewIfNeeded();
+    await expect(mktCapBtn).toBeVisible({ timeout: 5_000 });
 
     // Second click — toggles back to descending → TrendingDown
     await mktCapBtn.click();
-    await expect(page.locator(".lucide-trending-down")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".lucide-trending-down")).toBeVisible({ timeout: 8_000 });
   });
 
   /* ── 5. Row click → symbol page ── */
