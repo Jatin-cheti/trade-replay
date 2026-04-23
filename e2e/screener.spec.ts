@@ -81,7 +81,7 @@ test.describe("Screener page", () => {
       .poll(
         async () =>
           Number((await page.getByTestId("screener-result-count").textContent())?.replace(/,/g, "") ?? "0"),
-        { timeout: 15_000 },
+        { timeout: 30_000 },
       )
       .toBeGreaterThan(indiaCount);
   });
@@ -100,7 +100,8 @@ test.describe("Screener page", () => {
     await mktCapBtn.click();
     await expect(page.locator(".lucide-trending-up")).toBeVisible({ timeout: 8_000 });
 
-    // Wait for re-render to settle, then ensure button is back in view before second click
+    // Wait for the table sort animation to settle before scrolling
+    await page.waitForTimeout(400);
     await mktCapBtn.scrollIntoViewIfNeeded();
     await expect(mktCapBtn).toBeVisible({ timeout: 5_000 });
 

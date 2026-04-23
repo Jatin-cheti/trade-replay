@@ -25,7 +25,7 @@ export default function ScreenerMobileList({
           // Section 2 spec (SYM-NEWTAB-001): new tab on row click.
           <a
             href={`/symbol/${encodeURIComponent(item.fullSymbol || item.symbol)}`}
-            target="_blank"
+            target={onNavigate ? "_self" : "_blank"}
             rel="noopener noreferrer"
             data-testid="screener-row"
             data-symbol={item.fullSymbol || item.symbol}
