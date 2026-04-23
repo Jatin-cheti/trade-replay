@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry, getISTOffsetSeconds, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -635,7 +635,7 @@ export default function TradingChart({
       // Intraday candles in ChartsPage are shifted to IST pseudo-UTC time, so
       // match that clock for countdown math to avoid session-gap artifacts.
       const nowSecRaw = Math.floor(Date.now() / 1000);
-      const nowSec = intraday ? nowSecRaw + 19800 : nowSecRaw;
+      const nowSec = intraday ? nowSecRaw + getISTOffsetSeconds() : nowSecRaw;
       const elapsed = Math.max(0, nowSec - lastTime);
       let remaining = candleSec - (elapsed % candleSec);
       if (remaining === candleSec) remaining = 0;

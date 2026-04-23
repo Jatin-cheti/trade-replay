@@ -14,5 +14,12 @@
   "scripts": {
     "test": "node --experimental-strip-types tests/indicators.test.ts && node --experimental-strip-types tests/panes.test.ts && node --experimental-strip-types tests/priceScale.test.ts && node --experimental-strip-types tests/transforms.test.ts && node --experimental-strip-types tests/drawingGeometry.test.ts",
     "bench": "node --experimental-strip-types bench/bench.ts"
+  },
+  "dependencies": {
+    "luxon": "^3.7.2"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "typescript": "^6.0.3"
   }
 }
