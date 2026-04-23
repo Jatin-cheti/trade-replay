@@ -64,39 +64,52 @@ export function useScreenerChartData(
       else uncached.push(sym);
     }
 
+    let hadNetworkFailure = false;
+
     if (uncached.length > 0) {
       const batches: string[][] = [];
       for (let i = 0; i < uncached.length; i += BATCH_SIZE) batches.push(uncached.slice(i, i + BATCH_SIZE));
-      try {
-        await Promise.all(
-          batches.map(async (batch) => {
-            const params: Record<string, string> = { symbols: batch.join(",") };
-            if (range) {
-              params.from = range.from.toISOString().slice(0, 10);
-              params.to = range.to.toISOString().slice(0, 10);
-            } else {
-              params.period = per;
-            }
-            const resp = await api.get<DataMap>("/screener/chart-data", {
-              params,
-              signal: ac.signal,
-            });
-            for (const [k, v] of Object.entries(resp.data)) {
-              result[k] = v;
-              cache.set(`${k}:${cacheKey}`, { data: v, ts: Date.now() });
-            }
-          }),
-        );
-      } catch (err: unknown) {
-        const name = (err as { name?: string }).name;
-        if (name !== "CanceledError" && name !== "AbortError") {
-          console.error("[useScreenerChartData]", err);
+      const settled = await Promise.allSettled(
+        batches.map(async (batch) => {
+          const params: Record<string, string> = { symbols: batch.join(",") };
+          if (range) {
+            params.from = range.from.toISOString().slice(0, 10);
+            params.to = range.to.toISOString().slice(0, 10);
+          } else {
+            params.period = per;
+          }
+          const resp = await api.get<DataMap>("/screener/chart-data", {
+            params,
+            signal: ac.signal,
+          });
+          return resp.data;
+        }),
+      );
+
+      for (const entry of settled) {
+        if (entry.status === "fulfilled") {
+          for (const [k, v] of Object.entries(entry.value)) {
+            result[k] = v;
+            cache.set(`${k}:${cacheKey}`, { data: v, ts: Date.now() });
+          }
+        } else {
+          const reason = entry.reason as { name?: string };
+          if (reason?.name !== "CanceledError" && reason?.name !== "AbortError") {
+            hadNetworkFailure = true;
+            console.error("[useScreenerChartData] batch failed", entry.reason);
+          }
         }
       }
     }
 
     if (!ac.signal.aborted) {
-      setData(result);
+      // If all uncached network requests failed, preserve existing chart data
+      // so the chart grid doesn't suddenly go blank on transient prod issues.
+      if (hadNetworkFailure && Object.keys(result).length === 0) {
+        setData((prev) => prev);
+      } else {
+        setData(result);
+      }
       setLoading(false);
       setIsRefreshing(false);
     }
