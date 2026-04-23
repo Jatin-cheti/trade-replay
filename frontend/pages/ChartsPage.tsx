@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
-import { ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowLeft, Maximize2, Minimize2, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import TradingChart from "@/components/chart/TradingChart";
@@ -11,9 +11,10 @@ import ChartSettingsModal from "@/components/chart/ChartSettingsModal";
 import ChartAlertModal from "@/components/chart/ChartAlertModal";
 import ChartTableViewModal from "@/components/chart/ChartTableViewModal";
 import ChartRightMiniStrip from "@/components/chart/ChartRightMiniStrip";
-import SymbolSearchInput from "@/components/chart/SymbolSearchInput";
 import ChartOhlcLegendOverlay from "@/components/chart/ChartOhlcLegendOverlay";
 import AssetAvatar from "@/components/ui/AssetAvatar";
+import SymbolSearchModal from "@/components/simulation/SymbolSearchModal";
+import type { AssetSearchItem } from "@/lib/assetSearch";
 import type { CandleData } from "@/data/stockData";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
@@ -120,6 +121,7 @@ export default function ChartsPage() {
   const [objectTreeVisible, setObjectTreeVisible] = useState(false);
   const [lockedCrosshair, setLockedCrosshair] = useState(false);
   const [activeIndicatorsCount] = useState(0); // reads from chart state eventually
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
 
   // Fetch symbol detail
   useEffect(() => {
@@ -289,6 +291,14 @@ export default function ChartsPage() {
     setHoverData(null);
   }
 
+  function handleAssetSelect(item: AssetSearchItem) {
+    const sym = item.exchange
+      ? `${item.exchange}:${item.symbol || item.ticker}`
+      : (item.symbol || item.ticker);
+    handleSymbolSelect(sym);
+    setSymbolSearchOpen(false);
+  }
+
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -343,8 +353,17 @@ export default function ChartsPage() {
           />
         )}
 
-        {/* Symbol search + display */}
-        <SymbolSearchInput currentSymbol={baseSymbol} onSelect={handleSymbolSelect} />
+        {/* Symbol search — clicking anywhere opens the full modal, input never focuses inline */}
+        <button
+          type="button"
+          data-testid="charts-symbol-search-btn"
+          onClick={() => setSymbolSearchOpen(true)}
+          className="flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-2.5 py-1.5 text-left hover:border-border/70 transition"
+          title="Search symbol"
+        >
+          <span className="min-w-[80px] text-[12px] font-bold text-foreground">{baseSymbol}</span>
+          <Search size={13} className="shrink-0 text-muted-foreground" />
+        </button>
 
         {/* Exchange badge */}
         {exchange && (
@@ -499,6 +518,13 @@ export default function ChartsPage() {
         symbol={baseSymbol}
         candles={candles}
         resolution={resolution}
+      />
+
+      <SymbolSearchModal
+        open={symbolSearchOpen}
+        selectedSymbol={baseSymbol}
+        onOpenChange={setSymbolSearchOpen}
+        onSelect={handleAssetSelect}
       />
     </div>
   );

@@ -401,18 +401,36 @@ export default function TradingChart({
     setLastPriceBadge({ y, price: lastPrice, isUp });
   }, [ready, transformedData, getActiveSeries]);
 
-  // Crosshair overlay: black price label on Y-axis, black time label on X-axis,
-  // and a second colored badge for hovered candle close price.
-  const [crosshairOverlay, setCrosshairOverlay] = useState<{
-    x: number; y: number;
-    price: number | null;
-    timeLabel: string;
-    hoveredCloseY: number | null;
-    hoveredClose: number | null;
-    isHoveredBullish: boolean;
-  } | null>(null);
+  // Crosshair overlay — DOM refs for zero-flicker direct updates
+  const crosshairYLabelRef = useRef<HTMLDivElement>(null);
+  const crosshairYPriceTextRef = useRef<HTMLSpanElement>(null);
+  const crosshairXLabelRef = useRef<HTMLDivElement>(null);
+  const hoveredCloseBadgeRef = useRef<HTMLDivElement>(null);
+  const hoveredClosePriceTextRef = useRef<HTMLSpanElement>(null);
+  const crosshairHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "+" menu — state is fine since it only changes on click (not every frame)
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuPrice, setPlusMenuPrice] = useState<number | null>(null);
+  const [plusMenuY, setPlusMenuY] = useState(0);
+  // Track latest crosshair price for the "+" click handler
+  const crosshairPriceRef = useRef<number | null>(null);
+
+  const cancelHide = useCallback(() => {
+    if (crosshairHideTimerRef.current != null) {
+      clearTimeout(crosshairHideTimerRef.current);
+      crosshairHideTimerRef.current = null;
+    }
+  }, []);
+
+  const hideCrosshairOverlay = useCallback(() => {
+    const yLabel = crosshairYLabelRef.current;
+    const xLabel = crosshairXLabelRef.current;
+    const hovBadge = hoveredCloseBadgeRef.current;
+    if (yLabel) yLabel.style.display = 'none';
+    if (xLabel) xLabel.style.display = 'none';
+    if (hovBadge) hovBadge.style.display = 'none';
+    crosshairPriceRef.current = null;
+  }, []);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -421,58 +439,97 @@ export default function TradingChart({
 
     function handleCrosshairMove(param: unknown) {
       const ev = param as CrosshairMoveEvent;
+      const yLabel = crosshairYLabelRef.current;
+      const yPriceText = crosshairYPriceTextRef.current;
+      const xLabel = crosshairXLabelRef.current;
+      const hovBadge = hoveredCloseBadgeRef.current;
+      const hovText = hoveredClosePriceTextRef.current;
+
       if (!ev || ev.source === 'leave' || !ev.point) {
-        setCrosshairOverlay(null);
+        // Delay hide so cursor can move onto the "+" button before disappearing
+        if (crosshairHideTimerRef.current != null) clearTimeout(crosshairHideTimerRef.current);
+        crosshairHideTimerRef.current = setTimeout(() => {
+          if (yLabel) yLabel.style.display = 'none';
+          if (xLabel) xLabel.style.display = 'none';
+          if (hovBadge) hovBadge.style.display = 'none';
+          crosshairPriceRef.current = null;
+        }, 180);
         return;
+      }
+
+      // Cancel any pending hide
+      if (crosshairHideTimerRef.current != null) {
+        clearTimeout(crosshairHideTimerRef.current);
+        crosshairHideTimerRef.current = null;
       }
 
       const { x, y } = ev.point;
       const price = ev.price;
       const time = ev.time;
 
-      // Format the time label
-      let timeLabel = '';
-      if (time != null) {
+      crosshairPriceRef.current = price;
+
+      // Update Y-axis price label
+      if (yLabel && yPriceText && price != null) {
+        yLabel.style.top = `${Math.max(0, y - 12)}px`;
+        yLabel.style.display = 'flex';
+        yPriceText.textContent = price.toFixed(2);
+      } else if (yLabel) {
+        yLabel.style.display = 'none';
+      }
+
+      // Update X-axis time label
+      if (xLabel && time != null) {
         const d = new Date(Number(time) * 1000);
         const pad = (n: number) => String(n).padStart(2, '0');
         const h = d.getUTCHours(), m = d.getUTCMinutes();
+        const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+        const dom = pad(d.getUTCDate());
+        const yr2 = `'${d.getUTCFullYear().toString().slice(2)}`;
         const isIntraday = h !== 0 || m !== 0;
-        if (isIntraday) {
-          timeLabel = `${pad(d.getUTCDate())} ${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${pad(h)}:${pad(m)}`;
-        } else {
-          timeLabel = `${pad(d.getUTCDate())} ${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} '${d.getUTCFullYear().toString().slice(2)}`;
-        }
+        const tLabel = isIntraday
+          ? `${dom} ${mon} ${pad(h)}:${pad(m)}`
+          : `${dom} ${mon} ${yr2}`;
+        xLabel.style.left = `${x}px`;
+        xLabel.textContent = tLabel;
+        xLabel.style.display = 'block';
+      } else if (xLabel) {
+        xLabel.style.display = 'none';
       }
 
-      // Look up hovered candle to get the close price and direction
-      let hoveredClose: number | null = null;
-      let hoveredOpen: number | null = null;
-      if (time != null && series) {
+      // Hovered candle close badge
+      if (hovBadge && hovText && time != null && series) {
         const rows = transformedData.ohlcRows;
         const t = Number(time);
-        const candle = rows.find((r) => Number(r.time) === t) as ({ close?: number; open?: number; value?: number } & { time: number }) | undefined;
-        if (candle) {
-          hoveredClose = candle.close ?? candle.value ?? null;
-          hoveredOpen = (candle as { open?: number }).open ?? null;
+        const candle = rows.find((r) => Number(r.time) === t) as ({ close?: number; open?: number; value?: number }) | undefined;
+        const hovClose = candle ? (candle.close ?? candle.value ?? null) : null;
+        const hovOpen = candle ? ((candle as { open?: number }).open ?? null) : null;
+        const closeY = hovClose != null ? (series.priceToCoordinate(hovClose) ?? null) : null;
+        const lastY = lastPriceBadge?.y ?? null;
+        const tooClose = lastY != null && closeY != null && Math.abs(closeY - lastY) < 20;
+        if (hovClose != null && closeY != null && !tooClose) {
+          const bullish = hovOpen == null || hovClose >= hovOpen;
+          hovBadge.style.top = `${Math.max(0, closeY - 12)}px`;
+          hovBadge.style.display = 'flex';
+          hovBadge.style.backgroundColor = bullish ? '#26a69a' : '#ef5350';
+          hovText.textContent = hovClose.toFixed(2);
+        } else {
+          hovBadge.style.display = 'none';
         }
+      } else if (hovBadge) {
+        hovBadge.style.display = 'none';
       }
-
-      const hoveredCloseY = hoveredClose != null && series
-        ? (series.priceToCoordinate(hoveredClose) ?? null)
-        : null;
-      const isHoveredBullish = hoveredOpen == null || hoveredClose == null
-        ? true
-        : hoveredClose >= hoveredOpen;
-
-      setCrosshairOverlay({ x, y, price, timeLabel, hoveredCloseY, hoveredClose, isHoveredBullish });
     }
 
     chart.subscribeCrosshairMove(handleCrosshairMove);
     return () => {
       try { chart.unsubscribeCrosshairMove(handleCrosshairMove); } catch { /* ignore */ }
-      setCrosshairOverlay(null);
+      hideCrosshairOverlay();
+      if (crosshairHideTimerRef.current != null) clearTimeout(crosshairHideTimerRef.current);
     };
-  }, [chartRef, ready, getActiveSeries, transformedData]);
+  // lastPriceBadge intentionally excluded — ref callback reads it at call time
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartRef, ready, getActiveSeries, transformedData, hideCrosshairOverlay]);
 
   const addIndicator = useCallback((indicatorId: string) => {
     setEnabledIndicators((prev) => {
@@ -484,6 +541,83 @@ export default function TradingChart({
   const removeEnabledIndicator = useCallback((indicatorId: string) => {
     setEnabledIndicators((prev) => prev.filter((id) => id !== indicatorId));
   }, []);
+
+  // Custom scroll/zoom handler:
+  // - Normal scroll → zoom anchored at rightmost visible candle (TradingView default)
+  // - Ctrl+scroll   → zoom anchored at candle under cursor
+  // Runs in capture phase to intercept wheel before the chart library's canvas listener.
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    const chart = chartRef.current;
+    if (!container || !chart || !ready) return;
+
+    let isCtrlHeld = false;
+    let accumDelta = 0;
+    let rafId: number | null = null;
+    let lastCursorX = 0;
+
+    const MIN_BARS = 3;
+    const MAX_BARS = 5000;
+
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Control') isCtrlHeld = true; };
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Control') isCtrlHeld = false; };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
+      accumDelta += e.deltaY * deltaScale;
+      lastCursorX = e.offsetX;
+      const useCtrlAnchor = isCtrlHeld || e.ctrlKey;
+
+      if (rafId != null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const delta = accumDelta;
+        accumDelta = 0;
+        if (Math.abs(delta) < 0.5) return;
+
+        const timeScale = chart.timeScale();
+        const range = timeScale.getVisibleLogicalRange();
+        if (!range) return;
+        const currentBars = range.to - range.from;
+        if (!Number.isFinite(currentBars) || currentBars <= 0) return;
+
+        const zoomFactor = Math.exp(-delta * 0.0015);
+        const rawBars = currentBars / zoomFactor;
+        const newBars = Math.max(MIN_BARS, Math.min(MAX_BARS, rawBars));
+
+        if (useCtrlAnchor) {
+          // Zoom centered at cursor candle
+          const containerW = container.clientWidth || 1;
+          const cursorFraction = Math.max(0, Math.min(1, lastCursorX / containerW));
+          const cursorBar = range.from + cursorFraction * currentBars;
+          const newFrom = cursorBar - cursorFraction * newBars;
+          timeScale.setVisibleLogicalRange({ from: newFrom, to: newFrom + newBars });
+        } else {
+          // Zoom anchored at rightmost candle (range.to stays fixed)
+          timeScale.setVisibleLogicalRange({ from: range.to - newBars, to: range.to });
+        }
+      });
+    };
+
+    const onMouseMove = (e: MouseEvent) => { lastCursorX = e.offsetX; };
+
+    window.addEventListener('keydown', onKeyDown, { passive: true });
+    window.addEventListener('keyup', onKeyUp, { passive: true });
+    // capture=true: fires before the chart canvas's own wheel listener
+    container.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    container.addEventListener('mousemove', onMouseMove, { passive: true });
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      container.removeEventListener('wheel', onWheel, { capture: true });
+      container.removeEventListener('mousemove', onMouseMove);
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [chartContainerRef, chartRef, ready]);
 
   const applyTouchMode = useCallback((mode: 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch') => {
     const chart = chartRef.current;
@@ -3277,7 +3411,7 @@ export default function TradingChart({
                 style={{ top: lastPriceBadge.y - 10 }}
               >
                 <div
-                  className="rounded-l px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums"
+                  className="rounded-l px-1.5 py-0.5 text-[12px] font-bold text-white tabular-nums"
                   style={{ backgroundColor: lastPriceBadge.isUp ? '#26a69a' : '#ef5350' }}
                 >
                   {lastPriceBadge.price.toFixed(2)}
@@ -3285,61 +3419,65 @@ export default function TradingChart({
               </div>
             ) : null}
 
-            {/* Crosshair hovered-candle Y-axis badge (second colored label) */}
-            {crosshairOverlay != null && crosshairOverlay.hoveredCloseY != null && crosshairOverlay.hoveredClose != null
-              && !(lastPriceBadge != null && Math.abs(crosshairOverlay.hoveredCloseY - lastPriceBadge.y) < 18) ? (
-              <div
-                className="pointer-events-none absolute right-0 z-29 flex items-center"
-                style={{ top: crosshairOverlay.hoveredCloseY - 10 }}
-              >
-                <div
-                  className="rounded-l px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums opacity-90"
-                  style={{ backgroundColor: crosshairOverlay.isHoveredBullish ? '#26a69a' : '#ef5350' }}
-                >
-                  {crosshairOverlay.hoveredClose.toFixed(2)}
-                </div>
-              </div>
-            ) : null}
+            {/* ── Crosshair DOM overlays — always in DOM, updated via refs (no flicker) ── */}
 
-            {/* Crosshair black Y-axis price label + "+" button */}
-            {crosshairOverlay != null && crosshairOverlay.price != null ? (
+            {/* Hovered-candle second Y-axis badge */}
+            <div
+              ref={hoveredCloseBadgeRef}
+              className="pointer-events-none absolute right-0 z-[29] flex items-center"
+              style={{ display: 'none', top: 0 }}
+            >
               <div
-                className="absolute right-0 z-31 flex items-center"
-                style={{ top: crosshairOverlay.y - 10, pointerEvents: 'auto' }}
+                className="rounded-l px-1.5 py-0.5 text-[12px] font-bold text-white tabular-nums opacity-90"
               >
-                {/* "+" button */}
-                <button
-                  type="button"
-                  className="flex h-5 w-5 items-center justify-center rounded-l bg-[#1e222d] text-[11px] font-bold text-white hover:bg-[#2a2e39] leading-none border-r border-white/10"
-                  title="Add alert / order / drawing"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (plusMenuOpen && plusMenuPrice === crosshairOverlay.price) {
-                      setPlusMenuOpen(false);
-                    } else {
-                      setPlusMenuPrice(crosshairOverlay.price);
-                      setPlusMenuOpen(true);
-                    }
-                  }}
-                >
-                  +
-                </button>
-                <div className="rounded-r bg-[#131722] px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                  {crosshairOverlay.price.toFixed(2)}
-                </div>
+                <span ref={hoveredClosePriceTextRef} />
               </div>
-            ) : null}
+            </div>
 
-            {/* "+" context menu panel */}
-            {plusMenuOpen && plusMenuPrice != null && crosshairOverlay != null ? (
+            {/* Y-axis crosshair price label + "+" button */}
+            <div
+              ref={crosshairYLabelRef}
+              className="absolute right-0 z-[31] flex items-center"
+              style={{ display: 'none', top: 0, pointerEvents: 'auto' }}
+              onMouseEnter={cancelHide}
+              onMouseLeave={hideCrosshairOverlay}
+            >
+              <button
+                type="button"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-l bg-[#1e222d] text-[13px] font-bold text-white hover:bg-[#2a2e39] leading-none border-r border-white/10"
+                title="Add alert / order / drawing"
+                onMouseEnter={cancelHide}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const price = crosshairPriceRef.current;
+                  if (price == null) return;
+                  const yEl = crosshairYLabelRef.current;
+                  const topPx = yEl ? parseInt(yEl.style.top || '0', 10) : 0;
+                  if (plusMenuOpen && plusMenuPrice === price) {
+                    setPlusMenuOpen(false);
+                  } else {
+                    setPlusMenuPrice(price);
+                    setPlusMenuY(topPx);
+                    setPlusMenuOpen(true);
+                  }
+                }}
+              >
+                +
+              </button>
+              <div className="rounded-r bg-[#131722] px-2 py-0.5 text-[12px] font-bold text-white tabular-nums whitespace-nowrap">
+                <span ref={crosshairYPriceTextRef} />
+              </div>
+            </div>
+
+            {/* "+" context menu panel (state-driven, only shown on click) */}
+            {plusMenuOpen && plusMenuPrice != null ? (
               <div
-                className="absolute z-50 w-72 rounded-xl border border-white/10 bg-[#1e222d] py-1.5 shadow-2xl"
+                className="absolute z-50 w-[280px] rounded-xl border border-white/10 bg-[#1e222d] py-1.5 shadow-2xl"
                 style={{
-                  top: Math.max(4, (crosshairOverlay.y - 10) - 20),
-                  right: 68,
+                  top: Math.max(4, plusMenuY - 20),
+                  right: 76,
                   pointerEvents: 'auto',
                 }}
-                onMouseLeave={() => setPlusMenuOpen(false)}
               >
                 {([
                   { label: `Add alert on ${symbol} at ${plusMenuPrice.toFixed(2)}`, shortcut: 'Alt+A' },
@@ -3351,27 +3489,22 @@ export default function TradingChart({
                   <button
                     key={label}
                     type="button"
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-white hover:bg-white/5 transition"
-                    onClick={() => {
-                      setPlusMenuOpen(false);
-                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-white hover:bg-white/5 transition"
+                    onClick={() => setPlusMenuOpen(false)}
                   >
-                    <span className="flex-1">{label}</span>
+                    <span className="flex-1 leading-snug">{label}</span>
                     {shortcut ? <span className="shrink-0 text-[10px] text-white/40">{shortcut}</span> : null}
                   </button>
                 ))}
               </div>
             ) : null}
 
-            {/* Crosshair black X-axis time label */}
-            {crosshairOverlay != null && crosshairOverlay.timeLabel ? (
-              <div
-                className="pointer-events-none absolute bottom-0 z-31 -translate-x-1/2 rounded-t bg-[#131722] px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums whitespace-nowrap"
-                style={{ left: crosshairOverlay.x }}
-              >
-                {crosshairOverlay.timeLabel}
-              </div>
-            ) : null}
+            {/* X-axis crosshair time label */}
+            <div
+              ref={crosshairXLabelRef}
+              className="pointer-events-none absolute bottom-0 z-[31] -translate-x-1/2 rounded-t bg-[#131722] px-2 py-0.5 text-[11px] font-semibold text-white tabular-nums whitespace-nowrap"
+              style={{ display: 'none', left: 0 }}
+            />
 
             {patternWizardHint ? (
               <div
