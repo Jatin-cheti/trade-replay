@@ -161,7 +161,11 @@ function addSeriesCompat(
   };
 
   if (typeof chartAny.addSeries === 'function') {
-    return chartAny.addSeries(type, options);
+    try {
+      return chartAny.addSeries(type, options);
+    } catch {
+      // Fall through to legacy/fallback creation paths.
+    }
   }
 
   if (type === 'Candlestick' && typeof chartAny.addCandlestickSeries === 'function') return chartAny.addCandlestickSeries(options);
@@ -170,6 +174,18 @@ function addSeriesCompat(
   if (type === 'Baseline' && typeof chartAny.addBaselineSeries === 'function') return chartAny.addBaselineSeries(options);
   if (type === 'Histogram' && typeof chartAny.addHistogramSeries === 'function') return chartAny.addHistogramSeries(options);
   if (type === 'Bar' && typeof chartAny.addBarSeries === 'function') return chartAny.addBarSeries(options);
+
+  // Last-resort fallback: create any available drawable series so chart init does not fail.
+  const fallbackFactory =
+    chartAny.addLineSeries
+    || chartAny.addAreaSeries
+    || chartAny.addHistogramSeries
+    || chartAny.addBarSeries
+    || chartAny.addCandlestickSeries;
+
+  if (typeof fallbackFactory === 'function') {
+    return fallbackFactory({ ...options, visible: false });
+  }
 
   throw new Error(`Unsupported chart series API for type: ${type}`);
 }
