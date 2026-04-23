@@ -193,35 +193,35 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
 
       let idx = rows.length - 1;
       if (param.time != null) {
-        const found = rows.findIndex((r) => r.time === (param.time as UTCTimestamp));
-        if (found >= 0) idx = found;
-      } else {
-        // Use chart's coordinate→time API so the bar index is correct at any zoom level.
-        // The old pixel-ratio fallback was wrong after zoom (mapped px to index linearly,
-        // ignoring which subset of bars is currently visible).
-        const tAtCursor = (chartRef.current as any)
-          ?.timeScale?.()?.coordinateToTime?.(param.point.x) as UTCTimestamp | null | undefined;
-        if (tAtCursor != null) {
-          let minDiff = Infinity;
-          rows.forEach((r, i) => {
-            const diff = Math.abs((r.time as number) - (tAtCursor as number));
-            if (diff < minDiff) { minDiff = diff; idx = i; }
-          });
-        }
+        // Use nearest-time search instead of exact findIndex. The chart's timeIndex
+        // is a union of ALL series timestamps, including synthetic ones inserted by
+        // stepLineTransform (time-1 points between bars). An exact match would return
+        // -1 for those synthetic times, causing idx to default to the last bar.
+        let minDiff = Infinity;
+        const targetTime = param.time as number;
+        rows.forEach((r, i) => {
+          const diff = Math.abs((r.time as number) - targetTime);
+          if (diff < minDiff) { minDiff = diff; idx = i; }
+        });
       }
+      // When param.time is null the cursor is outside the data range — idx stays at
+      // rows.length - 1 (last bar), set by the initial assignment above.
 
       const row = rows[idx];
-      // Use param.point directly — in CrosshairMode.Magnet (mode 1), LWC snaps
-      // both X and Y to the nearest data point. This is the exact crosshair
-      // intersection, guaranteed correct regardless of zoom/scroll state.
-      // Avoids all dependency on timeToCoordinate / priceToCoordinate lag.
-      const dotX: number = param.point.x;
-      const dotY: number = param.point.y;
+      const visibleKeys = chartVisibilityMap[chartTypeRef.current] ?? ['area'];
+      const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
+      const primarySeries = seriesMapRef.current?.[primaryKey] as any;
+      // dotX: snap to the bar's centre pixel so the dot sits on the series line.
+      // Falls back to param.point.x if timeToCoordinate is unavailable.
+      const dotX: number = chartRef.current?.timeScale().timeToCoordinate(row.time as UTCTimestamp) ?? param.point.x;
+      // dotY: exact Y of the series line at this bar's close price in canvas coords.
+      // priceToCoordinate uses the same coordinate space as e.offsetX/Y (canvas pixels).
+      const dotY: number | null = (primarySeries?.priceToCoordinate(row.close) as number | null | undefined) ?? null;
 
       // Only draw if coordinates are within the canvas bounds — prevents corner-stuck dot
       const canvasW = containerRef.current?.clientWidth ?? 0;
       const canvasH = containerRef.current?.clientHeight ?? 0;
-      const inBounds = Number.isFinite(dotX) && Number.isFinite(dotY)
+      const inBounds = dotY !== null && Number.isFinite(dotX) && Number.isFinite(dotY)
         && dotX >= 0 && dotX <= canvasW && dotY >= 0 && dotY <= canvasH;
       if (ctx && overlay && inBounds) {
         try {
