@@ -41,6 +41,19 @@ function cardHeightForCols(cols: number): number {
   return 240;
 }
 
+/** Derive an effective period from a custom date range so the axis formatter
+ *  uses the right granularity (e.g. a 3-day custom range → "5D" formatter). */
+function effectivePeriod(period: string, customRange?: { from: Date; to: Date } | null): string {
+  if (!customRange) return period;
+  const days = (customRange.to.getTime() - customRange.from.getTime()) / 86_400_000;
+  if (days <= 2) return '1D';
+  if (days <= 10) return '5D';
+  if (days <= 60) return '1M';
+  if (days <= 180) return '6M';
+  if (days <= 400) return '1Y';
+  return '5Y';
+}
+
 const INITIAL_COUNT = 50;
 const PAGE_SIZE = 50;
 
@@ -147,7 +160,7 @@ export default function ScreenerChartGrid({
                 item={item}
                 candles={symbolData?.candles ?? []}
                 chartType={chartType}
-                period={period}
+                period={effectivePeriod(period, customRange)}
                 height={cardHeight}
               />
             );

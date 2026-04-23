@@ -80,7 +80,7 @@ export default function ScreenerTabBar({
 
       {/* ── Column tabs — horizontally scrollable section ── */}
       <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide">
-        {viewMode !== "chart" && tabList.map((tab) => {
+        {tabList.map((tab) => {
           const active = tab.key === activeTab;
           return (
             <button
@@ -101,15 +101,17 @@ export default function ScreenerTabBar({
         })}
       </div>
 
-      {/* ── Refresh — always visible on the right ── */}
-      <button
-        type="button"
-        onClick={onRefresh}
-        className="ml-1.5 shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
-        title="Refresh data"
-      >
-        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-      </button>
+      {/* ── Refresh — hidden in chart mode (chart toolbar has its own) ── */}
+      {viewMode !== "chart" && (
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="ml-1.5 shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+          title="Refresh data"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        </button>
+      )}
     </div>
   );
 }

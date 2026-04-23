@@ -19,14 +19,36 @@ import type { ISeriesApi } from "@tradereplay/charts";
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-function makeTickFormatter(period: string): (time: number, tickType: number) => string {
-  return (time: number) => {
+// TickMarkType: 0=Year  1=Month  2=DayOfMonth  3=Time  4=TimeWithSeconds
+// Using short labels so more ticks fit in narrow (6-column) charts
+function makeTickFormatter(period: string): (time: number, markType: number) => string {
+  return (time: number, markType: number): string => {
     const d = new Date(time * 1000);
+    const h = d.getUTCHours();
+    const min = d.getUTCMinutes();
+    const dom = d.getUTCDate();
+    const mon = MONTHS[d.getUTCMonth()];
+    const yr2 = d.getUTCFullYear().toString().slice(2);
+    const dayShort = DAYS[d.getUTCDay()].slice(0, 2); // "Mo", "Tu", etc.
     const pad = (n: number) => String(n).padStart(2, '0');
-    if (period === '1D') return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-    if (period === '5D') return `${DAYS[d.getUTCDay()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-    if (period === '1M' || period === '3M' || period === '6M') return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
-    return `${MONTHS[d.getUTCMonth()]} '${d.getUTCFullYear().toString().slice(2)}`;
+    switch (markType) {
+      case 0: return `'${yr2}`;     // Year: '25
+      case 1: return mon;           // Month: Jan
+      case 2:                       // Day of month
+        if (period === '1D') return `${mon} ${dom}`;
+        if (period === '5D') return dayShort;
+        return `${dom}`;
+      case 3:                       // Time
+      case 4: {                     // Time with seconds
+        if (period === '1D')
+          return min === 0 ? `${h}h` : `${pad(h)}:${pad(min)}`;
+        if (period === '5D')
+          return min === 0 ? `${dayShort} ${h}h` : `${pad(h)}:${pad(min)}`;
+        if (period === '1M' || period === '3M') return `${mon} ${dom}`;
+        return `${mon} '${yr2}`;
+      }
+      default: return '';
+    }
   };
 }
 

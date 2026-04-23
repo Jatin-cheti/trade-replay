@@ -145,6 +145,7 @@ export default function ScreenerChartToolbar({
 }: Props) {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutPos, setLayoutPos] = useState<DropPos | null>(null);
+  const [hoverCols, setHoverCols] = useState<number | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [typePos, setTypePos] = useState<DropPos | null>(null);
   const [typeSearch, setTypeSearch] = useState("");
@@ -187,7 +188,23 @@ export default function ScreenerChartToolbar({
 
   const currentCols = layout.mode === "custom" ? layout.cols : null;
 
-  const closeAll = () => { setLayoutOpen(false); setTypeOpen(false); setDatePickerOpen(false); };
+  const closeAll = () => {
+    setLayoutOpen(false); setTypeOpen(false); setDatePickerOpen(false);
+    setLayoutPos(null); setTypePos(null); setDatePos(null);
+    setHoverCols(null);
+  };
+
+  // Close all dropdowns on scroll or resize (positions become stale)
+  useEffect(() => {
+    if (!layoutOpen && !typeOpen && !datePickerOpen) return;
+    window.addEventListener('scroll', closeAll, true);
+    window.addEventListener('resize', closeAll);
+    return () => {
+      window.removeEventListener('scroll', closeAll, true);
+      window.removeEventListener('resize', closeAll);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutOpen, typeOpen, datePickerOpen]);
 
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-border/25 pb-1.5">
@@ -214,27 +231,41 @@ export default function ScreenerChartToolbar({
         {layoutOpen && layoutPos && (
           <>
             <div className="fixed inset-0 z-[9998]" onClick={() => setLayoutOpen(false)} />
-            <div className="fixed z-[9999] w-44 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
+            <div className="fixed z-[9999] w-56 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
               style={{ top: layoutPos.top, left: layoutPos.left }}>
               <button
                 type="button"
-                onClick={() => { onLayoutChange({ mode: "auto" }); setLayoutOpen(false); }}
-                className={`mb-1 w-full rounded-md px-3 py-1.5 text-left text-xs font-medium transition-colors ${
+                onClick={() => { onLayoutChange({ mode: "auto" }); setLayoutOpen(false); setHoverCols(null); }}
+                className={`mb-3 w-full rounded-md px-3 py-1.5 text-left text-xs font-medium transition-colors ${
                   layout.mode === "auto" ? "bg-primary/20 text-primary" : "text-foreground hover:bg-secondary/40"
                 }`}
               >Auto</button>
-              <p className="mb-1.5 mt-2 text-[10px] text-muted-foreground">Columns</p>
-              <div className="grid grid-cols-3 gap-1">
-                {COLUMN_OPTIONS.map((c) => (
-                  <button key={c} type="button"
-                    onClick={() => { onLayoutChange({ mode: "custom", cols: c }); setLayoutOpen(false); }}
-                    className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
-                      currentCols === c ? "bg-primary text-primary-foreground" : "bg-secondary/30 text-foreground hover:bg-secondary/60"
-                    }`}>
-                    {c}
-                  </button>
-                ))}
+              <p className="mb-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide">Columns</p>
+              <div className="flex gap-0.5" onMouseLeave={() => setHoverCols(null)}>
+                {COLUMN_OPTIONS.map((c) => {
+                  const isSelected = currentCols !== null && c <= currentCols;
+                  const isHoverPreview = hoverCols !== null && c <= hoverCols;
+                  return (
+                    <button key={c} type="button"
+                      onMouseEnter={() => setHoverCols(c)}
+                      onClick={() => { onLayoutChange({ mode: "custom", cols: c }); setLayoutOpen(false); setHoverCols(null); }}
+                      className={`flex-1 rounded py-2 text-[11px] font-semibold transition-all duration-100 ${
+                        isHoverPreview
+                          ? "bg-primary/35 text-primary"
+                          : isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary/25 text-muted-foreground hover:text-foreground"
+                      }`}>
+                      {c}
+                    </button>
+                  );
+                })}
               </div>
+              {currentCols !== null && (
+                <p className="mt-2 text-center text-[9px] text-muted-foreground/50">
+                  {hoverCols ?? currentCols} column{(hoverCols ?? currentCols) !== 1 ? 's' : ''} selected
+                </p>
+              )}
             </div>
           </>
         )}

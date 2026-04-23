@@ -39,15 +39,12 @@ export type ChartType =
   | 'fanChart' | 'paretoChart' | 'funnelChart' | 'networkGraph'
   | 'donutChart' | 'stackedArea';
 
-/** Chart types not yet implemented — show a "coming soon" overlay in the chart panel. */
+/** Chart types not yet implemented — truly canvas-only, cannot be rendered in LightweightCharts. */
 export const COMING_SOON_CHART_TYPES: ReadonlySet<ChartType> = new Set<ChartType>([
-  // Canvas-based charts that cannot be rendered in LightweightCharts
-  'scatterPlot', 'bubblePlot', 'boxPlot', 'heatMap',
-  'radarChart', 'treemap', 'waterfallChart', 'sunburst',
-  'yieldCurve', 'volatilitySurface', 'correlationMatrix',
-  'optionsPayoff', 'monteCarlo',
-  'fanChart', 'paretoChart', 'funnelChart', 'networkGraph',
-  'donutChart', 'stackedArea',
+  'bubblePlot', 'boxPlot', 'heatMap',
+  'radarChart', 'treemap', 'sunburst',
+  'volatilitySurface', 'correlationMatrix',
+  'networkGraph', 'donutChart', 'funnelChart',
 ]);
 
 export const chartTypeGroups: Array<{ id: string; label: string; types: ChartType[] }> = [
@@ -312,6 +309,37 @@ function computeSeasonality(rows: OhlcRow[]): LineData[] {
   });
 }
 
+/** Monte Carlo confidence bands: equity curve ± rolling 1.96σ (95% CI). */
+function computeMonteCarloConfidence(rows: OhlcRow[]): { upper: LineData[]; lower: LineData[] } {
+  const equity = computeEquityCurve(rows);
+  const WIN = 20;
+  const K = 1.96;
+  return {
+    upper: equity.map((e, i) => {
+      const slice = equity.slice(Math.max(0, i - WIN + 1), i + 1).map((x) => x.value);
+      const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+      const std = Math.sqrt(slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length);
+      return { time: e.time, value: e.value + K * std };
+    }),
+    lower: equity.map((e, i) => {
+      const slice = equity.slice(Math.max(0, i - WIN + 1), i + 1).map((x) => x.value);
+      const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+      const std = Math.sqrt(slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length);
+      return { time: e.time, value: e.value - K * std };
+    }),
+  };
+}
+
+/** Pareto cumulative volume % line (for Pareto chart type). */
+function computeParetoCumulative(rows: OhlcRow[]): LineData[] {
+  const totalVolume = rows.reduce((sum, r) => sum + r.volume, 0);
+  let cumVol = 0;
+  return rows.map((r) => {
+    cumVol += r.volume;
+    return { time: r.time, value: totalVolume > 0 ? (cumVol / totalVolume) * 100 : 0 };
+  });
+}
+
 export type TransformedData = {
   ohlcRows: OhlcRow[];
   renkoRows: OhlcRow[];
@@ -348,6 +376,10 @@ export type TransformedData = {
   regressionUpperRows: LineData[];
   regressionLowerRows: LineData[];
   seasonalityRows: LineData[];
+  // Advanced analytical rows
+  monteCarloUpperRows: LineData[];
+  monteCarloLowerRows: LineData[];
+  paretoCumulativeRows: LineData[];
   times: UTCTimestamp[];
 };
 
@@ -528,6 +560,11 @@ export function transformChartData(data: CandleData[], visibleCount: number, par
       return { regressionMidRows: mid, regressionUpperRows: upper, regressionLowerRows: lower };
     })(),
     seasonalityRows: computeSeasonality(ohlcRows),
+    ...(() => {
+      const { upper, lower } = computeMonteCarloConfidence(ohlcRows);
+      return { monteCarloUpperRows: upper, monteCarloLowerRows: lower };
+    })(),
+    paretoCumulativeRows: computeParetoCumulative(ohlcRows),
     times: ohlcRows.map((row) => row.time),
   };
 }

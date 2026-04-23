@@ -45,7 +45,11 @@ export type ChartSeriesKey =
   | 'regressionMid'
   | 'regressionUpper'
   | 'regressionLower'
-  | 'seasonalityLine';
+  | 'seasonalityLine'
+  // Advanced analytical series
+  | 'monteCarloUpper'
+  | 'monteCarloLower'
+  | 'paretoCumulative';
 
 export type ChartSeriesMap = {
   candlestick: ISeriesApi<'Candlestick'>;
@@ -89,6 +93,10 @@ export type ChartSeriesMap = {
   regressionUpper: ISeriesApi<'Line'>;
   regressionLower: ISeriesApi<'Line'>;
   seasonalityLine: ISeriesApi<'Line'>;
+  // Advanced analytical series
+  monteCarloUpper: ISeriesApi<'Line'>;
+  monteCarloLower: ISeriesApi<'Line'>;
+  paretoCumulative: ISeriesApi<'Line'>;
 };
 
 type ChartSeriesOptions = {
@@ -124,12 +132,17 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   regressionChannel: ['regressionMid', 'regressionUpper', 'regressionLower'],
   seasonality: ['seasonalityLine'],
   // Canvas-based — still coming soon
-  scatterPlot: [], bubblePlot: [], boxPlot: [], heatMap: [],
-  radarChart: [], treemap: [], waterfallChart: [], sunburst: [],
-  yieldCurve: [], volatilitySurface: [], correlationMatrix: [],
-  optionsPayoff: [], monteCarlo: [],
-  fanChart: [], paretoChart: [], funnelChart: [], networkGraph: [],
-  donutChart: [], stackedArea: [],
+  scatterPlot: ['dotChart'],
+  bubblePlot: [], boxPlot: [], heatMap: [],
+  radarChart: [], treemap: [], waterfallChart: ['returnsHistogram'], sunburst: [],
+  yieldCurve: ['area'],
+  volatilitySurface: [], correlationMatrix: [],
+  optionsPayoff: ['priceChange'],
+  monteCarlo: ['equityCurve', 'monteCarloUpper', 'monteCarloLower'],
+  fanChart: ['equityCurve', 'monteCarloUpper', 'monteCarloLower'],
+  paretoChart: ['volume', 'paretoCumulative'],
+  funnelChart: [], networkGraph: [],
+  donutChart: [], stackedArea: ['area', 'mountainArea', 'rangeArea'],
 };
 
 export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions): ChartSeriesMap {
@@ -222,6 +235,10 @@ export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions
     regressionUpper: chart.addSeries('Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
     regressionLower: chart.addSeries('Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
     seasonalityLine: chart.addSeries('Line', { color: '#e879f9', lineWidth: 2, visible: false }),
+    // Advanced analytical series
+    monteCarloUpper: chart.addSeries('Line', { color: 'rgba(34,211,238,0.45)', lineWidth: 1, lineStyle: 2, visible: false }),
+    monteCarloLower: chart.addSeries('Line', { color: 'rgba(34,211,238,0.45)', lineWidth: 1, lineStyle: 2, visible: false }),
+    paretoCumulative: chart.addSeries('Line', { color: '#f97316', lineWidth: 2, visible: false }),
   };
 
   map.volume.priceScale().applyOptions({
@@ -275,6 +292,9 @@ export function applySeriesData(map: ChartSeriesMap, data: TransformedData): voi
   map.regressionUpper.setData(data.regressionUpperRows);
   map.regressionLower.setData(data.regressionLowerRows);
   map.seasonalityLine.setData(data.seasonalityRows);
+  map.monteCarloUpper.setData(data.monteCarloUpperRows);
+  map.monteCarloLower.setData(data.monteCarloLowerRows);
+  map.paretoCumulative.setData(data.paretoCumulativeRows);
 }
 
 export function updateSeriesData(map: ChartSeriesMap, data: TransformedData): void {
