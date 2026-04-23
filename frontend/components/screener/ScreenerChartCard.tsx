@@ -14,42 +14,24 @@ import AssetAvatar from "@/components/ui/AssetAvatar";
 import ScreenerRowContextMenu from "@/components/screener/ScreenerRowContextMenu";
 import { useSymbolFlags } from "@/hooks/useSymbolFlags";
 import { formatPriceUs } from "@/lib/numberFormat";
-import type { ISeriesApi } from "@tradereplay/charts";
+import type { ISeriesApi, UTCTimestamp } from "@tradereplay/charts";
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-// TickMarkType: 0=Year  1=Month  2=DayOfMonth  3=Time  4=TimeWithSeconds
-// Using short labels so more ticks fit in narrow (6-column) charts
-function makeTickFormatter(period: string): (time: number, markType: number) => string {
-  return (time: number, markType: number): string => {
-    const d = new Date(time * 1000);
-    const h = d.getUTCHours();
-    const min = d.getUTCMinutes();
-    const dom = d.getUTCDate();
-    const mon = MONTHS[d.getUTCMonth()];
-    const yr2 = d.getUTCFullYear().toString().slice(2);
-    const dayShort = DAYS[d.getUTCDay()].slice(0, 2); // "Mo", "Tu", etc.
-    const pad = (n: number) => String(n).padStart(2, '0');
-    switch (markType) {
-      case 0: return `'${yr2}`;     // Year: '25
-      case 1: return mon;           // Month: Jan
-      case 2:                       // Day of month
-        if (period === '1D') return `${mon} ${dom}`;
-        if (period === '5D') return dayShort;
-        return `${dom}`;
-      case 3:                       // Time
-      case 4: {                     // Time with seconds
-        if (period === '1D')
-          return min === 0 ? `${h}h` : `${pad(h)}:${pad(min)}`;
-        if (period === '5D')
-          return min === 0 ? `${dayShort} ${h}h` : `${pad(h)}:${pad(min)}`;
-        if (period === '1M' || period === '3M') return `${mon} ${dom}`;
-        return `${mon} '${yr2}`;
-      }
-      default: return '';
-    }
-  };
+// Format a timestamp into a compact axis label appropriate for the given period
+function formatAxisLabel(time: number, period: string): string {
+  const d = new Date(time * 1000);
+  const h = d.getUTCHours();
+  const min = d.getUTCMinutes();
+  const mon = MONTHS[d.getUTCMonth()];
+  const dom = d.getUTCDate();
+  const yr2 = d.getUTCFullYear().toString().slice(2);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (period === '1D') return min === 0 ? `${h}:00` : `${pad(h)}:${pad(min)}`;
+  if (period === '5D') return `${mon} ${dom}`;
+  if (period === '1M' || period === '3M') return `${mon} ${dom}`;
+  return `${mon} '${yr2}`;
 }
 
 interface Props {
@@ -112,6 +94,15 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
   const isPositive = periodChange >= 0;
   const lineColor = isPositive ? "#10b981" : "#ef4444";
 
+  // Refs updated every render so event handlers set up once always have current values
+  const lineColorRef = useRef(lineColor);
+  lineColorRef.current = lineColor;
+  const periodRef = useRef(period);
+  periodRef.current = period;
+
+  // Axis label data for canvas drawing (ref — no React re-render needed)
+  const axisLabelDataRef = useRef<Array<{ x: number; text: string }>>([]);
+
   // Observe card visibility — defer chart init until the card enters the viewport
   useEffect(() => {
     const root = containerRef.current?.closest('[data-testid="screener-chart-card"]') ?? containerRef.current;
@@ -158,7 +149,12 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
           scaleMargins: { top: 0.08, bottom: 0.08 },
           autoScale: true,
         },
-        crosshair: { mode: 1 }, // enable crosshair for hover
+        crosshair: {
+          mode: 1,
+          // Hide LW's built-in crosshair labels — we render our own hover info
+          vertLine: { labelVisible: false },
+          horzLine: { labelVisible: false },
+        },
       });
     } catch { /* non-fatal */ }
 
@@ -173,35 +169,87 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     chartRef.current = chart;
     seriesMapRef.current = seriesMap;
 
-    // Crosshair move → update hover info
+    // Crosshair move → draw dot on canvas + update hover tooltip
     chart.subscribeCrosshairMove((param) => {
+      const overlay = overlayRef.current;
+      const ctx = overlay?.getContext('2d');
+
+      // Always clear and redraw axis labels on every crosshair event
+      if (ctx && overlay) {
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
+        const labels = axisLabelDataRef.current;
+        if (labels.length > 0) {
+          ctx.save();
+          ctx.font = '8px system-ui, -apple-system, Arial, sans-serif';
+          ctx.fillStyle = 'rgba(155, 160, 170, 0.65)';
+          ctx.textAlign = 'center';
+          const bottomY = overlay.height / dpr - 3;
+          for (const { x, text } of labels) ctx.fillText(text, x, bottomY);
+          ctx.restore();
+        }
+      }
+
       if (!param.time || !param.point) {
         setHoverInfo(null);
         return;
       }
-      // Try all possible series to find data at crosshair position
+
+      // Try all series to find data at crosshair position
       let foundOhlc: { open?: number; high?: number; low?: number; close?: number } | undefined;
       let foundValue: number | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let dotSeries: ISeriesApi<any> | null = null;
+      let dotPrice: number | null = null;
       try {
         if (param.seriesData) {
-          for (const [, v] of param.seriesData as Map<unknown, unknown>) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const [ser, v] of param.seriesData as Map<ISeriesApi<any>, unknown>) {
             const d = v as Record<string, number>;
-            if (d.close != null && d.open != null) { foundOhlc = d as { open?: number; high?: number; low?: number; close?: number }; break; }
-            if (d.value != null && foundValue == null) foundValue = d.value;
+            if (d.close != null && d.open != null) {
+              foundOhlc = d as { open?: number; high?: number; low?: number; close?: number };
+              if (dotSeries == null) { dotSeries = ser; dotPrice = d.close; }
+              break;
+            }
+            if (d.value != null && foundValue == null) {
+              foundValue = d.value;
+              if (dotSeries == null) { dotSeries = ser; dotPrice = d.value; }
+            }
           }
         }
       } catch { /* ignore */ }
 
+      // Draw colored dot snapped to series line on canvas
+      if (ctx && overlay && dotSeries && dotPrice != null) {
+        try {
+          const dotY = dotSeries.priceToCoordinate(dotPrice);
+          const dotX = chartRef.current?.timeScale().timeToCoordinate(param.time as UTCTimestamp);
+          if (dotY != null && dotX != null && Number.isFinite(dotY) && Number.isFinite(dotX) && dotY > 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+            ctx.fillStyle = lineColorRef.current;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#131722';
+            ctx.stroke();
+            ctx.restore();
+          }
+        } catch { /* ignore */ }
+      }
+
+      const currentPeriod = periodRef.current;
       const ts = typeof param.time === "number" ? param.time * 1000 : 0;
       const d = new Date(ts);
       let dateStr = "";
       if (ts) {
-        if (period === "1D") {
+        if (currentPeriod === "1D") {
           dateStr = `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
-        } else if (period === "5D") {
+        } else if (currentPeriod === "5D") {
           dateStr = `${DAYS[d.getUTCDay()]} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
         } else {
-          dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: period === "1Y" || period === "5Y" || period === "All" ? "numeric" : undefined });
+          dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: currentPeriod === "1Y" || currentPeriod === "5Y" || currentPeriod === "All" ? "numeric" : undefined });
         }
       }
 
@@ -273,9 +321,9 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      // Apply X-axis tick formatter based on period
+      // Hide LWC's built-in tick text — our canvas draws the labels
       try {
-        chart.timeScale().applyOptions({ tickMarkFormatter: makeTickFormatter(period) });
+        chart.timeScale().applyOptions({ tickMarkFormatter: () => '' });
       } catch { /* ignore */ }
 
       // Manage prev-close reference line with axis label
@@ -305,6 +353,49 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         lastTimeRef.current = lt;
         numBarsRef.current = rows.length;
         try { fitChartContent(chart, container, ft, lt, rows.length); } catch { chart.timeScale().fitContent(); }
+
+        // Compute evenly-spaced axis labels using exact timeToCoordinate positions, then draw on canvas
+        requestAnimationFrame(() => {
+          const c = chartRef.current;
+          const ct = containerRef.current;
+          const overlay = overlayRef.current;
+          if (!c || !ct || !overlay || rows.length < 2) return;
+          const PRICE_SCALE_W = 58;
+          const dataW = Math.max(20, ct.clientWidth - PRICE_SCALE_W);
+          const firstT = rows[0].time as number;
+          const lastT = rows[rows.length - 1].time as number;
+          if (lastT <= firstT) return;
+          const count = Math.max(3, Math.min(7, Math.floor(dataW / 42)));
+          const newLabels: Array<{ x: number; text: string }> = [];
+          const currentPeriod = periodRef.current;
+          for (let i = 1; i <= count; i++) {
+            const frac = i / (count + 1);
+            const targetT = firstT + frac * (lastT - firstT);
+            let idx = rows.findIndex(r => (r.time as number) >= targetT);
+            if (idx < 0) idx = rows.length - 1;
+            const row = rows[idx];
+            // Use exact pixel position from LWC time scale
+            const x = c.timeScale().timeToCoordinate(row.time as UTCTimestamp);
+            if (x == null || !Number.isFinite(x) || x < 0 || x > ct.clientWidth) continue;
+            newLabels.push({ x, text: formatAxisLabel(row.time as number, currentPeriod) });
+          }
+          axisLabelDataRef.current = newLabels;
+          // Draw labels on canvas immediately
+          const ctx = overlay.getContext('2d');
+          if (!ctx) return;
+          const dpr = window.devicePixelRatio || 1;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
+          if (newLabels.length > 0) {
+            ctx.save();
+            ctx.font = '8px system-ui, -apple-system, Arial, sans-serif';
+            ctx.fillStyle = 'rgba(155, 160, 170, 0.65)';
+            ctx.textAlign = 'center';
+            const bottomY = overlay.height / dpr - 3;
+            for (const { x, text } of newLabels) ctx.fillText(text, x, bottomY);
+            ctx.restore();
+          }
+        });
       } else if (rows.length === 1) {
         chart.timeScale().fitContent();
       }
@@ -378,10 +469,12 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
           </a>
         </div>
 
-        {/* Chart area */}
-        <div className="relative flex-1 min-h-0 px-1 pb-1">
-          <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }} />
-          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
+        {/* Chart area — NO padding so canvas coordinates align with LWC chart coordinates */}
+        <div className="relative flex-1 min-h-0">
+          {/* LWC container — NEVER put React children inside here */}
+          <div ref={containerRef} className="absolute inset-0" />
+          {/* Canvas for hover dot + axis labels (drawn directly via canvas API) */}
+          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ zIndex: 10 }} />
 
           {/* Skeleton overlay while waiting for candle data */}
           {candles.length === 0 && (

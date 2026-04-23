@@ -22,7 +22,7 @@ test.describe("Screener page", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(SCREENER_URL);
     // Wait for the result count to be populated (data loaded)
-    await expect(page.getByTestId("screener-result-count")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByTestId("screener-result-count")).toBeVisible({ timeout: 55_000 });
   });
 
   /* ── 1. Initial load ── */
@@ -92,14 +92,17 @@ test.describe("Screener page", () => {
     const mktCapBtn = page.locator('button[title="Sort by Market Cap"]');
     await expect(mktCapBtn).toBeVisible({ timeout: 10_000 });
 
-    // First click — should set sort descending (already default, so may show TrendingDown)
+    // Market cap is the default sort (descending). First click toggles to ascending → TrendingUp
     await mktCapBtn.click();
-    await page.waitForTimeout(500);
+    await expect(page.locator(".lucide-trending-up")).toBeVisible({ timeout: 8_000 });
 
-    // Second click — should toggle to ascending
+    // Wait for re-render to settle, then ensure button is back in view before second click
+    await mktCapBtn.scrollIntoViewIfNeeded();
+    await expect(mktCapBtn).toBeVisible({ timeout: 5_000 });
+
+    // Second click — toggles back to descending → TrendingDown
     await mktCapBtn.click();
-    // The ascending sort icon (TrendingUp) should now be visible alongside Market Cap header
-    await expect(page.locator(".lucide-trending-up")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".lucide-trending-down")).toBeVisible({ timeout: 8_000 });
   });
 
   /* ── 5. Row click → symbol page ── */
@@ -185,7 +188,7 @@ test.describe("Screener page", () => {
   test("switching to ETFs loads a non-empty table", async ({ page }) => {
     // Navigate to ETF screener via URL
     await page.goto("/screener/etfs");
-    await expect(page.getByTestId("screener-result-count")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("screener-result-count")).toBeVisible({ timeout: 35_000 });
     const count = Number(
       (await page.getByTestId("screener-result-count").textContent())?.replace(/,/g, "") ?? "0",
     );

@@ -194,13 +194,19 @@ export default function ScreenerChartToolbar({
     setHoverCols(null);
   };
 
-  // Close all dropdowns on scroll or resize (positions become stale)
+  // Close all dropdowns on scroll or resize — but NOT when scrolling inside a dropdown panel
   useEffect(() => {
     if (!layoutOpen && !typeOpen && !datePickerOpen) return;
-    window.addEventListener('scroll', closeAll, true);
+    const handleScroll = (e: Event) => {
+      // If the scroll originated inside a dropdown panel, ignore it
+      const target = e.target as Element | null;
+      if (target?.closest('[data-dropdown-panel]')) return;
+      closeAll();
+    };
+    window.addEventListener('scroll', handleScroll, true);
     window.addEventListener('resize', closeAll);
     return () => {
-      window.removeEventListener('scroll', closeAll, true);
+      window.removeEventListener('scroll', handleScroll, true);
       window.removeEventListener('resize', closeAll);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +237,7 @@ export default function ScreenerChartToolbar({
         {layoutOpen && layoutPos && (
           <>
             <div className="fixed inset-0 z-[9998]" onClick={() => setLayoutOpen(false)} />
-            <div className="fixed z-[9999] w-56 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
+            <div data-dropdown-panel className="fixed z-[9999] w-56 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
               style={{ top: layoutPos.top, left: layoutPos.left }}>
               <button
                 type="button"
@@ -295,7 +301,7 @@ export default function ScreenerChartToolbar({
         {typeOpen && typePos && (
           <>
             <div className="fixed inset-0 z-[9998]" onClick={() => setTypeOpen(false)} />
-            <div className="fixed z-[9999] w-64 rounded-xl border border-border/50 bg-background shadow-2xl flex flex-col"
+            <div data-dropdown-panel className="fixed z-[9999] w-64 rounded-xl border border-border/50 bg-background shadow-2xl flex flex-col"
               style={{ top: typePos.top, left: typePos.left, maxHeight: "420px" }}>
               <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2 shrink-0">
                 <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -364,7 +370,7 @@ export default function ScreenerChartToolbar({
           {datePickerOpen && datePos && (
             <>
               <div className="fixed inset-0 z-[9998]" onClick={() => setDatePickerOpen(false)} />
-              <div className="fixed z-[9999] w-64 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
+              <div data-dropdown-panel className="fixed z-[9999] w-64 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
                 style={{ top: datePos.top, left: Math.min(datePos.left, window.innerWidth - 270) }}>
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Date Range</p>
                 <div className="flex flex-col gap-2">
