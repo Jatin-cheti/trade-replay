@@ -49,6 +49,8 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
   const firstTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
   const lastTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
   const numBarsRef = useRef<number>(0);
+  const isResizingRef = useRef(false);
+  const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ready, setReady] = useState(false);
   const [chartInitFailed, setChartInitFailed] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -164,10 +166,18 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       const overlay = overlayRef.current;
       const ctx = overlay?.getContext('2d');
 
+      // Always clear first
       if (ctx && overlay) {
         const dpr = window.devicePixelRatio || 1;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
+      }
+
+      // Suppress dot drawing for 200ms after any resize — avoids misplaced dot
+      // from LWC re-firing crosshairMove after canvas layout changes.
+      if (isResizingRef.current) {
+        setHoverInfo(null);
+        return;
       }
 
       if (!param.point) {
@@ -199,11 +209,16 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       const dotX = chartRef.current?.timeScale().timeToCoordinate(hoverTime);
       const dotY = primarySeries?.priceToCoordinate(row.close);
 
-      if (ctx && overlay && dotX != null && dotY != null && Number.isFinite(dotX) && Number.isFinite(dotY)) {
+      // Only draw if coordinates are within the canvas bounds — prevents corner-stuck dot
+      const canvasW = containerRef.current?.clientWidth ?? 0;
+      const canvasH = containerRef.current?.clientHeight ?? 0;
+      const inBounds = dotX != null && dotY != null && Number.isFinite(dotX) && Number.isFinite(dotY)
+        && dotX >= 0 && dotX <= canvasW && dotY >= 0 && dotY <= canvasH;
+      if (ctx && overlay && inBounds) {
         try {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+          ctx.arc(dotX!, dotY!, 4, 0, Math.PI * 2);
           ctx.fillStyle = lineColorRef.current;
           ctx.fill();
           ctx.lineWidth = 2;
@@ -244,7 +259,12 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       if (!c || !ct || !ov) return;
       try {
         resizeChartSurface(c, ct, ov);
-        // Clear stale crosshair dot so it doesn't appear misaligned after resize
+        // Suppress crosshair dot for 200ms after resize — prevents LWC from
+        // re-firing subscribeCrosshairMove with stale/wrong coordinates.
+        isResizingRef.current = true;
+        if (resizeTimerRef.current != null) clearTimeout(resizeTimerRef.current);
+        resizeTimerRef.current = setTimeout(() => { isResizingRef.current = false; }, 200);
+        // Clear stale dot immediately
         try {
           const ctx = ov.getContext('2d');
           if (ctx) {
@@ -280,6 +300,8 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     return () => {
       window.removeEventListener("pagehide", onPageHide);
       resizeObserver.disconnect();
+      if (resizeTimerRef.current != null) clearTimeout(resizeTimerRef.current);
+      isResizingRef.current = false;
       try { chart.remove(); } catch { /* ignore */ }
       chartRef.current = null;
       seriesMapRef.current = null;
