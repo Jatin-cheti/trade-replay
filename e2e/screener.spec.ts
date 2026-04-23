@@ -88,6 +88,10 @@ test.describe("Screener page", () => {
 
   /* ── 4. Column sort ── */
   test("clicking a column header changes sort indicator", async ({ page }) => {
+    // Sort headers only exist in the desktop table view (not on mobile list)
+    const viewport = page.viewportSize();
+    test.skip(!!viewport && viewport.width < 768, "Sort headers not available on mobile list view");
+
     // Market Cap header button — look for it by title attribute
     const mktCapBtn = page.locator('button[title="Sort by Market Cap"]');
     await expect(mktCapBtn).toBeVisible({ timeout: 10_000 });

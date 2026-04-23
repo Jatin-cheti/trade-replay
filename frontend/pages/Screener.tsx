@@ -302,7 +302,7 @@ export default function Screener() {
             loadingMore={data.loadingMore}
           />
         ) : isMobile ? (
-          <ScreenerMobileList items={data.items} loadingMore={data.loadingMore} onLoadMore={data.loadMore} />
+          <ScreenerMobileList items={data.items} loadingMore={data.loadingMore} onLoadMore={data.loadMore} onNavigate={(sym) => navigate(`/symbol/${encodeURIComponent(sym)}`)} />
         ) : (
           <ScreenerTable items={data.items} flashBySymbol={data.flashBySymbol} visibleColumns={visibleColumns} columnLookup={columnLookup} sortField={data.sortField} sortOrder={data.sortOrder} loadingMore={data.loadingMore} onSort={setSort} onLoadMore={data.loadMore} addColumnOpen={addColumnOpen} setAddColumnOpen={setAddColumnOpen} addColumnSearch={addColumnSearch} setAddColumnSearch={setAddColumnSearch} availableAddColumnFields={availableAddColumnFields} updateSelectedColumns={updateSelectedColumns} addColumnRef={addColumnRef} />
         )}
