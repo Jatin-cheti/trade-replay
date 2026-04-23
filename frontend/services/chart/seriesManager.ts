@@ -1,4 +1,4 @@
-import {
+﻿import {
   type IChartApi,
   type ISeriesApi,
 } from '@tradereplay/charts';
@@ -121,7 +121,7 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   // Price Action
   renko: ['renko'], rangeBars: ['rangeBars'], lineBreak: ['lineBreak'],
   kagi: ['kagi'], pointFigure: ['pointFigure'], brick: ['brick'],
-  // Analytical — now implemented
+  // Analytical â€” now implemented
   equityCurve: ['equityCurve'],
   drawdownChart: ['drawdownChart'],
   returnsHistogram: ['returnsHistogram'],
@@ -131,7 +131,7 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   volumeOscillator: ['volumeOscillator'],
   regressionChannel: ['regressionMid', 'regressionUpper', 'regressionLower'],
   seasonality: ['seasonalityLine'],
-  // Canvas-based — still coming soon
+  // Canvas-based â€” still coming soon
   scatterPlot: ['dotChart'],
   bubblePlot: [], boxPlot: [], heatMap: [],
   radarChart: [], treemap: [], waterfallChart: ['returnsHistogram'], sunburst: [],
@@ -145,13 +145,42 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   donutChart: [], stackedArea: ['area', 'mountainArea', 'rangeArea'],
 };
 
+function addSeriesCompat(
+  chart: IChartApi,
+  type: 'Candlestick' | 'Line' | 'Area' | 'Baseline' | 'Histogram' | 'Bar',
+  options: Record<string, unknown>,
+) {
+  const chartAny = chart as unknown as {
+    addSeries?: (seriesType: string, seriesOptions: Record<string, unknown>) => unknown;
+    addCandlestickSeries?: (seriesOptions: Record<string, unknown>) => unknown;
+    addLineSeries?: (seriesOptions: Record<string, unknown>) => unknown;
+    addAreaSeries?: (seriesOptions: Record<string, unknown>) => unknown;
+    addBaselineSeries?: (seriesOptions: Record<string, unknown>) => unknown;
+    addHistogramSeries?: (seriesOptions: Record<string, unknown>) => unknown;
+    addBarSeries?: (seriesOptions: Record<string, unknown>) => unknown;
+  };
+
+  if (typeof chartAny.addSeries === 'function') {
+    return chartAny.addSeries(type, options);
+  }
+
+  if (type === 'Candlestick' && typeof chartAny.addCandlestickSeries === 'function') return chartAny.addCandlestickSeries(options);
+  if (type === 'Line' && typeof chartAny.addLineSeries === 'function') return chartAny.addLineSeries(options);
+  if (type === 'Area' && typeof chartAny.addAreaSeries === 'function') return chartAny.addAreaSeries(options);
+  if (type === 'Baseline' && typeof chartAny.addBaselineSeries === 'function') return chartAny.addBaselineSeries(options);
+  if (type === 'Histogram' && typeof chartAny.addHistogramSeries === 'function') return chartAny.addHistogramSeries(options);
+  if (type === 'Bar' && typeof chartAny.addBarSeries === 'function') return chartAny.addBarSeries(options);
+
+  throw new Error(`Unsupported chart series API for type: ${type}`);
+}
+
 export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions): ChartSeriesMap {
   const parityMode = options?.parityMode ?? false;
   const candleUpColor = parityMode ? '#089981' : '#26a69a';
   const candleDownColor = parityMode ? '#f23645' : '#ef5350';
 
   const map: ChartSeriesMap = {
-    candlestick: chart.addSeries('Candlestick', {
+    candlestick: addSeriesCompat(chart, 'Candlestick', {
       upColor: candleUpColor,
       downColor: candleDownColor,
       borderUpColor: candleUpColor,
@@ -160,85 +189,85 @@ export function createChartSeries(chart: IChartApi, options?: ChartSeriesOptions
       wickDownColor: candleDownColor,
       visible: true,
     }),
-    hollowCandles: chart.addSeries('Candlestick', {
+    hollowCandles: addSeriesCompat(chart, 'Candlestick', {
       upColor: 'rgba(23, 201, 100, 0.08)', downColor: '#ff4d4f', borderUpColor: '#43e391', borderDownColor: '#ff7275',
       wickUpColor: '#43e391', wickDownColor: '#ff7275', visible: false,
     }),
-    line: chart.addSeries('Line', { color: '#2962ff', lineWidth: 2, visible: false }),
-    stepLine: chart.addSeries('Line', {
+    line: addSeriesCompat(chart, 'Line', { color: '#2962ff', lineWidth: 2, visible: false }),
+    stepLine: addSeriesCompat(chart, 'Line', {
       color: '#89e7ff',
       lineWidth: 2,
       visible: false,
       excludeFromTimeIndex: true,
     }),
-    area: chart.addSeries('Area', {
+    area: addSeriesCompat(chart, 'Area', {
       lineColor: '#17c964', lineWidth: 2, topColor: 'rgba(23, 201, 100, 0.35)', bottomColor: 'rgba(23, 201, 100, 0.02)', visible: false,
     }),
-    mountainArea: chart.addSeries('Area', {
+    mountainArea: addSeriesCompat(chart, 'Area', {
       lineColor: '#40e0d0', lineWidth: 2, topColor: 'rgba(64, 224, 208, 0.46)', bottomColor: 'rgba(64, 224, 208, 0.04)', visible: false,
     }),
-    rangeArea: chart.addSeries('Area', {
+    rangeArea: addSeriesCompat(chart, 'Area', {
       lineColor: '#ffd166', lineWidth: 2, topColor: 'rgba(255, 209, 102, 0.42)', bottomColor: 'rgba(255, 209, 102, 0.03)', visible: false,
     }),
-    baseline: chart.addSeries('Baseline', {
+    baseline: addSeriesCompat(chart, 'Baseline', {
       baseValue: { type: 'price', price: 0 }, topLineColor: '#17c964', topFillColor1: 'rgba(23, 201, 100, 0.35)', topFillColor2: 'rgba(23, 201, 100, 0.04)',
       bottomLineColor: '#ff4d4f', bottomFillColor1: 'rgba(255, 77, 79, 0.25)', bottomFillColor2: 'rgba(255, 77, 79, 0.03)', lineWidth: 2, visible: false,
     }),
-    histogram: chart.addSeries('Histogram', { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
-    bar: chart.addSeries('Bar', { upColor: '#17c964', downColor: '#ff4d4f', thinBars: false, visible: false }),
-    heikinAshi: chart.addSeries('Candlestick', {
+    histogram: addSeriesCompat(chart, 'Histogram', { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
+    bar: addSeriesCompat(chart, 'Bar', { upColor: '#17c964', downColor: '#ff4d4f', thinBars: false, visible: false }),
+    heikinAshi: addSeriesCompat(chart, 'Candlestick', {
       upColor: '#61dca0', downColor: '#ff6b6e', borderUpColor: '#61dca0', borderDownColor: '#ff6b6e',
       wickUpColor: '#83e8bb', wickDownColor: '#ff8d8f', visible: false,
     }),
-    ohlc: chart.addSeries('Bar', { upColor: '#a1f2c8', downColor: '#ff9799', thinBars: true, visible: false }),
-    renko: chart.addSeries('Candlestick', {
+    ohlc: addSeriesCompat(chart, 'Bar', { upColor: '#a1f2c8', downColor: '#ff9799', thinBars: true, visible: false }),
+    renko: addSeriesCompat(chart, 'Candlestick', {
       upColor: '#2ecc71', downColor: '#e74c3c', borderUpColor: '#2ecc71', borderDownColor: '#e74c3c',
       wickUpColor: '#2ecc71', wickDownColor: '#e74c3c', visible: false,
     }),
-    rangeBars: chart.addSeries('Candlestick', {
+    rangeBars: addSeriesCompat(chart, 'Candlestick', {
       upColor: '#48c9b0', downColor: '#ff6b6e', borderUpColor: '#48c9b0', borderDownColor: '#ff6b6e',
       wickUpColor: '#48c9b0', wickDownColor: '#ff6b6e', visible: false,
     }),
-    lineBreak: chart.addSeries('Candlestick', {
+    lineBreak: addSeriesCompat(chart, 'Candlestick', {
       upColor: '#5dade2', downColor: '#ec7063', borderUpColor: '#5dade2', borderDownColor: '#ec7063',
       wickUpColor: '#5dade2', wickDownColor: '#ec7063', visible: false,
     }),
-    kagi: chart.addSeries('Line', { color: '#f5b041', lineWidth: 2, visible: false }),
-    pointFigure: chart.addSeries('Candlestick', {
+    kagi: addSeriesCompat(chart, 'Line', { color: '#f5b041', lineWidth: 2, visible: false }),
+    pointFigure: addSeriesCompat(chart, 'Candlestick', {
       upColor: '#7dcea0', downColor: '#f1948a', borderUpColor: '#7dcea0', borderDownColor: '#f1948a',
       wickUpColor: '#7dcea0', wickDownColor: '#f1948a', visible: false,
     }),
-    brick: chart.addSeries('Candlestick', {
+    brick: addSeriesCompat(chart, 'Candlestick', {
       upColor: '#85c1e9', downColor: '#f8c471', borderUpColor: '#85c1e9', borderDownColor: '#f8c471',
       wickUpColor: '#85c1e9', wickDownColor: '#f8c471', visible: false,
     }),
-    volume: chart.addSeries('Histogram', { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
+    volume: addSeriesCompat(chart, 'Histogram', { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
     // Derived price series
-    hlcBar: chart.addSeries('Line', { color: '#a78bfa', lineWidth: 2, visible: false }),
-    avgPriceBar: chart.addSeries('Line', { color: '#f87171', lineWidth: 2, visible: false }),
-    openClose: chart.addSeries('Line', { color: '#60a5fa', lineWidth: 2, visible: false }),
-    dotChart: chart.addSeries('Line', { color: '#fb923c', lineWidth: 2, lineStyle: 1, visible: false }),
-    maLine: chart.addSeries('Line', { color: '#facc15', lineWidth: 2, visible: false }),
-    emaLine: chart.addSeries('Line', { color: '#f97316', lineWidth: 2, visible: false }),
-    vwapLine: chart.addSeries('Line', { color: '#2dd4bf', lineWidth: 2, visible: false }),
-    priceChange: chart.addSeries('Line', { color: '#4ade80', lineWidth: 2, visible: false }),
+    hlcBar: addSeriesCompat(chart, 'Line', { color: '#a78bfa', lineWidth: 2, visible: false }),
+    avgPriceBar: addSeriesCompat(chart, 'Line', { color: '#f87171', lineWidth: 2, visible: false }),
+    openClose: addSeriesCompat(chart, 'Line', { color: '#60a5fa', lineWidth: 2, visible: false }),
+    dotChart: addSeriesCompat(chart, 'Line', { color: '#fb923c', lineWidth: 2, lineStyle: 1, visible: false }),
+    maLine: addSeriesCompat(chart, 'Line', { color: '#facc15', lineWidth: 2, visible: false }),
+    emaLine: addSeriesCompat(chart, 'Line', { color: '#f97316', lineWidth: 2, visible: false }),
+    vwapLine: addSeriesCompat(chart, 'Line', { color: '#2dd4bf', lineWidth: 2, visible: false }),
+    priceChange: addSeriesCompat(chart, 'Line', { color: '#4ade80', lineWidth: 2, visible: false }),
     // Analytical series
-    rsiLine: chart.addSeries('Line', { color: '#c084fc', lineWidth: 2, visible: false }),
-    macdHistogram: chart.addSeries('Histogram', { priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, base: 0, visible: false }),
-    macdSignal: chart.addSeries('Line', { color: '#f59e0b', lineWidth: 1, lineStyle: 2, visible: false }),
-    equityCurve: chart.addSeries('Area', { lineColor: '#22d3ee', topColor: 'rgba(34,211,238,0.25)', bottomColor: 'rgba(34,211,238,0.02)', lineWidth: 2, visible: false }),
-    drawdownChart: chart.addSeries('Area', { lineColor: '#f87171', topColor: 'rgba(248,113,113,0.25)', bottomColor: 'rgba(248,113,113,0.02)', lineWidth: 2, visible: false }),
-    returnsHistogram: chart.addSeries('Histogram', { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
-    zScoreLine: chart.addSeries('Line', { color: '#a3e635', lineWidth: 2, visible: false }),
-    volumeOscillator: chart.addSeries('Line', { color: '#38bdf8', lineWidth: 2, visible: false }),
-    regressionMid: chart.addSeries('Line', { color: '#fbbf24', lineWidth: 2, visible: false }),
-    regressionUpper: chart.addSeries('Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
-    regressionLower: chart.addSeries('Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
-    seasonalityLine: chart.addSeries('Line', { color: '#e879f9', lineWidth: 2, visible: false }),
+    rsiLine: addSeriesCompat(chart, 'Line', { color: '#c084fc', lineWidth: 2, visible: false }),
+    macdHistogram: addSeriesCompat(chart, 'Histogram', { priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, base: 0, visible: false }),
+    macdSignal: addSeriesCompat(chart, 'Line', { color: '#f59e0b', lineWidth: 1, lineStyle: 2, visible: false }),
+    equityCurve: addSeriesCompat(chart, 'Area', { lineColor: '#22d3ee', topColor: 'rgba(34,211,238,0.25)', bottomColor: 'rgba(34,211,238,0.02)', lineWidth: 2, visible: false }),
+    drawdownChart: addSeriesCompat(chart, 'Area', { lineColor: '#f87171', topColor: 'rgba(248,113,113,0.25)', bottomColor: 'rgba(248,113,113,0.02)', lineWidth: 2, visible: false }),
+    returnsHistogram: addSeriesCompat(chart, 'Histogram', { priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, base: 0, visible: false }),
+    zScoreLine: addSeriesCompat(chart, 'Line', { color: '#a3e635', lineWidth: 2, visible: false }),
+    volumeOscillator: addSeriesCompat(chart, 'Line', { color: '#38bdf8', lineWidth: 2, visible: false }),
+    regressionMid: addSeriesCompat(chart, 'Line', { color: '#fbbf24', lineWidth: 2, visible: false }),
+    regressionUpper: addSeriesCompat(chart, 'Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
+    regressionLower: addSeriesCompat(chart, 'Line', { color: 'rgba(251,191,36,0.5)', lineWidth: 1, lineStyle: 2, visible: false }),
+    seasonalityLine: addSeriesCompat(chart, 'Line', { color: '#e879f9', lineWidth: 2, visible: false }),
     // Advanced analytical series
-    monteCarloUpper: chart.addSeries('Line', { color: 'rgba(34,211,238,0.45)', lineWidth: 1, lineStyle: 2, visible: false }),
-    monteCarloLower: chart.addSeries('Line', { color: 'rgba(34,211,238,0.45)', lineWidth: 1, lineStyle: 2, visible: false }),
-    paretoCumulative: chart.addSeries('Line', { color: '#f97316', lineWidth: 2, visible: false }),
+    monteCarloUpper: addSeriesCompat(chart, 'Line', { color: 'rgba(34,211,238,0.45)', lineWidth: 1, lineStyle: 2, visible: false }),
+    monteCarloLower: addSeriesCompat(chart, 'Line', { color: 'rgba(34,211,238,0.45)', lineWidth: 1, lineStyle: 2, visible: false }),
+    paretoCumulative: addSeriesCompat(chart, 'Line', { color: '#f97316', lineWidth: 2, visible: false }),
   };
 
   map.volume.priceScale().applyOptions({
@@ -361,3 +390,4 @@ export function activeSeriesForType(map: ChartSeriesMap, chartType: ChartType): 
   // For coming-soon types (no series), fall back to candlestick (hidden, coordinate queries return null)
   return (map as Record<string, ISeriesApi<'Line'>>)[chartType] ?? map.candlestick;
 }
+
