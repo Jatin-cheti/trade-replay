@@ -386,6 +386,7 @@ export default function TradingChart({
     setVariant,
     setOptions,
     startDraft,
+    startDraftForVariant,
     updateDraft,
     finalizeDraft,
     cancelDraft,
@@ -475,6 +476,8 @@ export default function TradingChart({
   const demoAltActiveRef = useRef(false);
   const [showDemoHint, setShowDemoHint] = useState(true);
   const demoCursorDivRef = useRef<HTMLDivElement>(null);
+  // Tracks the last non-'none' variant used, so Alt+Click in demo mode can temporarily draw
+  const lastDrawingVariantRef = useRef<Exclude<ToolVariant, 'none'>>('trend');
 
   // ── Countdown timer to next candle on X-axis (ref-based, no re-renders) ─
   const countdownDivRef = useRef<HTMLDivElement>(null);
@@ -930,6 +933,7 @@ export default function TradingChart({
     clearPromptState();
     setPatternWizardHint(null);
     if (variant !== 'none') {
+      lastDrawingVariantRef.current = variant;
       setCursorMode((prev) => (prev === 'eraser' ? 'cross' : prev));
     }
     setVariant(variant, group);
@@ -962,7 +966,7 @@ export default function TradingChart({
     }
   }, [crosshairSnapMode, toolState.options.snapMode, toolState.variant]);
 
-  const hoverTrackingEnabled = !(toolState.variant === 'none' && (cursorMode === 'arrow' || cursorMode === 'demo'));
+  const hoverTrackingEnabled = !(toolState.variant === 'none' && (cursorMode === 'arrow' || (cursorMode === 'demo' && !demoAltActive)));
 
   const resolveLegendRow = useCallback((point: DrawPoint | null) => {
     if (!transformedData.ohlcRows.length) return null;
@@ -3036,6 +3040,30 @@ export default function TradingChart({
           }
         }
         renderOverlay();
+        return;
+      }
+
+      // Demo mode: Alt key held → temporarily draw with last used tool (TV parity)
+      if (demoAltActiveRef.current && cursorMode === 'demo' && toolState.variant === 'none' && !drawingActiveRef.current) {
+        const tempVariant = lastDrawingVariantRef.current;
+        const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
+        if (!point) { renderOverlay(); return; }
+        draftPointerStartRef.current = { x: event.clientX, y: event.clientY, variant: tempVariant };
+        const result = startDraftForVariant(tempVariant, point);
+        syncPatternWizardHint();
+        if (result.kind === 'finalized') {
+          draftPointerStartRef.current = null;
+          setPatternWizardHint(null);
+          const d = drawingsRef.current[drawingsRef.current.length - 1];
+          if (d) {
+            setSelectedDrawingId(d.id);
+            setHoveredDrawingId(d.id);
+          }
+        }
+        renderOverlay();
+        if (event.currentTarget.setPointerCapture) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
         return;
       }
 

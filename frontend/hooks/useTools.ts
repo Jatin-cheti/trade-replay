@@ -94,6 +94,49 @@ export function useTools() {
     });
   }, []);
 
+  // startDraftForVariant bypasses variantRef — used for demo-mode temporary drawing
+  // without permanently switching the active tool.
+  const startDraftForVariant = useCallback((variant: Exclude<ToolVariant, 'none'>, point: DrawPoint, text?: string) => {
+    const wizardMode = isWizardVariant(variant);
+
+    if (isPointOnlyVariant(variant)) {
+      const drawing = createDrawing(variant, optionsRef.current, point, undefined, text);
+      mutateDrawings((prev) => [...prev, drawing]);
+      return { kind: 'finalized' as const };
+    }
+
+    if (wizardMode && drawingActiveRef.current && draftRef.current?.variant === variant) {
+      const activeDraft = draftRef.current;
+      const anchorCount = activeDraft.anchors.length;
+      const targetIndex = Math.max(1, Math.min(anchorCount - 1, draftProgressRef.current));
+      const updatedDraft = updateDraftDrawing(activeDraft, point, targetIndex);
+      draftRef.current = updatedDraft;
+      draftProgressRef.current = targetIndex + 1;
+
+      if (draftProgressRef.current >= anchorCount) {
+        mutateDrawings((prev) => [...prev, updatedDraft]);
+        draftRef.current = null;
+        draftProgressRef.current = 0;
+        drawingActiveRef.current = false;
+        return { kind: 'finalized' as const };
+      }
+
+      return { kind: 'draft' as const };
+    }
+
+    drawingActiveRef.current = true;
+    draftRef.current = createDrawing(variant, optionsRef.current, point, point, text);
+
+    if (wizardMode && draftRef.current) {
+      draftProgressRef.current = 1;
+      draftRef.current = updateDraftDrawing(draftRef.current, point, draftProgressRef.current);
+    } else {
+      draftProgressRef.current = 0;
+    }
+
+    return { kind: 'draft' as const };
+  }, [mutateDrawings]);
+
   const startDraft = useCallback((point: DrawPoint, text?: string) => {
     const variant = variantRef.current;
     if (variant === 'none') return { kind: 'none' as const };
@@ -226,6 +269,7 @@ export function useTools() {
     setVariant,
     setOptions,
     startDraft,
+    startDraftForVariant,
     updateDraft,
     finalizeDraft,
     cancelDraft,

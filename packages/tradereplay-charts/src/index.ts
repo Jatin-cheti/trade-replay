@@ -158,3 +158,46 @@ export {
   breakoutStrengthDef,
   trendStrengthDef,
 } from './indicators/builtins/batch4';
+
+// ─── Drawing engine ───────────────────────────────────────────────────────────
+export {
+  DrawingState,
+  DEFAULT_DRAWING_OPTIONS,
+  DrawingEngine,
+  createDrawingEngine,
+  createDefaultDrawingEngine,
+  InteractionManager,
+  BaseTool,
+  TrendLineTool,
+  RayLineTool,
+  HorizontalLineTool,
+  VerticalLineTool,
+  RectangleTool,
+  createDefaultTools,
+  clamp,
+  distancePx,
+  dataToScreen,
+  screenToData,
+  distanceToLine,
+  distanceToSegment,
+  rayEndpoint,
+  clipSegment,
+  snapAngle15,
+  hexToRgba,
+} from './drawing/index.ts';
+
+export type {
+  DrawPoint as LibDrawPoint,
+  ScreenPoint,
+  DataBounds,
+  Viewport as DrawingViewport,
+  Drawing as LibDrawing,
+  DrawingOptions,
+  DrawingVariant,
+  HitResult,
+  HandleDescriptor,
+  IDrawingTool,
+  DrawingEngineEvent,
+  DrawingEngineListener,
+  InteractionManagerOptions,
+} from './drawing/index.ts';
