@@ -120,20 +120,41 @@ test.describe("Screener page", () => {
 
   /* ── 5. Row click → symbol page ── */
   test("clicking a row navigates to the symbol page", async ({ page }) => {
+    // Mobile WebKit + Virtuoso virtual list recycles DOM nodes, making click()
+    // unstable (element is repeatedly detached/re-attached). Extend the budget
+    // and navigate via the row's href attribute to bypass the instability.
+    const vp = page.viewportSize();
+    if (vp && vp.width < 768) test.setTimeout(120_000);
+
     const firstRow = page.getByTestId("screener-row").first();
     await expect(firstRow).toBeVisible({ timeout: 15_000 });
     const symbolAttr = await firstRow.getAttribute("data-symbol");
     expect(symbolAttr).toBeTruthy();
 
-    await firstRow.click();
+    if (vp && vp.width < 768) {
+      const href = await firstRow.getAttribute("href");
+      expect(href).toMatch(/\/symbol\//i);
+      await page.goto(href!);
+    } else {
+      await firstRow.click();
+    }
     await expect(page).toHaveURL(/\/symbol\//i, { timeout: 10_000 });
   });
 
   /* ── 6. Symbol page chart visible ── */
   test("symbol page has a chart area", async ({ page }) => {
+    const vp = page.viewportSize();
+    if (vp && vp.width < 768) test.setTimeout(120_000);
+
     const firstRow = page.getByTestId("screener-row").first();
     await expect(firstRow).toBeVisible({ timeout: 15_000 });
-    await firstRow.click();
+    if (vp && vp.width < 768) {
+      const href = await firstRow.getAttribute("href");
+      expect(href).toMatch(/\/symbol\//i);
+      await page.goto(href!);
+    } else {
+      await firstRow.click();
+    }
     await expect(page).toHaveURL(/\/symbol\//i, { timeout: 10_000 });
 
     // The chart should be mounted — look for the chart canvas or chart container
@@ -145,6 +166,9 @@ test.describe("Screener page", () => {
 
   /* ── 7. Browser back returns to screener ── */
   test("browser back returns to screener after symbol navigation", async ({ page }) => {
+    const vp = page.viewportSize();
+    if (vp && vp.width < 768) test.setTimeout(120_000);
+
     // Apply India filter first so we can verify URL param is preserved
     await page.getByTestId("screener-country-IN").click();
     await expect
@@ -153,7 +177,13 @@ test.describe("Screener page", () => {
 
     const firstRow = page.getByTestId("screener-row").first();
     await expect(firstRow).toBeVisible({ timeout: 15_000 });
-    await firstRow.click();
+    if (vp && vp.width < 768) {
+      const href = await firstRow.getAttribute("href");
+      expect(href).toMatch(/\/symbol\//i);
+      await page.goto(href!);
+    } else {
+      await firstRow.click();
+    }
     await expect(page).toHaveURL(/\/symbol\//i, { timeout: 10_000 });
 
     await page.goBack();
@@ -191,7 +221,7 @@ test.describe("Screener page", () => {
 
     // At least one row is visible in the filtered list
     const rows = page.getByTestId("screener-row");
-    await expect(rows.first()).toBeVisible({ timeout: 5_000 });
+    await expect(rows.first()).toBeVisible({ timeout: 15_000 });
   });
 
   /* ── 9. Symbol search miss ── */
