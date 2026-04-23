@@ -55,10 +55,24 @@ interface TradingChartProps {
 /** Convert a resolution string to candle duration in seconds. */
 function resolutionToSeconds(res: string | undefined): number {
   if (!res) return 60;
-  if (res === 'D') return 86400;
-  if (res === 'W') return 7 * 86400;
-  if (res === 'M') return 30 * 86400;
-  const n = parseInt(res, 10);
+  const normalized = res.trim();
+  if (!normalized) return 60;
+  if (normalized === 'D' || normalized.toLowerCase() === '1d') return 86400;
+  if (normalized === 'W' || normalized.toLowerCase() === '1w') return 7 * 86400;
+  if (normalized === 'M' || normalized.toLowerCase() === '1m') return 30 * 86400;
+
+  const unitMatch = normalized.match(/^(\d+)\s*([mhdw])$/i);
+  if (unitMatch) {
+    const amount = Number.parseInt(unitMatch[1], 10);
+    const unit = unitMatch[2].toLowerCase();
+    if (!Number.isFinite(amount) || amount <= 0) return 60;
+    if (unit === 'm') return amount * 60;
+    if (unit === 'h') return amount * 3600;
+    if (unit === 'd') return amount * 86400;
+    if (unit === 'w') return amount * 7 * 86400;
+  }
+
+  const n = parseInt(normalized, 10);
   return Number.isFinite(n) && n > 0 ? n * 60 : 60;
 }
 
@@ -72,13 +86,15 @@ function isIntradayResolution(res: string | undefined): boolean {
 /** Format seconds as MM:SS (intraday) or forced HH:MM:SS (>= 1h resolutions). */
 function formatCountdown(seconds: number, forceHours: boolean): string {
   const s = Math.max(0, seconds);
-  const totalHours = Math.floor(s / 3600);
-  const h = totalHours % 100;
+  const totalDays = Math.floor(s / 86400);
+  const totalHours = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  const hh = String(h).padStart(2, '0');
+  const dd = String(totalDays).padStart(2, '0');
+  const hh = String(totalHours).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   const ss = String(sec).padStart(2, '0');
+  if (totalDays > 0) return `${dd}:${hh}:${mm}:${ss}`;
   if (forceHours) return `${hh}:${mm}:${ss}`;
   return `${mm}:${ss}`;
 }
@@ -450,6 +466,7 @@ export default function TradingChart({
   // "+" menu — state is fine since it only changes on click (not every frame)
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuPrice, setPlusMenuPrice] = useState<number | null>(null);
+  const [plusMenuTime, setPlusMenuTime] = useState<number | null>(null);
   const [plusMenuY, setPlusMenuY] = useState(0);
 
   // ── Countdown timer to next candle on X-axis (ref-based, no re-renders) ─
@@ -457,6 +474,7 @@ export default function TradingChart({
   const lastCandleTimeRef = useRef<number | null>(null);
   // Track latest crosshair price for the "+" click handler
   const crosshairPriceRef = useRef<number | null>(null);
+  const crosshairTimeRef = useRef<number | null>(null);
 
   const cancelHide = useCallback(() => {
     if (crosshairHideTimerRef.current != null) {
@@ -473,6 +491,8 @@ export default function TradingChart({
     if (xLabel) xLabel.style.display = 'none';
     if (hovBadge) hovBadge.style.display = 'none';
     crosshairPriceRef.current = null;
+    crosshairTimeRef.current = null;
+    setPlusMenuOpen(false);
   }, []);
 
   useEffect(() => {
@@ -496,6 +516,7 @@ export default function TradingChart({
           if (xLabel) xLabel.style.display = 'none';
           if (hovBadge) hovBadge.style.display = 'none';
           crosshairPriceRef.current = null;
+          crosshairTimeRef.current = null;
         }, 180);
         return;
       }
@@ -509,16 +530,19 @@ export default function TradingChart({
       const { x, y } = ev.point;
       const price = ev.price;
       const time = ev.time;
+      const isMainPane = ev.paneId === 'main';
 
-      crosshairPriceRef.current = price;
+      crosshairPriceRef.current = isMainPane ? price : null;
+      crosshairTimeRef.current = isMainPane && time != null ? Number(time) : null;
 
       // Update Y-axis price label
-      if (yLabel && yPriceText && price != null) {
+      if (yLabel && yPriceText && isMainPane && price != null) {
         yLabel.style.top = `${Math.max(0, y - 12)}px`;
         yLabel.style.display = 'flex';
         yPriceText.textContent = price.toFixed(2);
       } else if (yLabel) {
         yLabel.style.display = 'none';
+        setPlusMenuOpen(false);
       }
 
       // Update X-axis time label
@@ -685,12 +709,15 @@ export default function TradingChart({
 
       const containerW = container.clientWidth || 1;
       // Y-axis area = rightmost PRICE_AXIS_W pixels → price-scale zoom only
+      // Y-axis area = rightmost PRICE_AXIS_W pixels → price-scale zoom only
+      // unless Ctrl is held, where TradingView uses time zoom around cursor.
       const onYAxis = cx > containerW - PRICE_AXIS_W;
+      const ctrlActive = isCtrlHeld || e.metaKey;
 
       const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
       const scaled = e.deltaY * deltaScale;
 
-      if (onYAxis) {
+      if (onYAxis && !ctrlActive) {
         // ── Price-scale zoom (hover on Y-axis) ───────────────────────────
         accumPriceScale += scaled;
         if (rafPriceId != null) return;
@@ -3601,6 +3628,7 @@ export default function TradingChart({
                     setPlusMenuOpen(false);
                   } else {
                     setPlusMenuPrice(price);
+                    setPlusMenuTime(crosshairTimeRef.current);
                     setPlusMenuY(topPx);
                     setPlusMenuOpen(true);
                   }
@@ -3688,8 +3716,8 @@ export default function TradingChart({
                     if (price == null) return;
                     const times = transformedData.times;
                     if (!times.length) return;
-                    const lastTime = times[times.length - 1];
-                    const pt: DrawPoint = { time: lastTime as DrawPoint['time'], price };
+                    const anchorTime = plusMenuTime ?? Number(times[times.length - 1]);
+                    const pt: DrawPoint = { time: anchorTime as DrawPoint['time'], price };
                     const hlineOpts = buildToolOptions('hline');
                     const drawing = createDrawing('hline', hlineOpts, pt, pt);
                     updateAllDrawings((prev) => [...prev, drawing]);

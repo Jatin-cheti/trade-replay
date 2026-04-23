@@ -73,6 +73,18 @@ function wsUrl(base: string, symbol: string): string {
   return `${normalized}/realtime/${encodeURIComponent(symbol)}`;
 }
 
+function timeframeToResolution(timeframe: Timeframe): string {
+  if (timeframe === "1m") return "1";
+  if (timeframe === "5m") return "5";
+  if (timeframe === "15m") return "15";
+  if (timeframe === "30m") return "30";
+  if (timeframe === "1h") return "60";
+  if (timeframe === "4h") return "240";
+  if (timeframe === "1D") return "D";
+  if (timeframe === "1W") return "W";
+  return "M";
+}
+
 export default function ChartEngine({
   symbol,
   timeframe,
@@ -96,6 +108,7 @@ export default function ChartEngine({
     ?? `${frontendEnv.API_URL}/chart`;
   const chartWsBase = (import.meta.env.VITE_CHART_SERVICE_WS_URL as string | undefined)
     ?? chartApiBase.replace(/^http/i, "ws");
+  const resolution = useMemo(() => timeframeToResolution(timeframe), [timeframe]);
 
   useEffect(() => {
     globalChartManager.register({
@@ -184,6 +197,7 @@ export default function ChartEngine({
         data={effectiveData}
         visibleCount={visibleCount ?? effectiveData.length}
         symbol={symbol}
+        resolution={resolution}
         mode={mode ?? "simulation"}
         parityMode={Boolean(parityMode)}
       />

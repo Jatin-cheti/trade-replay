@@ -23,6 +23,7 @@ process.env.E2E_UI_BASE_URL = E2E_UI_BASE_URL;
 
 export default defineConfig({
   testDir: ".",
+  testIgnore: ["playwright.config.ts"],
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,
