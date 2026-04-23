@@ -353,10 +353,17 @@ async function waitForChartStable(
 
   for (let i = 0; i < 320; i += 1) {
     const current = await readState();
+    // For live-market, renderSeq may advance continuously due to live-data polling
+    // and portal/Framer-Motion resize interactions.  The visual layout indicators
+    // (barWindow, priceScale, paneLayout) are what actually determine screenshot
+    // stability, so allow a small renderSeq drift on that route.
+    const renderSeqStable = options.route === '/live-market'
+      ? (current.renderSeq - last.renderSeq <= 3)
+      : current.renderSeq === last.renderSeq;
     const unchanged =
       current.ready
       && last.ready
-      && current.renderSeq === last.renderSeq
+      && renderSeqStable
       && current.barWindow === last.barWindow
       && current.priceScale === last.priceScale
       && current.paneLayout === last.paneLayout;
@@ -520,6 +527,9 @@ async function captureChartSurface(page: Page, route: '/simulation' | '/live-mar
     await setFullView(page, true);
     const fullSurface = page.locator('[data-testid="chart-full-view-overlay"] [data-testid="chart-interaction-surface"]:visible').first();
     await expect(fullSurface).toBeVisible({ timeout: 5_000 });
+    // Extra settle time for live-market: the portal + Framer-Motion resize loop
+    // takes a few hundred ms to quiesce after entering full view.
+    if (route === '/live-market') await page.waitForTimeout(400);
     await waitForChartStable(page, { route, fullscreen: true, minBarsLoaded: 120, minVisibleBars: 24 });
     await logChartBadge();
     await clearCrosshair(page);

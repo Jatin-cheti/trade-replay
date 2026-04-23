@@ -12,7 +12,7 @@ import BrandLottie from '@/components/BrandLottie';
 import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
 import ScrollReveal from '@/components/ScrollReveal';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
-import { BarChart3, History, Wallet, LineChart } from 'lucide-react';
+import { BarChart3, History, Wallet, LineChart, ArrowLeft } from 'lucide-react';
 
 export default function Simulation() {
   const {
@@ -24,6 +24,8 @@ export default function Simulation() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const parityDataEnabled = searchParams.get('parityData') === '1';
+  const layoutParam = (searchParams.get('layout') || '').toLowerCase();
+  const isFullChartLayout = layoutParam === 'chart' || layoutParam === 'full';
   const [mobileTab, setMobileTab] = useState<'chart' | 'trade' | 'portfolio' | 'history'>('chart');
 
   useEffect(() => {
@@ -35,7 +37,8 @@ export default function Simulation() {
       const portfolioId = searchParams.get('portfolioId') ?? undefined;
       const nextScenarioId = searchParams.get('scenarioId') ?? scenarioId;
       const scenario = scenarios.find(s => s.id === nextScenarioId);
-      const nextSymbol = scenario?.stocks[0]?.symbol ?? selectedStock;
+      const requestedSymbol = searchParams.get('symbol')?.trim().toUpperCase();
+      const nextSymbol = requestedSymbol || scenario?.stocks[0]?.symbol || selectedStock;
 
       if (portfolioId) {
         setActivePortfolioId(portfolioId);
@@ -97,6 +100,34 @@ export default function Simulation() {
         </div>
       )}
 
+      {isFullChartLayout ? (
+        <div data-testid="simulation-full-chart" className="px-3 pb-3 relative z-10">
+          <div className="mb-2 flex items-center justify-between gap-2 pt-3">
+            <button
+              data-testid="simulation-exit-full-chart"
+              type="button"
+              onClick={() => navigate(`/symbol/${encodeURIComponent(selectedStock)}`)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-secondary/35 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/55 hover:text-foreground"
+            >
+              <ArrowLeft size={14} />
+              Back to Symbol
+            </button>
+            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+              Full Chart · {selectedStock}
+            </p>
+          </div>
+          <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift" style={{ height: 'calc(100vh - 156px)', minHeight: '560px' }}>
+            <ChartEngine
+              data={candles}
+              visibleCount={currentCandleIndex + 1}
+              symbol={selectedStock}
+              timeframe="1m"
+              parityMode={parityDataEnabled}
+            />
+          </InteractiveSurface>
+        </div>
+      ) : (
+        <>
       {/* Desktop Layout */}
       <motion.div
         className="flex-1 hidden md:flex gap-3 p-3 relative z-10"
@@ -196,6 +227,8 @@ export default function Simulation() {
           </button>
         ))}
       </div>
+      </>
+      )}
       </main>
     </div>
   );

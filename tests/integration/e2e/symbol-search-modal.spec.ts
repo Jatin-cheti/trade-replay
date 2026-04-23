@@ -148,6 +148,9 @@ test("symbol search modal supports all categories, filters, and close lifecycle"
     parityReport.categories.push({ category: categoryKey, filterCount: filters.length, filters });
   }
 
+  // Re-focus inside the dialog before pressing Escape to ensure the dialog's keyboard handler fires.
+  await page.locator('[data-testid="symbol-search-modal"] [data-testid="symbol-search-input"]').click({ force: true }).catch(() => null);
+  await page.waitForTimeout(150);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
 

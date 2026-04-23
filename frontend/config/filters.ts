@@ -553,8 +553,10 @@ export function getStaticFilters(category?: "all" | AssetCategory): AssetSearchF
   if (resolved === "stocks") {
     return {
       ...emptyFilters("modal"),
-      activeFilters: ["country"],
+      activeFilters: ["country", "type", "sector"],
       countries: PREDEFINED_COUNTRIES,
+      types: STOCK_TYPES,
+      sectors: STOCK_SECTORS,
     };
   }
 

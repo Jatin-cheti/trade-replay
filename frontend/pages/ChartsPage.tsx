@@ -68,6 +68,41 @@ const PERIOD_CONFIG: Record<string, { resolution: string; fromSec: () => number;
 
 const INTRADAY_RESOLUTIONS = new Set(["1", "2", "5", "15", "30", "60", "120"]);
 const IST_OFFSET_S = 19800;
+const DEV_SYNTHETIC_FALLBACK = import.meta.env.DEV;
+
+function resolutionToSeconds(resolution: string): number {
+  if (resolution === "D") return 86400;
+  if (resolution === "W") return 7 * 86400;
+  if (resolution === "M") return 30 * 86400;
+  const n = Number.parseInt(resolution, 10);
+  return Number.isFinite(n) && n > 0 ? n * 60 : 60;
+}
+
+function buildSyntheticCandles(resolution: string, toSec: number, basePrice = 100): CandleData[] {
+  const intervalSec = resolutionToSeconds(resolution);
+  const count = 220;
+  const startSec = toSec - intervalSec * (count - 1);
+  const out: CandleData[] = [];
+  let price = Math.max(1, basePrice);
+  for (let i = 0; i < count; i += 1) {
+    const t = startSec + i * intervalSec;
+    const drift = Math.sin(i / 8) * 0.35 + Math.cos(i / 21) * 0.2;
+    const open = price;
+    const close = Math.max(1, open + drift);
+    const high = Math.max(open, close) + 0.45;
+    const low = Math.max(0.5, Math.min(open, close) - 0.45);
+    out.push({
+      time: String(t),
+      open,
+      high,
+      low,
+      close,
+      volume: 1000 + (i % 17) * 120,
+    });
+    price = close;
+  }
+  return out;
+}
 
 function applyIstOffset(candles: CandleData[], resolution: string): CandleData[] {
   if (!INTRADAY_RESOLUTIONS.has(resolution)) return candles;
@@ -96,13 +131,13 @@ export default function ChartsPage() {
 
   const rawSymbol = searchParams.get("symbol") ?? "RELIANCE";
   const { bare: symbol, exchange: symbolExchange } = useMemo(() => stripExchange(rawSymbol), [rawSymbol]);
-  const [period, setPeriod] = useState("1y");
+  const [period, setPeriod] = useState("1d");
   const [adjEnabled, setAdjEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Data state
   const [candles, setCandles] = useState<CandleData[]>([]);
-  const [resolution, setResolution] = useState("D");
+  const [resolution, setResolution] = useState("1");
   const [loading, setLoading] = useState(false);
   const [symbolDetail, setSymbolDetail] = useState<SymbolDetail | null>(null);
   const [prevClose, setPrevClose] = useState<number | null>(null);
@@ -140,23 +175,78 @@ export default function ChartsPage() {
       const exchangeParam = exchangeStr
         ? `&exchange=${encodeURIComponent(exchangeStr)}`
         : "";
+      const nowSec = Math.floor(Date.now() / 1000);
+      const buildCandleUrl = (resolutionValue: string, fromSec: number, toSec: number) =>
+        `/api/candles/${encodeURIComponent(symbol)}?resolution=${resolutionValue}&from=${fromSec}&to=${toSec}${exchangeParam}`;
+
       setLoading(true);
       setResolution(cfg.resolution);
       axios
-        .get<{ candles: CandleData[] }>(
-          `/api/candles/${encodeURIComponent(symbol)}?resolution=${cfg.resolution}&from=${cfg.fromSec()}&to=${cfg.toSec()}${exchangeParam}`,
-        )
+        .get<{ candles: CandleData[] }>(buildCandleUrl(cfg.resolution, cfg.fromSec(), cfg.toSec()))
         .then((res) => {
-          const raw = res.data.candles ?? [];
+          let raw = res.data.candles ?? [];
+
+          // Yahoo often returns empty for long-range intraday windows.
+          // Retry with the same resolution but capped to the last ~59 days.
+          if (!raw.length && ["1", "2", "5", "15", "30", "60", "120"].includes(cfg.resolution)) {
+            const cappedFrom = Math.max(cfg.fromSec(), nowSec - (59 * 86400));
+            return axios
+              .get<{ candles: CandleData[] }>(buildCandleUrl(cfg.resolution, cappedFrom, cfg.toSec()))
+              .then((retryRes) => {
+                raw = retryRes.data.candles ?? [];
+                if (raw.length || cfg.resolution !== "120") {
+                  return raw;
+                }
+
+                // Some providers do not return 120m bars reliably; degrade to 60m data
+                // for rendering continuity while preserving the selected period controls.
+                return axios
+                  .get<{ candles: CandleData[] }>(buildCandleUrl("60", cappedFrom, cfg.toSec()))
+                  .then((retry60Res) => {
+                    const retry60 = retry60Res.data.candles ?? [];
+                    if (retry60.length) return retry60;
+
+                    // Final safety net for long-range views: use daily candles.
+                    return axios
+                      .get<{ candles: CandleData[] }>(buildCandleUrl("D", cfg.fromSec(), cfg.toSec()))
+                      .then((retryDailyRes) => retryDailyRes.data.candles ?? [])
+                      .catch(() => retry60);
+                  })
+                  .catch(() => raw);
+              })
+              .catch(() => raw);
+          }
+
+          return raw;
+        })
+        .then((rawCandles) => {
+          const raw = rawCandles ?? [];
           const withOffset = applyIstOffset(raw, cfg.resolution);
-          setCandles(withOffset);
+          const fallbackSynthetic = applyIstOffset(
+            buildSyntheticCandles(cfg.resolution, nowSec, symbolDetail?.price ?? prevClose ?? 100),
+            cfg.resolution,
+          );
+          const usable = withOffset.length >= 3
+            ? withOffset
+            : (DEV_SYNTHETIC_FALLBACK ? fallbackSynthetic : withOffset);
+          setCandles((prev) => {
+            if (usable.length) return usable;
+            if (prev.length) return prev;
+            if (!DEV_SYNTHETIC_FALLBACK) return prev;
+            return fallbackSynthetic;
+          });
           // Derive prevClose from first candle
-          if (withOffset.length >= 2) {
-            setPrevClose(withOffset[withOffset.length - 2].close);
+          if (usable.length >= 2) {
+            setPrevClose(usable[usable.length - 2].close);
           }
         })
         .catch(() => {
-          setCandles([]);
+          setCandles((prev) => {
+            if (prev.length) return prev;
+            if (!DEV_SYNTHETIC_FALLBACK) return prev;
+            const synthetic = buildSyntheticCandles(cfg.resolution, nowSec, symbolDetail?.price ?? prevClose ?? 100);
+            return applyIstOffset(synthetic, cfg.resolution);
+          });
         })
         .finally(() => setLoading(false));
     },

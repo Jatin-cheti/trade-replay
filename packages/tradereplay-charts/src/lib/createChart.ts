@@ -713,11 +713,16 @@ export function createChart(
   function cw(): number { return width - priceAxisWidth; }
   function ch(): number { return height - TIME_AXIS_H; }
   function vbars(): number { return cw() / barWidth; }
+  function maxBarWidthForViewport(): number {
+    return Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / 2));
+  }
 
   function clampRightmostIndex(next: number): number {
     if (!timeIndex.length) return 0;
     const max = (timeIndex.length - 1) + MAX_RIGHT_OFFSET_BARS;
-    const min = Math.min(timeIndex.length - 1, Math.max(0, vbars() - 0.5));
+    const minVisibleBars = Math.max(2, Math.ceil(cw() / MAX_BAR_WIDTH));
+    const minLogicalRightEdge = minVisibleBars - 0.5;
+    const min = Math.min(timeIndex.length - 1, Math.max(minLogicalRightEdge, vbars() - 0.5));
     return Math.max(min, Math.min(max, next));
   }
 
@@ -1280,8 +1285,19 @@ export function createChart(
   }
 
   function computeRenderState(): RenderState {
-    const firstBar = Math.max(0, Math.floor(xToBar(0)));
-    const lastBar = Math.min(timeIndex.length - 1, Math.ceil(rightmostIndex));
+    let firstBar = Math.max(0, Math.floor(xToBar(0)));
+    let lastBar = Math.min(timeIndex.length - 1, Math.ceil(rightmostIndex));
+
+    if (timeIndex.length > 0) {
+      const minVisibleBars = Math.max(2, Math.ceil(cw() / MAX_BAR_WIDTH));
+      const neededBars = Math.min(timeIndex.length, minVisibleBars);
+      const currentBars = lastBar >= firstBar ? (lastBar - firstBar + 1) : 0;
+      if (currentBars < neededBars) {
+        lastBar = Math.max(lastBar, neededBars - 1);
+        if (lastBar > timeIndex.length - 1) lastBar = timeIndex.length - 1;
+        firstBar = Math.max(0, lastBar - neededBars + 1);
+      }
+    }
 
     const layout = computePaneLayout(panes, ch());
 
@@ -2265,7 +2281,7 @@ export function createChart(
       if (Math.abs(delta) < 0.5) return;
 
       const zoomFactor = Math.exp(-delta * 0.0015);
-      const nextBarWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, barWidth * zoomFactor));
+      const nextBarWidth = Math.max(MIN_BAR_WIDTH, Math.min(maxBarWidthForViewport(), barWidth * zoomFactor));
       if (Math.abs(nextBarWidth - barWidth) < 0.001) return;
 
       const anchorBar = xToBar(anchorX);
@@ -2490,8 +2506,8 @@ export function createChart(
       return { from: xToBar(0), to: rightmostIndex };
     },
     setVisibleLogicalRange(range: LogicalRange): void {
-      const bars = Math.abs(range.to - range.from);
-      if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / bars));
+      const bars = Math.abs(range.to - range.from) + 1;
+      if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(maxBarWidthForViewport(), cw() / bars));
       rightmostIndex = clampRightmostIndex(range.to);
       scheduleRender();
     },
@@ -2526,7 +2542,7 @@ export function createChart(
       const fromIdx = timeIndex.closestIndex(range.from);
       const toIdx = timeIndex.closestIndex(range.to);
       const bars = toIdx - fromIdx + 1;
-      if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / bars));
+      if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(maxBarWidthForViewport(), cw() / bars));
       rightmostIndex = clampRightmostIndex(toIdx);
       scheduleRender();
     },

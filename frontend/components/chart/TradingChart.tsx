@@ -62,15 +62,24 @@ function resolutionToSeconds(res: string | undefined): number {
   return Number.isFinite(n) && n > 0 ? n * 60 : 60;
 }
 
-/** Format seconds as MM:SS or HH:MM:SS. */
-function formatCountdown(seconds: number): string {
+function isIntradayResolution(res: string | undefined): boolean {
+  if (!res) return true;
+  if (res === 'D' || res === 'W' || res === 'M') return false;
+  const n = parseInt(res, 10);
+  return Number.isFinite(n) && n > 0;
+}
+
+/** Format seconds as MM:SS (intraday) or forced HH:MM:SS (>= 1h resolutions). */
+function formatCountdown(seconds: number, forceHours: boolean): string {
   const s = Math.max(0, seconds);
-  const h = Math.floor(s / 3600);
+  const totalHours = Math.floor(s / 3600);
+  const h = totalHours % 100;
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
+  const hh = String(h).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   const ss = String(sec).padStart(2, '0');
-  if (h > 0) return `${String(h).padStart(2, '0')}:${mm}:${ss}`;
+  if (forceHours) return `${hh}:${mm}:${ss}`;
   return `${mm}:${ss}`;
 }
 
@@ -443,8 +452,9 @@ export default function TradingChart({
   const [plusMenuPrice, setPlusMenuPrice] = useState<number | null>(null);
   const [plusMenuY, setPlusMenuY] = useState(0);
 
-  // ── Countdown timer to next candle on X-axis ───────────────────────────
-  const [candleCountdown, setCandleCountdown] = useState<{ text: string; x: number } | null>(null);
+  // ── Countdown timer to next candle on X-axis (ref-based, no re-renders) ─
+  const countdownDivRef = useRef<HTMLDivElement>(null);
+  const lastCandleTimeRef = useRef<number | null>(null);
   // Track latest crosshair price for the "+" click handler
   const crosshairPriceRef = useRef<number | null>(null);
 
@@ -576,38 +586,55 @@ export default function TradingChart({
   }, []);
 
   // ── Countdown timer to next candle ────────────────────────────────────────
+  // Keep the latest candle timestamp in a ref (updated on data change, no interval restart needed).
+  useEffect(() => {
+    const times = transformedData.times;
+    lastCandleTimeRef.current = times.length > 0 ? Number(times[times.length - 1]) : null;
+  }, [transformedData.times]);
+
+  // Stable interval: only restarts when ready/resolution changes, NOT on every data update.
   useEffect(() => {
     if (!ready) return;
     const candleSec = resolutionToSeconds(resolution);
+    const forceHours = candleSec >= 3600;
+    const intraday = isIntradayResolution(resolution);
 
     const tick = () => {
+      const el = countdownDivRef.current;
       const chart = chartRef.current;
-      const times = transformedData.times;
-      if (!chart || !times.length) { setCandleCountdown(null); return; }
+      const lastTime = lastCandleTimeRef.current;
+      if (!el || !chart || lastTime == null) {
+        if (el) el.style.display = 'none';
+        return;
+      }
 
-      const nowSec = Math.floor(Date.now() / 1000);
-      // Next candle boundary: ceil(now+1 / interval) * interval
-      const nextCandle = Math.ceil((nowSec + 1) / candleSec) * candleSec;
-      const remaining = nextCandle - nowSec;
+      // Intraday candles in ChartsPage are shifted to IST pseudo-UTC time, so
+      // match that clock for countdown math to avoid session-gap artifacts.
+      const nowSecRaw = Math.floor(Date.now() / 1000);
+      const nowSec = intraday ? nowSecRaw + 19800 : nowSecRaw;
+      const elapsed = Math.max(0, nowSec - lastTime);
+      let remaining = candleSec - (elapsed % candleSec);
+      if (remaining === candleSec) remaining = 0;
 
-      const lastTime = times[times.length - 1];
       // X pixel coordinate of the last data bar
       const x = chart.timeScale().timeToCoordinate(lastTime as import('@tradereplay/charts').UTCTimestamp);
       const containerW = chartContainerRef.current?.clientWidth ?? 0;
       const containerH = chartContainerRef.current?.clientHeight ?? 0;
       // Only show if the last bar is visible and not in the price-axis zone
       if (x == null || !Number.isFinite(x) || x < 0 || x > containerW - 68 || containerH === 0) {
-        setCandleCountdown(null);
+        el.style.display = 'none';
         return;
       }
 
-      setCandleCountdown({ text: formatCountdown(remaining), x });
+      el.style.display = 'block';
+      el.style.left = `${x}px`;
+      el.textContent = formatCountdown(remaining, forceHours);
     };
 
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [ready, resolution, transformedData.times, chartRef, chartContainerRef]);
+  }, [ready, resolution, chartRef, chartContainerRef]);
 
   // ── Custom wheel/zoom handler ─────────────────────────────────────────────
   // TradingView-accurate behavior:
@@ -695,24 +722,26 @@ export default function TradingChart({
           const timeScale = currentChart.timeScale();
           const range = timeScale.getVisibleLogicalRange();
           if (!range) return;
-          const currentBars = range.to - range.from;
+          const currentBars = Math.max(1, range.to - range.from + 1);
           if (!Number.isFinite(currentBars) || currentBars <= 0) return;
 
           // TV zoom speed: ~11% per notch
           const zoomFactor = Math.exp(-d * 0.001);
-          const maxBars = Math.max(10, range.to);
+          const totalBars = Math.max(1, transformedData.ohlcRows.length);
+          const maxBars = Math.max(MIN_BARS, totalBars);
           const newBars = Math.max(MIN_BARS, Math.min(maxBars, currentBars / zoomFactor));
+          const barSpan = Math.max(1, newBars - 1);
 
           if (useCtrlAnchor) {
             // Ctrl: anchor at cursor X position
             const f = Math.max(0, Math.min(1, lastCursorX / containerW));
             const cursorBar = range.from + f * currentBars;
-            const newFrom = Math.max(0, cursorBar - f * newBars);
-            timeScale.setVisibleLogicalRange({ from: newFrom, to: newFrom + newBars });
+            const newFrom = Math.max(0, cursorBar - f * barSpan);
+            timeScale.setVisibleLogicalRange({ from: newFrom, to: newFrom + barSpan });
           } else {
             // Normal scroll (TV default): keep right edge fixed, zoom from left
             const newTo = range.to;
-            const newFrom = Math.max(0, newTo - newBars);
+            const newFrom = Math.max(0, newTo - barSpan);
             timeScale.setVisibleLogicalRange({ from: newFrom, to: newTo });
           }
         });
@@ -732,7 +761,7 @@ export default function TradingChart({
       if (rafTimeId != null) cancelAnimationFrame(rafTimeId);
       if (rafPriceId != null) cancelAnimationFrame(rafPriceId);
     };
-  }, [chartContainerRef, chartRef, ready]);
+  }, [chartContainerRef, chartRef, ready, transformedData.ohlcRows.length]);
 
   const applyTouchMode = useCallback((mode: 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch') => {
     const chart = chartRef.current;
@@ -3682,19 +3711,12 @@ export default function TradingChart({
             />
 
             {/* ── Countdown timer: time until next candle on X-axis ── */}
-            {candleCountdown != null ? (
-              <div
-                data-testid="candle-countdown"
-                className="pointer-events-none absolute bottom-0 z-[30] -translate-x-1/2 rounded-t px-2 py-0.5 text-[11px] font-bold tabular-nums whitespace-nowrap"
-                style={{
-                  left: candleCountdown.x,
-                  backgroundColor: '#2962ff',
-                  color: '#ffffff',
-                }}
-              >
-                {candleCountdown.text}
-              </div>
-            ) : null}
+            <div
+              ref={countdownDivRef}
+              data-testid="candle-countdown"
+              className="pointer-events-none absolute bottom-0 z-[30] -translate-x-1/2 rounded-t px-2 py-0.5 text-[11px] font-bold tabular-nums whitespace-nowrap"
+              style={{ display: 'none', left: 0, backgroundColor: '#2962ff', color: '#ffffff' }}
+            />
 
             {patternWizardHint ? (
               <div

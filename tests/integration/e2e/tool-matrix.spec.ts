@@ -918,14 +918,9 @@ test.describe("[Matrix] Header toolbar — chart types and indicators", () => {
       let error: string | undefined;
 
       try {
-        await clickByTestId(page, "chart-type-dropdown");
-        await page.waitForTimeout(200);
-
-        // Select by value attribute on the <select> element
-        await page.locator('[data-testid="chart-type-dropdown"]').selectOption(ct.toolId).catch(async () => {
-          // Fallback: look for listbox option
-          await page.locator(`[data-value="${ct.toolId}"]`).first().click({ timeout: 3_000 });
-        });
+        // Use selectOption directly without clicking — triggering the native OS
+        // select dropdown via evaluate can disconnect the CDP session on Windows.
+        await page.locator('[data-testid="chart-type-dropdown"]').selectOption(ct.toolId, { timeout: 5_000 });
         await page.waitForTimeout(500);
 
         await expect(

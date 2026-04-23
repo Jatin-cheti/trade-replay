@@ -1210,7 +1210,8 @@ export default function SymbolPage() {
                   </Suspense>
                   {/* Full chart button — matches image5 */}
                   <button
-                    onClick={() => navigate(chartsHref)}
+                    data-testid="symbol-open-full-chart"
+                    onClick={() => navigate(`/simulation?symbol=${encodeURIComponent(detail.fullSymbol || detail.symbol)}&layout=chart&from=symbol`)}
                     className="flex items-center gap-1.5 h-8 rounded-md border border-border/50 bg-secondary/30 px-3 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
                   >
                     <BarChart3 className="w-3.5 h-3.5" /> Full chart

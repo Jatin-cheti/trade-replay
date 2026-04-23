@@ -7,6 +7,22 @@ import autoprefixer from "autoprefixer";
 import { visualizer } from "rollup-plugin-visualizer";
 
 // https://vitejs.dev/config/
+
+/** Resolve the backend API origin from env vars injected by the test runner (e.g. Playwright).
+ *  Falls back to the standard dev-server port 4000. */
+function resolveApiTarget(): string {
+  const fromEnv = process.env.DEV_VITE_API_URL ?? process.env.VITE_DEV_API_URL ?? process.env.VITE_API_URL;
+  if (fromEnv) {
+    try {
+      const u = new URL(fromEnv);
+      return `${u.protocol}//${u.hostname}:${u.port}`;
+    } catch {
+      // invalid URL – fall through to default
+    }
+  }
+  return "http://localhost:4000";
+}
+
 export default defineConfig(({ mode }) => ({
   envDir: "..",
   server: {
@@ -14,7 +30,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     proxy: {
       "/api": {
-        target: "http://localhost:4000",
+        target: resolveApiTarget(),
         changeOrigin: true,
       },
     },

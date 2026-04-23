@@ -431,9 +431,9 @@ test.describe("Comprehensive Tool Tests", () => {
   /* ---------------------------------------------------------------- */
 
   test("lock prevents dragging and hide makes drawings invisible", async ({ page }) => {
-    await clickVisible(page, "rail-keep-drawing");
     await selectTool(page, "lines", "tool-trendline", "tool: trend");
     await draw2PointShape(page, "left");
+    await selectTool(page, "lines", "tool-trendline", "tool: trend");
     await draw2PointShape(page, "right");
     await expect.poll(async () => readDrawingCount(page)).toBe(2);
 
