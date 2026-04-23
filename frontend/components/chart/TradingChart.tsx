@@ -401,6 +401,79 @@ export default function TradingChart({
     setLastPriceBadge({ y, price: lastPrice, isUp });
   }, [ready, transformedData, getActiveSeries]);
 
+  // Crosshair overlay: black price label on Y-axis, black time label on X-axis,
+  // and a second colored badge for hovered candle close price.
+  const [crosshairOverlay, setCrosshairOverlay] = useState<{
+    x: number; y: number;
+    price: number | null;
+    timeLabel: string;
+    hoveredCloseY: number | null;
+    hoveredClose: number | null;
+    isHoveredBullish: boolean;
+  } | null>(null);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [plusMenuPrice, setPlusMenuPrice] = useState<number | null>(null);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !ready) return;
+    const series = getActiveSeries();
+
+    function handleCrosshairMove(param: unknown) {
+      const ev = param as CrosshairMoveEvent;
+      if (!ev || ev.source === 'leave' || !ev.point) {
+        setCrosshairOverlay(null);
+        return;
+      }
+
+      const { x, y } = ev.point;
+      const price = ev.price;
+      const time = ev.time;
+
+      // Format the time label
+      let timeLabel = '';
+      if (time != null) {
+        const d = new Date(Number(time) * 1000);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const h = d.getUTCHours(), m = d.getUTCMinutes();
+        const isIntraday = h !== 0 || m !== 0;
+        if (isIntraday) {
+          timeLabel = `${pad(d.getUTCDate())} ${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${pad(h)}:${pad(m)}`;
+        } else {
+          timeLabel = `${pad(d.getUTCDate())} ${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} '${d.getUTCFullYear().toString().slice(2)}`;
+        }
+      }
+
+      // Look up hovered candle to get the close price and direction
+      let hoveredClose: number | null = null;
+      let hoveredOpen: number | null = null;
+      if (time != null && series) {
+        const rows = transformedData.ohlcRows;
+        const t = Number(time);
+        const candle = rows.find((r) => Number(r.time) === t) as ({ close?: number; open?: number; value?: number } & { time: number }) | undefined;
+        if (candle) {
+          hoveredClose = candle.close ?? candle.value ?? null;
+          hoveredOpen = (candle as { open?: number }).open ?? null;
+        }
+      }
+
+      const hoveredCloseY = hoveredClose != null && series
+        ? (series.priceToCoordinate(hoveredClose) ?? null)
+        : null;
+      const isHoveredBullish = hoveredOpen == null || hoveredClose == null
+        ? true
+        : hoveredClose >= hoveredOpen;
+
+      setCrosshairOverlay({ x, y, price, timeLabel, hoveredCloseY, hoveredClose, isHoveredBullish });
+    }
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    return () => {
+      try { chart.unsubscribeCrosshairMove(handleCrosshairMove); } catch { /* ignore */ }
+      setCrosshairOverlay(null);
+    };
+  }, [chartRef, ready, getActiveSeries, transformedData]);
+
   const addIndicator = useCallback((indicatorId: string) => {
     setEnabledIndicators((prev) => {
       if (prev.includes(indicatorId)) return prev;
@@ -2678,12 +2751,12 @@ export default function TradingChart({
               };
             }
           }
-        }
-        // Only capture the pointer when actually dragging a drawing — not when panning.
-        // If we capture without dragging, the canvas loses its own pointer capture and
-        // its dragStart never clears, causing the chart to continue panning after release.
-        if ((dragMoveRef.current || dragAnchorMoveRef.current) && event.currentTarget.setPointerCapture) {
-          event.currentTarget.setPointerCapture(event.pointerId);
+          // Only capture pointer on this div when dragging a drawing — otherwise
+          // let the chart canvas (which captured it first on pointerdown) keep
+          // its capture so pan/scale drag stops correctly on mouseup.
+          if (event.currentTarget.setPointerCapture && (dragMoveRef.current || dragAnchorMoveRef.current)) {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
         }
         renderOverlay();
         return;
@@ -3184,6 +3257,7 @@ export default function TradingChart({
               setHoverPoint(null);
               setHoveredDrawingId(null);
             }}
+            onClick={() => { if (plusMenuOpen) setPlusMenuOpen(false); }}
           >
             <div className="chart-wrapper h-full w-full touch-pan-y">
               <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} overlayInteractive={overlayInteractive} overlayCursor={overlayCursor} containerCursor={overlayCursor} />
@@ -3208,6 +3282,94 @@ export default function TradingChart({
                 >
                   {lastPriceBadge.price.toFixed(2)}
                 </div>
+              </div>
+            ) : null}
+
+            {/* Crosshair hovered-candle Y-axis badge (second colored label) */}
+            {crosshairOverlay != null && crosshairOverlay.hoveredCloseY != null && crosshairOverlay.hoveredClose != null
+              && !(lastPriceBadge != null && Math.abs(crosshairOverlay.hoveredCloseY - lastPriceBadge.y) < 18) ? (
+              <div
+                className="pointer-events-none absolute right-0 z-29 flex items-center"
+                style={{ top: crosshairOverlay.hoveredCloseY - 10 }}
+              >
+                <div
+                  className="rounded-l px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums opacity-90"
+                  style={{ backgroundColor: crosshairOverlay.isHoveredBullish ? '#26a69a' : '#ef5350' }}
+                >
+                  {crosshairOverlay.hoveredClose.toFixed(2)}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Crosshair black Y-axis price label + "+" button */}
+            {crosshairOverlay != null && crosshairOverlay.price != null ? (
+              <div
+                className="absolute right-0 z-31 flex items-center"
+                style={{ top: crosshairOverlay.y - 10, pointerEvents: 'auto' }}
+              >
+                {/* "+" button */}
+                <button
+                  type="button"
+                  className="flex h-5 w-5 items-center justify-center rounded-l bg-[#1e222d] text-[11px] font-bold text-white hover:bg-[#2a2e39] leading-none border-r border-white/10"
+                  title="Add alert / order / drawing"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (plusMenuOpen && plusMenuPrice === crosshairOverlay.price) {
+                      setPlusMenuOpen(false);
+                    } else {
+                      setPlusMenuPrice(crosshairOverlay.price);
+                      setPlusMenuOpen(true);
+                    }
+                  }}
+                >
+                  +
+                </button>
+                <div className="rounded-r bg-[#131722] px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums">
+                  {crosshairOverlay.price.toFixed(2)}
+                </div>
+              </div>
+            ) : null}
+
+            {/* "+" context menu panel */}
+            {plusMenuOpen && plusMenuPrice != null && crosshairOverlay != null ? (
+              <div
+                className="absolute z-50 w-72 rounded-xl border border-white/10 bg-[#1e222d] py-1.5 shadow-2xl"
+                style={{
+                  top: Math.max(4, (crosshairOverlay.y - 10) - 20),
+                  right: 68,
+                  pointerEvents: 'auto',
+                }}
+                onMouseLeave={() => setPlusMenuOpen(false)}
+              >
+                {([
+                  { label: `Add alert on ${symbol} at ${plusMenuPrice.toFixed(2)}`, shortcut: 'Alt+A' },
+                  { label: `Buy 1 ${symbol} @ ${plusMenuPrice.toFixed(2)} limit`, shortcut: 'Alt+Shift+B' },
+                  { label: `Sell 1 ${symbol} @ ${plusMenuPrice.toFixed(2)} stop`, shortcut: '' },
+                  { label: `Add order on ${symbol} at ${plusMenuPrice.toFixed(2)}…`, shortcut: 'Shift+T' },
+                  { label: `Draw horizontal line at ${plusMenuPrice.toFixed(2)}`, shortcut: 'Alt+H' },
+                ] as { label: string; shortcut: string }[]).map(({ label, shortcut }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-white hover:bg-white/5 transition"
+                    onClick={() => {
+                      setPlusMenuOpen(false);
+                    }}
+                  >
+                    <span className="flex-1">{label}</span>
+                    {shortcut ? <span className="shrink-0 text-[10px] text-white/40">{shortcut}</span> : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Crosshair black X-axis time label */}
+            {crosshairOverlay != null && crosshairOverlay.timeLabel ? (
+              <div
+                className="pointer-events-none absolute bottom-0 z-31 -translate-x-1/2 rounded-t bg-[#131722] px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums whitespace-nowrap"
+                style={{ left: crosshairOverlay.x }}
+              >
+                {crosshairOverlay.timeLabel}
               </div>
             ) : null}
 

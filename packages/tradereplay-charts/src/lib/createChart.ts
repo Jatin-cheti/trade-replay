@@ -558,8 +558,6 @@ export function createChart(
   let gridColor = 'rgba(42, 46, 57, 0.72)';
   let crosshairVColor = 'rgba(120, 123, 134, 0.8)';
   let crosshairHColor = 'rgba(120, 123, 134, 0.8)';
-  let crosshairVLabelBgColor = '#131722';
-  let crosshairHLabelBgColor = '#131722';
   let axisBorderColor = 'rgba(42, 46, 57, 0.95)';
 
   if (initOpts?.layout?.background?.color) bgColor = initOpts.layout.background.color;
@@ -569,8 +567,6 @@ export function createChart(
   if (initOpts?.grid?.vertLines?.color) gridColor = initOpts.grid.vertLines.color;
   if (initOpts?.crosshair?.vertLine?.color) crosshairVColor = initOpts.crosshair.vertLine.color;
   if (initOpts?.crosshair?.horzLine?.color) crosshairHColor = initOpts.crosshair.horzLine.color;
-  if (initOpts?.crosshair?.vertLine?.labelBackgroundColor) crosshairVLabelBgColor = initOpts.crosshair.vertLine.labelBackgroundColor;
-  if (initOpts?.crosshair?.horzLine?.labelBackgroundColor) crosshairHLabelBgColor = initOpts.crosshair.horzLine.labelBackgroundColor;
   if (initOpts?.rightPriceScale?.borderColor) axisBorderColor = initOpts.rightPriceScale.borderColor;
 
   // ── chart state ──
@@ -2000,7 +1996,7 @@ export function createChart(
       ctx.font = `${fontSize}px ${fontFamily}`;
       ctx.textBaseline = 'middle';
       const labelH = 16;
-      ctx.fillStyle = crosshairHLabelBgColor;
+      ctx.fillStyle = crosshairHColor;
       ctx.fillRect(w + 2, snappedCrosshairY - labelH / 2, priceAxisWidth - 4, labelH);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
@@ -2020,7 +2016,7 @@ export function createChart(
         ctx.textAlign = 'center';
         const labelH = 16;
         const tlW = Math.max(50, ctx.measureText(tLabel).width + 12);
-        ctx.fillStyle = crosshairVLabelBgColor;
+        ctx.fillStyle = crosshairVColor;
         ctx.fillRect(snappedCrosshairX - tlW / 2, totalH + 2, tlW, labelH);
         ctx.fillStyle = '#fff';
         ctx.fillText(tLabel, snappedCrosshairX, totalH + 2 + labelH / 2);
@@ -2356,7 +2352,6 @@ export function createChart(
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerUp);
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDoubleClick);
 
@@ -2550,8 +2545,6 @@ export function createChart(
       if (opts.grid?.vertLines?.color) gridColor = opts.grid.vertLines.color;
       if (opts.crosshair?.vertLine?.color) crosshairVColor = opts.crosshair.vertLine.color;
       if (opts.crosshair?.horzLine?.color) crosshairHColor = opts.crosshair.horzLine.color;
-      if (opts.crosshair?.vertLine?.labelBackgroundColor) crosshairVLabelBgColor = opts.crosshair.vertLine.labelBackgroundColor;
-      if (opts.crosshair?.horzLine?.labelBackgroundColor) crosshairHLabelBgColor = opts.crosshair.horzLine.labelBackgroundColor;
       if (opts.rightPriceScale?.borderColor) axisBorderColor = opts.rightPriceScale.borderColor;
       if ('forcedTimeTicks' in opts) forcedTimeTicks = opts.forcedTimeTicks ?? null;
       resizeCanvas(undefined, 'apply-options');
@@ -2737,7 +2730,6 @@ export function createChart(
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('dblclick', onDoubleClick);
       if (container.contains(canvas)) container.removeChild(canvas);

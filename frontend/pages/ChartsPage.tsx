@@ -13,6 +13,7 @@ import ChartTableViewModal from "@/components/chart/ChartTableViewModal";
 import ChartRightMiniStrip from "@/components/chart/ChartRightMiniStrip";
 import SymbolSearchInput from "@/components/chart/SymbolSearchInput";
 import ChartOhlcLegendOverlay from "@/components/chart/ChartOhlcLegendOverlay";
+import AssetAvatar from "@/components/ui/AssetAvatar";
 import type { CandleData } from "@/data/stockData";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
@@ -24,6 +25,8 @@ interface SymbolDetail {
   exchange: string;
   type: string;
   price?: number;
+  iconUrl?: string;
+  s3Icon?: string;
 }
 
 interface ContextMenuState {
@@ -330,6 +333,15 @@ export default function ChartsPage() {
         >
           <ArrowLeft size={16} />
         </button>
+
+        {/* Symbol logo */}
+        {(symbolDetail?.s3Icon || symbolDetail?.iconUrl) && (
+          <AssetAvatar
+            src={symbolDetail.s3Icon || symbolDetail.iconUrl || null}
+            label={symbol}
+            className="h-7 w-7 shrink-0 rounded-full"
+          />
+        )}
 
         {/* Symbol search + display */}
         <SymbolSearchInput currentSymbol={baseSymbol} onSelect={handleSymbolSelect} />
