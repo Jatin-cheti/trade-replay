@@ -158,3 +158,53 @@ export {
   breakoutStrengthDef,
   trendStrengthDef,
 } from './indicators/builtins/batch4';
+
+// ─── Trading layer ────────────────────────────────────────────────────────────
+
+export {
+  createTradingChart,
+  resizeChartSurface,
+  fitChartContent,
+  type TradingChartOptions,
+} from './trading/chartFactory';
+
+export {
+  createChartSeries,
+  applySeriesVisibility,
+  activeSeriesForType,
+  chartVisibilityMap,
+  type ChartSeriesKey,
+  type ChartSeriesMap,
+  type ChartSeriesOptions,
+} from './trading/seriesManager';
+
+export {
+  type ChartType,
+  type ChartTypeGroup,
+  COMING_SOON_CHART_TYPES,
+  chartTypeGroups,
+} from './trading/chartTypes';
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+export {
+  MARKET_TIMEZONE_MAP,
+  getMarketTimezone,
+  getISTOffsetSeconds,
+  getTimezoneOffsetSeconds,
+  applyMarketTimezone,
+  convertTimezone,
+  formatBarTime,
+  formatCountdown,
+} from './utils/timezone';
+
+export {
+  CURRENCY_SYMBOLS,
+  DEFAULT_FX_RATES,
+  fetchExchangeRates,
+  invalidateRatesCache,
+  convertCurrency,
+  formatPrice,
+  getCurrencySymbol,
+  type FormatPriceOptions,
+} from './utils/currency';

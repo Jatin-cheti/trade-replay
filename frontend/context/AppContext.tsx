@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { CandleData, scenarios } from '@/data/stockData';
 import { api, getApiErrorCode, getApiErrorMessage, setApiToken } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
+import { fetchExchangeRates, DEFAULT_FX_RATES, formatPrice } from '@tradereplay/charts';
 
 export interface Trade {
   id: string;
@@ -30,12 +31,12 @@ interface ActionResult {
   code?: string;
 }
 
-const FX_RATES: Record<Currency, number> = {
-  USD: 1,
-  INR: 83.5,
-  EUR: 0.92,
-  GBP: 0.78,
-  JPY: 151.2,
+const FX_RATES_FALLBACK: Record<Currency, number> = {
+  USD: DEFAULT_FX_RATES.USD ?? 1,
+  INR: DEFAULT_FX_RATES.INR ?? 83.5,
+  EUR: DEFAULT_FX_RATES.EUR ?? 0.92,
+  GBP: DEFAULT_FX_RATES.GBP ?? 0.78,
+  JPY: DEFAULT_FX_RATES.JPY ?? 151.2,
 };
 
 const CURRENCY_SYMBOL: Record<Currency, string> = {
@@ -97,6 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(token));
   const [username, setUsername] = useState('');
   const [currency, setCurrency] = useState<Currency>('USD');
+  const [fxRates, setFxRates] = useState<Record<string, number>>(FX_RATES_FALLBACK);
   const [balance, setBalance] = useState(INITIAL_BALANCE);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -243,14 +245,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSimulationDataMode('default');
   }, []);
 
+  // Fetch live exchange rates on mount, refresh hourly
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => fetchExchangeRates('USD').then((rates) => { if (!cancelled) setFxRates(rates); });
+    load();
+    const interval = setInterval(load, 60 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   const formatCurrency = useCallback((amount: number) => {
-    const rate = FX_RATES[currency] ?? 1;
+    const rate = fxRates[currency] ?? 1;
     const val = amount * rate;
-    const symbol = CURRENCY_SYMBOL[currency] ?? '$';
-    if (Math.abs(val) >= 1e6) return `${symbol}${(val / 1e6).toFixed(2)}M`;
-    if (Math.abs(val) >= 1e3) return `${symbol}${(val / 1e3).toFixed(2)}K`;
-    return `${symbol}${val.toFixed(2)}`;
-  }, [currency]);
+    return formatPrice(val, currency, { compact: Math.abs(val) >= 1000 });
+  }, [currency, fxRates]);
 
   const executeTrade = useCallback(async (type: 'BUY' | 'SELL', _symbol: string, _price: number, quantity: number, _date: string) => {
     try {

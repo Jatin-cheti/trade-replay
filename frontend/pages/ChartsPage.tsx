@@ -16,6 +16,7 @@ import AssetAvatar from "@/components/ui/AssetAvatar";
 import SymbolSearchModal from "@/components/simulation/SymbolSearchModal";
 import type { AssetSearchItem } from "@/lib/assetSearch";
 import type { CandleData } from "@/data/stockData";
+import { getISTOffsetSeconds } from "@tradereplay/charts";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -67,7 +68,7 @@ const PERIOD_CONFIG: Record<string, { resolution: string; fromSec: () => number;
 };
 
 const INTRADAY_RESOLUTIONS = new Set(["1", "2", "5", "15", "30", "60", "120"]);
-const IST_OFFSET_S = 19800;
+const IST_OFFSET_S = getISTOffsetSeconds();
 const DEV_SYNTHETIC_FALLBACK = import.meta.env.DEV;
 
 function resolutionToSeconds(resolution: string): number {
