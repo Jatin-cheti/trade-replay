@@ -1,59 +1,90 @@
 import { test, expect } from '@playwright/test';
 
-test('screener chart view detailed DOM inspect', async ({ page }) => {
-  test.setTimeout(90000);
+test('screener chart view — verify charts visible on prod', async ({ page }) => {
+  test.setTimeout(120000);
 
   page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warn') {
+    if (msg.type() === 'error' || msg.type() === 'warning') {
       console.log(`[page-${msg.type()}]`, msg.text());
     }
   });
 
-  await page.goto('https://tradereplay.me/screener/stocks', { waitUntil: 'networkidle', timeout: 45000 });
-  await page.waitForTimeout(6000);
-  await page.getByRole('button', { name: /chart/i }).first().click().catch(() => {});
-  await page.waitForSelector('[data-testid="screener-chart-card"]', { timeout: 25000 });
+  // Force bypass CDN cache
+  await page.goto('https://tradereplay.me/screener/stocks?_=' + Date.now(), {
+    waitUntil: 'networkidle',
+    timeout: 60000,
+  });
   await page.waitForTimeout(4000);
 
-  const domInfo = await page.evaluate(() => {
-    const card = document.querySelector('[data-testid="screener-chart-card"]') as HTMLElement | null;
-    if (!card) return { error: 'no card found' };
+  // Switch to chart view
+  const chartBtn = page.getByRole('button', { name: /chart/i }).first();
+  await chartBtn.click().catch(() => {});
+  await page.waitForSelector('[data-testid="screener-chart-card"]', { timeout: 30000 });
+  await page.waitForTimeout(6000); // wait for LWC + data fetch
 
-    const cardRect = card.getBoundingClientRect();
-    const chartArea = card.children[card.children.length - 1] as HTMLElement;
-    const chartAreaRect = chartArea.getBoundingClientRect();
+  const info = await page.evaluate(() => {
+    const cards = Array.from(document.querySelectorAll('[data-testid="screener-chart-card"]'));
+    const samples = cards.slice(0, 3).map((card) => {
+      const c = card as HTMLElement;
+      const cardRect = c.getBoundingClientRect();
+      // Chart area is the last child (the `relative flex-1 min-h-0` div)
+      const chartArea = c.children[c.children.length - 1] as HTMLElement;
+      const caRect = chartArea.getBoundingClientRect();
 
-    // Walk all descendants of chart area and capture tag, class, rect, computed style essentials
-    const walker: Array<Record<string, unknown>> = [];
-    function walk(el: Element, depth: number) {
-      const e = el as HTMLElement;
-      const r = e.getBoundingClientRect();
-      const cs = getComputedStyle(e);
-      walker.push({
-        depth,
-        tag: e.tagName,
-        class: e.className?.toString().slice(0, 120) || '',
-        pos: cs.position,
-        display: cs.display,
-        top: cs.top, bottom: cs.bottom, left: cs.left, right: cs.right,
-        w: r.width, h: r.height,
-        offW: e.offsetWidth, offH: e.offsetHeight,
-        clientW: e.clientWidth, clientH: e.clientHeight,
-        styleW: e.style.width, styleH: e.style.height,
-      });
-      for (const child of Array.from(el.children)) walk(child, depth + 1);
-    }
-    walk(chartArea, 0);
+      // Find the LWC container inside wrapper
+      // Structure: chartArea > wrapper(absolute inset-0) > lwc container (100% x 100%)
+      const wrapper = chartArea.querySelector(':scope > div.absolute') as HTMLElement | null;
+      const lwc = wrapper?.querySelector(':scope > div') as HTMLElement | null;
+      const canvases = Array.from(chartArea.querySelectorAll('canvas')) as HTMLCanvasElement[];
+      const canvasInfo = canvases.map((cv) => ({
+        w: cv.getBoundingClientRect().width,
+        h: cv.getBoundingClientRect().height,
+        sw: cv.style.width,
+        sh: cv.style.height,
+        drawW: cv.width,
+        drawH: cv.height,
+      }));
 
-    return {
-      card: { w: cardRect.width, h: cardRect.height },
-      chartArea: { w: chartAreaRect.width, h: chartAreaRect.height, clientH: chartArea.clientHeight },
-      descendants: walker,
-    };
+      return {
+        cardW: cardRect.width,
+        cardH: cardRect.height,
+        chartAreaW: caRect.width,
+        chartAreaH: caRect.height,
+        chartAreaClientH: chartArea.clientHeight,
+        wrapper: wrapper
+          ? {
+              clientH: wrapper.clientHeight,
+              pos: getComputedStyle(wrapper).position,
+              h: wrapper.getBoundingClientRect().height,
+            }
+          : null,
+        lwc: lwc
+          ? {
+              clientH: lwc.clientHeight,
+              pos: getComputedStyle(lwc).position,
+              styleH: lwc.style.height,
+              h: lwc.getBoundingClientRect().height,
+            }
+          : null,
+        canvasCount: canvases.length,
+        canvasInfo,
+      };
+    });
+    return { cardCount: cards.length, samples };
   });
 
-  console.log('[diag] DOM inspection:');
-  console.log(JSON.stringify(domInfo, null, 2));
+  console.log('[diag] chart view DOM info:');
+  console.log(JSON.stringify(info, null, 2));
 
-  expect(true).toBe(true);
+  await page.screenshot({ path: 'test-results/chartview-prod.png', fullPage: false });
+
+  // Assertions: at least one card, and canvases must have non-zero height
+  expect(info.cardCount).toBeGreaterThan(0);
+  expect(info.samples.length).toBeGreaterThan(0);
+  const first = info.samples[0];
+  expect(first.chartAreaClientH).toBeGreaterThan(50);
+  expect(first.wrapper?.h ?? 0).toBeGreaterThan(50);
+  expect(first.canvasCount).toBeGreaterThan(0);
+  // Critical: canvas rendered height must be > 0
+  expect(first.canvasInfo[0].h).toBeGreaterThan(20);
 });
