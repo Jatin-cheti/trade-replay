@@ -211,9 +211,11 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       const visibleKeys = chartVisibilityMap[chartTypeRef.current] ?? ['area'];
       const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
       const primarySeries = seriesMapRef.current?.[primaryKey] as any;
-      // dotX: snap to the bar's centre pixel so the dot sits on the series line.
-      // Falls back to param.point.x if timeToCoordinate is unavailable.
-      const dotX: number = chartRef.current?.timeScale().timeToCoordinate(row.time as UTCTimestamp) ?? param.point.x;
+      // dotX: use param.point.x — the chart only emits crosshairMove when the cursor
+      // is within cw() (chart content area, excluding the right price-scale strip).
+      // timeToCoordinate can return values in the price-scale region for edge bars,
+      // which would draw the dot in the axis area rather than on the series line.
+      const dotX: number = param.point.x;
       // dotY: exact Y of the series line at this bar's close price in canvas coords.
       // priceToCoordinate uses the same coordinate space as e.offsetX/Y (canvas pixels).
       const dotY: number | null = (primarySeries?.priceToCoordinate(row.close) as number | null | undefined) ?? null;
