@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTradingChart, resizeChartSurface } from "@/services/chart/chartEngine";
+import { ExternalLink } from "lucide-react";
+import { createTradingChart, fitChartContent, resizeChartSurface } from "@/services/chart/chartEngine";
 import {
   applySeriesData,
   applySeriesVisibility,
@@ -14,6 +15,20 @@ import ScreenerRowContextMenu from "@/components/screener/ScreenerRowContextMenu
 import { useSymbolFlags } from "@/hooks/useSymbolFlags";
 import { formatPriceUs } from "@/lib/numberFormat";
 import type { ISeriesApi } from "@tradereplay/charts";
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function makeTickFormatter(period: string): (time: number, tickType: number) => string {
+  return (time: number) => {
+    const d = new Date(time * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (period === '1D') return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    if (period === '5D') return `${DAYS[d.getUTCDay()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    if (period === '1M' || period === '3M' || period === '6M') return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+    return `${MONTHS[d.getUTCMonth()]} '${d.getUTCFullYear().toString().slice(2)}`;
+  };
+}
 
 interface Props {
   item: ScreenerItem;
@@ -35,12 +50,15 @@ interface HoverInfo {
   date: string;
 }
 
-export default function ScreenerChartCard({ item, candles, chartType, height = 200 }: Props) {
+export default function ScreenerChartCard({ item, candles, chartType, period, height = 200 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
   const seriesMapRef = useRef<ChartSeriesMap | null>(null);
   const prevCloseLineRef = useRef<ReturnType<ISeriesApi<"Area">["createPriceLine"]> | null>(null);
+  const firstTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
+  const lastTimeRef = useRef<import('@tradereplay/charts').UTCTimestamp | null>(null);
+  const numBarsRef = useRef<number>(0);
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -49,16 +67,28 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
   const { getFlag, setFlag } = useSymbolFlags();
   const flagColor = getFlag(item.fullSymbol);
 
-  const isPositive = (item.changePercent ?? 0) >= 0;
-  const lineColor = isPositive ? "#10b981" : "#ef4444";
-
   const transformed = useMemo(() => transformChartData(candles, candles.length), [candles]);
 
-  // Prev-close: first candle's close (period open price)
+  // Prev-close: first candle's open (period start price)
   const prevClose = useMemo(() => {
     if (!transformed.ohlcRows.length) return null;
-    return transformed.ohlcRows[0].open ?? transformed.ohlcRows[0].close;
+    return (transformed.ohlcRows[0] as any).open ?? transformed.ohlcRows[0].close;
   }, [transformed]);
+
+  // Compute period % change from candle data (first open → last close)
+  const periodChange = useMemo(() => {
+    const rows = transformed.ohlcRows;
+    if (rows.length < 1) return item.changePercent ?? 0;
+    const firstBar = rows[0];
+    const lastBar = rows[rows.length - 1];
+    const startPrice = (firstBar as any).open ?? firstBar.close;
+    const endPrice = lastBar.close;
+    if (!startPrice || !endPrice || startPrice === 0) return item.changePercent ?? 0;
+    return ((endPrice - startPrice) / startPrice) * 100;
+  }, [transformed.ohlcRows, item.changePercent]);
+
+  const isPositive = periodChange >= 0;
+  const lineColor = isPositive ? "#10b981" : "#ef4444";
 
   // Observe card visibility — defer chart init until the card enters the viewport
   useEffect(() => {
@@ -127,25 +157,36 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
         setHoverInfo(null);
         return;
       }
-      // Try OHLC series first
-      const ohlcData = param.seriesData?.get(seriesMap.candlestick) as { open?: number; high?: number; low?: number; close?: number } | undefined;
-      const lineData = param.seriesData?.get(seriesMap.area) as { value?: number } | undefined
-        ?? param.seriesData?.get(seriesMap.line) as { value?: number } | undefined;
+      // Try all possible series to find data at crosshair position
+      let foundOhlc: { open?: number; high?: number; low?: number; close?: number } | undefined;
+      let foundValue: number | undefined;
+      try {
+        if (param.seriesData) {
+          for (const [, v] of param.seriesData as Map<unknown, unknown>) {
+            const d = v as Record<string, number>;
+            if (d.close != null && d.open != null) { foundOhlc = d as { open?: number; high?: number; low?: number; close?: number }; break; }
+            if (d.value != null && foundValue == null) foundValue = d.value;
+          }
+        }
+      } catch { /* ignore */ }
 
       const ts = typeof param.time === "number" ? param.time * 1000 : 0;
-      const dateStr = ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+      const d = new Date(ts);
+      let dateStr = "";
+      if (ts) {
+        if (period === "1D") {
+          dateStr = `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+        } else if (period === "5D") {
+          dateStr = `${DAYS[d.getUTCDay()]} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+        } else {
+          dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: period === "1Y" || period === "5Y" || period === "All" ? "numeric" : undefined });
+        }
+      }
 
-      if (ohlcData && ohlcData.close != null) {
-        setHoverInfo({
-          price: ohlcData.close,
-          open: ohlcData.open,
-          high: ohlcData.high,
-          low: ohlcData.low,
-          close: ohlcData.close,
-          date: dateStr,
-        });
-      } else if (lineData && lineData.value != null) {
-        setHoverInfo({ price: lineData.value, date: dateStr });
+      if (foundOhlc && foundOhlc.close != null) {
+        setHoverInfo({ price: foundOhlc.close, open: foundOhlc.open, high: foundOhlc.high, low: foundOhlc.low, close: foundOhlc.close, date: dateStr });
+      } else if (foundValue != null) {
+        setHoverInfo({ price: foundValue, date: dateStr });
       } else {
         setHoverInfo(null);
       }
@@ -158,13 +199,13 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
       if (!c || !ct || !ov) return;
       try {
         resizeChartSurface(c, ct, ov);
-        // Re-anchor from left after resize
+        // After resize, re-fit content using stored time refs
         if (ct.clientWidth > 0 && ct.clientHeight > 0) {
-          const sm = seriesMapRef.current;
-          if (sm) {
-            // Get the visible series' first/last time from ohlcRows stored in ref
-            // We just call fitContent as fallback; the data effect handles setVisibleRange
-            c.timeScale().fitContent();
+          const ft = firstTimeRef.current;
+          const lt = lastTimeRef.current;
+          const nb = numBarsRef.current;
+          if (ft != null && lt != null && nb > 0) {
+            try { fitChartContent(c, ct, ft, lt, nb); } catch { c.timeScale().fitContent(); }
           }
         }
       } catch { /* ignore */ }
@@ -191,11 +232,12 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
     };
   }, [visible]);
 
-  // Data + colour effect — re-run when candles or chartType change
+  // Data + colour + axis effect — re-run when candles, period, or chartType change
   useEffect(() => {
     const seriesMap = seriesMapRef.current;
     const chart = chartRef.current;
-    if (!ready || !seriesMap || !chart) return;
+    const container = containerRef.current;
+    if (!ready || !seriesMap || !chart || !container) return;
 
     try {
       applySeriesData(seriesMap, transformed);
@@ -209,7 +251,12 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      // Manage prev-close reference line (remove old before adding new)
+      // Apply X-axis tick formatter based on period
+      try {
+        chart.timeScale().applyOptions({ tickMarkFormatter: makeTickFormatter(period) });
+      } catch { /* ignore */ }
+
+      // Manage prev-close reference line with axis label
       try {
         if (prevCloseLineRef.current) {
           seriesMap.area.removePriceLine(prevCloseLineRef.current);
@@ -218,30 +265,29 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
         if (prevClose != null) {
           prevCloseLineRef.current = seriesMap.area.createPriceLine({
             price: prevClose,
-            color: "rgba(180,180,180,0.5)",
+            color: "rgba(160,160,160,0.6)",
             lineWidth: 1,
             lineStyle: 2, // dashed
-            axisLabelVisible: false,
+            axisLabelVisible: true,
             title: "",
           });
         }
-      } catch { /* createPriceLine may not be available in all env */ }
+      } catch { /* createPriceLine may not be available */ }
 
-      // Anchor chart from first bar to last bar — always left-aligned
+      // Fit chart left-to-right using fitChartContent (accounts for barSpacing)
       const rows = transformed.ohlcRows;
       if (rows.length >= 2) {
-        const firstTime = rows[0].time;
-        const lastTime = rows[rows.length - 1].time;
-        try {
-          chart.timeScale().setVisibleRange({ from: firstTime, to: lastTime });
-        } catch {
-          chart.timeScale().fitContent();
-        }
+        const ft = rows[0].time;
+        const lt = rows[rows.length - 1].time;
+        firstTimeRef.current = ft;
+        lastTimeRef.current = lt;
+        numBarsRef.current = rows.length;
+        try { fitChartContent(chart, container, ft, lt, rows.length); } catch { chart.timeScale().fitContent(); }
       } else if (rows.length === 1) {
         chart.timeScale().fitContent();
       }
     } catch { /* ignore data application errors */ }
-  }, [chartType, isPositive, lineColor, prevClose, ready, transformed]);
+  }, [chartType, isPositive, lineColor, period, prevClose, ready, transformed]);
 
   const hasData = transformed.ohlcRows.length > 1;
   const isSoon = COMING_SOON_CHART_TYPES.has(chartType);
@@ -294,9 +340,20 @@ export default function ScreenerChartCard({ item, candles, chartType, height = 2
               {formatPriceUs(item.price ?? 0)}
             </span>
             <p className={`mt-0.5 text-[10px] font-medium tabular-nums ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
-              {isPositive ? "+" : ""}{(item.changePercent ?? 0).toFixed(2)}%
+              {isPositive ? "+" : ""}{periodChange.toFixed(2)}%
             </p>
           </div>
+          {/* Full-chart button — opens chart page in new tab */}
+          <a
+            href={`/charts?symbol=${encodeURIComponent(item.fullSymbol || item.symbol)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 ml-0.5 rounded p-1 text-muted-foreground/50 hover:text-foreground hover:bg-secondary/40 transition-colors"
+            title="Open full chart"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
         </div>
 
         {/* Chart area */}
