@@ -27,7 +27,7 @@ test.describe("Screener page", () => {
 
   /* ── 1. Initial load ── */
   test("shows stock rows on initial load", async ({ page }) => {
-    const rows = page.getByTestId("screener-row");
+    const rows = page.locator('[data-testid="screener-row"], [data-testid="screener-row-mobile"]');
     await expect(rows.first()).toBeVisible({ timeout: 15_000 });
     // On mobile the virtual list has a smaller viewport so fewer rows are
     // pre-rendered; require at least 3 on narrow screens, 10 on wide ones.

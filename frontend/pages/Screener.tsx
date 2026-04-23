@@ -19,6 +19,7 @@ import ScreenerChartToolbar from "@/components/screener/ScreenerChartToolbar";
 import ScreenerChartGrid from "@/components/screener/ScreenerChartGrid";
 import type { ChartPeriod, ChartLayout } from "@/components/screener/ScreenerChartToolbar";
 import type { ChartType } from "@/services/chart/dataTransforms";
+import { chartTypeLabels } from "@/services/chart/dataTransforms";
 import "@/styles/screener.css";
 
 export default function Screener() {
@@ -40,7 +41,8 @@ export default function Screener() {
   /* ── Chart view state (URL-persisted) ── */
   const viewMode = (searchParams.get("view") === "chart" ? "chart" : "table") as "table" | "chart";
   const chartPeriod = (searchParams.get("period") || "5D") as ChartPeriod;
-  const chartType = (searchParams.get("chartType") || "area") as ChartType;
+  const chartTypeFromQuery = searchParams.get("chartType") || "area";
+  const chartType = (chartTypeFromQuery in chartTypeLabels ? chartTypeFromQuery : "area") as ChartType;
   const chartLayout: ChartLayout = (() => {
     const l = searchParams.get("layout");
     if (!l || l === "auto") return { mode: "auto" };
@@ -131,6 +133,28 @@ export default function Screener() {
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
+  }, [addColumnOpen, filters, typeMenuOpen]);
+
+  // Close open screener dropdowns when the user scrolls outside them.
+  useEffect(() => {
+    if (!typeMenuOpen && !filters.addFilterOpen && !addColumnOpen && !filters.editingFilterKey) return;
+
+    const closeOnScrollOutside = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.('[data-dropdown-panel]')) return;
+      setTypeMenuOpen(false);
+      filters.setAddFilterOpen(false);
+      setAddColumnOpen(false);
+      filters.setEditingFilterKey(null);
+    };
+
+    window.addEventListener("scroll", closeOnScrollOutside, true);
+    window.addEventListener("wheel", closeOnScrollOutside, true);
+
+    return () => {
+      window.removeEventListener("scroll", closeOnScrollOutside, true);
+      window.removeEventListener("wheel", closeOnScrollOutside, true);
+    };
   }, [addColumnOpen, filters, typeMenuOpen]);
 
   useEffect(() => { setTypeMenuOpen(false); filters.setAddFilterOpen(false); setAddColumnOpen(false); filters.setEditingFilterKey(null); }, [location.pathname, location.search]);

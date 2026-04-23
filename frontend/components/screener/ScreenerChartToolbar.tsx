@@ -205,10 +205,17 @@ export default function ScreenerChartToolbar({
       if (target?.closest?.('[data-dropdown-panel]')) return;
       closeAll();
     };
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.('[data-dropdown-panel]')) return;
+      closeAll();
+    };
     window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('wheel', handleWheel, true);
     window.addEventListener('resize', closeAll);
     return () => {
       window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('wheel', handleWheel, true);
       window.removeEventListener('resize', closeAll);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
