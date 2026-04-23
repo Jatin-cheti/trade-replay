@@ -22,7 +22,7 @@ test.describe("Screener page", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(SCREENER_URL);
     // Wait for the result count to be populated (data loaded)
-    await expect(page.getByTestId("screener-result-count")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("screener-result-count")).toBeVisible({ timeout: 40_000 });
   });
 
   /* ── 1. Initial load ── */

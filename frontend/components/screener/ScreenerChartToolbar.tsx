@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RefreshCw, ChevronDown, LayoutGrid, Search, Calendar,
 } from "lucide-react";
@@ -9,8 +9,8 @@ export type ChartPeriod = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y"
 export type ChartLayout = { mode: "auto" } | { mode: "custom"; cols: number };
 
 const PERIODS: ChartPeriod[] = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "5Y", "All"];
+const COLUMN_OPTIONS = [1, 2, 3, 4, 5, 6];
 
-/** Full catalog matching the user's JSON schema */
 interface ChartCatalogItem { id: ChartType; name: string }
 interface ChartCatalogGroup { group: string; label: string; items: ChartCatalogItem[] }
 
@@ -101,13 +101,9 @@ const CHART_CATALOG: ChartCatalogGroup[] = [
   },
 ];
 
-/** Flat map: id → name for quick lookup */
 const CHART_NAME_MAP: Record<string, string> = {};
 for (const g of CHART_CATALOG) for (const item of g.items) CHART_NAME_MAP[item.id] = item.name;
-
-function getChartName(t: ChartType): string {
-  return CHART_NAME_MAP[t] ?? t;
-}
+function getChartName(t: ChartType): string { return CHART_NAME_MAP[t] ?? t; }
 
 interface Props {
   viewMode: "table" | "chart";
@@ -125,9 +121,16 @@ interface Props {
   onRefresh: () => void;
 }
 
+type DropPos = { top: number; left: number };
+function btnPos(btn: HTMLButtonElement | null): DropPos | null {
+  if (!btn) return null;
+  const r = btn.getBoundingClientRect();
+  return { top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - 290) };
+}
+
 export default function ScreenerChartToolbar({
-  viewMode,
-  onViewModeChange,
+  viewMode: _viewMode,
+  onViewModeChange: _onViewModeChange,
   period,
   onPeriodChange,
   customRange,
@@ -136,29 +139,27 @@ export default function ScreenerChartToolbar({
   onChartTypeChange,
   layout,
   onLayoutChange,
-  total,
+  total: _total,
   loading,
   onRefresh,
 }: Props) {
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [layoutPos, setLayoutPos] = useState<DropPos | null>(null);
+  const [hoverCols, setHoverCols] = useState<number | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
+  const [typePos, setTypePos] = useState<DropPos | null>(null);
   const [typeSearch, setTypeSearch] = useState("");
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [datePos, setDatePos] = useState<DropPos | null>(null);
   const [fromInput, setFromInput] = useState("");
   const [toInput, setToInput] = useState("");
 
-  // Custom grid picker state
-  const [hoverGrid, setHoverGrid] = useState<[number, number] | null>(null);
-  const currentCustom = layout.mode === "custom" ? [layout.cols, 4] : null;
+  const layoutBtnRef = useRef<HTMLButtonElement | null>(null);
+  const typeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const dateBtnRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const GRID_ROWS = 4;
-  const GRID_COLS = 6;
-
-  // Format date for input[type=date] value
-  function toDateInputValue(d: Date): string {
-    return d.toISOString().slice(0, 10);
-  }
+  function toDateInputValue(d: Date): string { return d.toISOString().slice(0, 10); }
 
   function applyCustomRange() {
     if (!fromInput || !toInput) return;
@@ -170,7 +171,6 @@ export default function ScreenerChartToolbar({
     setDatePickerOpen(false);
   }
 
-  // Focus search input when dropdown opens
   useEffect(() => {
     if (typeOpen) {
       setTypeSearch("");
@@ -182,115 +182,107 @@ export default function ScreenerChartToolbar({
     const q = typeSearch.trim().toLowerCase();
     if (!q) return CHART_CATALOG;
     return CHART_CATALOG
-      .map((g) => ({
-        ...g,
-        items: g.items.filter((item) =>
-          item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q)
-        ),
-      }))
+      .map((g) => ({ ...g, items: g.items.filter((item) => item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q)) }))
       .filter((g) => g.items.length > 0);
   }, [typeSearch]);
 
+  const currentCols = layout.mode === "custom" ? layout.cols : null;
+
+  const closeAll = () => {
+    setLayoutOpen(false); setTypeOpen(false); setDatePickerOpen(false);
+    setLayoutPos(null); setTypePos(null); setDatePos(null);
+    setHoverCols(null);
+  };
+
+  // Close all dropdowns on scroll or resize (positions become stale)
+  useEffect(() => {
+    if (!layoutOpen && !typeOpen && !datePickerOpen) return;
+    window.addEventListener('scroll', closeAll, true);
+    window.addEventListener('resize', closeAll);
+    return () => {
+      window.removeEventListener('scroll', closeAll, true);
+      window.removeEventListener('resize', closeAll);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutOpen, typeOpen, datePickerOpen]);
+
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-border/25 pb-1.5">
-      {/* ── Layout picker ── */}
+
+      {/* ── Layout picker — columns only ── */}
       <div className="relative hidden sm:block" data-testid="screener-layout-picker">
         <button
+          ref={layoutBtnRef}
           type="button"
-          onClick={() => { setLayoutOpen((o) => !o); setTypeOpen(false); }}
+          onClick={() => {
+            const p = btnPos(layoutBtnRef.current);
+            setLayoutPos(p);
+            setLayoutOpen((o) => !o);
+            setTypeOpen(false);
+            setDatePickerOpen(false);
+          }}
           className="flex items-center gap-1.5 rounded-md border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-xs text-foreground hover:bg-secondary/40 transition-colors"
         >
           <LayoutGrid className="h-3 w-3 text-muted-foreground" />
-          <span>{layout.mode === "auto" ? "Auto" : `${layout.cols}×`}</span>
+          <span>{layout.mode === "auto" ? "Auto" : `${layout.cols} cols`}</span>
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
 
-        {layoutOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-xl border border-border/50 bg-background p-3 shadow-xl">
-            {/* Auto option */}
-            <label className="mb-2 flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="layout"
-                checked={layout.mode === "auto"}
-                onChange={() => { onLayoutChange({ mode: "auto" }); setLayoutOpen(false); }}
-                className="accent-primary"
-              />
-              <span className="font-medium">Auto</span>
-            </label>
-
-            {/* Custom option */}
-            <label className="mb-2 flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="layout"
-                checked={layout.mode === "custom"}
-                onChange={() => {}}
-                className="accent-primary"
-              />
-              <span className="font-medium">Custom</span>
-              {currentCustom && (
-                <span className="text-xs text-muted-foreground">
-                  {currentCustom[0]}×{currentCustom[1]}
-                </span>
-              )}
-            </label>
-
-            {/* Grid picker */}
-            <p className="mb-1.5 text-[10px] text-muted-foreground">Choose grid</p>
-            <div className="grid grid-cols-6 gap-0.5">
-              {Array.from({ length: GRID_ROWS }, (_, row) =>
-                Array.from({ length: GRID_COLS }, (_, col) => {
-                  const c = col + 1;
-                  const r = row + 1;
-                  const isHovered =
-                    hoverGrid
-                      ? c <= hoverGrid[0] && r <= hoverGrid[1]
-                      : false;
-                  const isSelected = currentCustom
-                    ? c <= currentCustom[0] && r <= currentCustom[1]
-                    : false;
+        {layoutOpen && layoutPos && (
+          <>
+            <div className="fixed inset-0 z-[9998]" onClick={() => setLayoutOpen(false)} />
+            <div className="fixed z-[9999] w-56 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
+              style={{ top: layoutPos.top, left: layoutPos.left }}>
+              <button
+                type="button"
+                onClick={() => { onLayoutChange({ mode: "auto" }); setLayoutOpen(false); setHoverCols(null); }}
+                className={`mb-3 w-full rounded-md px-3 py-1.5 text-left text-xs font-medium transition-colors ${
+                  layout.mode === "auto" ? "bg-primary/20 text-primary" : "text-foreground hover:bg-secondary/40"
+                }`}
+              >Auto</button>
+              <p className="mb-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide">Columns</p>
+              <div className="flex gap-0.5" onMouseLeave={() => setHoverCols(null)}>
+                {COLUMN_OPTIONS.map((c) => {
+                  const isSelected = currentCols !== null && c <= currentCols;
+                  const isHoverPreview = hoverCols !== null && c <= hoverCols;
                   return (
-                    <div
-                      key={`${r}-${c}`}
-                      className={`h-5 w-5 cursor-pointer rounded-sm border transition-colors ${
-                        isHovered
-                          ? "border-primary bg-primary/30"
+                    <button key={c} type="button"
+                      onMouseEnter={() => setHoverCols(c)}
+                      onClick={() => { onLayoutChange({ mode: "custom", cols: c }); setLayoutOpen(false); setHoverCols(null); }}
+                      className={`flex-1 rounded py-2 text-[11px] font-semibold transition-all duration-100 ${
+                        isHoverPreview
+                          ? "bg-primary/35 text-primary"
                           : isSelected
-                          ? "border-primary/60 bg-primary/15"
-                          : "border-border/40 bg-secondary/30 hover:border-primary/40"
-                      }`}
-                      onMouseEnter={() => setHoverGrid([c, r])}
-                      onMouseLeave={() => setHoverGrid(null)}
-                      onClick={() => {
-                        onLayoutChange({ mode: "custom", cols: c });
-                        setLayoutOpen(false);
-                      }}
-                    />
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary/25 text-muted-foreground hover:text-foreground"
+                      }`}>
+                      {c}
+                    </button>
                   );
-                })
+                })}
+              </div>
+              {currentCols !== null && (
+                <p className="mt-2 text-center text-[9px] text-muted-foreground/50">
+                  {hoverCols ?? currentCols} column{(hoverCols ?? currentCols) !== 1 ? 's' : ''} selected
+                </p>
               )}
             </div>
-            {hoverGrid && (
-              <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-                {hoverGrid[0]}×{hoverGrid[1]}
-              </p>
-            )}
-          </div>
-        )}
-        {layoutOpen && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setLayoutOpen(false)}
-          />
+          </>
         )}
       </div>
 
-      {/* ── Chart type picker with search ── */}
+      {/* ── Chart type picker ── */}
       <div className="relative hidden sm:block" data-testid="screener-chart-type-picker">
         <button
+          ref={typeBtnRef}
           type="button"
-          onClick={() => { setTypeOpen((o) => !o); setLayoutOpen(false); }}
+          onClick={() => {
+            const p = btnPos(typeBtnRef.current);
+            setTypePos(p);
+            setTypeOpen((o) => !o);
+            setLayoutOpen(false);
+            setDatePickerOpen(false);
+          }}
           className="flex items-center gap-1.5 rounded-md border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-xs text-foreground hover:bg-secondary/40 transition-colors"
         >
           <span>{getChartName(chartType)}</span>
@@ -300,86 +292,63 @@ export default function ScreenerChartToolbar({
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
 
-        {typeOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-border/50 bg-background shadow-xl flex flex-col" style={{ maxHeight: "420px" }}>
-            {/* Search box */}
-            <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2 shrink-0">
-              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Search chart types…"
-                value={typeSearch}
-                onChange={(e) => setTypeSearch(e.target.value)}
-                className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
-              />
+        {typeOpen && typePos && (
+          <>
+            <div className="fixed inset-0 z-[9998]" onClick={() => setTypeOpen(false)} />
+            <div className="fixed z-[9999] w-64 rounded-xl border border-border/50 bg-background shadow-2xl flex flex-col"
+              style={{ top: typePos.top, left: typePos.left, maxHeight: "420px" }}>
+              <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2 shrink-0">
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <input ref={searchInputRef} type="text" placeholder="Search chart types…"
+                  value={typeSearch} onChange={(e) => setTypeSearch(e.target.value)}
+                  className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60" />
+              </div>
+              <div className="overflow-y-auto py-1">
+                {filteredGroups.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground/60">No chart types found</p>}
+                {filteredGroups.map((g) => (
+                  <div key={g.group}>
+                    <p className="px-3 pt-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      {g.group} — {g.label}
+                    </p>
+                    {g.items.map((item) => {
+                      const isSoon = COMING_SOON_CHART_TYPES.has(item.id);
+                      return (
+                        <button key={item.id} type="button" aria-selected={chartType === item.id}
+                          onClick={() => { onChartTypeChange(item.id); setTypeOpen(false); }}
+                          className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors hover:bg-secondary/40 ${
+                            chartType === item.id ? "font-semibold text-primary" : "text-foreground/85"
+                          }`}>
+                          <span>{item.name}</span>
+                          {isSoon && <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold text-amber-400">SOON</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
-
-            {/* Type list */}
-            <div className="overflow-y-auto py-1">
-              {filteredGroups.length === 0 && (
-                <p className="px-4 py-3 text-xs text-muted-foreground/60">No chart types found</p>
-              )}
-              {filteredGroups.map((g) => (
-                <div key={g.group}>
-                  <p className="px-3 pt-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                    {g.group} — {g.label}
-                  </p>
-                  {g.items.map((item) => {
-                    const isSoon = COMING_SOON_CHART_TYPES.has(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        aria-selected={chartType === item.id}
-                        onClick={() => { onChartTypeChange(item.id); setTypeOpen(false); }}
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors hover:bg-secondary/40 ${
-                          chartType === item.id ? "font-semibold text-primary" : "text-foreground/85"
-                        }`}
-                      >
-                        <span>{item.name}</span>
-                        {isSoon && (
-                          <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold text-amber-400">SOON</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {typeOpen && (
-          <div className="fixed inset-0 z-40" onClick={() => setTypeOpen(false)} />
+          </>
         )}
       </div>
 
-      {/* ── Time period pills ── */}
+      {/* ── Period row: Custom first, then preset pills ── */}
       <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
-        {PERIODS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            data-testid={`screener-period-${p}`}
-            aria-pressed={!customRange && period === p}
-            aria-label={`${p} period`}
-            onClick={() => { onPeriodChange(p); onCustomRange?.(null); setDatePickerOpen(false); }}
-            className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors ${
-              !customRange && period === p
-                ? "bg-primary text-primary-foreground font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {p}
-          </button>
-        ))}
 
-        {/* Custom date range picker */}
-        <div className="relative ml-1">
+        {/* Custom date range — BEFORE preset pills */}
+        <div className="relative mr-0.5">
           <button
+            ref={dateBtnRef}
             type="button"
             aria-label="Custom date range"
-            onClick={() => { setDatePickerOpen((o) => !o); if (!fromInput && customRange) setFromInput(toDateInputValue(customRange.from)); if (!toInput && customRange) setToInput(toDateInputValue(customRange.to)); }}
+            onClick={() => {
+              const p = btnPos(dateBtnRef.current);
+              setDatePos(p);
+              setDatePickerOpen((o) => !o);
+              setLayoutOpen(false);
+              setTypeOpen(false);
+              if (!fromInput && customRange) setFromInput(toDateInputValue(customRange.from));
+              if (!toInput && customRange) setToInput(toDateInputValue(customRange.to));
+            }}
             className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors border ${
               customRange
                 ? "border-primary/60 bg-primary/15 text-primary"
@@ -392,81 +361,70 @@ export default function ScreenerChartToolbar({
               : "Custom"}
           </button>
 
-          {datePickerOpen && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-border/50 bg-background p-3 shadow-xl">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Date Range</p>
-              <div className="flex flex-col gap-2">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-muted-foreground">From</span>
-                  <input
-                    type="date"
-                    value={fromInput}
-                    max={toInput || undefined}
-                    onChange={(e) => setFromInput(e.target.value)}
-                    className="rounded border border-border/40 bg-secondary/20 px-2 py-1 text-xs text-foreground focus:border-primary/60 focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-muted-foreground">To</span>
-                  <input
-                    type="date"
-                    value={toInput}
-                    min={fromInput || undefined}
-                    max={new Date().toISOString().slice(0, 10)}
-                    onChange={(e) => setToInput(e.target.value)}
-                    className="rounded border border-border/40 bg-secondary/20 px-2 py-1 text-xs text-foreground focus:border-primary/60 focus:outline-none"
-                  />
-                </label>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={applyCustomRange}
-                    disabled={!fromInput || !toInput}
-                    className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
-                  >
-                    Apply
-                  </button>
-                  {customRange && (
-                    <button
-                      type="button"
-                      onClick={() => { onCustomRange?.(null); setDatePickerOpen(false); setFromInput(""); setToInput(""); }}
-                      className="rounded-md border border-border/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      Clear
+          {datePickerOpen && datePos && (
+            <>
+              <div className="fixed inset-0 z-[9998]" onClick={() => setDatePickerOpen(false)} />
+              <div className="fixed z-[9999] w-64 rounded-xl border border-border/50 bg-background p-3 shadow-2xl"
+                style={{ top: datePos.top, left: Math.min(datePos.left, window.innerWidth - 270) }}>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Date Range</p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] text-muted-foreground">From</span>
+                    <input type="date" value={fromInput} max={toInput || undefined}
+                      onChange={(e) => setFromInput(e.target.value)}
+                      className="rounded border border-border/40 bg-secondary/20 px-2 py-1 text-xs text-foreground focus:border-primary/60 focus:outline-none" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] text-muted-foreground">To</span>
+                    <input type="date" value={toInput} min={fromInput || undefined}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setToInput(e.target.value)}
+                      className="rounded border border-border/40 bg-secondary/20 px-2 py-1 text-xs text-foreground focus:border-primary/60 focus:outline-none" />
+                  </label>
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={applyCustomRange} disabled={!fromInput || !toInput}
+                      className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                      Apply
                     </button>
-                  )}
+                    {customRange && (
+                      <button type="button"
+                        onClick={() => { onCustomRange?.(null); setDatePickerOpen(false); setFromInput(""); setToInput(""); }}
+                        className="rounded-md border border-border/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          {datePickerOpen && (
-            <div className="fixed inset-0 z-40" onClick={() => setDatePickerOpen(false)} />
+            </>
           )}
         </div>
+
+        {/* Preset period pills */}
+        {PERIODS.map((p) => (
+          <button key={p} type="button"
+            data-testid={`screener-period-${p}`}
+            aria-pressed={!customRange && period === p}
+            aria-label={`${p} period`}
+            onClick={() => { onPeriodChange(p); onCustomRange?.(null); setDatePickerOpen(false); }}
+            className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors ${
+              !customRange && period === p
+                ? "bg-primary text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}>
+            {p}
+          </button>
+        ))}
       </div>
 
-      {/* ── Right side: total + refresh ── */}
-      <div className="ml-auto flex items-center gap-2">
-        <span
-          data-testid="screener-chart-total-count"
-          className="text-xs text-muted-foreground"
-        >
-          {total.toLocaleString()} total
-        </span>
-        <button
-          type="button"
-          data-testid="screener-chart-refresh"
-          onClick={onRefresh}
+      {/* ── Refresh only (no total count shown) ── */}
+      <div className="ml-auto flex items-center">
+        <button type="button" data-testid="screener-chart-refresh" onClick={onRefresh}
           className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
-          title="Refresh data"
-        >
+          title="Refresh data">
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
     </div>
   );
 }
-
-
-export type ChartPeriod = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "All";
-export type ChartLayout = { mode: "auto" } | { mode: "custom"; cols: number };
