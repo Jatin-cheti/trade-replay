@@ -19,37 +19,19 @@ import type { ISeriesApi } from "@tradereplay/charts";
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-// TickMarkType: 0=Year  1=Month  2=DayOfMonth  3=Time  4=TimeWithSeconds
-// Using short labels so more ticks fit in narrow (6-column) charts
-function makeTickFormatter(period: string): (time: number, markType: number) => string {
-  return (time: number, markType: number): string => {
-    const d = new Date(time * 1000);
-    const h = d.getUTCHours();
-    const min = d.getUTCMinutes();
-    const dom = d.getUTCDate();
-    const mon = MONTHS[d.getUTCMonth()];
-    const yr2 = d.getUTCFullYear().toString().slice(2);
-    const dayShort = DAYS[d.getUTCDay()].slice(0, 2); // "Mo", "Tu", etc.
-    const pad = (n: number) => String(n).padStart(2, '0');
-    switch (markType) {
-      case 0: return `'${yr2}`;     // Year: '25
-      case 1: return mon;           // Month: Jan
-      case 2:                       // Day of month
-        if (period === '1D') return `${mon} ${dom}`;
-        if (period === '5D') return dayShort;
-        return `${dom}`;
-      case 3:                       // Time
-      case 4: {                     // Time with seconds
-        if (period === '1D')
-          return min === 0 ? `${h}h` : `${pad(h)}:${pad(min)}`;
-        if (period === '5D')
-          return min === 0 ? `${dayShort} ${h}h` : `${pad(h)}:${pad(min)}`;
-        if (period === '1M' || period === '3M') return `${mon} ${dom}`;
-        return `${mon} '${yr2}`;
-      }
-      default: return '';
-    }
-  };
+// Format a timestamp into a compact axis label appropriate for the given period
+function formatAxisLabel(time: number, period: string): string {
+  const d = new Date(time * 1000);
+  const h = d.getUTCHours();
+  const min = d.getUTCMinutes();
+  const mon = MONTHS[d.getUTCMonth()];
+  const dom = d.getUTCDate();
+  const yr2 = d.getUTCFullYear().toString().slice(2);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (period === '1D') return min === 0 ? `${h}:00` : `${pad(h)}:${pad(min)}`;
+  if (period === '5D') return `${mon} ${dom}`;
+  if (period === '1M' || period === '3M') return `${mon} ${dom}`;
+  return `${mon} '${yr2}`;
 }
 
 interface Props {
@@ -112,6 +94,16 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
   const isPositive = periodChange >= 0;
   const lineColor = isPositive ? "#10b981" : "#ef4444";
 
+  // Refs updated every render so event handlers set up once always have current values
+  const lineColorRef = useRef(lineColor);
+  lineColorRef.current = lineColor;
+  const periodRef = useRef(period);
+  periodRef.current = period;
+
+  // Hover dot position (CSS px relative to chart container) + custom axis labels
+  const [dotPos, setDotPos] = useState<{ x: number; y: number } | null>(null);
+  const [axisLabels, setAxisLabels] = useState<Array<{ x: number; text: string }>>([]);
+
   // Observe card visibility — defer chart init until the card enters the viewport
   useEffect(() => {
     const root = containerRef.current?.closest('[data-testid="screener-chart-card"]') ?? containerRef.current;
@@ -158,7 +150,12 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
           scaleMargins: { top: 0.08, bottom: 0.08 },
           autoScale: true,
         },
-        crosshair: { mode: 1 }, // enable crosshair for hover
+        crosshair: {
+          mode: 1,
+          // Hide LW's built-in crosshair labels — we render our own hover info
+          vertLine: { labelVisible: false },
+          horzLine: { labelVisible: false },
+        },
       });
     } catch { /* non-fatal */ }
 
@@ -173,35 +170,60 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     chartRef.current = chart;
     seriesMapRef.current = seriesMap;
 
-    // Crosshair move → update hover info
+    // Crosshair move → update hover info + draw dot on chart line
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.point) {
         setHoverInfo(null);
+        setDotPos(null);
         return;
       }
       // Try all possible series to find data at crosshair position
       let foundOhlc: { open?: number; high?: number; low?: number; close?: number } | undefined;
       let foundValue: number | undefined;
+      let dotSeries: ISeriesApi<any> | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+      let dotPrice: number | null = null;
       try {
         if (param.seriesData) {
-          for (const [, v] of param.seriesData as Map<unknown, unknown>) {
+          for (const [ser, v] of param.seriesData as Map<ISeriesApi<any>, unknown>) { // eslint-disable-line @typescript-eslint/no-explicit-any
             const d = v as Record<string, number>;
-            if (d.close != null && d.open != null) { foundOhlc = d as { open?: number; high?: number; low?: number; close?: number }; break; }
-            if (d.value != null && foundValue == null) foundValue = d.value;
+            if (d.close != null && d.open != null) {
+              foundOhlc = d as { open?: number; high?: number; low?: number; close?: number };
+              if (dotSeries == null) { dotSeries = ser; dotPrice = d.close; }
+              break;
+            }
+            if (d.value != null && foundValue == null) {
+              foundValue = d.value;
+              if (dotSeries == null) { dotSeries = ser; dotPrice = d.value; }
+            }
           }
         }
       } catch { /* ignore */ }
 
+      // Compute dot Y position on the chart line
+      if (dotSeries && dotPrice != null && param.point) {
+        try {
+          const dotY = dotSeries.priceToCoordinate(dotPrice);
+          if (dotY !== null && dotY >= 0) {
+            setDotPos({ x: param.point.x, y: dotY });
+          } else {
+            setDotPos(null);
+          }
+        } catch { setDotPos(null); }
+      } else {
+        setDotPos(null);
+      }
+
+      const currentPeriod = periodRef.current;
       const ts = typeof param.time === "number" ? param.time * 1000 : 0;
       const d = new Date(ts);
       let dateStr = "";
       if (ts) {
-        if (period === "1D") {
+        if (currentPeriod === "1D") {
           dateStr = `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
-        } else if (period === "5D") {
+        } else if (currentPeriod === "5D") {
           dateStr = `${DAYS[d.getUTCDay()]} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
         } else {
-          dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: period === "1Y" || period === "5Y" || period === "All" ? "numeric" : undefined });
+          dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: currentPeriod === "1Y" || currentPeriod === "5Y" || currentPeriod === "All" ? "numeric" : undefined });
         }
       }
 
@@ -273,9 +295,9 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      // Apply X-axis tick formatter based on period
+      // Suppress LW's built-in tick labels — we draw evenly-spaced custom labels below
       try {
-        chart.timeScale().applyOptions({ tickMarkFormatter: makeTickFormatter(period) });
+        chart.timeScale().applyOptions({ tickMarkFormatter: () => '' });
       } catch { /* ignore */ }
 
       // Manage prev-close reference line with axis label
@@ -305,6 +327,30 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         lastTimeRef.current = lt;
         numBarsRef.current = rows.length;
         try { fitChartContent(chart, container, ft, lt, rows.length); } catch { chart.timeScale().fitContent(); }
+
+        // Compute evenly-spaced custom time-axis labels after chart has painted
+        requestAnimationFrame(() => {
+          const ct = containerRef.current;
+          if (!ct || rows.length < 2) return;
+          const PRICE_SCALE_W = 58; // approximate LW price scale width in px
+          const dataW = Math.max(20, ct.clientWidth - PRICE_SCALE_W);
+          const firstT = rows[0].time as number;
+          const lastT = rows[rows.length - 1].time as number;
+          if (lastT <= firstT) return;
+          // Target 3–7 labels based on available data-area width (~42 px per label)
+          const count = Math.max(3, Math.min(7, Math.floor(dataW / 42)));
+          const newLabels: Array<{ x: number; text: string }> = [];
+          for (let i = 1; i <= count; i++) {
+            const frac = i / (count + 1);
+            const targetT = firstT + frac * (lastT - firstT);
+            let idx = rows.findIndex(r => (r.time as number) >= targetT);
+            if (idx < 0) idx = rows.length - 1;
+            const row = rows[idx];
+            const x = ((row.time as number) - firstT) / (lastT - firstT) * dataW;
+            newLabels.push({ x, text: formatAxisLabel(row.time as number, period) });
+          }
+          setAxisLabels(newLabels);
+        });
       } else if (rows.length === 1) {
         chart.timeScale().fitContent();
       }
@@ -380,7 +426,32 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
 
         {/* Chart area */}
         <div className="relative flex-1 min-h-0 px-1 pb-1">
-          <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }} />
+          <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+            {/* Hover dot — colored circle tracking the active series line */}
+            {dotPos && (
+              <div
+                className="pointer-events-none absolute rounded-full border-[1.5px] border-white/80"
+                style={{
+                  left: dotPos.x - 4,
+                  top: dotPos.y - 4,
+                  width: 8,
+                  height: 8,
+                  backgroundColor: lineColor,
+                  zIndex: 20,
+                }}
+              />
+            )}
+            {/* Custom time-axis labels — evenly spaced across the data range */}
+            {axisLabels.map((lbl, i) => (
+              <span
+                key={i}
+                className="pointer-events-none absolute select-none text-[8px] leading-none text-muted-foreground/55"
+                style={{ left: lbl.x, bottom: 2, transform: 'translateX(-50%)', zIndex: 15 }}
+              >
+                {lbl.text}
+              </span>
+            ))}
+          </div>
           <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
 
           {/* Skeleton overlay while waiting for candle data */}

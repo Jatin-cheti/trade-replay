@@ -139,7 +139,24 @@ export default function Screener() {
   const currentType = useMemo(() => (meta?.screenerTypes || FALLBACK_SCREENER_TYPES).find((e) => e.routeType === routeType) || (meta?.screenerTypes || FALLBACK_SCREENER_TYPES)[0], [meta, routeType]);
   const setSort = useCallback((field: string) => { updateSearch((n) => { if ((n.get("sort") || "marketCap") === field) n.set("order", (n.get("order") || "desc") === "desc" ? "asc" : "desc"); else { n.set("sort", field); n.set("order", "desc"); } }); }, [updateSearch]);
   const onTypeSelect = useCallback((nextType: string) => { setTypeMenuOpen(false); navigate(`/screener/${nextType}${location.search}`); }, [location.search, navigate]);
-  const onTabSelect = useCallback((tab: ScreenerTabDefinition) => { updateSearch((n) => { n.set("tab", tab.key); n.set("columns", tab.defaultColumns.join(",")); }); }, [updateSearch]);
+  const onTabSelect = useCallback((tab: ScreenerTabDefinition) => {
+    updateSearch((n) => { n.set("tab", tab.key); n.set("columns", tab.defaultColumns.join(",")); });
+    // In chart mode, auto-switch to the most meaningful chart type for the selected tab
+    if (viewMode === "chart") {
+      const TAB_CHART: Partial<Record<string, ChartType>> = {
+        overview:           "area",
+        performance:        "equityCurve",
+        valuation:          "returnsHistogram",
+        profitability:      "drawdownChart",
+        dividends:          "priceChange",
+        technicals:         "candlestick",
+        "income-statement": "priceChange",
+        "balance-sheet":    "regressionChannel",
+      };
+      const mapped = TAB_CHART[tab.key];
+      if (mapped) setChartType(mapped);
+    }
+  }, [updateSearch, setChartType, viewMode]);
 
   const downloadCSV = useCallback(() => {
     const headers = visibleColumns.join(",");
