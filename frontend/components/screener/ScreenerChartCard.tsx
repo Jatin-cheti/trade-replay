@@ -196,29 +196,39 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         const found = rows.findIndex((r) => r.time === (param.time as UTCTimestamp));
         if (found >= 0) idx = found;
       } else {
-        const width = containerRef.current?.clientWidth ?? 1;
-        const ratio = Math.max(0, Math.min(1, param.point.x / width));
-        idx = Math.max(0, Math.min(rows.length - 1, Math.round(ratio * (rows.length - 1))));
+        // Use chart's coordinate→time API so the bar index is correct at any zoom level.
+        // The old pixel-ratio fallback was wrong after zoom (mapped px to index linearly,
+        // ignoring which subset of bars is currently visible).
+        const tAtCursor = (chartRef.current as any)
+          ?.timeScale?.()?.coordinateToTime?.(param.point.x) as UTCTimestamp | null | undefined;
+        if (tAtCursor != null) {
+          let minDiff = Infinity;
+          rows.forEach((r, i) => {
+            const diff = Math.abs((r.time as number) - (tAtCursor as number));
+            if (diff < minDiff) { minDiff = diff; idx = i; }
+          });
+        }
       }
 
       const row = rows[idx];
       const visibleKeys = chartVisibilityMap[chartTypeRef.current] ?? ['area'];
       const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
       const primarySeries = seriesMapRef.current?.[primaryKey] as any;
-      const hoverTime = (param.time ?? row.time) as UTCTimestamp;
-      const dotX = chartRef.current?.timeScale().timeToCoordinate(hoverTime);
+      // Use param.point.x for X (exact LWC crosshair CSS-pixel position) — avoids
+      // timeToCoordinate lag that can occur during zoom/scroll transitions.
+      const dotX: number = param.point.x;
       const dotY = primarySeries?.priceToCoordinate(row.close);
 
       // Only draw if coordinates are within the canvas bounds — prevents corner-stuck dot
       const canvasW = containerRef.current?.clientWidth ?? 0;
       const canvasH = containerRef.current?.clientHeight ?? 0;
-      const inBounds = dotX != null && dotY != null && Number.isFinite(dotX) && Number.isFinite(dotY)
+      const inBounds = dotY != null && Number.isFinite(dotX) && Number.isFinite(dotY)
         && dotX >= 0 && dotX <= canvasW && dotY >= 0 && dotY <= canvasH;
       if (ctx && overlay && inBounds) {
         try {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(dotX!, dotY!, 4, 0, Math.PI * 2);
+          ctx.arc(dotX, dotY!, 4, 0, Math.PI * 2);
           ctx.fillStyle = lineColorRef.current;
           ctx.fill();
           ctx.lineWidth = 2;
