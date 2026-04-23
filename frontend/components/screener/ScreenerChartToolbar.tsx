@@ -198,9 +198,11 @@ export default function ScreenerChartToolbar({
   useEffect(() => {
     if (!layoutOpen && !typeOpen && !datePickerOpen) return;
     const handleScroll = (e: Event) => {
-      // If the scroll originated inside a dropdown panel, ignore it
+      // If the scroll originated inside a dropdown panel, ignore it.
+      // Use optional chaining on both target AND .closest to handle cases where
+      // e.target is document/window (which don't have .closest).
       const target = e.target as Element | null;
-      if (target?.closest('[data-dropdown-panel]')) return;
+      if (target?.closest?.('[data-dropdown-panel]')) return;
       closeAll();
     };
     window.addEventListener('scroll', handleScroll, true);

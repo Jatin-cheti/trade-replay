@@ -4,6 +4,7 @@ import { createTradingChart, fitChartContent, resizeChartSurface } from "@/servi
 import {
   applySeriesData,
   applySeriesVisibility,
+  chartVisibilityMap,
   createChartSeries,
   type ChartSeriesMap,
 } from "@/services/chart/seriesManager";
@@ -137,13 +138,15 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
           rightOffset: 0,
           barSpacing: 4,
           minBarSpacing: 0.5,
-          // Do NOT fix either edge — let setVisibleRange position freely
           fixLeftEdge: false,
           fixRightEdge: false,
           lockVisibleTimeRangeOnResize: false,
           timeVisible: true,
           secondsVisible: false,
-          borderVisible: true,
+          borderVisible: false,
+          // Hide LWC's built-in time axis entirely — our canvas draws the labels
+          visible: false,
+          tickMarkFormatter: () => '',
         },
         rightPriceScale: {
           scaleMargins: { top: 0.08, bottom: 0.08 },
@@ -151,9 +154,9 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         },
         crosshair: {
           mode: 1,
-          // Hide LW's built-in crosshair labels — we render our own hover info
           vertLine: { labelVisible: false },
-          horzLine: { labelVisible: false },
+          // Show LWC's built-in horizontal price label on Y axis during hover
+          horzLine: { labelVisible: true, style: 3, width: 1, color: 'rgba(155,160,170,0.4)' },
         },
       });
     } catch { /* non-fatal */ }
@@ -321,25 +324,36 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       seriesMap.line.applyOptions({ color: lineColor });
       seriesMap.stepLine.applyOptions({ color: lineColor });
 
-      // Hide LWC's built-in tick text — our canvas draws the labels
+      // Ensure lastValueVisible on the primary visible series so current price shows on Y axis
       try {
-        chart.timeScale().applyOptions({ tickMarkFormatter: () => '' });
+        const visibleKeys = chartVisibilityMap[chartType] ?? ['area'];
+        const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
+        const primarySeries = primaryKey ? (seriesMap[primaryKey] as ReturnType<typeof seriesMap[typeof primaryKey]> | null) : null;
+        if (primarySeries) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (primarySeries as any).applyOptions({ lastValueVisible: true });
+        }
       } catch { /* ignore */ }
 
-      // Manage prev-close reference line with axis label
+      // Manage prev-close reference line on the primary visible series
       try {
+        const visibleKeys = chartVisibilityMap[chartType] ?? ['area'];
+        const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const primarySeries = (seriesMap[primaryKey] ?? seriesMap.area) as any;
         if (prevCloseLineRef.current) {
-          seriesMap.area.removePriceLine(prevCloseLineRef.current);
+          try { seriesMap.area.removePriceLine(prevCloseLineRef.current as ReturnType<typeof seriesMap.area.createPriceLine>); } catch { /* ignore */ }
+          try { primarySeries.removePriceLine(prevCloseLineRef.current); } catch { /* ignore */ }
           prevCloseLineRef.current = null;
         }
         if (prevClose != null) {
-          prevCloseLineRef.current = seriesMap.area.createPriceLine({
+          prevCloseLineRef.current = primarySeries.createPriceLine({
             price: prevClose,
-            color: "rgba(160,160,160,0.6)",
+            color: 'rgba(160,160,160,0.55)',
             lineWidth: 1,
             lineStyle: 2, // dashed
             axisLabelVisible: true,
-            title: "",
+            title: '',
           });
         }
       } catch { /* createPriceLine may not be available */ }
