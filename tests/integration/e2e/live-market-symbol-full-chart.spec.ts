@@ -1,6 +1,6 @@
 import { expect, test } from "./playwright-fixture";
 
-const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:8080";
+const baseUrl = process.env.E2E_UI_BASE_URL ?? process.env.E2E_BASE_URL ?? "http://127.0.0.1:8180";
 const baseEpoch = 1_710_000_000;
 
 async function bootstrapAuthenticatedSession(page: import("@playwright/test").Page): Promise<void> {

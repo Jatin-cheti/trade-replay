@@ -28,18 +28,18 @@ async function registerAndLogin(page: Parameters<typeof test>[0]["page"]): Promi
 
   await expect
     .poll(async () => {
-      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      const response = await page.request.get(`${process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4100"}/api/health`);
       return response.status();
     })
     .toBe(200);
 
-  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+  const registerResponse = await page.request.post(`${process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4100"}/api/auth/register`, {
     data: { email, password, name: `modal_parity_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
     ? registerResponse
-    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+    : await page.request.post(`${process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4100"}/api/auth/login`, {
         data: { email, password },
       });
 

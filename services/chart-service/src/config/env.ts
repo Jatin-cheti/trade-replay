@@ -41,6 +41,11 @@ const boolFromEnv = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
+// Allow E2E config to pass CHART_SERVICE_PORT as an alias for PORT.
+if (!process.env.PORT && process.env.CHART_SERVICE_PORT) {
+  process.env.PORT = process.env.CHART_SERVICE_PORT;
+}
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.string().default("local"),
