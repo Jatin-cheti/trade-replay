@@ -36,7 +36,7 @@ export default defineConfig({
     {
       command: "node ..\\..\\..\\backend\\bootstrap-dev.js",
       url: `${E2E_API_BASE_URL}/api/health`,
-      reuseExistingServer: false,
+      reuseExistingServer: process.env.REUSE_SERVER === "1",
       timeout: 180_000,
       env: {
         NODE_ENV: "test",
@@ -59,7 +59,7 @@ export default defineConfig({
     {
       command: "npm --prefix ..\\..\\..\\services\\chart-service run dev",
       url: `${E2E_CHART_SERVICE_BASE_URL}/health`,
-      reuseExistingServer: false,
+      reuseExistingServer: process.env.REUSE_SERVER === "1",
       timeout: 120_000,
       env: {
         NODE_ENV: "test",
@@ -74,7 +74,7 @@ export default defineConfig({
     {
       command: `npm --prefix ..\\..\\..\\frontend run dev -- --host 127.0.0.1 --port ${E2E_UI_PORT}`,
       url: E2E_UI_BASE_URL,
-      reuseExistingServer: false,
+      reuseExistingServer: process.env.REUSE_SERVER === "1",
       timeout: 120_000,
       env: {
         DEV_VITE_API_URL: `${E2E_API_BASE_URL}/api`,
