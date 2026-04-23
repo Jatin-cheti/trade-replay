@@ -211,24 +211,23 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
       }
 
       const row = rows[idx];
-      const visibleKeys = chartVisibilityMap[chartTypeRef.current] ?? ['area'];
-      const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
-      const primarySeries = seriesMapRef.current?.[primaryKey] as any;
-      // Use param.point.x for X (exact LWC crosshair CSS-pixel position) — avoids
-      // timeToCoordinate lag that can occur during zoom/scroll transitions.
+      // Use param.point directly — in CrosshairMode.Magnet (mode 1), LWC snaps
+      // both X and Y to the nearest data point. This is the exact crosshair
+      // intersection, guaranteed correct regardless of zoom/scroll state.
+      // Avoids all dependency on timeToCoordinate / priceToCoordinate lag.
       const dotX: number = param.point.x;
-      const dotY = primarySeries?.priceToCoordinate(row.close);
+      const dotY: number = param.point.y;
 
       // Only draw if coordinates are within the canvas bounds — prevents corner-stuck dot
       const canvasW = containerRef.current?.clientWidth ?? 0;
       const canvasH = containerRef.current?.clientHeight ?? 0;
-      const inBounds = dotY != null && Number.isFinite(dotX) && Number.isFinite(dotY)
+      const inBounds = Number.isFinite(dotX) && Number.isFinite(dotY)
         && dotX >= 0 && dotX <= canvasW && dotY >= 0 && dotY <= canvasH;
       if (ctx && overlay && inBounds) {
         try {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(dotX, dotY!, 4, 0, Math.PI * 2);
+          ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
           ctx.fillStyle = lineColorRef.current;
           ctx.fill();
           ctx.lineWidth = 2;
