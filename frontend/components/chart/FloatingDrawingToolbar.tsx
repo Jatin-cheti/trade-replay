@@ -131,8 +131,14 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       data-drawing-id={drawing.id}
       role="toolbar"
       aria-label="Drawing toolbar"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onPointerMove={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
         top: position.top,
