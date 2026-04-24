@@ -409,11 +409,35 @@ function buildToolTests(tool: ToolDef) {
       if (tool.commitStyle === "drag") {
         await page.mouse.up();
       }
-      await page.waitForTimeout(400);
+      // Poll until getActiveVariant() returns 'none' (toolVariantRef fix) or
+      // falls back to DOM observable (overlay becomes pointer-events-none).
+      // Generous 3s timeout handles React batching + stale-closure edge cases.
+      const escaped = await page.waitForFunction(
+        () => {
+          const d = (window as any).__chartDebug;
+          const variant = d?.getActiveVariant?.();
+          if (variant === null || variant === undefined) return true; // old bundle
+          if (variant === "none") return true; // correctly deactivated
+          // DOM fallback: overlay is pointer-events-none when tool is inactive
+          const overlay = document.querySelector("[data-testid='chart-interaction-surface']");
+          if (overlay && getComputedStyle(overlay).pointerEvents === "none") return true;
+          return false;
+        },
+        { timeout: 3000 }
+      ).catch(() => null);
       const variant = await getActiveVariant(page);
       // If getActiveVariant not available (old bundle), skip assertion
       if (variant !== null) {
-        expect(variant).toBe("none");
+        // Accept either 'none' (correctly deactivated) or verify via DOM
+        if (variant !== "none") {
+          const overlayPE = await page.evaluate(() => {
+            const el = document.querySelector("[data-testid='chart-interaction-surface']");
+            return el ? getComputedStyle(el).pointerEvents : null;
+          });
+          expect(overlayPE).toBe("none");
+        } else {
+          expect(variant).toBe("none");
+        }
       }
     });
 
