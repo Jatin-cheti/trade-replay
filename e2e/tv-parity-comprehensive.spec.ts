@@ -94,19 +94,63 @@ async function gotoCharts(page: Page, symbol = "RELIANCE") {
 }
 
 async function openLinesRail(page: Page) {
+  // Use the actual button (rail-lines) not the sr-only span (toolrail-button-lines)
+  // to reliably trigger the onClick. Fall back to the span with force if needed.
+  const railBtn = page.getByTestId("rail-lines");
+  if (await railBtn.count()) {
+    await railBtn.first().click({ force: true });
+    await page.waitForTimeout(200);
+    return;
+  }
   const btn = page.getByTestId("toolrail-button-lines");
   if (await btn.count()) {
     await btn.first().click({ force: true });
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(200);
+  }
+}
+
+async function dismissModalIfPresent(page: Page) {
+  // Dismiss chart-prompt-modal (text prompt after infoLine or accidental trigger)
+  const cancel = page.getByTestId("chart-prompt-cancel");
+  if (await cancel.count()) {
+    await cancel.first().click({ force: true });
+    await page.waitForTimeout(100);
+    return;
+  }
+  // Also dismiss via cancel-btn variant
+  const cancelBtn = page.getByTestId("chart-prompt-cancel-btn");
+  if (await cancelBtn.count()) {
+    await cancelBtn.first().click({ force: true });
+    await page.waitForTimeout(100);
   }
 }
 
 async function pickTool(page: Page, testId: string) {
-  await openLinesRail(page);
+  // Dismiss any stray modal (e.g. prompt from a previous draw) before interacting with rail
+  await dismissModalIfPresent(page);
   const el = page.getByTestId(testId).first();
+  // Only open the lines rail if the tool button isn't already visible.
+  // The panel is a portal that disappears when expandedCategory=null.
+  // openLinesRail toggles the panel, so only call it when the tool is not visible.
+  if (!(await el.count())) {
+    await openLinesRail(page);
+  }
   if (!(await el.count())) test.skip(true, `tool not found: ${testId}`);
+  // Snapshot variant before click so we can detect the change
+  const variantBefore = await page.evaluate(() => (window as any).__chartDebug?.getActiveVariant?.() ?? null);
   await el.click({ force: true });
-  await page.waitForTimeout(80);
+  // Wait for tool variant to change from its previous value, indicating the tool is active.
+  // Falls back to a fixed 250ms if debug API is not available.
+  await page.waitForFunction(
+    (before) => {
+      const d = (window as any).__chartDebug;
+      const v = d?.getActiveVariant?.();
+      if (v === null || v === undefined) return true; // old bundle, skip
+      return v !== before;
+    },
+    variantBefore,
+    { timeout: 3000 }
+  ).catch(() => page.waitForTimeout(250));
 }
 
 async function surfaceBox(page: Page) {
@@ -785,17 +829,29 @@ test.describe("Cross-tool TV-parity", () => {
     await clickAt(page, cx - 80, cy - 30);
     await page.mouse.move(cx + 80, cy + 30);
     await clickAt(page, cx + 80, cy + 30);
+    await page.waitForTimeout(200);
+    // Deselect to hide floating toolbar before picking next tool
+    await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
     await page.waitForTimeout(100);
+    const afterTrend = await getDrawingCount(page);
+    expect(afterTrend).toBeGreaterThanOrEqual(startCount + 1);
 
-    // Draw horizontal line
+    // Draw horizontal line — click in lower area to avoid overlap with trendline toolbar
     await pickTool(page, "tool-horizontal-line");
-    await clickAt(page, cx, cy - 60);
+    await clickAt(page, cx, cy + 70);
+    await page.waitForTimeout(200);
+    // Deselect before picking next tool
+    await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
     await page.waitForTimeout(100);
+    const afterHline = await getDrawingCount(page);
+    expect(afterHline).toBeGreaterThanOrEqual(afterTrend + 1);
 
     // Draw vertical line
     await pickTool(page, "tool-vertical-line");
-    await clickAt(page, cx + 50, cy);
-    await page.waitForTimeout(100);
+    await clickAt(page, cx - 70, cy - 70);
+    await page.waitForTimeout(200);
+    const afterVline = await getDrawingCount(page);
+    expect(afterVline).toBeGreaterThanOrEqual(afterHline + 1);
 
     expect(await getDrawingCount(page)).toBe(startCount + 3);
   });
