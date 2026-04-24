@@ -266,12 +266,18 @@ export interface IChartApi {
 export interface IDemoCursorApi {
   /** Remove all current strokes immediately. */
   clearStrokes(): void;
-  /** Set the stroke colour (CSS colour string). Default: rgba(255,80,80,1). */
+  /** Set the stroke colour (CSS colour string). Default: airbrush red rgba(211,47,47,0.18). */
   setColor(color: string): void;
-  /** Set the stroke line width in CSS pixels. Default: 3. */
+  /** Returns the current stroke colour. */
+  getColor(): string;
+  /** Set the stroke line width in CSS pixels. Default: 20 (matches demo-cursor circle diameter). */
   setLineWidth(width: number): void;
+  /** Returns the current stroke line width. */
+  getLineWidth(): number;
   /** Set the fade duration in milliseconds. Default: 3000. */
   setFadeDuration(ms: number): void;
+  /** Returns the current fade duration in ms. */
+  getFadeDuration(): number;
   /** Returns the number of live (not fully faded) strokes. */
   strokeCount(): number;
   /**
@@ -856,9 +862,11 @@ export function createChart(
   }
 
   const DEMO_FADE_MS = 3000;   // 3 seconds to fully fade — same as TradingView
-  // Match TradingView's Demonstration cursor (light semi-transparent red, thin line)
-  const DEMO_STROKE_COLOR = 'rgba(255, 82, 82, 0.9)';
-  const DEMO_LINE_WIDTH = 2;
+  // Airbrush style — match the red demo-cursor circle indicator rendered in
+  // the DOM overlay so the brush stroke *feels* like spray from the circle,
+  // not a hard red pen.  Circle visual: 20px diameter, fill rgba(211,47,47,0.18).
+  const DEMO_STROKE_COLOR = 'rgba(211, 47, 47, 0.18)';
+  const DEMO_LINE_WIDTH = 20;
 
   const demoStrokes: DemoStroke[] = [];
   let demoCursorActive = false;      // true while Alt+pointer is held
@@ -3690,11 +3698,20 @@ export function createChart(
         setColor(color: string): void {
           demoCursorColor = color;
         },
+        getColor(): string {
+          return demoCursorColor;
+        },
         setLineWidth(width: number): void {
           demoCursorLineWidth = width;
         },
+        getLineWidth(): number {
+          return demoCursorLineWidth;
+        },
         setFadeDuration(ms: number): void {
           demoCursorFadeDuration = ms;
+        },
+        getFadeDuration(): number {
+          return demoCursorFadeDuration;
         },
         strokeCount(): number {
           return demoStrokes.length;
