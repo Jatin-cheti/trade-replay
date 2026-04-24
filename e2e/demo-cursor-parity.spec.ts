@@ -46,9 +46,15 @@ async function strokeCount(page: Page): Promise<number> {
 async function clearStrokes(page: Page): Promise<void> {
   await page.evaluate(() => {
     const w = window as unknown as {
-      __tradereplayChart?: { demoCursor?: () => { clearStrokes: () => void } };
+      __tradereplayChart?: { demoCursor?: () => {
+        clearStrokes: () => void;
+        setFadeDuration: (ms: number) => void;
+      } };
     };
-    w.__tradereplayChart?.demoCursor?.().clearStrokes();
+    const dc = w.__tradereplayChart?.demoCursor?.();
+    dc?.clearStrokes();
+    // Large fade so strokes remain counted for the duration of each test.
+    dc?.setFadeDuration(10 * 60 * 1000);
   });
 }
 
