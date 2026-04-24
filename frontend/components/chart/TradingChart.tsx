@@ -2634,16 +2634,17 @@ export default function TradingChart({
       getClickClickPhase: () => clickClickPhaseRef.current,
       getDraftVariant: () => draftRef.current?.variant ?? null,
       getFloatingToolbarState: () => {
-        if (!selectedDrawingId || !toolbarAnchor) return { visible: false, drawingId: null as string | null };
+        const anchor = toolbarAnchorRef.current;
+        if (!selectedDrawingId || !anchor) return { visible: false, drawingId: null as string | null };
         return {
           visible: true,
           drawingId: selectedDrawingId,
-          left: toolbarAnchor.left,
-          right: toolbarAnchor.right,
-          top: toolbarAnchor.top,
-          bottom: toolbarAnchor.bottom,
-          centerX: (toolbarAnchor.left + toolbarAnchor.right) / 2,
-          centerY: (toolbarAnchor.top + toolbarAnchor.bottom) / 2,
+          left: anchor.left,
+          right: anchor.right,
+          top: anchor.top,
+          bottom: anchor.bottom,
+          centerX: (anchor.left + anchor.right) / 2,
+          centerY: (anchor.top + anchor.bottom) / 2,
         };
       },
       getDraftAnchorsClient: () => {
@@ -2779,7 +2780,6 @@ export default function TradingChart({
     transformedData.ohlcRows,
     transformedData.times,
     updateAllDrawings,
-    toolbarAnchor,
   ]);
 
   useEffect(() => {
@@ -3931,6 +3931,8 @@ export default function TradingChart({
 
   /* ── Floating drawing toolbar (TV-parity) ──────────────────────────── */
   const [toolbarAnchor, setToolbarAnchor] = useState<FloatingToolbarAnchor>(null);
+  const toolbarAnchorRef = useRef<FloatingToolbarAnchor>(null);
+  useEffect(() => { toolbarAnchorRef.current = toolbarAnchor; }, [toolbarAnchor]);
   // Bump `toolbarTick` whenever something that affects the projected bbox
   // changes (pan/zoom/resize/drawing move) so the memoized anchor recomputes.
   const [toolbarTick, setToolbarTick] = useState(0);
