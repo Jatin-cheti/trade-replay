@@ -2509,11 +2509,19 @@ export default function TradingChart({
             let xRange: [number, number] | null = null;
             let yRange: [number, number] | null = null;
 
-            if (variant === 'hline' || variant === 'horizontalRay') {
+            if (variant === 'hline') {
               yRange = [pts[0].y, pts[0].y];
-              xRange = variant === 'horizontalRay' && pts.length >= 2
-                ? [Math.min(pts[0].x, pts[1].x), Math.max(pts[0].x, pts[1].x)]
-                : null; // full-width hline: no x-band
+              xRange = null; // full-width hline: no x-band
+            } else if (variant === 'horizontalRay') {
+              yRange = [pts[0].y, pts[0].y];
+              // Horizontal ray may have 1 or 2 anchors. With 2, use their x-range.
+              // With 1, paint a small x-band around the anchor x (TV shows a highlight
+              // at the start point on the time axis).
+              if (pts.length >= 2) {
+                xRange = [Math.min(pts[0].x, pts[1].x), Math.max(pts[0].x, pts[1].x)];
+              } else {
+                xRange = [pts[0].x, pts[0].x];
+              }
             } else if (variant === 'vline' || variant === 'crossLine') {
               xRange = [pts[0].x, pts[0].x];
               yRange = variant === 'crossLine' ? [pts[0].y, pts[0].y] : null;

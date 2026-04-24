@@ -232,13 +232,15 @@ for (const c of CASES) {
       const anchor1 = await getLatestAnchorClient(page, 1);
       const anchor = anchor1 ?? anchor0;
 
-      // Switch off drawing tool before deselect-click, otherwise a point-tool
-      // (hline, vline) creates a new drawing at the click location and the band
-      // persists for the newly-selected drawing.
-      await page.keyboard.press("Escape");
-      await page.waitForTimeout(100);
-      await page.mouse.click(box.x + plotW * 0.9, box.y + 30);
+      // Deselect via the debug harness \u2014 robust against active-tool click-to-draw
+      // side effects that would otherwise create a new drawing.
+      await page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__chartDebug?.forceSelectDrawing?.(null);
+      });
       await page.waitForTimeout(300);
+      void box;
+      void plotW;
 
       const ov = await overlayBox(page);
       const plotRight = ov.x + ov.width - dims.priceAxisWidth;
