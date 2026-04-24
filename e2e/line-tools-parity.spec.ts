@@ -69,6 +69,17 @@ async function surfaceBox(page: Page) {
   return box;
 }
 
+async function overlayBox(page: Page) {
+  const rect = await page.evaluate(() => {
+    const c = document.querySelector<HTMLCanvasElement>("canvas[aria-label='chart-drawing-overlay']");
+    if (!c) return null;
+    const r = c.getBoundingClientRect();
+    return { x: r.left, y: r.top, width: r.width, height: r.height };
+  });
+  if (!rect) throw new Error("no overlay box");
+  return rect;
+}
+
 async function getScroll(page: Page): Promise<number> {
   return await page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -197,18 +208,18 @@ for (const c of CASES) {
       const anchor = anchor1 ?? anchor0;
       expect(anchor).not.toBeNull();
 
-      const plotRight = box.x + box.width - dims.priceAxisWidth;
-      const plotBottom = box.y + box.height - dims.timeAxisHeight;
+      // Sample against the OVERLAY canvas rect — the interaction surface box may
+      // only cover the plot area and not extend into the time-axis gutter.
+      const ov = await overlayBox(page);
+      const plotRight = ov.x + ov.width - dims.priceAxisWidth;
+      const plotBottom = ov.y + ov.height - dims.timeAxisHeight;
 
-      // Y-band: sample across the full price-axis gutter width at the anchor's Y.
-      const sampleY = anchor!.y;
-      const yBand = await blueishCountAt(page, plotRight + 2, sampleY - 4, dims.priceAxisWidth - 4, 10);
-      // X-band: sample across the full time-axis gutter height at the anchor's X.
-      const sampleX = anchor!.x;
-      const xBand = await blueishCountAt(page, sampleX - 4, plotBottom + 2, 10, dims.timeAxisHeight - 4);
+      const yBand = await blueishCountAt(page, plotRight + 2, ov.y, dims.priceAxisWidth - 4, ov.height - dims.timeAxisHeight - 4);
+      const xBand = await blueishCountAt(page, ov.x, plotBottom + 2, ov.width - dims.priceAxisWidth - 4, dims.timeAxisHeight - 4);
+      void anchor;
 
-      if (c.expectYBand) expect(yBand).toBeGreaterThan(0);
-      if (c.expectXBand) expect(xBand).toBeGreaterThan(0);
+      if (c.expectYBand) expect(yBand).toBeGreaterThan(100);
+      if (c.expectXBand) expect(xBand).toBeGreaterThan(100);
     });
 
     test("deselecting the drawing clears the axis highlight", async ({ page }) => {
@@ -221,13 +232,22 @@ for (const c of CASES) {
       const anchor1 = await getLatestAnchorClient(page, 1);
       const anchor = anchor1 ?? anchor0;
 
+      // Switch off drawing tool before deselect-click, otherwise a point-tool
+      // (hline, vline) creates a new drawing at the click location and the band
+      // persists for the newly-selected drawing.
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(100);
       await page.mouse.click(box.x + plotW * 0.9, box.y + 30);
       await page.waitForTimeout(300);
 
-      const plotRight = box.x + box.width - dims.priceAxisWidth;
-      const sampleY = anchor ? anchor.y : (box.y + box.height * 0.5);
-      const yBand = await blueishCountAt(page, plotRight + 2, sampleY - 4, dims.priceAxisWidth - 4, 10);
-      expect(yBand).toBe(0);
+      const ov = await overlayBox(page);
+      const plotRight = ov.x + ov.width - dims.priceAxisWidth;
+      const yBand = await blueishCountAt(page, plotRight + 2, ov.y, dims.priceAxisWidth - 4, ov.height - dims.timeAxisHeight - 4);
+      void anchor;
+      // Some drawings (hline) render across the full width and may spill a few stroke
+      // pixels into the gutter. The axis HIGHLIGHT band is >100 px when selected, so we
+      // assert a low threshold to prove the band is cleared.
+      expect(yBand).toBeLessThan(50);
     });
 
     test("hiding all drawings clears the axis highlight", async ({ page }) => {
@@ -243,10 +263,12 @@ for (const c of CASES) {
       await page.getByTestId("rail-hide-objects").click({ force: true });
       await page.waitForTimeout(300);
 
-      const plotRight = box.x + box.width - dims.priceAxisWidth;
-      const sampleY = anchor ? anchor.y : (box.y + box.height * 0.5);
-      const yBand = await blueishCountAt(page, plotRight + 2, sampleY - 4, dims.priceAxisWidth - 4, 10);
-      expect(yBand).toBe(0);
+      const ov = await overlayBox(page);
+      const plotRight = ov.x + ov.width - dims.priceAxisWidth;
+      const yBand = await blueishCountAt(page, plotRight + 2, ov.y, dims.priceAxisWidth - 4, ov.height - dims.timeAxisHeight - 4);
+      void anchor;
+      void box;
+      expect(yBand).toBeLessThan(50);
     });
   });
 }

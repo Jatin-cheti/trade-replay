@@ -2526,19 +2526,24 @@ export default function TradingChart({
 
             ctx.save();
             ctx.fillStyle = axisHighlightColor;
+            // Minimum band thickness (px) for single-point variants like hline/vline/
+            // horizontalRay's y-axis band, matching TV's visible highlight thickness.
+            const MIN_BAND_PX = 8;
             // Time-axis (bottom) band for X range
             if (xRange && timeAxisHeight > 0) {
               const x0 = Math.max(0, Math.min(plotW, xRange[0]));
               const x1 = Math.max(0, Math.min(plotW, xRange[1]));
-              const bandW = Math.max(1, x1 - x0);
-              ctx.fillRect(x0, plotH, bandW, timeAxisHeight);
+              const bandW = Math.max(MIN_BAND_PX, x1 - x0);
+              const bandX = x1 - x0 < MIN_BAND_PX ? Math.max(0, x0 - MIN_BAND_PX / 2) : x0;
+              ctx.fillRect(bandX, plotH, bandW, timeAxisHeight);
             }
             // Price-axis (right) band for Y range
             if (yRange && priceAxisWidth > 0) {
               const y0 = Math.max(0, Math.min(plotH, yRange[0]));
               const y1 = Math.max(0, Math.min(plotH, yRange[1]));
-              const bandH = Math.max(1, y1 - y0);
-              ctx.fillRect(plotW, y0, priceAxisWidth, bandH);
+              const bandH = Math.max(MIN_BAND_PX, y1 - y0);
+              const bandY = y1 - y0 < MIN_BAND_PX ? Math.max(0, y0 - MIN_BAND_PX / 2) : y0;
+              ctx.fillRect(plotW, bandY, priceAxisWidth, bandH);
             }
             ctx.restore();
           }
