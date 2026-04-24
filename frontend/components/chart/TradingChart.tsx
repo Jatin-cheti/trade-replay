@@ -3293,7 +3293,33 @@ export default function TradingChart({
           }
 
           if (drawing && !drawing.locked) {
-            const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - freePoint.time) < 86400 && Math.abs(a.price - freePoint.price) < Math.max(0.2, freePoint.price * 0.02));
+            // Pixel-distance anchor hit test — the previous (time, price) tolerance
+            // was too loose when two anchors were close (trend lines with small
+            // horizontal span would always match anchor[0]). Use screen-space
+            // Euclidean distance with a 12px radius instead.
+            const chartApi = chartRef.current;
+            const seriesApi = getActiveSeries();
+            const overlayEl = overlayRef.current;
+            const rect = overlayEl?.getBoundingClientRect();
+            const HIT_RADIUS_PX = 12;
+            let idx = -1;
+            if (chartApi && seriesApi && rect) {
+              const px = event.clientX - rect.left;
+              const py = event.clientY - rect.top;
+              let bestDist = HIT_RADIUS_PX * HIT_RADIUS_PX;
+              drawing.anchors.forEach((a, i) => {
+                const ax = chartApi.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+                const ay = seriesApi.priceToCoordinate(a.price);
+                if (ax == null || ay == null) return;
+                const dx = ax - px;
+                const dy = ay - py;
+                const d2 = dx * dx + dy * dy;
+                if (d2 <= bestDist) {
+                  bestDist = d2;
+                  idx = i;
+                }
+              });
+            }
             if (idx >= 0) {
               setDragAnchor({ drawingId: selected, anchorIndex: idx });
               dragAnchorMoveRef.current = {
