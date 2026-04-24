@@ -33,6 +33,7 @@ import ToolOptionsPanel from '@/components/chart/ToolOptionsPanel';
 import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 import IndicatorsModal from '@/components/chart/IndicatorsModal';
 import ChartPromptModal, { type ChartPromptRequest } from '@/components/chart/ChartPromptModal';
+import FloatingDrawingToolbar, { type FloatingToolbarAnchor } from '@/components/chart/FloatingDrawingToolbar';
 import type { IconPresetSelection } from '@/components/chart/IconToolPanel';
 import { toast } from 'sonner';
 
@@ -2632,6 +2633,19 @@ export default function TradingChart({
       },
       getClickClickPhase: () => clickClickPhaseRef.current,
       getDraftVariant: () => draftRef.current?.variant ?? null,
+      getFloatingToolbarState: () => {
+        if (!selectedDrawingId || !toolbarAnchor) return { visible: false, drawingId: null as string | null };
+        return {
+          visible: true,
+          drawingId: selectedDrawingId,
+          left: toolbarAnchor.left,
+          right: toolbarAnchor.right,
+          top: toolbarAnchor.top,
+          bottom: toolbarAnchor.bottom,
+          centerX: (toolbarAnchor.left + toolbarAnchor.right) / 2,
+          centerY: (toolbarAnchor.top + toolbarAnchor.bottom) / 2,
+        };
+      },
       getDraftAnchorsClient: () => {
         const chart = chartRef.current;
         const series = getActiveSeries();
@@ -2765,6 +2779,7 @@ export default function TradingChart({
     transformedData.ohlcRows,
     transformedData.times,
     updateAllDrawings,
+    toolbarAnchor,
   ]);
 
   useEffect(() => {
@@ -3914,6 +3929,214 @@ export default function TradingChart({
     setFullView((prev) => !prev);
   }, []);
 
+  /* ── Floating drawing toolbar (TV-parity) ──────────────────────────── */
+  const [toolbarAnchor, setToolbarAnchor] = useState<FloatingToolbarAnchor>(null);
+  // Bump `toolbarTick` whenever something that affects the projected bbox
+  // changes (pan/zoom/resize/drawing move) so the memoized anchor recomputes.
+  const [toolbarTick, setToolbarTick] = useState(0);
+
+  useEffect(() => {
+    if (!selectedDrawing || !selectedDrawing.visible) {
+      setToolbarAnchor(null);
+      return;
+    }
+    const chart = chartRef.current;
+    const series = getActiveSeries();
+    const overlay = overlayRef.current;
+    if (!chart || !series || !overlay) {
+      setToolbarAnchor(null);
+      return;
+    }
+    const rect = overlay.getBoundingClientRect();
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const a of selectedDrawing.anchors) {
+      const x = chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+      const y = series.priceToCoordinate(a.price);
+      if (x == null || y == null) continue;
+      xs.push(rect.left + x);
+      ys.push(rect.top + y);
+    }
+    if (!xs.length || !ys.length) {
+      // HLine / VLine / HRay / CrossLine: synthesize from viewport
+      if (selectedDrawing.anchors[0]) {
+        const a = selectedDrawing.anchors[0];
+        const y = series.priceToCoordinate(a.price);
+        const x = chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+        if (y != null) {
+          ys.push(rect.top + y);
+          xs.push(rect.left + rect.width / 2);
+        } else if (x != null) {
+          xs.push(rect.left + x);
+          ys.push(rect.top + rect.height / 2);
+        }
+      }
+    }
+    if (!xs.length || !ys.length) {
+      setToolbarAnchor(null);
+      return;
+    }
+    setToolbarAnchor({
+      left: Math.min(...xs),
+      right: Math.max(...xs),
+      top: Math.min(...ys),
+      bottom: Math.max(...ys),
+    });
+  }, [selectedDrawing, chartRef, getActiveSeries, overlayRef, toolbarTick, toolState.drawings]);
+
+  // Keep toolbar anchor up-to-date on pan / zoom / resize.
+  useEffect(() => {
+    if (!selectedDrawingId) return;
+    const raf = { id: 0 as number };
+    const bump = () => {
+      if (raf.id) return;
+      raf.id = window.requestAnimationFrame(() => {
+        raf.id = 0;
+        setToolbarTick((n) => (n + 1) % 1_000_000);
+      });
+    };
+    const chart = chartRef.current;
+    const unsubs: Array<() => void> = [];
+    try {
+      chart?.timeScale().subscribeVisibleLogicalRangeChange?.(bump);
+      unsubs.push(() => chart?.timeScale().unsubscribeVisibleLogicalRangeChange?.(bump));
+    } catch {
+      /* ignore */
+    }
+    window.addEventListener('resize', bump);
+    unsubs.push(() => window.removeEventListener('resize', bump));
+    return () => {
+      unsubs.forEach((u) => u());
+      if (raf.id) window.cancelAnimationFrame(raf.id);
+    };
+  }, [chartRef, selectedDrawingId]);
+
+  const handleToolbarColor = useCallback((color: string) => {
+    if (!selectedDrawingId) return;
+    updateDrawing(selectedDrawingId, (d) => ({ ...d, options: { ...d.options, color } }));
+    renderOverlay();
+  }, [renderOverlay, selectedDrawingId, updateDrawing]);
+
+  const handleToolbarThickness = useCallback((thickness: number) => {
+    if (!selectedDrawingId) return;
+    updateDrawing(selectedDrawingId, (d) => ({ ...d, options: { ...d.options, thickness } }));
+    renderOverlay();
+  }, [renderOverlay, selectedDrawingId, updateDrawing]);
+
+  const handleToolbarStyle = useCallback((style: 'solid' | 'dashed' | 'dotted') => {
+    if (!selectedDrawingId) return;
+    updateDrawing(selectedDrawingId, (d) => ({ ...d, options: { ...d.options, style } }));
+    renderOverlay();
+  }, [renderOverlay, selectedDrawingId, updateDrawing]);
+
+  const handleToolbarToggleLock = useCallback(() => {
+    if (!selectedDrawingId) return;
+    updateDrawing(selectedDrawingId, (d) => {
+      const next = !(d.locked || d.options.locked);
+      return { ...d, locked: next, options: { ...d.options, locked: next } };
+    });
+  }, [selectedDrawingId, updateDrawing]);
+
+  const handleToolbarToggleVisible = useCallback(() => {
+    if (!selectedDrawingId) return;
+    updateDrawing(selectedDrawingId, (d) => {
+      const next = !(d.visible !== false && d.options.visible !== false);
+      return { ...d, visible: next, options: { ...d.options, visible: next } };
+    });
+    renderOverlay();
+  }, [renderOverlay, selectedDrawingId, updateDrawing]);
+
+  const handleToolbarDelete = useCallback(() => {
+    if (!selectedDrawingId) return;
+    removeDrawing(selectedDrawingId);
+    setSelectedDrawingId(null);
+    setHoveredDrawingId(null);
+  }, [removeDrawing, selectedDrawingId]);
+
+  const handleToolbarDuplicate = useCallback(() => {
+    if (!selectedDrawingId) return;
+    const src = drawingsRef.current.find((d) => d.id === selectedDrawingId);
+    if (!src) return;
+    // Offset each anchor by ~12 bars in time and ~0.5% in price so the copy is visible.
+    const offsetSec = 12 * 60;
+    const priceDelta = Math.max(0.01, Math.abs(src.anchors[0]?.price ?? 1) * 0.005);
+    const newAnchors = src.anchors.map((a) => ({
+      time: ((a.time as unknown as number) + offsetSec) as DrawPoint['time'],
+      price: a.price + priceDelta,
+    }));
+    const clone: Drawing = {
+      ...src,
+      id: `dwg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+      anchors: newAnchors,
+      options: { ...src.options },
+      selected: false,
+      text: src.text,
+    };
+    updateAllDrawings((prev) => [...prev, clone]);
+    setSelectedDrawingId(clone.id);
+  }, [drawingsRef, selectedDrawingId, updateAllDrawings]);
+
+  const handleToolbarAddText = useCallback(() => {
+    if (!selectedDrawingId) return;
+    const src = drawingsRef.current.find((d) => d.id === selectedDrawingId);
+    if (!src) return;
+    const a0 = src.anchors[0];
+    const a1 = src.anchors[src.anchors.length - 1] ?? a0;
+    if (!a0) return;
+    const def = getToolDefinition(src.variant);
+    // If the drawing itself supports text (infoLine, trendAngle, fib*, etc.), edit it directly.
+    if (def?.capabilities.supportsText) {
+      pendingTextPointRef.current = a0;
+      pendingTextVariantRef.current = src.variant as Exclude<ToolVariant, 'none'>;
+      editingDrawingIdRef.current = src.id;
+      setPromptRequest({
+        title: `Edit ${def.label}`,
+        label: 'Text',
+        defaultValue: src.text ?? '',
+        preview: true,
+        allowStyleControls: true,
+        styleOptions: {
+          font: src.options.font,
+          textSize: src.options.textSize,
+          bold: src.options.bold,
+          italic: src.options.italic,
+          align: src.options.align,
+          textBackground: src.options.textBackground,
+          textBorder: src.options.textBorder,
+        },
+      });
+      return;
+    }
+    // Otherwise create a separate anchoredText drawing at the line midpoint.
+    const mid: DrawPoint = {
+      time: (((a0.time as unknown as number) + (a1.time as unknown as number)) / 2) as DrawPoint['time'],
+      price: (a0.price + a1.price) / 2,
+    };
+    pendingTextPointRef.current = mid;
+    pendingTextVariantRef.current = 'anchoredText';
+    editingDrawingIdRef.current = null;
+    setPromptRequest({
+      title: 'Add text',
+      label: 'Enter text',
+      defaultValue: 'Text',
+      preview: true,
+      allowStyleControls: true,
+      styleOptions: {
+        font: toolState.options.font,
+        textSize: toolState.options.textSize,
+        bold: toolState.options.bold,
+        italic: toolState.options.italic,
+        align: toolState.options.align,
+        textBackground: toolState.options.textBackground,
+        textBorder: toolState.options.textBorder,
+      },
+    });
+  }, [drawingsRef, selectedDrawingId, toolState.options]);
+
+  const handleToolbarOpenSettings = useCallback(() => {
+    setOptionsOpen(true);
+  }, []);
+
   const floatingPortalZIndex = fullView ? 165 : 60;
   const dialogPortalZIndex = fullView ? 170 : 50;
   const topBarModalZIndex = fullView ? 172 : 90;
@@ -4245,6 +4468,21 @@ export default function TradingChart({
             ) : null}
 
             <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={handleToolOptionsChange} />
+
+            <FloatingDrawingToolbar
+              drawing={selectedDrawing}
+              anchor={toolbarAnchor}
+              zIndex={floatingPortalZIndex + 5}
+              onChangeColor={handleToolbarColor}
+              onChangeThickness={handleToolbarThickness}
+              onChangeStyle={handleToolbarStyle}
+              onToggleLock={handleToolbarToggleLock}
+              onToggleVisible={handleToolbarToggleVisible}
+              onAddText={handleToolbarAddText}
+              onDuplicate={handleToolbarDuplicate}
+              onDelete={handleToolbarDelete}
+              onOpenSettings={handleToolbarOpenSettings}
+            />
 
             <IndicatorsModal open={indicatorsOpen} onOpenChange={setIndicatorsOpen} enabledIndicators={enabledIndicators} onAddIndicator={addIndicator} onRemoveIndicator={removeEnabledIndicator} builtinIds={builtinIds} portalZIndex={dialogPortalZIndex} />
 
