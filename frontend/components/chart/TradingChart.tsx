@@ -306,6 +306,10 @@ export default function TradingChart({
   // without stale-closure issues (updated synchronously in every setter call).
   const hoveredDrawingIdRef = useRef<string | null>(null);
   hoveredDrawingIdRef.current = hoveredDrawingId;
+  // Ref mirror for toolState.variant so __chartDebug.getActiveVariant() is always
+  // fresh — reads this ref rather than a stale useEffect closure value.
+  const toolVariantRef = useRef<ToolVariant>(toolState.variant);
+  toolVariantRef.current = toolState.variant;
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
 
   useEffect(() => {
@@ -2692,7 +2696,7 @@ export default function TradingChart({
       getDrawingById: (id: string) => drawingsRef.current.find((drawing) => drawing.id === id) ?? null,
       getLatestDrawingId: () => drawingsRef.current[drawingsRef.current.length - 1]?.id ?? null,
       getSelectedDrawingId: () => selectedDrawingId,
-      getActiveVariant: () => toolState.variant,
+      getActiveVariant: () => toolVariantRef.current,
       forceSelectDrawing: (id: string | null) => {
         setSelectedDrawingId(id);
         setHoveredDrawingId(id);
@@ -2907,7 +2911,6 @@ export default function TradingChart({
     selectedDrawingId,
     toolState.history.length,
     toolState.options,
-    toolState.variant,
     transformedData.ohlcRows,
     transformedData.times,
     updateAllDrawings,
