@@ -334,6 +334,9 @@ export default function TradingChart({
   // second click to finalize a 2-anchor line. Reset on tool change, Escape,
   // or commit.
   const clickClickPhaseRef = useRef(0);
+  // Position of the first click (client coords) for click-click drawing, used
+  // to decide if a pointerup is a drag-commit vs a click-release-stay-in-draft.
+  const clickClickStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchTooltipTimerRef = useRef<number | null>(null);
   const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -401,6 +404,7 @@ export default function TradingChart({
   // Reset click-click draw phase whenever the active tool changes.
   useEffect(() => {
     clickClickPhaseRef.current = 0;
+    clickClickStartRef.current = null;
   }, [toolState.variant]);
 
   // Disable chart's built-in click-drag panning while a drawing tool is active so
@@ -2967,6 +2971,7 @@ export default function TradingChart({
       if (!drawingActiveRef.current && !dragMoveRef.current && !dragAnchorMoveRef.current && !dragAnchor) return;
       cancelDraft();
       clickClickPhaseRef.current = 0;
+      clickClickStartRef.current = null;
       setPatternWizardHint(null);
       dragMoveRef.current = null;
       dragAnchorMoveRef.current = null;
@@ -3285,6 +3290,7 @@ export default function TradingChart({
         updateDraft(point);
         const committed = finalizeDraft();
         clickClickPhaseRef.current = 0;
+        clickClickStartRef.current = null;
         draftPointerStartRef.current = null;
         setPatternWizardHint(null);
         if (committed) {
@@ -3308,8 +3314,9 @@ export default function TradingChart({
       syncPatternWizardHint();
       if (useClickClick && result.kind === 'draft') {
         // First click established; mark phase=1 so pointerup won't finalize
-        // and the next pointerdown will.
+        // unless the user dragged a meaningful distance.
         clickClickPhaseRef.current = 1;
+        clickClickStartRef.current = { x: event.clientX, y: event.clientY };
         // Suppress the "short drag → treat as misclick and delete" guard:
         // click-click legitimately has zero drag distance on pointerup.
         draftPointerStartRef.current = null;
@@ -3581,8 +3588,27 @@ export default function TradingChart({
       }
 
       // TV-parity: for click-click line tools, the first pointerup must NOT
-      // commit the drawing. The second pointerdown commits it (see onPointerDown).
+      // commit the drawing UNLESS the pointer moved enough to look like a
+      // deliberate drag (TV also supports click-drag-release as an equivalent
+      // shortcut). Threshold ≈ 8 px matches TV.
       if (clickClickPhaseRef.current === 1 && drawingActiveRef.current && draftRef.current && isClickClickVariant(draftRef.current.variant)) {
+        const start = clickClickStartRef.current;
+        const dragDistance = start ? Math.hypot(event.clientX - start.x, event.clientY - start.y) : 0;
+        if (dragDistance < 8) {
+          // Treat as a click: stay in phase 1 and wait for the second click.
+          renderOverlay();
+          return;
+        }
+        // Drag-commit path: finalize now.
+        const committed = finalizeDraft();
+        clickClickPhaseRef.current = 0;
+        clickClickStartRef.current = null;
+        draftPointerStartRef.current = null;
+        if (committed) {
+          setSelectedDrawingId(committed.id);
+          setHoveredDrawingId(committed.id);
+          exitDrawingModeIfNeeded(committed.variant);
+        }
         renderOverlay();
         return;
       }
