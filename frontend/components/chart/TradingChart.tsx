@@ -2631,6 +2631,15 @@ export default function TradingChart({
         pointerToDataPoint(clientX, clientY, crosshairSnapMode, snap),
       getScrollPosition: () => chartRef.current?.timeScale().scrollPosition() ?? null,
       getVisibleLogicalRange: () => chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
+      getAxisDimensions: () => {
+        const chart = chartRef.current;
+        if (!chart) return null;
+        let priceAxisWidth = 0;
+        let timeAxisHeight = 0;
+        try { priceAxisWidth = chart.priceScale('right').width(); } catch { /* */ }
+        try { timeAxisHeight = chart.timeScale().height(); } catch { /* */ }
+        return { priceAxisWidth, timeAxisHeight };
+      },
       scrollToPosition: (position: number) => {
         chartRef.current?.timeScale().scrollToPosition(position, false);
         return chartRef.current?.timeScale().scrollPosition() ?? null;
