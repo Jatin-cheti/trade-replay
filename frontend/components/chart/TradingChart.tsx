@@ -2692,6 +2692,7 @@ export default function TradingChart({
       getDrawingById: (id: string) => drawingsRef.current.find((drawing) => drawing.id === id) ?? null,
       getLatestDrawingId: () => drawingsRef.current[drawingsRef.current.length - 1]?.id ?? null,
       getSelectedDrawingId: () => selectedDrawingId,
+      getActiveVariant: () => toolState.variant,
       forceSelectDrawing: (id: string | null) => {
         setSelectedDrawingId(id);
         setHoveredDrawingId(id);
