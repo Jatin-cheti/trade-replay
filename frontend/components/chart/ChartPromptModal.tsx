@@ -98,6 +98,13 @@ export default function ChartPromptModal({ request, onConfirm, onCancel, portalZ
           data-testid="chart-prompt-modal"
           className="fixed inset-0 flex items-center justify-center p-4"
           style={{ zIndex: portalZIndex + 1 }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.stopPropagation()}
           onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
         >
           <div className="w-full max-w-sm rounded-xl border border-primary/25 bg-background shadow-2xl shadow-black/60">

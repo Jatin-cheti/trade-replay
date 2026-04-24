@@ -329,6 +329,10 @@ export default function TradingChart({
   const [patternWizardHint, setPatternWizardHint] = useState<PatternWizardHintState | null>(null);
   const pendingTextPointRef = useRef<DrawPoint | null>(null);
   const pendingTextVariantRef = useRef<Exclude<ToolVariant, 'none'> | null>(null);
+  // When true, the next prompt-confirm should create the pending-text drawing
+  // regardless of `toolState.variant` (used by the floating toolbar's "Add text"
+  // action which fires while the user is in cursor mode).
+  const forceTextCreateRef = useRef(false);
   const editingDrawingIdRef = useRef<string | null>(null);
   const draftPointerStartRef = useRef<{ x: number; y: number; variant: Exclude<ToolVariant, 'none'> } | null>(null);
   // TV-parity click-click draw phase. 0 = idle/first-click, 1 = awaiting
@@ -887,6 +891,7 @@ export default function TradingChart({
     pendingTextPointRef.current = null;
     pendingTextVariantRef.current = null;
     editingDrawingIdRef.current = null;
+    forceTextCreateRef.current = false;
     draftPointerStartRef.current = null;
   }, []);
 
@@ -4135,6 +4140,7 @@ export default function TradingChart({
     pendingTextPointRef.current = mid;
     pendingTextVariantRef.current = 'anchoredText';
     editingDrawingIdRef.current = null;
+    forceTextCreateRef.current = true;
     setPromptRequest({
       title: 'Add text',
       label: 'Enter text',
@@ -4513,9 +4519,11 @@ export default function TradingChart({
                 const pt = pendingTextPointRef.current;
                 const pendingVariant = pendingTextVariantRef.current;
                 const editingId = editingDrawingIdRef.current;
+                const forceCreate = forceTextCreateRef.current;
                 pendingTextPointRef.current = null;
                 pendingTextVariantRef.current = null;
                 editingDrawingIdRef.current = null;
+                forceTextCreateRef.current = false;
                 setPromptRequest(null);
 
                 setOptions(style);
@@ -4529,6 +4537,31 @@ export default function TradingChart({
                       ...style,
                     },
                   }));
+                  renderOverlay();
+                  return;
+                }
+
+                // Force-create path: floating toolbar "Add text" from cursor mode.
+                if (forceCreate && pt && pendingVariant) {
+                  const result = startDraftForVariant(pendingVariant, pt, value);
+                  if (result.kind === 'finalized') {
+                    const d = drawingsRef.current[drawingsRef.current.length - 1];
+                    if (d) {
+                      updateDrawing(
+                        d.id,
+                        (drawing) => ({
+                          ...drawing,
+                          text: value,
+                          options: {
+                            ...drawing.options,
+                            ...style,
+                          },
+                        }),
+                        false,
+                      );
+                      setSelectedDrawingId(d.id);
+                    }
+                  }
                   renderOverlay();
                   return;
                 }
