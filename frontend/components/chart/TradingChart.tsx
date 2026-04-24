@@ -1,3 +1,4 @@
+// TV-parity build: toolVariantRef + force-exit + overlay-interactive fix
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
