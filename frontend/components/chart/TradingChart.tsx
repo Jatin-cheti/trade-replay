@@ -302,6 +302,10 @@ export default function TradingChart({
   const [fullView, setFullView] = useState(false);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [hoveredDrawingId, setHoveredDrawingId] = useState<string | null>(null);
+  // Ref mirror so renderOverlay's RAF callback can read hoveredDrawingId
+  // without stale-closure issues (updated synchronously in every setter call).
+  const hoveredDrawingIdRef = useRef<string | null>(null);
+  hoveredDrawingIdRef.current = hoveredDrawingId;
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
 
   useEffect(() => {
@@ -2467,7 +2471,68 @@ export default function TradingChart({
           }
         }
 
-        if (selectedDrawingId === activeDrawing.id) {
+        const isSelected = selectedDrawingId === activeDrawing.id;
+        const isHovered = !draft && hoveredDrawingIdRef.current === activeDrawing.id;
+
+        // TV-parity: hovered drawing gets a faint brightness/glow outline + anchor dots
+        if (isHovered && !isSelected) {
+          ctx.save();
+          ctx.strokeStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${Math.min(1, (activeDrawing.options.opacity) * 1.6)})`;
+          ctx.lineWidth = Math.max(activeDrawing.options.thickness + 1, activeDrawing.options.thickness * 1.5);
+          ctx.setLineDash(activeDrawing.options.style === 'dashed' ? [6, 4] : activeDrawing.options.style === 'dotted' ? [2, 4] : []);
+          // Repaint the primary segment slightly thicker as a glow
+          if (points.length >= 2) {
+            const p1 = points[0];
+            const p2 = points[1];
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          } else if (points.length === 1) {
+            const p = points[0];
+            const v = activeDrawing.variant;
+            ctx.beginPath();
+            if (v === 'hline') { ctx.moveTo(0, p.y); ctx.lineTo(cssWidth, p.y); }
+            else if (v === 'vline') { ctx.moveTo(p.x, 0); ctx.lineTo(p.x, cssHeight); }
+            else if (v === 'horizontalRay') { ctx.moveTo(p.x, p.y); ctx.lineTo(cssWidth, p.y); }
+            else if (v === 'crossLine') {
+              ctx.moveTo(0, p.y); ctx.lineTo(cssWidth, p.y);
+              ctx.moveTo(p.x, 0); ctx.lineTo(p.x, cssHeight);
+            }
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Anchor dots on hover (lighter than selected dots)
+          for (const anchor of points) {
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.arc(anchor.x, anchor.y, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // TV-parity: "+Add text" inline label shown at line midpoint on hover
+          if (points.length >= 1) {
+            const mid = points.length >= 2
+              ? { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 }
+              : points[0];
+            const label = '+ Add text';
+            ctx.save();
+            ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
+            const textMetrics = ctx.measureText(label);
+            const tw = textMetrics.width;
+            const th = 14;
+            const tx = mid.x - tw / 2;
+            const ty = mid.y - 18;
+            ctx.fillStyle = 'rgba(8, 18, 30, 0.72)';
+            ctx.fillRect(tx - 4, ty - th + 2, tw + 8, th + 2);
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 1)`;
+            ctx.fillText(label, tx, ty);
+            ctx.restore();
+          }
+        }
+
+        if (isSelected) {
           for (const anchor of points) {
             ctx.beginPath();
             ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -3056,7 +3121,8 @@ export default function TradingChart({
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      if (!drawingActiveRef.current && !dragMoveRef.current && !dragAnchorMoveRef.current && !dragAnchor) return;
+      const wasDrawing = drawingActiveRef.current;
+      if (!wasDrawing && !dragMoveRef.current && !dragAnchorMoveRef.current && !dragAnchor) return;
       cancelDraft();
       clickClickPhaseRef.current = 0;
       clickClickStartRef.current = null;
@@ -3065,12 +3131,16 @@ export default function TradingChart({
       dragAnchorMoveRef.current = null;
       draftPointerStartRef.current = null;
       setDragAnchor(null);
+      // TV-parity: Escape cancels draft AND fully exits drawing mode
+      if (wasDrawing) {
+        exitDrawingModeIfNeeded(lastDrawingVariantRef.current as Exclude<ToolVariant, 'none'> | null);
+      }
       renderOverlay();
     };
 
     window.addEventListener('keydown', onEscape);
     return () => window.removeEventListener('keydown', onEscape);
-  }, [cancelDraft, dragAnchor, drawingActiveRef, renderOverlay]);
+  }, [cancelDraft, dragAnchor, drawingActiveRef, exitDrawingModeIfNeeded, renderOverlay]);
 
   useEffect(() => {
     if (!fullView) return;
@@ -3424,6 +3494,21 @@ export default function TradingChart({
           setSelectedDrawingId(committed.id);
           setHoveredDrawingId(committed.id);
           exitDrawingModeIfNeeded(committed.variant);
+          // Dispatch synthetic mouseup to chart canvas so any drag/pan state
+          // accumulated from this pointerdown is cleared (TV-parity: no ghost pan)
+          const container = chartContainerRef.current;
+          const target = container?.querySelector('canvas') as HTMLElement | null;
+          if (target) {
+            try {
+              target.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true, cancelable: true,
+                clientX: event.clientX, clientY: event.clientY,
+                button: 0, buttons: 0,
+              }));
+            } catch {
+              // ignore
+            }
+          }
         }
         renderOverlay();
         if (event.currentTarget.setPointerCapture) {
