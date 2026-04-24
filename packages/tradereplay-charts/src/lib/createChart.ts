@@ -282,6 +282,16 @@ export interface IDemoCursorApi {
   setActive(active: boolean): void;
   /** Returns whether always-on brush mode is enabled. */
   isActive(): boolean;
+  /**
+   * Programmatically begin a stroke at (x, y) in canvas-local pixels. Useful
+   * when a host overlay intercepts pointer events and needs to drive the
+   * brush itself (e.g. to keep Alt+click working over a drawings overlay).
+   */
+  beginStroke(x: number, y: number): void;
+  /** Append a point to the in-flight programmatic stroke. */
+  extendStroke(x: number, y: number): void;
+  /** Finalize the in-flight programmatic stroke and begin its fade-out. */
+  endStroke(): void;
 }
 
 export interface CrosshairMoveEvent {
@@ -846,8 +856,9 @@ export function createChart(
   }
 
   const DEMO_FADE_MS = 3000;   // 3 seconds to fully fade — same as TradingView
-  const DEMO_STROKE_COLOR = 'rgba(255, 80, 80, 1)';   // TradingView-style red/orange
-  const DEMO_LINE_WIDTH = 3;
+  // Match TradingView's Demonstration cursor (light semi-transparent red, thin line)
+  const DEMO_STROKE_COLOR = 'rgba(255, 82, 82, 0.9)';
+  const DEMO_LINE_WIDTH = 2;
 
   const demoStrokes: DemoStroke[] = [];
   let demoCursorActive = false;      // true while Alt+pointer is held
@@ -3126,9 +3137,11 @@ export function createChart(
   }
   function onKeyUp(e: KeyboardEvent): void {
     if (e.key === 'Alt') {
-      canvas.style.cursor = '';
-      // If Alt released mid-stroke, end it
-      if (demoCursorActive) {
+      // Keep crosshair if toolbar demo mode is force-active; otherwise restore default.
+      canvas.style.cursor = demoCursorForceMode ? 'crosshair' : '';
+      // If Alt released mid-stroke AND stroke was started via Alt (not force mode),
+      // end it immediately. TradingView behaviour: releasing Alt stops the brush.
+      if (demoCursorActive && !demoCursorForceMode) {
         demoCursorActive = false;
         if (demoStrokes.length > 0) {
           const stroke = demoStrokes[demoStrokes.length - 1];
@@ -3691,6 +3704,39 @@ export function createChart(
         },
         isActive(): boolean {
           return demoCursorForceMode;
+        },
+        beginStroke(x: number, y: number): void {
+          // Programmatic stroke start — used by host apps to drive the demo
+          // cursor from an overlay/DOM layer that intercepts pointer events.
+          demoCursorActive = true;
+          const stroke: DemoStroke = {
+            points: [{ x, y }],
+            startTime: performance.now(),
+            endTime: null,
+            color: demoCursorColor,
+            lineWidth: demoCursorLineWidth,
+            fadeDuration: demoCursorFadeDuration,
+          };
+          demoStrokes.push(stroke);
+          scheduleRender('demo-cursor');
+        },
+        extendStroke(x: number, y: number): void {
+          if (!demoCursorActive || demoStrokes.length === 0) return;
+          const stroke = demoStrokes[demoStrokes.length - 1];
+          if (stroke.endTime !== null) return;
+          stroke.points.push({ x, y });
+          scheduleRender('demo-cursor');
+        },
+        endStroke(): void {
+          if (!demoCursorActive) return;
+          demoCursorActive = false;
+          if (demoStrokes.length > 0) {
+            const stroke = demoStrokes[demoStrokes.length - 1];
+            if (stroke.endTime === null) stroke.endTime = performance.now();
+          }
+          if (demoCursorRafId == null && demoStrokes.length > 0) {
+            demoCursorRafId = requestAnimationFrame(demoCursorFadeLoop);
+          }
         },
       };
     },
