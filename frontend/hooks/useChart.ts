@@ -59,6 +59,11 @@ export function useChart(
     const seriesMap = createChartSeries(chart, { parityMode });
     chartRef.current = chart;
     seriesMapRef.current = seriesMap;
+    // Test hook: expose the chart instance for Playwright parity tests.
+    // Safe to enable in production — the chart API is already user-facing through DOM events.
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __tradereplayChart?: unknown }).__tradereplayChart = chart;
+    }
     // New chart instance: force next data pass to use full setData sync.
     lastLengthRef.current = 0;
     lastTimeRef.current = null;
