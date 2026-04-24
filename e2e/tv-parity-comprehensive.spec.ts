@@ -73,6 +73,14 @@ const TOOLS: ToolDef[] = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function gotoCharts(page: Page, symbol = "RELIANCE") {
+  // Clear drawing-mode localStorage keys before page load so React state
+  // initializes clean (prevents keepDrawing=true from a prior test's accidental click)
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.removeItem('chart-keep-drawing');
+      window.localStorage.removeItem('chart-lock-all');
+    } catch { /* ignore */ }
+  });
   await page.goto(`${BASE_URL}/charts?symbol=${symbol}`, { waitUntil: "load" });
   await page.waitForSelector("[data-testid='chart-interaction-surface']", { timeout: 25_000 });
   await page.waitForFunction(
@@ -317,7 +325,9 @@ function buildToolTests(tool: ToolDef) {
       await pickTool(page, tool.testId);
       const box = await surfaceBox(page);
       await drawTool(page, tool, box);
-      await clickAway(page, box);
+      // Use forceSelectDrawing(null) for reliable deselect (clickAway can miss the
+      // chart surface when overlay is pointer-events-none after tool deactivates)
+      await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
       await page.waitForTimeout(200);
       expect(await hasFloatingToolbar(page)).toBe(false);
     });

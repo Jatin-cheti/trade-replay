@@ -920,8 +920,8 @@ export default function TradingChart({
     });
   }, [draftProgressRef, draftRef, drawingActiveRef]);
 
-  const exitDrawingModeIfNeeded = useCallback((variant: Exclude<ToolVariant, 'none'> | null) => {
-    if (keepDrawing || !variant) return;
+  const exitDrawingModeIfNeeded = useCallback((variant: Exclude<ToolVariant, 'none'> | null, force = false) => {
+    if ((keepDrawing && !force) || !variant) return;
     const definition = getToolDefinition(variant);
     setVariant(variant, definition?.category ?? 'lines');
   }, [keepDrawing, setVariant]);
@@ -3132,9 +3132,9 @@ export default function TradingChart({
       dragAnchorMoveRef.current = null;
       draftPointerStartRef.current = null;
       setDragAnchor(null);
-      // TV-parity: Escape cancels draft AND fully exits drawing mode
+      // TV-parity: Escape cancels draft AND fully exits drawing mode (ignores keepDrawing)
       if (wasDrawing) {
-        exitDrawingModeIfNeeded(lastDrawingVariantRef.current as Exclude<ToolVariant, 'none'> | null);
+        exitDrawingModeIfNeeded(lastDrawingVariantRef.current as Exclude<ToolVariant, 'none'> | null, true);
       }
       renderOverlay();
     };
@@ -3788,7 +3788,7 @@ export default function TradingChart({
     };
   }, [chartRef]);
 
-  const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser';
+  const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser' || selectedDrawingId !== null;
   const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];
 
   const onPointerUp = (event: React.PointerEvent<HTMLElement>) => {
