@@ -409,7 +409,7 @@ function buildToolTests(tool: ToolDef) {
       if (tool.commitStyle === "drag") {
         await page.mouse.up();
       }
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(400);
       const variant = await getActiveVariant(page);
       // If getActiveVariant not available (old bundle), skip assertion
       if (variant !== null) {
