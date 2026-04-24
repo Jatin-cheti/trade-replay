@@ -2405,13 +2405,18 @@ describe('Part 5: Stress & Device Parity (201-250)', () => {
 // ─── Tests: Part 6 — Always-on Brush Mode (setActive) — 251–300 ──────────────
 
 describe('Part 6: Always-on Brush Mode via setActive (251-300)', () => {
-  // Helper: pointer-event without Alt
+  // Helper: pointer-event WITH Alt (required by TradingView parity)
   const pdNoAlt = (x = 300, y = 200): Record<string, unknown> => ({
-    altKey: false, offsetX: x, offsetY: y, clientX: x, clientY: y, pointerId: 1,
+    altKey: true, offsetX: x, offsetY: y, clientX: x, clientY: y, pointerId: 1,
     button: 0, buttons: 1, preventDefault: () => {},
   });
   const pmNoAlt = (x = 310, y = 210): Record<string, unknown> => ({
+    altKey: true, offsetX: x, offsetY: y, clientX: x, clientY: y, pointerId: 1,
+  });
+  // Plain pointer-event (no Alt) — for tests that verify panning-not-drawing
+  const pdPlain = (x = 300, y = 200): Record<string, unknown> => ({
     altKey: false, offsetX: x, offsetY: y, clientX: x, clientY: y, pointerId: 1,
+    button: 0, buttons: 1, preventDefault: () => {},
   });
   function makeChartWithCanvas(w = 800, h = 600): {
     chart: IChartApi; canvas: MockCanvas; container: MockContainer;
@@ -2471,16 +2476,16 @@ describe('Part 6: Always-on Brush Mode via setActive (251-300)', () => {
 
   test('258. plain pointerdown (no Alt) does NOT draw when inactive', () => {
     const { chart, canvas } = makeChartWithCanvas();
-    canvas.fire('pointerdown', pdNoAlt());
+    canvas.fire('pointerdown', pdPlain());
     assert.equal(chart.demoCursor().strokeCount(), 0);
     chart.remove();
   });
 
-  test('259. plain pointerdown (no Alt) DOES draw when active', () => {
+  test('259. plain pointerdown (no Alt) does NOT draw even when setActive(true) — TV parity', () => {
     const { chart, canvas } = makeChartWithCanvas();
     chart.demoCursor().setActive(true);
-    canvas.fire('pointerdown', pdNoAlt());
-    assert.equal(chart.demoCursor().strokeCount(), 1);
+    canvas.fire('pointerdown', pdPlain());
+    assert.equal(chart.demoCursor().strokeCount(), 0);
     chart.remove();
   });
 
@@ -2507,13 +2512,14 @@ describe('Part 6: Always-on Brush Mode via setActive (251-300)', () => {
     chart.remove();
   });
 
-  test('262. deactivation stops further plain strokes', () => {
+  test('262. deactivation stops further Alt+drag strokes too', () => {
     const { chart, canvas } = makeChartWithCanvas();
     chart.demoCursor().setActive(true);
     canvas.fire('pointerdown', pdNoAlt(100, 100));
     canvas.fire('pointerup', pdNoAlt(100, 100));
     chart.demoCursor().setActive(false);
-    canvas.fire('pointerdown', pdNoAlt(200, 200));
+    // Plain click never draws regardless of setActive state
+    canvas.fire('pointerdown', pdPlain(200, 200));
     assert.equal(chart.demoCursor().strokeCount(), 1);
     chart.remove();
   });
@@ -2731,8 +2737,10 @@ describe('Part 6: Always-on Brush Mode via setActive (251-300)', () => {
     const a = makeChartWithCanvas();
     const b = makeChartWithCanvas();
     a.chart.demoCursor().setActive(true);
-    b.canvas.fire('pointerdown', pdNoAlt());
+    // Plain click on B never draws
+    b.canvas.fire('pointerdown', pdPlain());
     assert.equal(b.chart.demoCursor().strokeCount(), 0);
+    // Alt+click on A draws
     a.canvas.fire('pointerdown', pdNoAlt());
     assert.equal(a.chart.demoCursor().strokeCount(), 1);
     a.chart.remove();
@@ -2875,12 +2883,12 @@ describe('Part 6: Always-on Brush Mode via setActive (251-300)', () => {
     const s = chart.addSeries('Line');
     s.setData(makeLines(20));
     chart.timeScale().fitContent();
-    // User picks "Demonstration" cursor in the toolbar
+    // User picks "Demonstration" cursor in the toolbar (cosmetic cursor style)
     chart.demoCursor().setActive(true);
     chart.demoCursor().setColor('rgba(255, 80, 80, 1)');
     chart.demoCursor().setLineWidth(3);
     chart.demoCursor().setFadeDuration(3000);
-    // User draws 3 strokes
+    // User draws 3 Alt+drag strokes
     for (let stroke = 0; stroke < 3; stroke++) {
       canvas.fire('pointerdown', pdNoAlt(100 + stroke * 100, 200));
       for (let i = 1; i <= 10; i++) {
@@ -2889,12 +2897,12 @@ describe('Part 6: Always-on Brush Mode via setActive (251-300)', () => {
       canvas.fire('pointerup', pdNoAlt(150 + stroke * 100, 220));
     }
     assert.equal(chart.demoCursor().strokeCount(), 3);
+    // Plain click (no Alt) never draws, even while setActive(true)
+    canvas.fire('pointerdown', pdPlain(400, 400));
+    assert.equal(chart.demoCursor().strokeCount(), 3);
     // User switches back to arrow cursor
     chart.demoCursor().setActive(false);
     assert.equal(chart.demoCursor().isActive(), false);
-    // Plain drag no longer draws
-    canvas.fire('pointerdown', pdNoAlt(400, 400));
-    assert.equal(chart.demoCursor().strokeCount(), 3);
     chart.remove();
   });
 });

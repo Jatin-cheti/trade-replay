@@ -2920,8 +2920,11 @@ export function createChart(
     kineticLastClientX = e.clientX;
     kineticLastTs = Date.now();
 
-    // ── Demo cursor: Alt+click (or "Demonstration" cursor mode) starts a freehand drawing stroke ──
-    if ((e.altKey || demoCursorForceMode) && e.offsetX < cw()) {
+    // ── Demo cursor: Alt+click starts a freehand drawing stroke ──
+    // TradingView parity: Alt is ALWAYS required to draw. Plain click+drag
+    // (no Alt) always pans the chart, regardless of whether the "Demonstration"
+    // toolbar button is active. Releasing Alt mid-drag ends the stroke.
+    if (e.altKey && e.offsetX < cw()) {
       e.preventDefault();
       demoCursorActive = true;
       const stroke: DemoStroke = {
@@ -3137,11 +3140,11 @@ export function createChart(
   }
   function onKeyUp(e: KeyboardEvent): void {
     if (e.key === 'Alt') {
-      // Keep crosshair if toolbar demo mode is force-active; otherwise restore default.
       canvas.style.cursor = demoCursorForceMode ? 'crosshair' : '';
-      // If Alt released mid-stroke AND stroke was started via Alt (not force mode),
-      // end it immediately. TradingView behaviour: releasing Alt stops the brush.
-      if (demoCursorActive && !demoCursorForceMode) {
+      // TradingView parity: releasing Alt ALWAYS ends the brush stroke,
+      // even if the toolbar "Demonstration" mode is on. Drawing requires
+      // Alt throughout the entire gesture.
+      if (demoCursorActive) {
         demoCursorActive = false;
         if (demoStrokes.length > 0) {
           const stroke = demoStrokes[demoStrokes.length - 1];

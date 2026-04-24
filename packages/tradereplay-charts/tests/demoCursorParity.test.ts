@@ -326,38 +326,36 @@ describe('Part 3: setActive + force/Alt interaction (151-250)', () => {
     assert.equal(canvas.style.cursor, '');
     chart.remove();
   });
-  // Pointer-down in force mode draws without Alt
+  // Pointer-down with plain click (no Alt) should NEVER draw, even in force mode.
+  // TradingView parity: Alt is required for every brush gesture.
   for (let i = 155; i <= 180; i++) {
     const x = (i - 155) * 20 + 10;
-    test(`${i}. Force mode: plain pointerdown (no Alt) at x=${x} starts stroke`, () => {
+    test(`${i}. Force mode: plain pointerdown (no Alt) at x=${x} does NOT draw`, () => {
       const { chart, canvas } = makeChart();
       chart.demoCursor().setActive(true);
       canvas.fire('pointerdown', { altKey: false, offsetX: x, offsetY: 50, clientX: x, clientY: 50, pointerId: 1, preventDefault() {} });
-      assert.equal(chart.demoCursor().strokeCount(), 1);
+      assert.equal(chart.demoCursor().strokeCount(), 0);
       chart.remove();
     });
   }
-  // Alt keyup does NOT cancel force-mode strokes
+  // Alt+pointerdown DOES draw regardless of force-mode state
   for (let i = 181; i <= 200; i++) {
-    test(`${i}. Force-mode stroke NOT cancelled by Alt keyup (run ${i - 180})`, () => {
+    test(`${i}. Alt+pointerdown always draws (run ${i - 180})`, () => {
       const { chart, canvas } = makeChart();
       chart.demoCursor().setActive(true);
-      canvas.fire('pointerdown', { altKey: false, offsetX: 10, offsetY: 10, clientX: 10, clientY: 10, pointerId: 1, preventDefault() {} });
-      fireWindow('keyup', { key: 'Alt' });
-      // Force stroke was active, still alive
+      canvas.fire('pointerdown', { altKey: true, offsetX: 10, offsetY: 10, clientX: 10, clientY: 10, pointerId: 1, preventDefault() {} });
       assert.equal(chart.demoCursor().strokeCount(), 1);
       chart.remove();
     });
   }
-  // Alt release cancels Alt-mode strokes
+  // Alt release finalizes the stroke (fading but still counted until fully gone)
   for (let i = 201; i <= 225; i++) {
     test(`${i}. Alt-mode stroke finalized on Alt keyup (run ${i - 200})`, () => {
       const { chart, canvas } = makeChart();
       canvas.fire('pointerdown', { altKey: true, offsetX: 15, offsetY: 15, clientX: 15, clientY: 15, pointerId: 1, preventDefault() {} });
-      // Stroke exists while alt held
       assert.equal(chart.demoCursor().strokeCount(), 1);
       fireWindow('keyup', { key: 'Alt' });
-      // Still exists (fading), but endTime set → still counted until fully faded
+      // Still counted (fading) until fully faded
       assert.equal(chart.demoCursor().strokeCount(), 1);
       chart.remove();
     });
