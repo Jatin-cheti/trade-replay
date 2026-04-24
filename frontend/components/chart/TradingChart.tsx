@@ -473,10 +473,6 @@ export default function TradingChart({
   // brush regardless of the active tool, and releasing Alt stops the brush.
   const altHeldRef = useRef(false);
   const [altHeld, setAltHeld] = useState(false);
-  // True while the overlay is driving a programmatic demo-cursor stroke.
-  // When true, overlay onPointerMove/onPointerUp forwards to the chart lib
-  // instead of editing drawings.
-  const altStrokeActiveRef = useRef(false);
 
   // ── Countdown timer to next candle on X-axis (ref-based, no re-renders) ─
   const countdownDivRef = useRef<HTMLDivElement>(null);
@@ -3149,25 +3145,13 @@ export default function TradingChart({
       dragAnchorMoveRef.current = null;
 
       // ── Alt+drag anywhere → demo cursor brush (TradingView parity) ──
-      // Takes absolute precedence over every other tool/action: if the user
-      // holds Alt when clicking, we start a brush stroke and swallow the
-      // pointerdown so active drawing tools, selection, eraser, etc. do NOT
-      // fire. This matches TradingView exactly.
+      // The library's canvas-level pointerdown handler natively owns the
+      // Alt+drag gesture (start, extend, end). We intentionally DO NOT
+      // invoke demoCursor().beginStroke here: doing so would double-fire
+      // (once from canvas native, once from this React surface) and create
+      // duplicate strokes. Just swallow the event so active tools / selection
+      // / eraser do not react to an Alt-modified click.
       if (event.altKey || altHeldRef.current) {
-        const chart = chartRef.current;
-        const container = chartContainerRef.current;
-        if (chart && typeof chart.demoCursor === 'function' && container) {
-          const rect = container.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const y = event.clientY - rect.top;
-          try {
-            chart.demoCursor().beginStroke(x, y);
-            altStrokeActiveRef.current = true;
-            if (event.currentTarget.setPointerCapture) {
-              event.currentTarget.setPointerCapture(event.pointerId);
-            }
-          } catch { /* noop */ }
-        }
         event.preventDefault();
         return;
       }
@@ -3394,16 +3378,10 @@ export default function TradingChart({
   const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
     const startedAt = performance.now();
     try {
-      // Alt-driven demo stroke in flight → forward to library, skip drawing logic.
-      if (altStrokeActiveRef.current) {
-        const chart = chartRef.current;
-        const container = chartContainerRef.current;
-        if (chart && typeof chart.demoCursor === 'function' && container) {
-          const rect = container.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const y = event.clientY - rect.top;
-          try { chart.demoCursor().extendStroke(x, y); } catch { /* noop */ }
-        }
+      // Alt-driven demo stroke: handled natively by the library on the canvas.
+      // We still bail out here so drawing/hover logic does not interfere while
+      // an Alt gesture is in progress.
+      if (event.altKey || altHeldRef.current) {
         return;
       }
       const isEditingDrawing = Boolean(dragMoveRef.current || dragAnchor || dragAnchorMoveRef.current || drawingActiveRef.current);
@@ -3615,19 +3593,12 @@ export default function TradingChart({
         altHeldRef.current = false;
         setAltHeld(false);
         // If we were driving a stroke via the overlay, finalize it now.
-        if (altStrokeActiveRef.current) {
-          try { chartRef.current?.demoCursor?.().endStroke(); } catch { /* noop */ }
-          altStrokeActiveRef.current = false;
-        }
+        // Library's native window keyup finalizes any in-flight stroke.
       }
     };
     const onBlur = () => {
       altHeldRef.current = false;
       setAltHeld(false);
-      if (altStrokeActiveRef.current) {
-        try { chartRef.current?.demoCursor?.().endStroke(); } catch { /* noop */ }
-        altStrokeActiveRef.current = false;
-      }
     };
     window.addEventListener('keydown', onGlobalKeyDown);
     window.addEventListener('keyup', onGlobalKeyUp);
@@ -3648,10 +3619,9 @@ export default function TradingChart({
       if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
-      // Alt-driven demo stroke in flight → finalize and bail.
-      if (altStrokeActiveRef.current) {
-        try { chartRef.current?.demoCursor?.().endStroke(); } catch { /* noop */ }
-        altStrokeActiveRef.current = false;
+      // Alt-driven demo stroke: library's canvas native pointerup handles
+      // finalization. Just bail so selection/drag logic does not fire.
+      if (event.altKey || altHeldRef.current) {
         return;
       }
       if (dragMoveRef.current) {
