@@ -2907,6 +2907,7 @@ export default function TradingChart({
     selectedDrawingId,
     toolState.history.length,
     toolState.options,
+    toolState.variant,
     transformedData.ohlcRows,
     transformedData.times,
     updateAllDrawings,
