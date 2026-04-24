@@ -438,6 +438,24 @@ export default function TradingChart({
     setSelectedIconPreset(null);
   }, [toolState.variant]);
 
+  // Disable chart's built-in click-drag panning while a drawing tool is active so
+  // that pointer events routed to our overlay don't leave the chart library in a
+  // stuck "pressed-mouse-move" state (cursor would otherwise pan the chart after
+  // a line is committed). Re-enable when tool returns to 'none'.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const drawingActive = toolState.variant !== 'none';
+    chart.applyOptions({
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: !drawingActive,
+        horzTouchDrag: !drawingActive,
+        vertTouchDrag: false,
+      },
+    });
+  }, [toolState.variant]);
+
   // Last price sticky badge — positioned via priceToCoordinate (createPriceLine not available)
   const [lastPriceBadge, setLastPriceBadge] = useState<{ y: number; price: number; isUp: boolean } | null>(null);
   useEffect(() => {
@@ -2503,6 +2521,76 @@ export default function TradingChart({
 
       if (draftRef.current) drawTool(draftRef.current, true);
 
+      /* ── TV-parity axis highlight for the selected drawing ─────────────
+         Paints a light-blue band on the price-axis gutter (Y-range) and/or
+         time-axis gutter (X-range) covered by the currently selected line.
+         The band updates with move/anchor drags and disappears on deselect
+         or when the drawing is hidden. Mirrors TradingView behavior. */
+      const axisHighlightColor = 'rgba(33, 150, 243, 0.22)';
+      if (selectedDrawingId) {
+        const selected = drawingsRef.current.find((d) => d.id === selectedDrawingId);
+        if (selected && selected.visible !== false && selected.options.visible !== false && selected.anchors.length) {
+          const anchorsForHighlight = moveState?.drawingId === selected.id
+            ? translateAnchors(moveState.originalAnchors, moveState.startPoint, moveState.currentPoint)
+            : anchorMoveState?.drawingId === selected.id
+              ? (() => {
+                  const next = anchorMoveState.originalAnchors.map((a) => ({ ...a }));
+                  next[anchorMoveState.anchorIndex] = anchorMoveState.currentPoint;
+                  return next;
+                })()
+              : selected.anchors;
+          const pts = anchorsForHighlight.map(toXY).filter(Boolean) as Array<{ x: number; y: number }>;
+          if (pts.length) {
+            const priceAxisWidth = (() => {
+              try { return chartRef.current?.priceScale('right').width() ?? 0; } catch { return 0; }
+            })();
+            const timeAxisHeight = (() => {
+              try { return chartRef.current?.timeScale().height() ?? 0; } catch { return 0; }
+            })();
+            const plotW = cssWidth - priceAxisWidth;
+            const plotH = cssHeight - timeAxisHeight;
+
+            const variant = selected.variant;
+            // Determine xRange / yRange per variant
+            let xRange: [number, number] | null = null;
+            let yRange: [number, number] | null = null;
+
+            if (variant === 'hline' || variant === 'horizontalRay') {
+              yRange = [pts[0].y, pts[0].y];
+              xRange = variant === 'horizontalRay' && pts.length >= 2
+                ? [Math.min(pts[0].x, pts[1].x), Math.max(pts[0].x, pts[1].x)]
+                : null; // full-width hline: no x-band
+            } else if (variant === 'vline' || variant === 'crossLine') {
+              xRange = [pts[0].x, pts[0].x];
+              yRange = variant === 'crossLine' ? [pts[0].y, pts[0].y] : null;
+            } else {
+              const xs = pts.map((p) => p.x);
+              const ys = pts.map((p) => p.y);
+              xRange = [Math.min(...xs), Math.max(...xs)];
+              yRange = [Math.min(...ys), Math.max(...ys)];
+            }
+
+            ctx.save();
+            ctx.fillStyle = axisHighlightColor;
+            // Time-axis (bottom) band for X range
+            if (xRange && timeAxisHeight > 0) {
+              const x0 = Math.max(0, Math.min(plotW, xRange[0]));
+              const x1 = Math.max(0, Math.min(plotW, xRange[1]));
+              const bandW = Math.max(1, x1 - x0);
+              ctx.fillRect(x0, plotH, bandW, timeAxisHeight);
+            }
+            // Price-axis (right) band for Y range
+            if (yRange && priceAxisWidth > 0) {
+              const y0 = Math.max(0, Math.min(plotH, yRange[0]));
+              const y1 = Math.max(0, Math.min(plotH, yRange[1]));
+              const bandH = Math.max(1, y1 - y0);
+              ctx.fillRect(plotW, y0, priceAxisWidth, bandH);
+            }
+            ctx.restore();
+          }
+        }
+      }
+
       getGlobalPerfTelemetry()?.record('overlay', performance.now() - overlayStart);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3441,6 +3529,22 @@ export default function TradingChart({
       const committed = finalizeDraft();
       const start = draftPointerStartRef.current;
       draftPointerStartRef.current = null;
+      // Dispatch a synthetic mouseup/pointerup to the chart library's canvas so
+      // any drag state it entered on pointerdown is cleared. Without this, the
+      // chart pans with the cursor after we commit a drawing (see regression).
+      if (committed) {
+        const container = chartContainerRef.current;
+        const target = container?.querySelector('canvas') as HTMLElement | null;
+        if (target) {
+          try {
+            target.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true, cancelable: true,
+              clientX: event.clientX, clientY: event.clientY,
+              button: 0,
+            }));
+          } catch { /* no-op */ }
+        }
+      }
       if (committed && start && committed.variant === start.variant) {
         const pointerDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
         if (pointerDistance < 3) {
