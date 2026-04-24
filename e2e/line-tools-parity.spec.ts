@@ -159,7 +159,10 @@ async function blueishCountAt(page: Page, x: number, y: number, w: number, h: nu
         const g = img.data[i + 1];
         const b = img.data[i + 2];
         const a = img.data[i + 3];
-        if (a > 8 && b > 50 && b > r + 20 && b > g + 5 && r < 140) blue++;
+        // Axis highlight BAND is painted with rgba(33,150,243,0.22) so alpha lands
+        // around 56. Opaque drawing strokes (alpha=255) and anti-aliased stroke edges
+        // must not be counted as band, so we use a tight alpha window.
+        if (a > 40 && a < 80 && b > 50 && b > r + 20 && b > g + 5 && r < 140) blue++;
       }
       return blue;
     },
@@ -246,10 +249,11 @@ for (const c of CASES) {
       const plotRight = ov.x + ov.width - dims.priceAxisWidth;
       const yBand = await blueishCountAt(page, plotRight + 2, ov.y, dims.priceAxisWidth - 4, ov.height - dims.timeAxisHeight - 4);
       void anchor;
-      // Some drawings (hline) render across the full width and may spill a few stroke
-      // pixels into the gutter. The axis HIGHLIGHT band is >100 px when selected, so we
-      // assert a low threshold to prove the band is cleared.
-      expect(yBand).toBeLessThan(50);
+      // Some drawings (hline, horizontalRay) render a horizontal stroke that passes
+      // through the right gutter; AA pixels on the stroke's top/bottom edges can land
+      // in the band's alpha window. The SELECTED band is >=544 pixels (8px × 68px
+      // gutter), so anything <200 proves the band is cleared.
+      expect(yBand).toBeLessThan(200);
     });
 
     test("hiding all drawings clears the axis highlight", async ({ page }) => {
@@ -270,7 +274,7 @@ for (const c of CASES) {
       const yBand = await blueishCountAt(page, plotRight + 2, ov.y, dims.priceAxisWidth - 4, ov.height - dims.timeAxisHeight - 4);
       void anchor;
       void box;
-      expect(yBand).toBeLessThan(50);
+      expect(yBand).toBeLessThan(200);
     });
   });
 }
