@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { Dialog, DialogOverlay, DialogPortal } from '@/components/ui/dialog';
 import type { ToolOptions } from '@/services/tools/toolOptions';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -88,12 +88,35 @@ export default function ChartPromptModal({ request, onConfirm, onCancel, portalZ
     [handleSubmit, onCancel],
   );
 
-  if (!request) return null;
+  // Global Escape handler — works even when focus leaves input
+  useEffect(() => {
+    if (!request) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [request, onCancel]);
 
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogPortal>
-        <DialogOverlay className="bg-black/60" style={{ zIndex: portalZIndex }} />
+  if (!request) return null;
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    (
+      <>
+        <div
+          className="fixed inset-0 bg-black/60"
+          style={{ zIndex: portalZIndex }}
+          onClick={onCancel}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+        />
         <div
           data-testid="chart-prompt-modal"
           className="fixed inset-0 flex items-center justify-center p-4"
@@ -105,7 +128,7 @@ export default function ChartPromptModal({ request, onConfirm, onCancel, portalZ
           onMouseUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.stopPropagation()}
-          onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="w-full max-w-sm rounded-xl border border-primary/25 bg-background shadow-2xl shadow-black/60">
             {/* Header */}
@@ -209,7 +232,8 @@ export default function ChartPromptModal({ request, onConfirm, onCancel, portalZ
             </div>
           </div>
         </div>
-      </DialogPortal>
-    </Dialog>
+      </>
+    ),
+    document.body,
   );
 }
