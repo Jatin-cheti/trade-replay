@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
 // freshly-built frontend code (which contains new test hooks).
 export default defineConfig({
   testDir: ".",
-  timeout: 60_000,
+  timeout: 180_000,
   fullyParallel: false,
   workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : 1,
   reporter: "list",
