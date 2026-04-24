@@ -338,6 +338,8 @@ export default function TradingChart({
   // Position of the first click (client coords) for click-click drawing, used
   // to decide if a pointerup is a drag-commit vs a click-release-stay-in-draft.
   const clickClickStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Floating drawing toolbar projected bbox (client coords).
+  const toolbarAnchorRef = useRef<FloatingToolbarAnchor>(null);
   const touchTooltipTimerRef = useRef<number | null>(null);
   const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -3931,7 +3933,6 @@ export default function TradingChart({
 
   /* ── Floating drawing toolbar (TV-parity) ──────────────────────────── */
   const [toolbarAnchor, setToolbarAnchor] = useState<FloatingToolbarAnchor>(null);
-  const toolbarAnchorRef = useRef<FloatingToolbarAnchor>(null);
   useEffect(() => { toolbarAnchorRef.current = toolbarAnchor; }, [toolbarAnchor]);
   // Bump `toolbarTick` whenever something that affects the projected bbox
   // changes (pan/zoom/resize/drawing move) so the memoized anchor recomputes.
