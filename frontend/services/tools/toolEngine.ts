@@ -159,6 +159,18 @@ export function isPointOnlyVariant(variant: ToolVariant): boolean {
   return Boolean(def && def.capabilities.anchors <= 1);
 }
 
+// TV-parity: variants that use CLICK-CLICK drawing (click once to start, move
+// freely with no button pressed, click again to finish). Applies to 2-anchor
+// "line" family tools. Point-only (hline/vline/crossLine/horizontalRay) commit
+// on the single click; pattern/wizard (>=3 anchors) use multi-click via the
+// existing wizard pathway in useTools.
+export function isClickClickVariant(variant: ToolVariant): boolean {
+  const def = getToolDefinition(variant);
+  if (!def) return false;
+  if (def.family !== 'line') return false;
+  return def.capabilities.anchors === 2;
+}
+
 export function createDrawing(variant: Exclude<ToolVariant, 'none'>, options: ToolOptions, p1: DrawPoint, p2?: DrawPoint, text?: string): Drawing {
   const definition = getToolDefinition(variant);
   const anchorCount = definition?.capabilities.anchors ?? 2;

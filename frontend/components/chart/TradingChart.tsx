@@ -12,6 +12,7 @@ import {
   createDrawing,
   DrawingSpatialIndex,
   getHitTestTelemetrySnapshot,
+  isClickClickVariant,
   isPointOnlyVariant,
   isWizardVariant,
   nearestCandleIndex,
@@ -329,6 +330,10 @@ export default function TradingChart({
   const pendingTextVariantRef = useRef<Exclude<ToolVariant, 'none'> | null>(null);
   const editingDrawingIdRef = useRef<string | null>(null);
   const draftPointerStartRef = useRef<{ x: number; y: number; variant: Exclude<ToolVariant, 'none'> } | null>(null);
+  // TV-parity click-click draw phase. 0 = idle/first-click, 1 = awaiting
+  // second click to finalize a 2-anchor line. Reset on tool change, Escape,
+  // or commit.
+  const clickClickPhaseRef = useRef(0);
   const touchTooltipTimerRef = useRef<number | null>(null);
   const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -391,6 +396,11 @@ export default function TradingChart({
   useEffect(() => {
     if (toolState.variant === 'emoji' || toolState.variant === 'sticker' || toolState.variant === 'iconTool') return;
     setSelectedIconPreset(null);
+  }, [toolState.variant]);
+
+  // Reset click-click draw phase whenever the active tool changes.
+  useEffect(() => {
+    clickClickPhaseRef.current = 0;
   }, [toolState.variant]);
 
   // Disable chart's built-in click-drag panning while a drawing tool is active so
@@ -2607,6 +2617,25 @@ export default function TradingChart({
           return null;
         }
       },
+      getClickClickPhase: () => clickClickPhaseRef.current,
+      getDraftVariant: () => draftRef.current?.variant ?? null,
+      getDraftAnchorsClient: () => {
+        const chart = chartRef.current;
+        const series = getActiveSeries();
+        const overlay = overlayRef.current;
+        const draft = draftRef.current;
+        if (!chart || !series || !overlay || !draft) return null;
+        const rect = overlay.getBoundingClientRect();
+        const pts = draft.anchors
+          .map((a) => {
+            const x = chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+            const y = series.priceToCoordinate(a.price);
+            if (x == null || y == null) return null;
+            return { x: rect.left + x, y: rect.top + y };
+          })
+          .filter((p): p is { x: number; y: number } => Boolean(p));
+        return { variant: draft.variant, anchors: pts };
+      },
       scrollToPosition: (position: number) => {
         chartRef.current?.timeScale().scrollToPosition(position, false);
         return chartRef.current?.timeScale().scrollPosition() ?? null;
@@ -2937,6 +2966,7 @@ export default function TradingChart({
       if (event.key !== 'Escape') return;
       if (!drawingActiveRef.current && !dragMoveRef.current && !dragAnchorMoveRef.current && !dragAnchor) return;
       cancelDraft();
+      clickClickPhaseRef.current = 0;
       setPatternWizardHint(null);
       dragMoveRef.current = null;
       dragAnchorMoveRef.current = null;
@@ -3244,6 +3274,31 @@ export default function TradingChart({
 
       const text = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText ? '' : undefined;
       const activeVariant = toolState.variant as Exclude<ToolVariant, 'none'>;
+
+      // TV-parity click-click mode: for 2-anchor line tools, the FIRST click
+      // starts the draft; a SECOND click (on a non-touch device) commits it.
+      // Between clicks the cursor moves freely updating anchor[1] without any
+      // button pressed.
+      const useClickClick = event.pointerType !== 'touch' && isClickClickVariant(activeVariant);
+      if (useClickClick && clickClickPhaseRef.current === 1 && drawingActiveRef.current && draftRef.current?.variant === activeVariant) {
+        // Second click: set final anchor[1] to clicked point, then commit.
+        updateDraft(point);
+        const committed = finalizeDraft();
+        clickClickPhaseRef.current = 0;
+        draftPointerStartRef.current = null;
+        setPatternWizardHint(null);
+        if (committed) {
+          setSelectedDrawingId(committed.id);
+          setHoveredDrawingId(committed.id);
+          exitDrawingModeIfNeeded(committed.variant);
+        }
+        renderOverlay();
+        if (event.currentTarget.setPointerCapture) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
+        return;
+      }
+
       if (!isPointOnlyVariant(activeVariant) && !isWizardVariant(activeVariant)) {
         draftPointerStartRef.current = { x: event.clientX, y: event.clientY, variant: activeVariant };
       } else {
@@ -3251,6 +3306,14 @@ export default function TradingChart({
       }
       const result = startDraft(point, text);
       syncPatternWizardHint();
+      if (useClickClick && result.kind === 'draft') {
+        // First click established; mark phase=1 so pointerup won't finalize
+        // and the next pointerdown will.
+        clickClickPhaseRef.current = 1;
+        // Suppress the "short drag → treat as misclick and delete" guard:
+        // click-click legitimately has zero drag distance on pointerup.
+        draftPointerStartRef.current = null;
+      }
       if (result.kind === 'finalized') {
         draftPointerStartRef.current = null;
         setPatternWizardHint(null);
@@ -3513,6 +3576,13 @@ export default function TradingChart({
 
       if (drawingActiveRef.current && draftRef.current && isWizardVariant(draftRef.current.variant)) {
         syncPatternWizardHint();
+        renderOverlay();
+        return;
+      }
+
+      // TV-parity: for click-click line tools, the first pointerup must NOT
+      // commit the drawing. The second pointerdown commits it (see onPointerDown).
+      if (clickClickPhaseRef.current === 1 && drawingActiveRef.current && draftRef.current && isClickClickVariant(draftRef.current.variant)) {
         renderOverlay();
         return;
       }
