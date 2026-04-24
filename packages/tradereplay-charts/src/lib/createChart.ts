@@ -2924,7 +2924,9 @@ export function createChart(
     // TradingView parity: Alt is ALWAYS required to draw. Plain click+drag
     // (no Alt) always pans the chart, regardless of whether the "Demonstration"
     // toolbar button is active. Releasing Alt mid-drag ends the stroke.
-    if (e.altKey && e.offsetX < cw()) {
+    // Exclude the price-axis strip (right) AND the time-axis strip (bottom):
+    // TradingView does not draw on either axis when Alt is held.
+    if (e.altKey && e.offsetX < cw() && e.offsetY < ch()) {
       e.preventDefault();
       demoCursorActive = true;
       const stroke: DemoStroke = {
