@@ -13,6 +13,7 @@ import type {
   HandleDescriptor,
   IDrawingTool,
   Viewport,
+  AxisHighlight,
 } from '../types.ts';
 import { DEFAULT_DRAWING_OPTIONS } from '../types.ts';
 import {
@@ -87,6 +88,21 @@ export abstract class BaseTool implements IDrawingTool {
       radius: 5,
       active: false,
     }));
+  }
+
+  /**
+   * Default axis-highlight: covers the bounding box of the first two anchors.
+   * Individual tools override this (HLine: yRange only; VLine: xRange only;
+   * Ray/Trend with extend flags: expand to canvas edges).
+   */
+  getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (drawing.anchors.length < 2) return null;
+    const a = dataToScreen(drawing.anchors[0], viewport);
+    const b = dataToScreen(drawing.anchors[1], viewport);
+    return {
+      xRange: [Math.min(a.x, b.x), Math.max(a.x, b.x)],
+      yRange: [Math.min(a.y, b.y), Math.max(a.y, b.y)],
+    };
   }
 
   render(

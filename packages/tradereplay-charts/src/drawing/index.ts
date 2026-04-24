@@ -21,6 +21,8 @@ export type {
   IDrawingTool,
 } from './types.ts';
 
+export type { AxisHighlight } from './types.ts';
+
 export { DrawingState, DEFAULT_DRAWING_OPTIONS } from './types.ts';
 
 // ─── Geometry utilities ───────────────────────────────────────────────────────

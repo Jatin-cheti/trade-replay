@@ -16,6 +16,7 @@ import type {
   HandleDescriptor,
   Viewport,
   DrawingOptions,
+  AxisHighlight,
 } from '../types.ts';
 import { DrawingState, DEFAULT_DRAWING_OPTIONS } from '../types.ts';
 import type { IDrawingTool } from '../types.ts';
@@ -384,6 +385,61 @@ export class DrawingEngine {
     // Render draft preview
     if (this._draft && this._activeTool) {
       this._activeTool.renderPreview(ctx, this._draft, viewport);
+    }
+
+    // Render axis highlight for the selected drawing (TV parity)
+    const highlight = this.getSelectedAxisHighlight(viewport);
+    if (highlight) {
+      this.renderAxisHighlight(ctx, viewport, highlight);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Get the axis highlight for the currently selected drawing.
+   * Returns null if no drawing is selected, the selected drawing is hidden,
+   * or the tool does not implement getAxisHighlight.
+   *
+   * TV parity: light-blue bands on the time/price axes appear only while a
+   * drawing is selected; they disappear as soon as selection changes or is cleared.
+   */
+  getSelectedAxisHighlight(viewport: Viewport): AxisHighlight | null {
+    if (!this._selectedId) return null;
+    const drawing = this._drawings.find((d) => d.id === this._selectedId);
+    if (!drawing || !drawing.visible) return null;
+    const tool = this._toolRegistry.get(drawing.variant);
+    if (!tool || typeof tool.getAxisHighlight !== 'function') return null;
+    return tool.getAxisHighlight(drawing, viewport);
+  }
+
+  /**
+   * Render the light-blue axis highlight bands for the selected drawing.
+   * - X-band painted on the time axis (bottom strip of height `timeAxisHeight`)
+   * - Y-band painted on the price axis (right strip of width `priceAxisWidth`)
+   */
+  renderAxisHighlight(
+    ctx: CanvasRenderingContext2D,
+    viewport: Viewport,
+    highlight: AxisHighlight,
+    color: string = 'rgba(33, 150, 243, 0.25)',
+  ): void {
+    const plotW = viewport.width - viewport.priceAxisWidth;
+    const plotH = viewport.height - viewport.timeAxisHeight;
+    ctx.save();
+    ctx.fillStyle = color;
+
+    if (highlight.xRange) {
+      const [x0, x1] = highlight.xRange;
+      const w = Math.max(1, x1 - x0);
+      // Band on the time axis (bottom strip)
+      ctx.fillRect(x0, plotH, w, viewport.timeAxisHeight);
+    }
+    if (highlight.yRange) {
+      const [y0, y1] = highlight.yRange;
+      const h = Math.max(1, y1 - y0);
+      // Band on the price axis (right strip)
+      ctx.fillRect(plotW, y0, viewport.priceAxisWidth, h);
     }
 
     ctx.restore();

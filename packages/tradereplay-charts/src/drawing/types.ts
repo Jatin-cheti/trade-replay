@@ -187,6 +187,23 @@ export interface HitResult {
   distancePx: number;
 }
 
+/**
+ * Axis highlight ranges for a selected drawing.
+ *
+ * TV parity: when a drawing is selected, light-blue bands appear on:
+ * - the time (X) axis covering the horizontal pixel range spanned by the drawing
+ * - the price (Y) axis covering the vertical pixel range spanned by the drawing
+ *
+ * Either range can be null if the drawing does not bound that axis
+ * (e.g., HorizontalLine has no xRange, VerticalLine has no yRange).
+ */
+export interface AxisHighlight {
+  /** Pixel range [start, end] on the X (time) axis, or null if drawing is horizontally infinite. */
+  xRange: [number, number] | null;
+  /** Pixel range [start, end] on the Y (price) axis, or null if drawing is vertically infinite. */
+  yRange: [number, number] | null;
+}
+
 /** Handle descriptor for rendering interactive anchor handles. */
 export interface HandleDescriptor {
   /** Anchor index this handle corresponds to. */
@@ -250,6 +267,12 @@ export interface IDrawingTool {
    * Called every pointer-move while state = PREVIEW.
    */
   renderPreview(ctx: CanvasRenderingContext2D, draft: Drawing, viewport: Viewport): void;
+
+  /**
+   * Optional: compute axis highlight ranges for this drawing (TV parity).
+   * Returns null if the tool does not produce axis highlights.
+   */
+  getAxisHighlight?(drawing: Drawing, viewport: Viewport): AxisHighlight | null;
 }
 
 /** Default drawing options for new drawings. */

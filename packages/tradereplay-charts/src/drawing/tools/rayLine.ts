@@ -7,7 +7,7 @@
  * - Price label at origin anchor
  */
 
-import type { Drawing, HandleDescriptor, Viewport } from '../types.ts';
+import type { Drawing, HandleDescriptor, Viewport, AxisHighlight } from '../types.ts';
 import {
   dataToScreen,
   distanceToSegment,
@@ -103,5 +103,21 @@ export class RayLineTool extends BaseTool {
         active: false,
       },
     ];
+  }
+
+  /**
+   * RayLine axis-highlight: from origin anchor out to the clipped endpoint.
+   */
+  override getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (drawing.anchors.length < 2) return null;
+    const a = dataToScreen(drawing.anchors[0], viewport);
+    const b = dataToScreen(drawing.anchors[1], viewport);
+    const w = viewport.width - viewport.priceAxisWidth;
+    const h = viewport.height - viewport.timeAxisHeight;
+    const end = rayEndpoint(a, b, w, h);
+    return {
+      xRange: [Math.min(a.x, end.x), Math.max(a.x, end.x)],
+      yRange: [Math.min(a.y, end.y), Math.max(a.y, end.y)],
+    };
   }
 }

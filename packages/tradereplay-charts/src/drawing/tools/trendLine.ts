@@ -17,6 +17,7 @@ import type {
   HandleDescriptor,
   DrawingOptions,
   Viewport,
+  AxisHighlight,
 } from '../types.ts';
 import {
   dataToScreen,
@@ -149,5 +150,28 @@ export class TrendLineTool extends BaseTool {
       radius: 5,
       active: false,
     }));
+  }
+
+  /**
+   * TrendLine axis-highlight: covers the pixel range between endpoints.
+   * Extends to canvas edges when extendLeft/extendRight flags are set.
+   */
+  override getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (drawing.anchors.length < 2) return null;
+    const a = dataToScreen(drawing.anchors[0], viewport);
+    const b = dataToScreen(drawing.anchors[1], viewport);
+    const w = viewport.width - viewport.priceAxisWidth;
+    const h = viewport.height - viewport.timeAxisHeight;
+    const { extendLeft = false, extendRight = false } = drawing.options;
+
+    let start = a;
+    let end = b;
+    if (extendRight) end = rayEndpoint(a, b, w, h);
+    if (extendLeft) start = reverseRayEndpoint(a, b, w, h);
+
+    return {
+      xRange: [Math.min(start.x, end.x), Math.max(start.x, end.x)],
+      yRange: [Math.min(start.y, end.y), Math.max(start.y, end.y)],
+    };
   }
 }

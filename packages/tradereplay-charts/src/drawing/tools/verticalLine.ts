@@ -8,7 +8,7 @@
  * - Hit test: within 6px horizontally
  */
 
-import type { Drawing, DrawPoint, HandleDescriptor, DrawingOptions, Viewport } from '../types.ts';
+import type { Drawing, DrawPoint, HandleDescriptor, DrawingOptions, Viewport, AxisHighlight } from '../types.ts';
 import { DEFAULT_DRAWING_OPTIONS } from '../types.ts';
 import { dataToScreen, applyLineStyle } from '../geometry.ts';
 
@@ -105,5 +105,15 @@ export class VerticalLineTool {
     ctx.globalAlpha = 0.85;
     this.render(ctx, draft, viewport, false, false);
     ctx.restore();
+  }
+
+  /**
+   * VerticalLine axis-highlight: only bounds X (single time).
+   * yRange is null because the line extends full canvas height.
+   */
+  getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (!drawing.anchors[0]) return null;
+    const a = dataToScreen(drawing.anchors[0], viewport);
+    return { xRange: [a.x, a.x], yRange: null };
   }
 }

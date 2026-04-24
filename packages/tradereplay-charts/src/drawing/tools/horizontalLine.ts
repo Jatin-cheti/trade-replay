@@ -8,7 +8,7 @@
  * - Hit test: within 6px vertically
  */
 
-import type { Drawing, DrawPoint, HandleDescriptor, DrawingOptions, Viewport } from '../types.ts';
+import type { Drawing, DrawPoint, HandleDescriptor, DrawingOptions, Viewport, AxisHighlight } from '../types.ts';
 import { DEFAULT_DRAWING_OPTIONS } from '../types.ts';
 import { dataToScreen, applyLineStyle, drawPriceLabel } from '../geometry.ts';
 
@@ -105,5 +105,15 @@ export class HorizontalLineTool {
     ctx.globalAlpha = 0.85;
     this.render(ctx, draft, viewport, false, false);
     ctx.restore();
+  }
+
+  /**
+   * HorizontalLine axis-highlight: only bounds Y (single price level).
+   * xRange is null because the line extends full canvas width.
+   */
+  getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (!drawing.anchors[0]) return null;
+    const a = dataToScreen(drawing.anchors[0], viewport);
+    return { xRange: null, yRange: [a.y, a.y] };
   }
 }
