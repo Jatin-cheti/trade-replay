@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { ArrowLeft, Maximize2, Minimize2, Search } from "lucide-react";
 import { toast } from "sonner";
+import { resolutionToSeconds } from "@tradereplay/charts";
 
 import TradingChart from "@/components/chart/TradingChart";
 import ChartContextMenu from "@/components/chart/ChartContextMenu";
@@ -70,13 +71,7 @@ const INTRADAY_RESOLUTIONS = new Set(["1", "2", "5", "15", "30", "60", "120"]);
 const IST_OFFSET_S = 19800;
 const DEV_SYNTHETIC_FALLBACK = import.meta.env.DEV;
 
-function resolutionToSeconds(resolution: string): number {
-  if (resolution === "D") return 86400;
-  if (resolution === "W") return 7 * 86400;
-  if (resolution === "M") return 30 * 86400;
-  const n = Number.parseInt(resolution, 10);
-  return Number.isFinite(n) && n > 0 ? n * 60 : 60;
-}
+// resolutionToSeconds is imported from @tradereplay/charts above.
 
 function buildSyntheticCandles(resolution: string, toSec: number, basePrice = 100): CandleData[] {
   const intervalSec = resolutionToSeconds(resolution);

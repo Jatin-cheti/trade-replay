@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { listIndicators, getGlobalPerfTelemetry, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
+import { listIndicators, getGlobalPerfTelemetry, resolutionToSeconds, isIntradayResolution, formatCountdown, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -52,52 +52,7 @@ interface TradingChartProps {
   onAddAlert?: (price: number) => void;
 }
 
-/** Convert a resolution string to candle duration in seconds. */
-function resolutionToSeconds(res: string | undefined): number {
-  if (!res) return 60;
-  const normalized = res.trim();
-  if (!normalized) return 60;
-  if (normalized === 'D' || normalized.toLowerCase() === '1d') return 86400;
-  if (normalized === 'W' || normalized.toLowerCase() === '1w') return 7 * 86400;
-  if (normalized === 'M' || normalized.toLowerCase() === '1m') return 30 * 86400;
-
-  const unitMatch = normalized.match(/^(\d+)\s*([mhdw])$/i);
-  if (unitMatch) {
-    const amount = Number.parseInt(unitMatch[1], 10);
-    const unit = unitMatch[2].toLowerCase();
-    if (!Number.isFinite(amount) || amount <= 0) return 60;
-    if (unit === 'm') return amount * 60;
-    if (unit === 'h') return amount * 3600;
-    if (unit === 'd') return amount * 86400;
-    if (unit === 'w') return amount * 7 * 86400;
-  }
-
-  const n = parseInt(normalized, 10);
-  return Number.isFinite(n) && n > 0 ? n * 60 : 60;
-}
-
-function isIntradayResolution(res: string | undefined): boolean {
-  if (!res) return true;
-  if (res === 'D' || res === 'W' || res === 'M') return false;
-  const n = parseInt(res, 10);
-  return Number.isFinite(n) && n > 0;
-}
-
-/** Format seconds as MM:SS (intraday) or forced HH:MM:SS (>= 1h resolutions). */
-function formatCountdown(seconds: number, forceHours: boolean): string {
-  const s = Math.max(0, seconds);
-  const totalDays = Math.floor(s / 86400);
-  const totalHours = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const dd = String(totalDays).padStart(2, '0');
-  const hh = String(totalHours).padStart(2, '0');
-  const mm = String(m).padStart(2, '0');
-  const ss = String(sec).padStart(2, '0');
-  if (totalDays > 0) return `${dd}:${hh}:${mm}:${ss}`;
-  if (forceHours) return `${hh}:${mm}:${ss}`;
-  return `${mm}:${ss}`;
-}
+// resolutionToSeconds, isIntradayResolution, formatCountdown are imported from @tradereplay/charts above.
 
 type TouchTooltipState = {
   point: DrawPoint;
@@ -3482,6 +3437,21 @@ export default function TradingChart({
       el.style.display = 'none';
     };
   }, [cursorMode, chartContainerRef]);
+
+  // ── Demonstration cursor: toggle the chart library's always-on brush mode ──
+  // When the user picks the "Demonstration" cursor in the tool rail we enable
+  // the library's freehand brush so plain drag draws a fading red stroke (no
+  // Alt required — Alt+drag still works globally in every mode).
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || typeof chart.demoCursor !== 'function') return;
+    try {
+      chart.demoCursor().setActive(cursorMode === 'demo' && toolState.variant === 'none');
+    } catch { /* noop */ }
+    return () => {
+      try { chart.demoCursor().setActive(false); } catch { /* noop */ }
+    };
+  }, [chartRef, cursorMode, toolState.variant]);
 
   const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser';
   const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];

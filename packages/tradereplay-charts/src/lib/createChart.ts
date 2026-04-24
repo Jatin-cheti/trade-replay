@@ -72,6 +72,8 @@ export interface SeriesOptions {
   base?: number;
   thinBars?: boolean;
   priceScaleId?: string;
+  /** Price scale mode for this series' pane (Normal, Logarithmic, Percentage, IndexedTo100). */
+  priceScaleMode?: PriceScaleMode;
   /**
    * Internal escape hatch for derived helper series whose synthetic timestamps
    * should not affect the chart's canonical time index.
@@ -95,6 +97,16 @@ export interface ISeriesApi<_T extends SeriesType> {
   priceScale(): IPriceScaleApi;
   coordinateToPrice(y: number): number | null;
   priceToCoordinate(price: number): number | null;
+  /** Return all data currently loaded into this series. */
+  getData(): RowOf<_T>[];
+  /** Create a horizontal reference line at a price level. */
+  createPriceLine(options: PriceLineOptions): IPriceLine;
+  /** Set (or replace) bar markers. Pass [] to clear all markers. */
+  setMarkers(markers: SeriesMarker[]): void;
+  /** Attach a primitive renderer to this series. */
+  attachPrimitive(primitive: ISeriesPrimitive): void;
+  /** Detach a previously-attached primitive. */
+  detachPrimitive(primitive: ISeriesPrimitive): void;
 }
 
 export interface LogicalRange {
@@ -119,12 +131,18 @@ export interface ITimeScaleApi {
   setVisibleRange(range: TimeRange): void;
   subscribeVisibleTimeRangeChange(handler: () => void): void;
   unsubscribeVisibleTimeRangeChange(handler: () => void): void;
+  /** Fit all loaded data into the visible viewport. */
+  fitContent(): void;
 }
 
 export interface ChartOptions {
   width?: number;
   height?: number;
   autoSize?: boolean;
+  /** Custom price formatter. Overrides the default two-decimal formatter. */
+  priceFormatter?: (price: number) => string;
+  /** Custom time formatter. Overrides the default time/date formatter. */
+  timeFormatter?: (time: UTCTimestamp) => string;
   layout?: {
     background?: { type?: string; color?: string };
     textColor?: string;
@@ -201,8 +219,14 @@ export interface IChartApi {
   getDimensions(): { width: number; height: number; priceAxisWidth: number; timeAxisHeight: number };
   subscribeCrosshairMove(handler: (param: unknown) => void): void;
   unsubscribeCrosshairMove(handler: (param: unknown) => void): void;
+  subscribeClick(handler: (param: CrosshairMoveEvent) => void): void;
+  unsubscribeClick(handler: (param: CrosshairMoveEvent) => void): void;
+  subscribeDblClick(handler: (param: CrosshairMoveEvent) => void): void;
+  unsubscribeDblClick(handler: (param: CrosshairMoveEvent) => void): void;
   setInteractionMode(mode: InteractionMode): void;
   remove(): void;
+  /** Return IPaneApi objects for all current panes (main pane first). */
+  panes(): IPaneApi[];
   /** Add a new subpane below the main pane and return its id. */
   addPane(opts?: { height?: number; id?: string }): string;
   /** Remove a subpane (no-op for the main pane). Series are moved to main. */
@@ -229,8 +253,35 @@ export interface IChartApi {
    * Anchors at the price under the cursor so that price stays in place.
    */
   zoomPriceScale(deltaY: number, anchorY: number): void;
+  /**
+   * Demo cursor API — programmatic access to the Alt+drag freehand brush.
+   * Mirrors TradingView's "Hold Alt for temporary drawing" feature.
+   */
+  demoCursor(): IDemoCursorApi;
   /** Reset the price scale for the pane at the given canvas Y to auto-fit. */
   resetPriceScale(anchorY: number): void;
+}
+
+/** API for programmatic control of the demo-cursor (freehand brush) feature. */
+export interface IDemoCursorApi {
+  /** Remove all current strokes immediately. */
+  clearStrokes(): void;
+  /** Set the stroke colour (CSS colour string). Default: rgba(255,80,80,1). */
+  setColor(color: string): void;
+  /** Set the stroke line width in CSS pixels. Default: 3. */
+  setLineWidth(width: number): void;
+  /** Set the fade duration in milliseconds. Default: 3000. */
+  setFadeDuration(ms: number): void;
+  /** Returns the number of live (not fully faded) strokes. */
+  strokeCount(): number;
+  /**
+   * Enable "always-on" brush mode. When true, plain pointerdown+drag in the
+   * chart area draws a brush stroke without requiring Alt. Used by toolbars
+   * that expose a dedicated "Demonstration" cursor tool. Default: false.
+   */
+  setActive(active: boolean): void;
+  /** Returns whether always-on brush mode is enabled. */
+  isActive(): boolean;
 }
 
 export interface CrosshairMoveEvent {
@@ -239,6 +290,102 @@ export interface CrosshairMoveEvent {
   price: number | null;
   paneId: string | null;
   source: 'local-pointer' | 'leave';
+}
+
+// ─── Plugin / Primitive system ────────────────────────────────────────────────
+
+export type PriceScaleMode = 'Normal' | 'Logarithmic' | 'Percentage' | 'IndexedTo100';
+
+export type SeriesMarkerPosition = 'aboveBar' | 'belowBar' | 'inBar';
+export type SeriesMarkerShape = 'circle' | 'square' | 'arrowUp' | 'arrowDown';
+
+export interface SeriesMarker {
+  time: UTCTimestamp;
+  position: SeriesMarkerPosition;
+  shape: SeriesMarkerShape;
+  color?: string;
+  size?: number;
+  text?: string;
+  id?: string;
+}
+
+export interface PriceLineOptions {
+  price: number;
+  color?: string;
+  lineWidth?: number;
+  lineStyle?: 'Solid' | 'Dashed' | 'Dotted';
+  axisLabelVisible?: boolean;
+  title?: string;
+  id?: string;
+}
+
+export interface IPriceLine {
+  applyOptions(opts: Partial<PriceLineOptions>): void;
+  options(): PriceLineOptions;
+  remove(): void;
+}
+
+/**
+ * Geometry context passed to primitive renderers during draw.
+ * Mirrors LWC's renderer APIs so third-party primitives are familiar.
+ */
+export interface IPrimitiveGeometry {
+  ctx: CanvasRenderingContext2D;
+  barToX(barIndex: number): number;
+  priceToY(price: number): number;
+  yToPrice(y: number): number;
+  xToBar(x: number): number;
+  firstBar: number;
+  lastBar: number;
+  paneTop: number;
+  paneHeight: number;
+  chartWidth: number;
+  chartHeight: number;
+  timeAt(index: number): UTCTimestamp | null;
+}
+
+export type PrimitivePaneViewZOrder = 'background' | 'normal' | 'top';
+
+export interface IPrimitivePaneRenderer {
+  draw(target: CanvasRenderingContext2D, geometry: IPrimitiveGeometry): void;
+  drawBackground?(target: CanvasRenderingContext2D, geometry: IPrimitiveGeometry): void;
+}
+
+export interface IPrimitivePaneView {
+  zOrder?: PrimitivePaneViewZOrder;
+  renderer(): IPrimitivePaneRenderer;
+}
+
+export interface IPrimitiveAxisView {
+  coordinate(): number;
+  text(): string;
+  textColor?(): string;
+  backgroundColor?(): string;
+  visible?(): boolean;
+}
+
+export interface ISeriesPrimitiveBase {
+  attached?(params: { chart: IChartApi; requestUpdate: () => void }): void;
+  detached?(): void;
+  updateAllViews?(): void;
+  paneViews?(): IPrimitivePaneView[];
+  priceAxisViews?(): IPrimitiveAxisView[];
+  timeAxisViews?(): IPrimitiveAxisView[];
+  autoscaleInfo?(
+    startTimePoint: UTCTimestamp,
+    endTimePoint: UTCTimestamp,
+  ): { priceRange: { minValue: number; maxValue: number } } | null;
+}
+
+export type ISeriesPrimitive = ISeriesPrimitiveBase;
+export type IPanePrimitive = ISeriesPrimitiveBase;
+
+export interface IPaneApi {
+  id(): string;
+  getSize(): { width: number; height: number };
+  attachPrimitive(primitive: IPanePrimitive): void;
+  detachPrimitive(primitive: IPanePrimitive): void;
+  moveTo(targetIndex: number): void;
 }
 
 // ─── Internal constants ───────────────────────────────────────────────────────
@@ -412,6 +559,51 @@ function snapCssPixel(value: number): number {
   return Math.round(value) + 0.5;
 }
 
+// ─── Log-scale helpers ─────────────────────────────────────────────────────
+
+function logPriceToY(price: number, min: number, max: number, top: number, h: number): number {
+  const safeMin = Math.max(1e-10, min);
+  const safeMax = Math.max(1e-10, max);
+  const safePrice = Math.max(1e-10, price);
+  const logMin = Math.log(safeMin);
+  const logMax = Math.log(safeMax);
+  if (logMax === logMin) return top + h / 2;
+  return top + h * (1 - (Math.log(safePrice) - logMin) / (logMax - logMin));
+}
+
+function yToLogPrice(y: number, min: number, max: number, top: number, h: number): number {
+  const safeMin = Math.max(1e-10, min);
+  const safeMax = Math.max(1e-10, max);
+  const logMin = Math.log(safeMin);
+  const logMax = Math.log(safeMax);
+  const ratio = 1 - (y - top) / h;
+  return Math.exp(logMin + ratio * (logMax - logMin));
+}
+
+/** Compute log-spaced price tick values for a pane in log mode. */
+function logPriceTicks(min: number, max: number, targetCount: number): number[] {
+  if (min <= 0 || max <= 0 || min >= max) return [];
+  const ticks: number[] = [];
+  const logMin = Math.log10(Math.max(1e-10, min));
+  const logMax = Math.log10(Math.max(1e-10, max));
+  const firstDecade = Math.floor(logMin);
+  const lastDecade = Math.ceil(logMax);
+  const multiples = [1, 2, 3, 5, 7];
+  for (let d = firstDecade; d <= lastDecade; d++) {
+    const base = Math.pow(10, d);
+    for (const m of multiples) {
+      const v = base * m;
+      if (v >= min && v <= max) ticks.push(v);
+    }
+  }
+  // If too many ticks, keep at most ~targetCount evenly spaced by log position.
+  if (ticks.length > targetCount * 2) {
+    const step = Math.ceil(ticks.length / targetCount);
+    return ticks.filter((_, i) => i % step === 0);
+  }
+  return ticks;
+}
+
 type ParityDebugConfig = {
   enabled?: boolean;
   showPaneBounds?: boolean;
@@ -480,6 +672,12 @@ interface SeriesState {
    * subset of the source series' timestamps).
    */
   indicatorInstanceId?: IndicatorInstanceId;
+  /** Price lines attached to this series. */
+  priceLines: Map<string, PriceLineOptions & { id: string }>;
+  /** Bar markers attached to this series. */
+  markers: SeriesMarker[];
+  /** Plugin primitives attached to this series. */
+  primitives: ISeriesPrimitive[];
 }
 
 /** Internal state for a live indicator instance. */
@@ -519,7 +717,7 @@ interface PanePriceScaleState {
   max: number;
 }
 
-type RenderLayerId = 'chart' | 'interaction' | 'ui';
+type RenderLayerId = 'chart' | 'interaction' | 'demo-cursor' | 'ui';
 
 interface LayerRenderState {
   firstBar: number;
@@ -605,6 +803,380 @@ export function createChart(
   let forcedTimeTicks: number[] | null = initOpts?.forcedTimeTicks ?? null;
   let allowPressedMouseMove = initOpts?.handleScroll?.pressedMouseMove !== false;
 
+  // ── Custom formatters ──
+  let customPriceFormatter: ((price: number) => string) | null = initOpts?.priceFormatter ?? null;
+  let customTimeFormatter: ((time: UTCTimestamp) => string) | null = initOpts?.timeFormatter ?? null;
+
+  // ── Price scale modes (per pane) ──
+  const priceScaleModes = new Map<PaneId, PriceScaleMode>();
+
+  // ── Pane-level primitives ──
+  const panePrimitives = new Map<PaneId, IPanePrimitive[]>();
+
+  // ── Kinetic scroll ──
+  let kineticVelocity = 0;
+  let kineticRafId: number | null = null;
+  let kineticLastClientX = 0;
+  let kineticLastTs = 0;
+
+  // ── Click event listeners ──
+  const clickListeners = new Set<(param: CrosshairMoveEvent) => void>();
+  const dblClickListeners = new Set<(param: CrosshairMoveEvent) => void>();
+
+  // ── Price line sequence ──
+  let nextPriceLineSeq = 0;
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // DEMO CURSOR (TradingView "presentation mode" brush)
+  //
+  // When Alt is held and the user clicks+drags, a freehand stroke is drawn in
+  // a bright highlight colour.  The stroke fades to fully transparent over
+  // DEMO_FADE_MS milliseconds after the pointer is released, exactly mimicking
+  // TradingView's "Hold Alt for temporary drawing" feature.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /** A single freehand demo stroke. */
+  interface DemoStroke {
+    points: { x: number; y: number }[];
+    startTime: number;   // performance.now() when drawing began
+    endTime: number | null; // performance.now() when pointer released, null = ongoing
+    color: string;
+    lineWidth: number;
+    fadeDuration: number; // ms to fully fade — captured from config at creation time
+  }
+
+  const DEMO_FADE_MS = 3000;   // 3 seconds to fully fade — same as TradingView
+  const DEMO_STROKE_COLOR = 'rgba(255, 80, 80, 1)';   // TradingView-style red/orange
+  const DEMO_LINE_WIDTH = 3;
+
+  const demoStrokes: DemoStroke[] = [];
+  let demoCursorActive = false;      // true while Alt+pointer is held
+  let demoCursorForceMode = false;   // true when toolbar "Demonstration" cursor is selected
+  let demoCursorRafId: number | null = null;
+  // Mutable config — can be changed via IDemoCursorApi
+  let demoCursorColor = DEMO_STROKE_COLOR;
+  let demoCursorLineWidth = DEMO_LINE_WIDTH;
+  let demoCursorFadeDuration = DEMO_FADE_MS;
+
+  /** Called on every RAF tick while there are strokes that are still fading. */
+  function demoCursorFadeLoop(): void {
+    const now = performance.now();
+    // Remove fully faded strokes
+    let i = demoStrokes.length - 1;
+    while (i >= 0) {
+      const stroke = demoStrokes[i];
+      if (stroke.endTime !== null && now - stroke.endTime >= stroke.fadeDuration) {
+        demoStrokes.splice(i, 1);
+      }
+      i--;
+    }
+    scheduleRender('demo-cursor-fade');
+    if (demoStrokes.length > 0) {
+      demoCursorRafId = requestAnimationFrame(demoCursorFadeLoop);
+    } else {
+      demoCursorRafId = null;
+    }
+  }
+
+  /** Draw all active demo strokes onto the canvas context. */
+  function drawDemoCursor(): void {
+    if (demoStrokes.length === 0) return;
+    const now = performance.now();
+    ctx.save();
+    // Clip to chart area (exclude the right price axis)
+    ctx.beginPath();
+    ctx.rect(0, 0, cw(), ch());
+    ctx.clip();
+
+    for (const stroke of demoStrokes) {
+      if (stroke.points.length < 2) {
+        // Single dot
+        if (stroke.points.length === 1) {
+          let alpha = 1;
+          if (stroke.endTime !== null) {
+            alpha = Math.max(0, 1 - (now - stroke.endTime) / stroke.fadeDuration);
+          }
+          if (alpha <= 0) continue;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = stroke.color;
+          ctx.beginPath();
+          ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.lineWidth / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        continue;
+      }
+
+      let alpha = 1;
+      if (stroke.endTime !== null) {
+        alpha = Math.max(0, 1 - (now - stroke.endTime) / stroke.fadeDuration);
+      }
+      if (alpha <= 0) continue;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.lineWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      for (let pi = 1; pi < stroke.points.length; pi++) {
+        // Smooth the stroke using quadratic bezier midpoints (same technique
+        // used in TradingView's pen tool for a smooth freehand look)
+        if (pi < stroke.points.length - 1) {
+          const midX = (stroke.points[pi].x + stroke.points[pi + 1].x) / 2;
+          const midY = (stroke.points[pi].y + stroke.points[pi + 1].y) / 2;
+          ctx.quadraticCurveTo(stroke.points[pi].x, stroke.points[pi].y, midX, midY);
+        } else {
+          ctx.lineTo(stroke.points[pi].x, stroke.points[pi].y);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // ── Pane-aware price↔Y wrappers ──────────────────────────────────────────
+  // These respect the current PriceScaleMode (Normal vs Logarithmic).
+
+  function getPaneScaleMode(paneId: PaneId): PriceScaleMode {
+    return priceScaleModes.get(paneId) ?? 'Normal';
+  }
+
+  function p2y(price: number, pane: PaneRenderState): number {
+    if (getPaneScaleMode(pane.id) === 'Logarithmic') {
+      return logPriceToY(price, pane.min, pane.max, pane.top, pane.h);
+    }
+    return priceToY(price, pane.min, pane.max, pane.top, pane.h);
+  }
+
+  function y2p(y: number, pane: PaneRenderState): number {
+    if (getPaneScaleMode(pane.id) === 'Logarithmic') {
+      return yToLogPrice(y, pane.min, pane.max, pane.top, pane.h);
+    }
+    return yToPrice(y, pane.min, pane.max, pane.top, pane.h);
+  }
+
+  /** Compute price tick values for a pane, respecting log mode. */
+  function gridPriceTicks(pane: PaneRenderState, targetCount: number): number[] {
+    if (getPaneScaleMode(pane.id) === 'Logarithmic') {
+      return logPriceTicks(pane.min, pane.max, targetCount);
+    }
+    const priceRange = pane.max - pane.min;
+    const hStep = niceStep(priceRange, targetCount);
+    const ticks: number[] = [];
+    let p = Math.ceil(pane.min / hStep) * hStep;
+    while (p <= pane.max) {
+      ticks.push(p);
+      p += hStep;
+    }
+    return ticks;
+  }
+
+  // ── Resolved formatters ──────────────────────────────────────────────────
+  function resolvedPriceFormatter(p: number): string {
+    return customPriceFormatter ? customPriceFormatter(p) : fmtPrice(p);
+  }
+
+  function resolvedTimeFormatter(
+    ts: UTCTimestamp,
+    interval: number,
+    rangeSeconds?: number,
+    prevTs?: UTCTimestamp,
+  ): string {
+    if (customTimeFormatter) return customTimeFormatter(ts);
+    return fmtTime(ts, interval, rangeSeconds, prevTs);
+  }
+
+  // ── Primitive geometry builder ────────────────────────────────────────────
+  function buildPrimitiveGeometry(pane: PaneRenderState, rs: RenderState): IPrimitiveGeometry {
+    return {
+      ctx,
+      barToX: (idx: number) => barToX(idx),
+      priceToY: (price: number) => p2y(price, pane),
+      yToPrice: (y: number) => y2p(y, pane),
+      xToBar: (x: number) => xToBar(x),
+      firstBar: rs.firstBar,
+      lastBar: rs.lastBar,
+      paneTop: pane.top,
+      paneHeight: pane.h,
+      chartWidth: cw(),
+      chartHeight: ch(),
+      timeAt: (index: number) => timeIndex.at(index) ?? null,
+    };
+  }
+
+  /** Draw all primitives for a pane at a specific zOrder level. */
+  function drawPrimitivesForPane(
+    pane: PaneRenderState,
+    rs: RenderState,
+    zOrder: PrimitivePaneViewZOrder,
+  ): void {
+    const geo = buildPrimitiveGeometry(pane, rs);
+
+    // Series-attached primitives
+    for (const s of seriesList) {
+      if (s.paneId !== pane.id) continue;
+      for (const primitive of s.primitives) {
+        for (const view of primitive.paneViews?.() ?? []) {
+          if ((view.zOrder ?? 'normal') === zOrder) {
+            const renderer = view.renderer();
+            renderer.draw(ctx, geo);
+          }
+        }
+        // Draw custom axis labels
+        if (zOrder === 'top') {
+          for (const axView of primitive.priceAxisViews?.() ?? []) {
+            if (axView.visible?.() === false) continue;
+            const yCoord = axView.coordinate();
+            if (yCoord < pane.top || yCoord > pane.top + pane.h) continue;
+            const label = axView.text();
+            const bg = axView.backgroundColor?.() ?? '#2962ff';
+            const fg = axView.textColor?.() ?? '#ffffff';
+            const labelH = 16;
+            ctx.font = `${fontSize}px ${fontFamily}`;
+            const boxW = Math.max(38, Math.ceil(ctx.measureText(label).width + 10));
+            ctx.fillStyle = bg;
+            ctx.fillRect(cw() + 2, yCoord - labelH / 2, boxW, labelH);
+            ctx.fillStyle = fg;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, cw() + 2 + boxW / 2, yCoord);
+          }
+        }
+      }
+    }
+
+    // Pane-level primitives
+    for (const primitive of panePrimitives.get(pane.id) ?? []) {
+      for (const view of primitive.paneViews?.() ?? []) {
+        if ((view.zOrder ?? 'normal') === zOrder) {
+          const renderer = view.renderer();
+          renderer.draw(ctx, geo);
+        }
+      }
+    }
+  }
+
+  /** Draw price lines for a series. */
+  function drawPriceLinesForSeries(s: SeriesState, rs: RenderState, pane: PaneRenderState): void {
+    if (s.priceLines.size === 0) return;
+    const w = cw();
+    ctx.save();
+    for (const pl of s.priceLines.values()) {
+      const y = snapCssPixel(p2y(pl.price, pane));
+      if (y < pane.top || y > pane.top + pane.h) continue;
+      const color = pl.color ?? '#787b86';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = pl.lineWidth ?? 1;
+      switch (pl.lineStyle) {
+        case 'Dashed': ctx.setLineDash([5, 3]); break;
+        case 'Dotted': ctx.setLineDash([2, 3]); break;
+        default: ctx.setLineDash([]);
+      }
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (pl.axisLabelVisible !== false) {
+        const label = pl.title
+          ? `${resolvedPriceFormatter(pl.price)} ${pl.title}`
+          : resolvedPriceFormatter(pl.price);
+        const labelH = 16;
+        ctx.font = `${fontSize}px ${fontFamily}`;
+        const boxW = Math.max(38, Math.ceil(ctx.measureText(label).width + 10));
+        ctx.fillStyle = color;
+        ctx.fillRect(w + 2, y - labelH / 2, boxW, labelH);
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, w + 2 + boxW / 2, y);
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Draw bar markers for a series. */
+  function drawMarkersForSeries(s: SeriesState, rs: RenderState, pane: PaneRenderState): void {
+    if (s.markers.length === 0) return;
+    ctx.save();
+    for (const marker of s.markers) {
+      const barIdx = timeIndex.indexOf(marker.time);
+      if (barIdx < 0 || barIdx < rs.firstBar || barIdx > rs.lastBar) continue;
+      const row = s.store.getAt(barIdx) as (CandlestickData & LineData) | null;
+      if (!row) continue;
+      const x = barToX(barIdx);
+      const color = marker.color ?? '#ffffff';
+      const sz = (marker.size ?? 1) * Math.max(4, barWidth * 0.6);
+
+      let refPrice: number;
+      if (s.type === 'Candlestick' || s.type === 'Bar') {
+        const cd = row as CandlestickData;
+        if (marker.position === 'aboveBar') refPrice = cd.high;
+        else if (marker.position === 'belowBar') refPrice = cd.low;
+        else refPrice = (cd.high + cd.low) / 2;
+      } else {
+        refPrice = row.value;
+      }
+
+      const refY = p2y(refPrice, pane);
+      let y: number;
+      if (marker.position === 'aboveBar') y = refY - sz - 4;
+      else if (marker.position === 'belowBar') y = refY + sz + 4;
+      else y = refY;
+
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+
+      switch (marker.shape) {
+        case 'arrowUp': {
+          ctx.beginPath();
+          ctx.moveTo(x, y - sz * 0.7);
+          ctx.lineTo(x + sz * 0.5, y + sz * 0.3);
+          ctx.lineTo(x - sz * 0.5, y + sz * 0.3);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        }
+        case 'arrowDown': {
+          ctx.beginPath();
+          ctx.moveTo(x, y + sz * 0.7);
+          ctx.lineTo(x + sz * 0.5, y - sz * 0.3);
+          ctx.lineTo(x - sz * 0.5, y - sz * 0.3);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        }
+        case 'square': {
+          ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+          break;
+        }
+        default: { // 'circle'
+          ctx.beginPath();
+          ctx.arc(x, y, sz / 2, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
+      }
+
+      if (marker.text) {
+        ctx.fillStyle = textColor;
+        ctx.font = `${Math.max(9, fontSize - 1)}px ${fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = marker.position === 'aboveBar' ? 'bottom' : 'top';
+        const textY = marker.position === 'aboveBar' ? y - sz * 0.5 : y + sz * 0.5;
+        ctx.fillText(marker.text, x, textY);
+      }
+    }
+    ctx.restore();
+  }
+
   /** Ordered list of pane definitions; main pane is always first. */
   const panes: PaneDef[] = [{ id: MAIN_PANE_ID, height: 1 }];
   const panePriceScales = new Map<PaneId, PanePriceScaleState>();
@@ -616,6 +1188,7 @@ export function createChart(
   const indicatorInstances = new Map<IndicatorInstanceId, IndicatorInstance>();
   let rafId: number | null = null;
   let renderQueued = false;
+  let destroyed = false;
   let renderMicrotaskQueued = false;
   const renderReasons = new Set<string>();
   let indicatorRafId: number | null = null;
@@ -1344,15 +1917,12 @@ export function createChart(
 
     // Horizontal grid lines — per pane
     for (const pane of rs.paneStates) {
-      const priceRange = pane.max - pane.min;
-      const hStep = niceStep(priceRange, 6);
-      let p = Math.ceil(pane.min / hStep) * hStep;
-      while (p <= pane.max) {
-        const y = snapCssPixel(priceToY(p, pane.min, pane.max, pane.top, pane.h));
+      const ticks = gridPriceTicks(pane, 6);
+      for (const p of ticks) {
+        const y = snapCssPixel(p2y(p, pane));
         if (y >= pane.top && y <= pane.top + pane.h) {
           ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
         }
-        p += hStep;
       }
     }
 
@@ -1458,7 +2028,7 @@ export function createChart(
       if (x < 10 || x > w - 10) continue;
       const t = timeIndex.at(i);
       if (t == null) continue;
-      ctx.fillText(fmtTime(t, interval, rangeSec, prevTickT), x, h + TIME_AXIS_H / 2);
+      ctx.fillText(resolvedTimeFormatter(t, interval, rangeSec, prevTickT), x, h + TIME_AXIS_H / 2);
       prevTickT = t;
     }
   }
@@ -1478,15 +2048,12 @@ export function createChart(
     ctx.textBaseline = 'middle';
 
     for (const pane of rs.paneStates) {
-      const priceRange = pane.max - pane.min;
-      const hStep = niceStep(priceRange, 6);
-      let p = Math.ceil(pane.min / hStep) * hStep;
-      while (p <= pane.max) {
-        const y = snapCssPixel(priceToY(p, pane.min, pane.max, pane.top, pane.h));
+      const ticks = gridPriceTicks(pane, 6);
+      for (const p of ticks) {
+        const y = snapCssPixel(p2y(p, pane));
         if (y >= pane.top && y <= pane.top + pane.h) {
-          ctx.fillText(fmtPrice(p), w + 6, y);
+          ctx.fillText(resolvedPriceFormatter(p), w + 6, y);
         }
-        p += hStep;
       }
     }
   }
@@ -1588,7 +2155,7 @@ export function createChart(
           break;
         }
         if (lastClose > comparisonPrice) markerColor = upColor;
-        const markerY = snapCssPixel(priceToY(lastClose, pane.min, pane.max, pane.top, pane.h));
+        const markerY = snapCssPixel(p2y(lastClose, pane));
 
         if (showParityLastPriceLine) {
           ctx.save();
@@ -1603,7 +2170,7 @@ export function createChart(
         }
 
         if (showParityLastValueLabels) {
-          drawAxisTag(markerY, fmtPrice(lastClose), markerColor);
+          drawAxisTag(markerY, resolvedPriceFormatter(lastClose), markerColor);
         }
       }
     }
@@ -1731,10 +2298,10 @@ export function createChart(
         ? (s.opts.upColor ?? '#17c964')
         : (s.opts.downColor ?? '#ff4d4f');
 
-      const openY = Math.round(priceToY(row.open, pane.min, pane.max, pane.top, pane.h));
-      const closeY = Math.round(priceToY(row.close, pane.min, pane.max, pane.top, pane.h));
-      const highY = snapCssPixel(priceToY(row.high, pane.min, pane.max, pane.top, pane.h));
-      const lowY = snapCssPixel(priceToY(row.low, pane.min, pane.max, pane.top, pane.h));
+      const openY = Math.round(p2y(row.open, pane));
+      const closeY = Math.round(p2y(row.close, pane));
+      const highY = snapCssPixel(p2y(row.high, pane));
+      const lowY = snapCssPixel(p2y(row.low, pane));
 
       // Wick
       ctx.strokeStyle = wickColor;
@@ -1774,10 +2341,10 @@ export function createChart(
       ctx.lineWidth = thin ? 1 : 1.5;
       ctx.setLineDash([]);
 
-      const highY  = priceToY(row.high,  pane.min, pane.max, pane.top, pane.h);
-      const lowY   = priceToY(row.low,   pane.min, pane.max, pane.top, pane.h);
-      const openY  = priceToY(row.open,  pane.min, pane.max, pane.top, pane.h);
-      const closeY = priceToY(row.close, pane.min, pane.max, pane.top, pane.h);
+      const highY  = p2y(row.high,  pane);
+      const lowY   = p2y(row.low,   pane);
+      const openY  = p2y(row.open,  pane);
+      const closeY = p2y(row.close, pane);
 
       ctx.beginPath(); ctx.moveTo(x, highY); ctx.lineTo(x, lowY); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x - tick, openY); ctx.lineTo(x, openY); ctx.stroke();
@@ -1799,7 +2366,7 @@ export function createChart(
       if (!range) return;
       baseY = sepPriceToY(baseVal, range.min, range.max, s.scaleMargins, pane.top, pane.h);
     } else {
-      baseY = priceToY(baseVal, pane.min, pane.max, pane.top, pane.h);
+      baseY = p2y(baseVal, pane);
     }
 
     for (let i = firstBar; i <= lastBar; i++) {
@@ -1814,7 +2381,7 @@ export function createChart(
         if (!range) continue;
         valY = sepPriceToY(row.value, range.min, range.max, s.scaleMargins, pane.top, pane.h);
       } else {
-        valY = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+        valY = p2y(row.value, pane);
       }
 
       const top = Math.min(valY, baseY);
@@ -1835,7 +2402,7 @@ export function createChart(
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = snapCssPixel(barToX(i));
-      const y = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+      const y = p2y(row.value, pane);
       if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
     }
@@ -1858,7 +2425,7 @@ export function createChart(
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = snapCssPixel(barToX(i));
-      const y = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+      const y = p2y(row.value, pane);
       if (!started) { ctx.moveTo(x, y); firstX = x; started = true; }
       else ctx.lineTo(x, y);
       lastX = x;
@@ -1884,7 +2451,7 @@ export function createChart(
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
-      const y = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+      const y = p2y(row.value, pane);
       if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
     }
     if (started) ctx.stroke();
@@ -1893,7 +2460,7 @@ export function createChart(
   function drawBaseline(s: SeriesState, rs: RenderState, pane: PaneRenderState): void {
     const { firstBar, lastBar } = rs;
     const basePrice = s.opts.baseValue?.price ?? 0;
-    const baseY = priceToY(basePrice, pane.min, pane.max, pane.top, pane.h);
+    const baseY = p2y(basePrice, pane);
     const topFill1 = s.opts.topFillColor1 ?? 'rgba(23,201,100,0.35)';
     const topFill2 = s.opts.topFillColor2 ?? 'rgba(23,201,100,0.04)';
     const botFill1 = s.opts.bottomFillColor1 ?? 'rgba(255,77,79,0.25)';
@@ -1910,7 +2477,7 @@ export function createChart(
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
-      const rawY = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+      const rawY = p2y(row.value, pane);
       const y = Math.min(rawY, baseY); // clip to above base
       if (!started) { ctx.moveTo(x, baseY); ctx.lineTo(x, y); firstX = x; started = true; }
       else ctx.lineTo(x, y);
@@ -1935,7 +2502,7 @@ export function createChart(
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
-      const rawY = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+      const rawY = p2y(row.value, pane);
       const y = Math.max(rawY, baseY); // clip to below base
       if (!started) { ctx.moveTo(x, baseY); ctx.lineTo(x, y); firstX = x; started = true; }
       else ctx.lineTo(x, y);
@@ -1962,7 +2529,7 @@ export function createChart(
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
-      const y = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
+      const y = p2y(row.value, pane);
       if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
     }
     if (started) ctx.stroke();
@@ -2017,8 +2584,8 @@ export function createChart(
       ctx.setLineDash([]);
 
       // Price label on the right axis.
-      const price = yToPrice(snappedCrosshairY, activePane.min, activePane.max, activePane.top, activePane.h);
-      const pLabel = fmtPrice(price);
+      const price = y2p(snappedCrosshairY, activePane);
+      const pLabel = resolvedPriceFormatter(price);
       canvas.dataset.crosshairPrice = pLabel;
       ctx.font = `${fontSize}px ${fontFamily}`;
       ctx.textBaseline = 'middle';
@@ -2065,9 +2632,28 @@ export function createChart(
           ctx.beginPath();
           ctx.rect(0, pane.top, cw(), pane.h);
           ctx.clip();
+
+          // 1. 'background' primitives — drawn before series
+          drawPrimitivesForPane(pane, rs, 'background');
+
+          // 2. Series themselves
           for (const s of seriesList) {
             if (s.paneId === pane.id) drawSeries(s, rs, pane);
           }
+
+          // 3. Price lines (after series, before crosshair)
+          for (const s of seriesList) {
+            if (s.paneId === pane.id) drawPriceLinesForSeries(s, rs, pane);
+          }
+
+          // 4. Bar markers
+          for (const s of seriesList) {
+            if (s.paneId === pane.id) drawMarkersForSeries(s, rs, pane);
+          }
+
+          // 5. 'normal' primitives — after series
+          drawPrimitivesForPane(pane, rs, 'normal');
+
           ctx.restore();
         }
       },
@@ -2086,6 +2672,14 @@ export function createChart(
       },
     },
     {
+      id: 'demo-cursor',
+      order: 25,
+      render: (_rs) => {
+        // Demo cursor strokes fade over time — render every frame while active
+        drawDemoCursor();
+      },
+    },
+    {
       id: 'ui',
       order: 30,
       render: (rs) => {
@@ -2097,6 +2691,16 @@ export function createChart(
           drawParityWatermark();
         }
         drawParityDebugOverlay(rs);
+
+        // 'top' primitives — above crosshair and axes
+        for (const pane of rs.paneStates) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, pane.top, cw(), pane.h);
+          ctx.clip();
+          drawPrimitivesForPane(pane, rs, 'top');
+          ctx.restore();
+        }
       },
     },
   ];
@@ -2132,6 +2736,7 @@ export function createChart(
   }
 
   function render(_invalidationReasons: string[] = []): void {
+    if (destroyed) return;
     const renderStart = performance.now();
     const dpr = resolveDevicePixelRatio();
     if (Math.abs(dpr - canvasDpr) > 0.001) {
@@ -2220,7 +2825,7 @@ export function createChart(
     const payload: CrosshairMoveEvent = {
       point: x == null || y == null ? null : { x, y },
       time: x == null ? null : timeScaleApi.coordinateToTime(x),
-      price: activePane && y != null ? yToPrice(y, activePane.min, activePane.max, activePane.top, activePane.h) : null,
+      price: activePane && y != null ? y2p(y, activePane) : null,
       paneId: activePane?.id ?? null,
       source,
     };
@@ -2243,7 +2848,7 @@ export function createChart(
     const startRange = priceAxisDrag.startMax - priceAxisDrag.startMin || 1;
     const zoomFactor = Math.exp((y - priceAxisDrag.startY) * 0.01);
     const nextRange = Math.min(Math.max(startRange * zoomFactor, Math.max(Math.abs(priceAxisDrag.startMin), Math.abs(priceAxisDrag.startMax), 1) * 0.0001), startRange * 100);
-    const anchorPrice = yToPrice(priceAxisDrag.startY, priceAxisDrag.startMin, priceAxisDrag.startMax, pane.top, pane.h);
+    const anchorPrice = y2p(priceAxisDrag.startY, pane);
     const anchorRatio = (anchorPrice - priceAxisDrag.startMin) / startRange;
     const nextMin = anchorPrice - anchorRatio * nextRange;
     const nextMax = nextMin + nextRange;
@@ -2295,6 +2900,33 @@ export function createChart(
   }
 
   function onPointerDown(e: PointerEvent): void {
+    // Stop any in-progress kinetic scroll
+    if (kineticRafId != null) {
+      cancelAnimationFrame(kineticRafId);
+      kineticRafId = null;
+    }
+    kineticVelocity = 0;
+    kineticLastClientX = e.clientX;
+    kineticLastTs = Date.now();
+
+    // ── Demo cursor: Alt+click (or "Demonstration" cursor mode) starts a freehand drawing stroke ──
+    if ((e.altKey || demoCursorForceMode) && e.offsetX < cw()) {
+      e.preventDefault();
+      demoCursorActive = true;
+      const stroke: DemoStroke = {
+        points: [{ x: e.offsetX, y: e.offsetY }],
+        startTime: performance.now(),
+        endTime: null,
+        color: demoCursorColor,
+        lineWidth: demoCursorLineWidth,
+        fadeDuration: demoCursorFadeDuration,
+      };
+      demoStrokes.push(stroke);
+      canvas.setPointerCapture(e.pointerId);
+      scheduleRender('demo-cursor');
+      return;
+    }
+
     const rs = computeRenderState();
     if (e.offsetX >= cw()) {
       const activePane = getPaneAtY(rs, e.offsetY);
@@ -2327,6 +2959,16 @@ export function createChart(
   }
 
   function onPointerMove(e: PointerEvent): void {
+    // ── Demo cursor: append point to current stroke ──
+    if (demoCursorActive && demoStrokes.length > 0) {
+      const stroke = demoStrokes[demoStrokes.length - 1];
+      if (stroke.endTime === null) {
+        stroke.points.push({ x: e.offsetX, y: e.offsetY });
+        scheduleRender('demo-cursor');
+        return;
+      }
+    }
+
     if (priceAxisDrag != null) {
       updatePriceAxisDrag(e.offsetY);
       return;
@@ -2347,6 +2989,15 @@ export function createChart(
       if (!allowPressedMouseMove) {
         dragStart = null;
       } else {
+        const now = Date.now();
+        const dt = now - kineticLastTs;
+        if (dt > 0) {
+          const rawVel = (e.clientX - kineticLastClientX) / dt; // px/ms
+          // EMA smoothing to reduce noise
+          kineticVelocity = kineticVelocity * 0.6 + rawVel * 0.4;
+        }
+        kineticLastClientX = e.clientX;
+        kineticLastTs = now;
         const dx = e.clientX - dragStart.clientX;
         rightmostIndex = clampRightmostIndex(dragStart.rightAtStart - dx / barWidth);
       }
@@ -2356,17 +3007,101 @@ export function createChart(
 
   function onPointerUp(e: PointerEvent): void {
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+
+    // ── Demo cursor: end the current stroke and start fade-out ──
+    if (demoCursorActive) {
+      demoCursorActive = false;
+      if (demoStrokes.length > 0) {
+        const stroke = demoStrokes[demoStrokes.length - 1];
+        if (stroke.endTime === null) {
+          stroke.endTime = performance.now();
+        }
+      }
+      // Start fade RAF loop if not already running
+      if (demoCursorRafId == null && demoStrokes.length > 0) {
+        demoCursorRafId = requestAnimationFrame(demoCursorFadeLoop);
+      }
+      return;
+    }
+
     priceAxisDrag = null;
-    dragStart = null;
     paneResizeDrag = null;
+
+    // Start kinetic scroll if the user was panning with significant velocity
+    if (dragStart != null && Math.abs(kineticVelocity) > 0.05) {
+      const capturedBarWidth = barWidth;
+      // Convert velocity (px/ms) → bars per frame (assuming ~16ms frames)
+      let decay = (kineticVelocity * 16) / capturedBarWidth;
+
+      function kineticStep(): void {
+        decay *= 0.92; // dampen per frame (~60fps gives ~10 frames to stop)
+        if (Math.abs(decay) < 0.005) {
+          kineticRafId = null;
+          return;
+        }
+        rightmostIndex = clampRightmostIndex(rightmostIndex - decay);
+        scheduleRender();
+        kineticRafId = requestAnimationFrame(kineticStep);
+      }
+
+      if (kineticRafId != null) cancelAnimationFrame(kineticRafId);
+      kineticRafId = requestAnimationFrame(kineticStep);
+    }
+
+    kineticVelocity = 0;
+    dragStart = null;
   }
 
   function onDoubleClick(e: MouseEvent): void {
-    if (e.offsetX < cw()) return;
+    if (e.offsetX < cw()) {
+      // Emit double-click event
+      if (dblClickListeners.size) {
+        const rs = computeRenderState();
+        const activePane = getPaneAtY(rs, e.offsetY);
+        const x = e.offsetX;
+        const y = e.offsetY;
+        const payload: CrosshairMoveEvent = {
+          point: { x, y },
+          time: timeScaleApi.coordinateToTime(x),
+          price: activePane ? y2p(y, activePane) : null,
+          paneId: activePane?.id ?? null,
+          source: 'local-pointer',
+        };
+        for (const fn of dblClickListeners) { try { fn(payload); } catch { /* */ } }
+      }
+      return;
+    }
     resetPriceAxisScale(e.offsetY);
   }
 
+  function onCanvasClick(e: MouseEvent): void {
+    if (!clickListeners.size) return;
+    const rs = computeRenderState();
+    const activePane = getPaneAtY(rs, e.offsetY);
+    const x = e.offsetX;
+    const y = e.offsetY;
+    const payload: CrosshairMoveEvent = {
+      point: { x, y },
+      time: timeScaleApi.coordinateToTime(x),
+      price: activePane ? y2p(y, activePane) : null,
+      paneId: activePane?.id ?? null,
+      source: 'local-pointer',
+    };
+    for (const fn of clickListeners) { try { fn(payload); } catch { /* */ } }
+  }
+
   function onPointerLeave(): void {
+    // If demo cursor was active, end the stroke and start fade
+    if (demoCursorActive) {
+      demoCursorActive = false;
+      if (demoStrokes.length > 0) {
+        const stroke = demoStrokes[demoStrokes.length - 1];
+        if (stroke.endTime === null) stroke.endTime = performance.now();
+      }
+      if (demoCursorRafId == null && demoStrokes.length > 0) {
+        demoCursorRafId = requestAnimationFrame(demoCursorFadeLoop);
+      }
+    }
     crosshairX = null;
     crosshairY = null;
     canvas.dataset.crosshairPrice = '';
@@ -2380,7 +3115,33 @@ export function createChart(
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointerleave', onPointerLeave);
+  canvas.addEventListener('click', onCanvasClick);
   canvas.addEventListener('dblclick', onDoubleClick);
+
+  // ── Demo cursor: show crosshair cursor style when Alt is held ──
+  function onKeyDown(e: KeyboardEvent): void {
+    if (e.key === 'Alt' || e.altKey) {
+      canvas.style.cursor = 'crosshair';
+    }
+  }
+  function onKeyUp(e: KeyboardEvent): void {
+    if (e.key === 'Alt') {
+      canvas.style.cursor = '';
+      // If Alt released mid-stroke, end it
+      if (demoCursorActive) {
+        demoCursorActive = false;
+        if (demoStrokes.length > 0) {
+          const stroke = demoStrokes[demoStrokes.length - 1];
+          if (stroke.endTime === null) stroke.endTime = performance.now();
+        }
+        if (demoCursorRafId == null && demoStrokes.length > 0) {
+          demoCursorRafId = requestAnimationFrame(demoCursorFadeLoop);
+        }
+      }
+    }
+  }
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
 
   // ── series factory ────────────────────────────────────────────────────────
 
@@ -2436,8 +3197,6 @@ export function createChart(
         });
 
         // Keep indicator outputs in sync with streaming source data.
-        // Use the incremental tail-recompute path when possible so we avoid a
-        // full O(bars × indicators) recompute on every live-market tick.
         if (!sState.indicatorInstanceId && indicatorInstances.size > 0) {
           const src = getSourceOhlcv();
           if (src && src.times.length > 0) {
@@ -2453,15 +3212,22 @@ export function createChart(
       },
       applyOptions(opts: Partial<SeriesOptions>): void {
         sState.opts = { ...sState.opts, ...opts };
+        // Apply price scale mode if provided
+        if (opts.priceScaleMode != null) {
+          priceScaleModes.set(sState.paneId, opts.priceScaleMode);
+        }
         scheduleRender();
       },
       priceScale(): IPriceScaleApi {
         return {
-          applyOptions(opts: { scaleMargins?: ScaleMargins }): void {
+          applyOptions(opts: { scaleMargins?: ScaleMargins; mode?: PriceScaleMode }): void {
             if (opts.scaleMargins) {
               sState.scaleMargins = { ...sState.scaleMargins, ...opts.scaleMargins };
-              scheduleRender();
             }
+            if (opts.mode != null) {
+              priceScaleModes.set(sState.paneId, opts.mode);
+            }
+            scheduleRender();
           },
         };
       },
@@ -2473,7 +3239,7 @@ export function createChart(
           if (!range) return null;
           return sepYToPrice(y, range.min, range.max, sState.scaleMargins, pane.top, pane.h);
         }
-        return yToPrice(y, pane.min, pane.max, pane.top, pane.h);
+        return y2p(y, pane);
       },
       priceToCoordinate(price: number): number | null {
         const rs = computeRenderState();
@@ -2483,7 +3249,55 @@ export function createChart(
           if (!range) return null;
           return sepPriceToY(price, range.min, range.max, sState.scaleMargins, pane.top, pane.h);
         }
-        return priceToY(price, pane.min, pane.max, pane.top, pane.h);
+        return p2y(price, pane);
+      },
+      getData(): RowOf<T>[] {
+        return sState.store.rawRows.slice() as RowOf<T>[];
+      },
+      createPriceLine(options: PriceLineOptions): IPriceLine {
+        const id = options.id ?? `pl-${++nextPriceLineSeq}`;
+        const stored: PriceLineOptions & { id: string } = { ...options, id };
+        sState.priceLines.set(id, stored);
+        scheduleRender();
+
+        const priceLine: IPriceLine = {
+          applyOptions(opts: Partial<PriceLineOptions>): void {
+            const existing = sState.priceLines.get(id);
+            if (!existing) return;
+            sState.priceLines.set(id, { ...existing, ...opts, id });
+            scheduleRender();
+          },
+          options(): PriceLineOptions {
+            return { ...(sState.priceLines.get(id) ?? stored) };
+          },
+          remove(): void {
+            sState.priceLines.delete(id);
+            scheduleRender();
+          },
+        };
+        return priceLine;
+      },
+      setMarkers(markers: SeriesMarker[]): void {
+        sState.markers = markers.slice();
+        scheduleRender();
+      },
+      attachPrimitive(primitive: ISeriesPrimitive): void {
+        if (!sState.primitives.includes(primitive)) {
+          sState.primitives.push(primitive);
+          primitive.attached?.({
+            chart: api,
+            requestUpdate: () => scheduleRender('primitive-update'),
+          });
+        }
+        scheduleRender();
+      },
+      detachPrimitive(primitive: ISeriesPrimitive): void {
+        const idx = sState.primitives.indexOf(primitive);
+        if (idx >= 0) {
+          sState.primitives.splice(idx, 1);
+          primitive.detached?.();
+          scheduleRender();
+        }
       },
     };
   }
@@ -2554,6 +3368,15 @@ export function createChart(
     unsubscribeVisibleTimeRangeChange(handler: () => void): void {
       visibleRangeListeners.delete(handler);
     },
+    fitContent(): void {
+      if (!timeIndex.length) return;
+      const totalBars = timeIndex.length;
+      // Fit all bars into the viewport
+      const availableWidth = cw();
+      barWidth = Math.max(MIN_BAR_WIDTH, Math.min(maxBarWidthForViewport(), availableWidth / totalBars));
+      rightmostIndex = clampRightmostIndex(totalBars - 1);
+      scheduleRender();
+    },
   };
 
   // ── chart API ─────────────────────────────────────────────────────────────
@@ -2574,6 +3397,8 @@ export function createChart(
       if (opts.crosshair?.horzLine?.color) crosshairHColor = opts.crosshair.horzLine.color;
       if (opts.rightPriceScale?.borderColor) axisBorderColor = opts.rightPriceScale.borderColor;
       if ('forcedTimeTicks' in opts) forcedTimeTicks = opts.forcedTimeTicks ?? null;
+      if (opts.priceFormatter != null) customPriceFormatter = opts.priceFormatter;
+      if (opts.timeFormatter != null) customTimeFormatter = opts.timeFormatter;
       resizeCanvas(undefined, 'apply-options');
       scheduleRender();
     },
@@ -2590,7 +3415,14 @@ export function createChart(
         scaleMargins: { top: 0, bottom: 0 },
         separateScale: options?.priceScaleId === '',
         excludeFromTimeIndex: options?.excludeFromTimeIndex === true,
+        priceLines: new Map(),
+        markers: [],
+        primitives: [],
       };
+      // Apply initial price scale mode if provided
+      if (options?.priceScaleMode != null) {
+        priceScaleModes.set(sState.paneId, options.priceScaleMode);
+      }
       seriesList.push(sState);
       return makeSeries<T>(sState);
     },
@@ -2605,6 +3437,67 @@ export function createChart(
     },
     unsubscribeCrosshairMove(handler: (param: unknown) => void): void {
       crosshairListeners.delete(handler as (param: CrosshairMoveEvent) => void);
+    },
+    subscribeClick(handler: (param: CrosshairMoveEvent) => void): void {
+      clickListeners.add(handler);
+    },
+    unsubscribeClick(handler: (param: CrosshairMoveEvent) => void): void {
+      clickListeners.delete(handler);
+    },
+    subscribeDblClick(handler: (param: CrosshairMoveEvent) => void): void {
+      dblClickListeners.add(handler);
+    },
+    unsubscribeDblClick(handler: (param: CrosshairMoveEvent) => void): void {
+      dblClickListeners.delete(handler);
+    },
+    panes(): IPaneApi[] {
+      return panes.map((paneDef) => {
+        const paneId = paneDef.id;
+        const paneApi: IPaneApi = {
+          id(): string {
+            return paneId;
+          },
+          getSize(): { width: number; height: number } {
+            const layout = computePaneLayout(panes, ch());
+            const found = layout.find((l) => l.id === paneId);
+            return {
+              width: cw(),
+              height: found?.h ?? 0,
+            };
+          },
+          attachPrimitive(primitive: IPanePrimitive): void {
+            let prims = panePrimitives.get(paneId);
+            if (!prims) { prims = []; panePrimitives.set(paneId, prims); }
+            if (!prims.includes(primitive)) {
+              prims.push(primitive);
+              primitive.attached?.({
+                chart: api,
+                requestUpdate: () => scheduleRender('primitive-update'),
+              });
+            }
+            scheduleRender();
+          },
+          detachPrimitive(primitive: IPanePrimitive): void {
+            const prims = panePrimitives.get(paneId);
+            if (!prims) return;
+            const idx = prims.indexOf(primitive);
+            if (idx >= 0) {
+              prims.splice(idx, 1);
+              primitive.detached?.();
+              scheduleRender();
+            }
+          },
+          moveTo(targetIndex: number): void {
+            const currentIdx = panes.findIndex((p) => p.id === paneId);
+            if (currentIdx < 0 || currentIdx === targetIndex) return;
+            const [paneDef2] = panes.splice(currentIdx, 1);
+            const clampedTarget = Math.max(0, Math.min(panes.length, targetIndex));
+            panes.splice(clampedTarget, 0, paneDef2);
+            scheduleRender();
+          },
+        };
+        return paneApi;
+      });
     },
     setInteractionMode(newMode: InteractionMode): void {
       mode = newMode;
@@ -2660,6 +3553,9 @@ export function createChart(
           separateScale: false,
           excludeFromTimeIndex: false,
           indicatorInstanceId: instanceId,
+          priceLines: new Map(),
+          markers: [],
+          primitives: [],
         };
         seriesList.push(sState);
         outputSeriesIds.push(sState.id);
@@ -2766,17 +3662,56 @@ export function createChart(
       setPanePriceScaleAuto(pane.id);
       scheduleRender();
     },
+    demoCursor(): IDemoCursorApi {
+      return {
+        clearStrokes(): void {
+          demoStrokes.length = 0;
+          if (demoCursorRafId != null) { cancelAnimationFrame(demoCursorRafId); demoCursorRafId = null; }
+          scheduleRender('demo-cursor-clear');
+        },
+        setColor(color: string): void {
+          demoCursorColor = color;
+        },
+        setLineWidth(width: number): void {
+          demoCursorLineWidth = width;
+        },
+        setFadeDuration(ms: number): void {
+          demoCursorFadeDuration = ms;
+        },
+        strokeCount(): number {
+          return demoStrokes.length;
+        },
+        setActive(active: boolean): void {
+          demoCursorForceMode = !!active;
+          // When activated, show a crosshair cursor so the user knows brush is live.
+          // When deactivated, restore the default.
+          try {
+            canvas.style.cursor = demoCursorForceMode ? 'crosshair' : '';
+          } catch { /* noop for non-DOM env */ }
+        },
+        isActive(): boolean {
+          return demoCursorForceMode;
+        },
+      };
+    },
     remove(): void {
+      destroyed = true;
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
       renderQueued = false;
       renderReasons.clear();
       if (indicatorRafId != null) { cancelAnimationFrame(indicatorRafId); indicatorRafId = null; }
       if (wheelRafId != null) { cancelAnimationFrame(wheelRafId); wheelRafId = null; }
+      if (kineticRafId != null) { cancelAnimationFrame(kineticRafId); kineticRafId = null; }
+      if (demoCursorRafId != null) { cancelAnimationFrame(demoCursorRafId); demoCursorRafId = null; }
+      demoStrokes.length = 0;
+      demoCursorActive = false;
       if (indicatorWorker) {
         indicatorWorker.terminate();
         indicatorWorker = null;
       }
       crosshairListeners.clear();
+      clickListeners.clear();
+      dblClickListeners.clear();
       indicatorWorkerInFlightRequestId = null;
       paneResizeDrag = null;
       canvas.removeEventListener('wheel', onWheel);
@@ -2784,7 +3719,10 @@ export function createChart(
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointerleave', onPointerLeave);
+      canvas.removeEventListener('click', onCanvasClick);
       canvas.removeEventListener('dblclick', onDoubleClick);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       if (container.contains(canvas)) container.removeChild(canvas);
     },
   };

@@ -16,6 +16,22 @@ export {
   type ChartOptions,
   type IChartApi,
   type CrosshairMoveEvent,
+  type PriceScaleMode,
+  type SeriesMarker,
+  type SeriesMarkerPosition,
+  type SeriesMarkerShape,
+  type PriceLineOptions,
+  type IPriceLine,
+  type IPrimitiveGeometry,
+  type PrimitivePaneViewZOrder,
+  type IPrimitivePaneRenderer,
+  type IPrimitivePaneView,
+  type IPrimitiveAxisView,
+  type ISeriesPrimitiveBase,
+  type ISeriesPrimitive,
+  type IPanePrimitive,
+  type IPaneApi,
+  type IDemoCursorApi,
 } from './lib/createChart';
 
 export { TimeIndex } from './lib/data/timeIndex';
@@ -113,6 +129,15 @@ export {
   aroonOscillatorDef,
   vortexDef,
 } from './indicators/builtins/batch2';
+
+// ─── Shared utilities ────────────────────────────────────────────────────────
+export { resolutionToSeconds, isIntradayResolution, formatCountdown } from './utils/resolution';
+export {
+  findNearestBarIndex,
+  clearOverlayCanvas,
+  drawCrosshairDot,
+  drawFallbackSparkline,
+} from './utils/overlayCanvas';
 export {
   trimaDef,
   smmaDef,

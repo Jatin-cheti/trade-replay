@@ -2,6 +2,13 @@
 import { ExternalLink } from "lucide-react";
 import { createTradingChart, fitChartContent, resizeChartSurface } from "@/services/chart/chartEngine";
 import {
+  findNearestBarIndex,
+  clearOverlayCanvas,
+  drawCrosshairDot,
+  drawFallbackSparkline,
+  type UTCTimestamp,
+} from "@tradereplay/charts";
+import {
   applySeriesData,
   applySeriesVisibility,
   chartVisibilityMap,
@@ -15,7 +22,6 @@ import AssetAvatar from "@/components/ui/AssetAvatar";
 import ScreenerRowContextMenu from "@/components/screener/ScreenerRowContextMenu";
 import { useSymbolFlags } from "@/hooks/useSymbolFlags";
 import { formatPriceUs } from "@/lib/numberFormat";
-import type { UTCTimestamp } from "@tradereplay/charts";
 
 const OHLC_CHART_TYPES = new Set<ChartType>(["candlestick", "bar", "ohlc", "heikinAshi", "hollowCandles"]);
 
@@ -164,14 +170,9 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     // Crosshair move -> draw dot on active series and update tooltip.
     (chart as any).subscribeCrosshairMove((param: any) => {
       const overlay = overlayRef.current;
-      const ctx = overlay?.getContext('2d');
 
       // Always clear first
-      if (ctx && overlay) {
-        const dpr = window.devicePixelRatio || 1;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, overlay.width / dpr, overlay.height / dpr);
-      }
+      if (overlay) clearOverlayCanvas(overlay);
 
       // Suppress dot drawing for 200ms after any resize — avoids misplaced dot
       // from LWC re-firing crosshairMove after canvas layout changes.
@@ -191,51 +192,31 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         return;
       }
 
-      let idx = rows.length - 1;
-      if (param.time != null) {
-        // Use nearest-time search instead of exact findIndex. The chart's timeIndex
-        // is a union of ALL series timestamps, including synthetic ones inserted by
-        // stepLineTransform (time-1 points between bars). An exact match would return
-        // -1 for those synthetic times, causing idx to default to the last bar.
-        let minDiff = Infinity;
-        const targetTime = param.time as number;
-        rows.forEach((r, i) => {
-          const diff = Math.abs((r.time as number) - targetTime);
-          if (diff < minDiff) { minDiff = diff; idx = i; }
-        });
-      }
-      // When param.time is null the cursor is outside the data range — idx stays at
-      // rows.length - 1 (last bar), set by the initial assignment above.
+      // Use nearest-time search from library — handles synthetic timestamps
+      // that don't appear in the original row array (e.g. from stepLineTransform).
+      const idx = param.time != null
+        ? findNearestBarIndex(rows as Array<{ time: number } & (typeof rows)[0]>, param.time as number)
+        : rows.length - 1;
 
       const row = rows[idx];
       const visibleKeys = chartVisibilityMap[chartTypeRef.current] ?? ['area'];
       const primaryKey = visibleKeys[0] as keyof ChartSeriesMap;
       const primarySeries = seriesMapRef.current?.[primaryKey] as any;
-      // dotX: use param.point.x — the chart only emits crosshairMove when the cursor
-      // is within cw() (chart content area, excluding the right price-scale strip).
-      // timeToCoordinate can return values in the price-scale region for edge bars,
-      // which would draw the dot in the axis area rather than on the series line.
+      // dotX: use param.point.x — chart only emits crosshairMove when cursor is
+      // within the content area (excluding the right price-scale strip).
       const dotX: number = param.point.x;
       // dotY: exact Y of the series line at this bar's close price in canvas coords.
-      // priceToCoordinate uses the same coordinate space as e.offsetX/Y (canvas pixels).
       const dotY: number | null = (primarySeries?.priceToCoordinate(row.close) as number | null | undefined) ?? null;
 
       // Only draw if coordinates are within the canvas bounds — prevents corner-stuck dot
       const canvasW = containerRef.current?.clientWidth ?? 0;
       const canvasH = containerRef.current?.clientHeight ?? 0;
+      const ctx = overlay?.getContext('2d');
       const inBounds = dotY !== null && Number.isFinite(dotX) && Number.isFinite(dotY)
         && dotX >= 0 && dotX <= canvasW && dotY >= 0 && dotY <= canvasH;
       if (ctx && overlay && inBounds) {
         try {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
-          ctx.fillStyle = lineColorRef.current;
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#131722';
-          ctx.stroke();
-          ctx.restore();
+          drawCrosshairDot(ctx, dotX, dotY, lineColorRef.current);
         } catch { /* ignore */ }
       }
 
@@ -277,12 +258,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
         resizeTimerRef.current = setTimeout(() => { isResizingRef.current = false; }, 200);
         // Clear stale dot immediately
         try {
-          const ctx = ov.getContext('2d');
-          if (ctx) {
-            const dpr = window.devicePixelRatio || 1;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.clearRect(0, 0, ov.width / dpr, ov.height / dpr);
-          }
+          clearOverlayCanvas(ov);
         } catch { /* ignore */ }
         setHoverInfo(null);
         // After resize, re-fit content using stored time refs
@@ -326,51 +302,7 @@ export default function ScreenerChartCard({ item, candles, chartType, period, he
     const overlay = overlayRef.current;
     if (!overlay) return;
 
-    const host = overlay.parentElement;
-    if (!host) return;
-
-    const width = host.clientWidth;
-    const height = host.clientHeight;
-    if (width < 10 || height < 10) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    overlay.width = Math.max(1, Math.round(width * dpr));
-    overlay.height = Math.max(1, Math.round(height * dpr));
-    overlay.style.width = `${width}px`;
-    overlay.style.height = `${height}px`;
-
-    const ctx = overlay.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    const rows = transformed.ohlcRows;
-    if (rows.length < 2) return;
-
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
-    for (const row of rows) {
-      if (row.low < min) min = row.low;
-      if (row.high > max) max = row.high;
-    }
-    const span = Math.max(0.000001, max - min);
-    const leftPad = 8;
-    const rightPad = 8;
-    const topPad = 8;
-    const bottomPad = 10;
-    const plotW = Math.max(1, width - leftPad - rightPad);
-    const plotH = Math.max(1, height - topPad - bottomPad);
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = lineColor;
-    ctx.beginPath();
-    rows.forEach((row, idx) => {
-      const x = leftPad + (idx / (rows.length - 1)) * plotW;
-      const y = topPad + (1 - (row.close - min) / span) * plotH;
-      if (idx === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+    drawFallbackSparkline(overlay, transformed.ohlcRows, lineColor);
   }, [chartInitFailed, lineColor, transformed.ohlcRows]);
 
   // Data + colour + axis effect — re-run when candles, period, or chartType change
