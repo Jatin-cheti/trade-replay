@@ -307,10 +307,9 @@ export default function TradingChart({
   // without stale-closure issues (updated synchronously in every setter call).
   const hoveredDrawingIdRef = useRef<string | null>(null);
   hoveredDrawingIdRef.current = hoveredDrawingId;
-  // Ref mirror for toolState.variant so __chartDebug.getActiveVariant() is always
-  // fresh — reads this ref rather than a stale useEffect closure value.
-  const toolVariantRef = useRef<ToolVariant>(toolState.variant);
-  toolVariantRef.current = toolState.variant;
+  // Ref mirror for toolState.variant is initialized BELOW the useTools() destructuring
+  // (see toolVariantRef declaration). Declaring it here caused a TDZ because
+  // `toolState` is declared later — minifier exposed the bug in prod bundles.
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
 
   useEffect(() => {
@@ -377,6 +376,12 @@ export default function TradingChart({
     redo,
     resetForSymbol,
   } = useTools();
+
+  // Ref mirror for toolState.variant so __chartDebug.getActiveVariant() is always
+  // fresh — reads this ref rather than a stale useEffect closure value.
+  // Must be declared AFTER useTools() destructuring to avoid TDZ in minified bundles.
+  const toolVariantRef = useRef<ToolVariant>(toolState.variant);
+  toolVariantRef.current = toolState.variant;
 
   const resizeCallbackRef = useRef<(() => void) | null>(null);
   const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(
