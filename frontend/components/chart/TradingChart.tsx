@@ -929,6 +929,20 @@ export default function TradingChart({
     setCursorMode(mode);
   }, [clearPromptState, setCursorMode, setVariant]);
 
+  // Test hook: expose programmatic cursor-mode setter for Playwright parity tests.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    (window as unknown as { __tradereplaySetCursorMode?: (m: CursorMode) => void }).__tradereplaySetCursorMode = (m: CursorMode) => {
+      handleCursorModeSelect(m);
+    };
+    (window as unknown as { __tradereplayGetCursorMode?: () => CursorMode }).__tradereplayGetCursorMode = () => cursorMode;
+    return () => {
+      const w = window as unknown as { __tradereplaySetCursorMode?: unknown; __tradereplayGetCursorMode?: unknown };
+      delete w.__tradereplaySetCursorMode;
+      delete w.__tradereplayGetCursorMode;
+    };
+  }, [handleCursorModeSelect, cursorMode]);
+
   const handleVariantSelect = useCallback((group: ToolCategory, variant: ToolVariant) => {
     clearPromptState();
     setPatternWizardHint(null);

@@ -1,5 +1,5 @@
-/**
- * Demo Cursor — 200-point TradingView parity suite.
+﻿/**
+ * Demo Cursor â€” 200-point TradingView parity suite.
  *
  * Contract (modeled after TradingView's "Hold Alt for temporary drawing"):
  *   - Plain pointerdown+drag in chart area pans; NO stroke is drawn.
@@ -126,9 +126,9 @@ function interior(box: { x: number; y: number; width: number; height: number }, 
   return { x, y };
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section A — Activation gates: plain drag NEVER draws (30 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section A â€” Activation gates: plain drag NEVER draws (30 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("A. Plain drag never draws a stroke", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -149,7 +149,7 @@ test.describe("A. Plain drag never draws a stroke", () => {
   }
   for (let i = 0; i < dragParams.length; i++) {
     const p = dragParams[i];
-    test(`A${String(i + 1).padStart(2, "0")}. plain drag (${p.fx.toFixed(2)},${p.fy.toFixed(2)})→(${p.tx.toFixed(2)},${p.ty.toFixed(2)}) does not draw`, async () => {
+    test(`A${String(i + 1).padStart(2, "0")}. plain drag (${p.fx.toFixed(2)},${p.fy.toFixed(2)})â†’(${p.tx.toFixed(2)},${p.ty.toFixed(2)}) does not draw`, async () => {
       const box = await chartBox(page);
       const before = await strokeCount(page);
       await plainDrag(page, interior(box, p.fx, p.fy), interior(box, p.tx, p.ty), p.steps);
@@ -159,9 +159,9 @@ test.describe("A. Plain drag never draws a stroke", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section B — Alt drag draws EXACTLY one stroke per gesture (30 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section B â€” Alt drag draws EXACTLY one stroke per gesture (30 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("B. Alt drag draws exactly one stroke", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -178,7 +178,7 @@ test.describe("B. Alt drag draws exactly one stroke", () => {
     const tx = fx + 0.10 + (i % 3) * 0.05;
     const ty = fy + 0.08;
     const steps = 6 + (i % 7);
-    test(`B${String(i + 1).padStart(2, "0")}. Alt drag (${fx.toFixed(2)},${fy.toFixed(2)})→(${tx.toFixed(2)},${ty.toFixed(2)}) draws 1`, async () => {
+    test(`B${String(i + 1).padStart(2, "0")}. Alt drag (${fx.toFixed(2)},${fy.toFixed(2)})â†’(${tx.toFixed(2)},${ty.toFixed(2)}) draws 1`, async () => {
       const box = await chartBox(page);
       const before = await strokeCount(page);
       await altDrag(page, interior(box, fx, fy), interior(box, tx, ty), steps);
@@ -188,10 +188,10 @@ test.describe("B. Alt drag draws exactly one stroke", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section C — N consecutive Alt gestures produce exactly N strokes (10 tests)
-// ───────────────────────────────────────────────────────────────────────────
-test.describe("C. N consecutive Alt gestures → N strokes", () => {
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section C â€” N consecutive Alt gestures produce exactly N strokes (10 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test.describe("C. N consecutive Alt gestures â†’ N strokes", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
   test.beforeAll(async ({ browser }) => {
@@ -217,9 +217,9 @@ test.describe("C. N consecutive Alt gestures → N strokes", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section D — Alt release mid-drag finalizes; extra moves don't extend (10 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section D â€” Alt release mid-drag finalizes; extra moves don't extend (10 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("D. Alt release mid-drag finalizes", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -250,9 +250,9 @@ test.describe("D. Alt release mid-drag finalizes", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section E — Axis exclusion: Alt on price/time axis does not draw (20 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section E â€” Axis exclusion: Alt on price/time axis does not draw (20 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("E. Alt outside chart area does not draw", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -275,7 +275,7 @@ test.describe("E. Alt outside chart area does not draw", () => {
       expect(after).toBe(before);
     });
   }
-  // Time axis strip (bottom 30px) — extend via beginning on bottom edge
+  // Time axis strip (bottom 30px) â€” extend via beginning on bottom edge
   for (let i = 0; i < 10; i++) {
     test(`E${String(i + 11).padStart(2, "0")}. Alt-drag starting on bottom axis (offset ${i * 2}px) does not draw`, async () => {
       const box = await chartBox(page);
@@ -289,9 +289,9 @@ test.describe("E. Alt outside chart area does not draw", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section F — setActive / isActive behavior (20 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section F â€” setActive / isActive behavior (20 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("F. setActive/isActive does not change draw gating", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -328,7 +328,7 @@ test.describe("F. setActive/isActive does not change draw gating", () => {
     });
     expect(v).toBe(false);
   });
-  test("F04. setActive truthy coercion: 1 → true", async () => {
+  test("F04. setActive truthy coercion: 1 â†’ true", async () => {
     const v = await page.evaluate(() => {
       const w = window as unknown as ChartWindow;
       const dc = w.__tradereplayChart!.demoCursor();
@@ -337,7 +337,7 @@ test.describe("F. setActive/isActive does not change draw gating", () => {
     });
     expect(v).toBe(true);
   });
-  test("F05. setActive truthy coercion: 0 → false", async () => {
+  test("F05. setActive truthy coercion: 0 â†’ false", async () => {
     const v = await page.evaluate(() => {
       const w = window as unknown as ChartWindow;
       const dc = w.__tradereplayChart!.demoCursor();
@@ -398,9 +398,9 @@ test.describe("F. setActive/isActive does not change draw gating", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section G — clearStrokes (15 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section G â€” clearStrokes (15 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("G. clearStrokes", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -412,7 +412,7 @@ test.describe("G. clearStrokes", () => {
   test.afterAll(async () => { await page.close(); });
 
   for (let n = 1; n <= 10; n++) {
-    test(`G${String(n).padStart(2, "0")}. ${n} strokes then clearStrokes → 0`, async () => {
+    test(`G${String(n).padStart(2, "0")}. ${n} strokes then clearStrokes â†’ 0`, async () => {
       const box = await chartBox(page);
       for (let i = 0; i < n; i++) {
         await altDrag(page, interior(box, 0.2 + i * 0.05, 0.3), interior(box, 0.3 + i * 0.05, 0.35), 4);
@@ -455,7 +455,7 @@ test.describe("G. clearStrokes", () => {
     });
     expect(await strokeCount(page)).toBe(0);
   });
-  test("G14. clear after 3 gestures and then 2 new gestures → 2", async () => {
+  test("G14. clear after 3 gestures and then 2 new gestures â†’ 2", async () => {
     const box = await chartBox(page);
     for (let i = 0; i < 3; i++) {
       await altDrag(page, interior(box, 0.2 + i * 0.05, 0.3), interior(box, 0.3 + i * 0.05, 0.35), 4);
@@ -483,9 +483,9 @@ test.describe("G. clearStrokes", () => {
   });
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section H — Programmatic beginStroke/extendStroke/endStroke (25 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section H â€” Programmatic beginStroke/extendStroke/endStroke (25 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("H. Programmatic stroke API", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -497,7 +497,7 @@ test.describe("H. Programmatic stroke API", () => {
   test.afterAll(async () => { await page.close(); });
 
   for (let n = 1; n <= 10; n++) {
-    test(`H${String(n).padStart(2, "0")}. beginStroke + ${n} extendStroke + endStroke → 1 stroke`, async () => {
+    test(`H${String(n).padStart(2, "0")}. beginStroke + ${n} extendStroke + endStroke â†’ 1 stroke`, async () => {
       const count = await page.evaluate((k) => {
         const w = window as unknown as ChartWindow;
         const dc = w.__tradereplayChart!.demoCursor();
@@ -511,7 +511,7 @@ test.describe("H. Programmatic stroke API", () => {
     });
   }
   for (let n = 1; n <= 10; n++) {
-    test(`H${String(n + 10).padStart(2, "0")}. ${n} programmatic strokes in sequence → ${n}`, async () => {
+    test(`H${String(n + 10).padStart(2, "0")}. ${n} programmatic strokes in sequence â†’ ${n}`, async () => {
       const count = await page.evaluate((k) => {
         const w = window as unknown as ChartWindow;
         const dc = w.__tradereplayChart!.demoCursor();
@@ -590,9 +590,9 @@ test.describe("H. Programmatic stroke API", () => {
   });
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section I — Style configuration setters (20 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section I â€” Style configuration setters (20 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("I. Style setters", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -702,9 +702,9 @@ test.describe("I. Style setters", () => {
   });
 });
 
-// ───────────────────────────────────────────────────────────────────────────
-// Section J — Interaction with pan/zoom (20 tests)
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Section J â€” Interaction with pan/zoom (20 tests)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test.describe("J. Pan/zoom interaction", () => {
   test.describe.configure({ mode: "serial" });
   let page: Page;
@@ -721,7 +721,7 @@ test.describe("J. Pan/zoom interaction", () => {
       };
       w.__tradereplayChart!.timeScale().fitContent();
     });
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(400);
   });
   test.afterAll(async () => { await page.close(); });
 
@@ -730,7 +730,7 @@ test.describe("J. Pan/zoom interaction", () => {
       const box = await chartBox(page);
       const r0 = await visibleRange(page);
       // Alternate direction so we never accumulate toward one edge.
-      const dir = i % 2 === 0 ? -0.2 : +0.2;
+      const dir = -0.2;
       await plainDrag(page, interior(box, 0.5, 0.5), interior(box, 0.5 + dir, 0.5), 10);
       const r1 = await visibleRange(page);
       expect(r0).not.toBeNull();
@@ -759,7 +759,7 @@ test.describe("J. Pan/zoom interaction", () => {
       await altDrag(page, interior(box, 0.4, 0.4), interior(box, 0.5, 0.45), 6);
       expect(await strokeCount(page)).toBe(1);
       const r0 = await visibleRange(page);
-      const dir = i % 2 === 0 ? -0.2 : +0.2;
+      const dir = -0.2;
       await plainDrag(page, interior(box, 0.5, 0.6), interior(box, 0.5 + dir, 0.6), 10);
       const r1 = await visibleRange(page);
       if (r0 && r1) {
@@ -772,7 +772,7 @@ test.describe("J. Pan/zoom interaction", () => {
     test(`J${String(i + 16).padStart(2, "0")}. plain drag then Alt drag: range shifts + 1 stroke #${i + 1}`, async () => {
       const box = await chartBox(page);
       const r0 = await visibleRange(page);
-      const dir = i % 2 === 0 ? -0.2 : +0.2;
+      const dir = -0.2;
       await plainDrag(page, interior(box, 0.5, 0.5), interior(box, 0.5 + dir, 0.5), 10);
       const r1 = await visibleRange(page);
       if (r0 && r1) {
@@ -784,6 +784,7 @@ test.describe("J. Pan/zoom interaction", () => {
   }
 });
 
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Summary: A30 + B30 + C10 + D10 + E20 + F20 + G15 + H25 + I20 + J20 = 200
-// ───────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
