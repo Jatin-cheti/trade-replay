@@ -2632,17 +2632,64 @@ export default function TradingChart({
       getClickClickPhase: () => clickClickPhaseRef.current,
       getDraftVariant: () => draftRef.current?.variant ?? null,
       getFloatingToolbarState: () => {
-        const anchor = toolbarAnchorRef.current;
-        if (!selectedDrawingId || !anchor) return { visible: false, drawingId: null as string | null };
+        // Compute fresh each call (don't rely on throttled React state) so tests
+        // reading the anchor right after a pan/scroll see the updated position.
+        const id = selectedDrawingId;
+        const drawing = id ? drawingsRef.current.find((d) => d.id === id) : null;
+        const chart = chartRef.current;
+        const series = getActiveSeries();
+        const overlay = overlayRef.current;
+        if (!drawing || !chart || !series || !overlay) {
+          const a = toolbarAnchorRef.current;
+          if (!id || !a) return { visible: false, drawingId: null as string | null };
+          return {
+            visible: true,
+            drawingId: id,
+            left: a.left,
+            right: a.right,
+            top: a.top,
+            bottom: a.bottom,
+            centerX: (a.left + a.right) / 2,
+            centerY: (a.top + a.bottom) / 2,
+          };
+        }
+        const rect = overlay.getBoundingClientRect();
+        const xs: number[] = [];
+        const ys: number[] = [];
+        for (const a of drawing.anchors) {
+          const x = chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+          const y = series.priceToCoordinate(a.price);
+          if (x == null || y == null) continue;
+          xs.push(rect.left + x);
+          ys.push(rect.top + y);
+        }
+        if (!xs.length || !ys.length) {
+          const a = toolbarAnchorRef.current;
+          if (!a) return { visible: false, drawingId: null as string | null };
+          return {
+            visible: true,
+            drawingId: id,
+            left: a.left,
+            right: a.right,
+            top: a.top,
+            bottom: a.bottom,
+            centerX: (a.left + a.right) / 2,
+            centerY: (a.top + a.bottom) / 2,
+          };
+        }
+        const left = Math.min(...xs);
+        const right = Math.max(...xs);
+        const top = Math.min(...ys);
+        const bottom = Math.max(...ys);
         return {
           visible: true,
-          drawingId: selectedDrawingId,
-          left: anchor.left,
-          right: anchor.right,
-          top: anchor.top,
-          bottom: anchor.bottom,
-          centerX: (anchor.left + anchor.right) / 2,
-          centerY: (anchor.top + anchor.bottom) / 2,
+          drawingId: id,
+          left,
+          right,
+          top,
+          bottom,
+          centerX: (left + right) / 2,
+          centerY: (top + bottom) / 2,
         };
       },
       getDraftAnchorsClient: () => {
@@ -3909,7 +3956,7 @@ export default function TradingChart({
   const [toolbarTick, setToolbarTick] = useState(0);
 
   useEffect(() => {
-    if (!selectedDrawing || !selectedDrawing.visible) {
+    if (!selectedDrawing) {
       setToolbarAnchor(null);
       return;
     }
