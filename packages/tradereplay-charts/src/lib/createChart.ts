@@ -197,6 +197,8 @@ export interface IChartApi {
   applyOptions(opts: Partial<ChartOptions>): void;
   addSeries<T extends SeriesType>(type: T, options?: Partial<SeriesOptions>, paneId?: string): ISeriesApi<T>;
   timeScale(): ITimeScaleApi;
+  /** Current chart size + axis gutter sizes (CSS pixels). */
+  getDimensions(): { width: number; height: number; priceAxisWidth: number; timeAxisHeight: number };
   subscribeCrosshairMove(handler: (param: unknown) => void): void;
   unsubscribeCrosshairMove(handler: (param: unknown) => void): void;
   setInteractionMode(mode: InteractionMode): void;
@@ -2594,6 +2596,9 @@ export function createChart(
     },
     timeScale(): ITimeScaleApi {
       return timeScaleApi;
+    },
+    getDimensions(): { width: number; height: number; priceAxisWidth: number; timeAxisHeight: number } {
+      return { width, height, priceAxisWidth, timeAxisHeight: TIME_AXIS_H };
     },
     subscribeCrosshairMove(handler: (param: unknown) => void): void {
       crosshairListeners.add(handler as (param: CrosshairMoveEvent) => void);

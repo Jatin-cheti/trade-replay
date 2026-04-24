@@ -2541,12 +2541,11 @@ export default function TradingChart({
               : selected.anchors;
           const pts = anchorsForHighlight.map(toXY).filter(Boolean) as Array<{ x: number; y: number }>;
           if (pts.length) {
-            const priceAxisWidth = (() => {
-              try { return chartRef.current?.priceScale('right').width() ?? 0; } catch { return 0; }
+            const dims = (() => {
+              try { return chartRef.current?.getDimensions?.() ?? null; } catch { return null; }
             })();
-            const timeAxisHeight = (() => {
-              try { return chartRef.current?.timeScale().height() ?? 0; } catch { return 0; }
-            })();
+            const priceAxisWidth = dims?.priceAxisWidth ?? 68;
+            const timeAxisHeight = dims?.timeAxisHeight ?? 28;
             const plotW = cssWidth - priceAxisWidth;
             const plotH = cssHeight - timeAxisHeight;
 
@@ -2634,11 +2633,11 @@ export default function TradingChart({
       getAxisDimensions: () => {
         const chart = chartRef.current;
         if (!chart) return null;
-        let priceAxisWidth = 0;
-        let timeAxisHeight = 0;
-        try { priceAxisWidth = chart.priceScale('right').width(); } catch { /* */ }
-        try { timeAxisHeight = chart.timeScale().height(); } catch { /* */ }
-        return { priceAxisWidth, timeAxisHeight };
+        try {
+          return chart.getDimensions?.() ?? null;
+        } catch {
+          return null;
+        }
       },
       scrollToPosition: (position: number) => {
         chartRef.current?.timeScale().scrollToPosition(position, false);
