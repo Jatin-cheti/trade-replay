@@ -3475,14 +3475,15 @@ export default function TradingChart({
         if (!freePoint) return;
 
         const candidate = resolveHitTarget(freePoint, 'select', [selectedDrawingId, hoveredDrawingId]).id;
-        // Pixel-space sanity check: the data-space hit-test uses very lax
-        // normalization (priceScale = 3% of price, timeScale ≈ 2 days), which
-        // can match ANY chart click against an existing drawing. Re-validate
-        // the candidate in pixel space against its own rendered anchors and
-        // segments so that "click on empty area deselects" works exactly like
-        // TradingView. Threshold: 12px (TV uses ~6-10px; we allow a small
-        // safety margin so hover/select still feels easy).
-        const SELECT_PIXEL_TOLERANCE = 12;
+        // Pixel-space sanity check: the data-space hit-test (resolveHitTarget)
+        // uses very lax normalization (priceScale = 3% of price; timeScale ≈ 2
+        // days; limit 2.5), so it can match almost any chart click against an
+        // existing drawing. Re-validate the candidate in pixel space against
+        // its own rendered geometry so "click on empty area deselects" works
+        // exactly like TradingView. Threshold: 24 px (TV uses ~10-15 px; we
+        // allow extra slack so magnet/snap drift between cursor and committed
+        // anchor still keeps the drawing easy to grab on a re-click).
+        const SELECT_PIXEL_TOLERANCE = 24;
         let selected: string | null = candidate;
         if (candidate) {
           const drawing = drawingsRef.current.find((d) => d.id === candidate);
