@@ -218,17 +218,23 @@ test.describe("Universal selection (TV-parity)", () => {
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
       await drawOnce(page, tool, cx, cy);
-      // Click far away (top-left corner of canvas)
-      await page.mouse.move(box.x + 12, box.y + 12);
+      const before = await getDrawingCount(page);
+      // Click in a safe canvas region away from the drawn shape and away
+      // from the top-left overlays (ohlc bar, volume label, BUY/SELL chips).
+      // Offset both x and y so neither hline nor vline anchors would match.
+      const sx = cx + 220;
+      const sy = cy + 140;
+      await page.mouse.move(sx, sy);
       await page.mouse.down(); await page.mouse.up();
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(180);
       const sel = await getSelectedDrawingId(page);
       expect(sel).toBeNull();
       // Variant must remain none (no new draft started)
       const v = await getActiveVariant(page);
       expect([null, "none", undefined]).toContain(v);
-      // Drawing must still exist (not deleted by the deselect click)
-      expect(await getDrawingCount(page)).toBeGreaterThanOrEqual(1);
+      // Drawing must still exist (deselect click MUST NOT create a new
+      // drawing nor delete the existing one).
+      expect(await getDrawingCount(page)).toBe(before);
     });
 
     test(`${tool.variant} - click on existing drawing re-selects it`, async ({ page }) => {
@@ -238,18 +244,18 @@ test.describe("Universal selection (TV-parity)", () => {
       const cy = box.y + box.height / 2;
       await drawOnce(page, tool, cx, cy);
       const id = await page.evaluate(() => (window as any).__chartDebug?.getLatestDrawingId?.());
-      // Deselect first
-      await page.mouse.move(box.x + 12, box.y + 12);
+      const before = await getDrawingCount(page);
+      // Deselect first by clicking in a safe canvas region
+      await page.mouse.move(cx + 220, cy + 140);
       await page.mouse.down(); await page.mouse.up();
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(180);
       expect(await getSelectedDrawingId(page)).toBeNull();
+      expect(await getDrawingCount(page)).toBe(before);
       // Click ON the drawing midpoint to re-select
       await page.mouse.move(cx, cy);
       await page.mouse.down(); await page.mouse.up();
-      await page.waitForTimeout(180);
+      await page.waitForTimeout(220);
       const sel = await getSelectedDrawingId(page);
-      // Single-click tools (hline/vline/etc.) and click-click tools should both re-select.
-      // Some pitchforks have anchors offset from midpoint; allow either the same id or any non-null.
       expect(sel === id || (typeof sel === "string" && sel.length > 0)).toBe(true);
     });
   }

@@ -3453,7 +3453,84 @@ export default function TradingChart({
       if (toolState.variant === 'none') {
         if (!freePoint) return;
 
-        const selected = resolveHitTarget(freePoint, 'select', [selectedDrawingId, hoveredDrawingId]).id;
+        const candidate = resolveHitTarget(freePoint, 'select', [selectedDrawingId, hoveredDrawingId]).id;
+        // Pixel-space sanity check: the data-space hit-test uses very lax
+        // normalization (priceScale = 3% of price, timeScale ≈ 2 days), which
+        // can match ANY chart click against an existing drawing. Re-validate
+        // the candidate in pixel space against its own rendered anchors and
+        // segments so that "click on empty area deselects" works exactly like
+        // TradingView. Threshold: 12px (TV uses ~6-10px; we allow a small
+        // safety margin so hover/select still feels easy).
+        const SELECT_PIXEL_TOLERANCE = 12;
+        let selected: string | null = candidate;
+        if (candidate) {
+          const drawing = drawingsRef.current.find((d) => d.id === candidate);
+          const chart = chartRef.current;
+          const series = getActiveSeries?.();
+          const surface = (event.currentTarget as HTMLElement)?.getBoundingClientRect?.();
+          if (drawing && chart && series && surface && drawing.anchors?.length) {
+            const clickPx = { x: event.clientX - surface.left, y: event.clientY - surface.top };
+            const ts = chart.timeScale();
+            const pts: Array<{ x: number; y: number }> = [];
+            for (const a of drawing.anchors) {
+              const x = ts.timeToCoordinate(a.time as import('@tradereplay/charts').UTCTimestamp);
+              const y = (series as any).priceToCoordinate?.(a.price);
+              if (typeof x === 'number' && typeof y === 'number') pts.push({ x, y });
+            }
+            // Variants whose visual extends infinitely: skip pixel re-check
+            const v = drawing.variant;
+            const isInfiniteHorizontal = v === 'hline';
+            const isInfiniteVertical = v === 'vline';
+            const isCross = v === 'crossLine';
+            const isExtended = v === 'extendedLine' || drawing.options?.extendLeft || drawing.options?.extendRight;
+            const isRayLike = v === 'ray' || v === 'horizontalRay' || drawing.options?.rayMode;
+            // Compute pixel distance heuristically per variant
+            let bestPx = Number.POSITIVE_INFINITY;
+            if (pts.length === 0) {
+              bestPx = 0; // unknown; preserve candidate
+            } else if (isInfiniteHorizontal) {
+              bestPx = Math.abs(clickPx.y - pts[0].y);
+            } else if (isInfiniteVertical) {
+              bestPx = Math.abs(clickPx.x - pts[0].x);
+            } else if (isCross) {
+              bestPx = Math.min(Math.abs(clickPx.y - pts[0].y), Math.abs(clickPx.x - pts[0].x));
+            } else if (isExtended && pts.length >= 2) {
+              const a0 = pts[0], a1 = pts[1];
+              const dx = a1.x - a0.x, dy = a1.y - a0.y;
+              const len2 = dx * dx + dy * dy || 1;
+              const num = Math.abs(dy * clickPx.x - dx * clickPx.y + a1.x * a0.y - a1.y * a0.x);
+              bestPx = num / Math.sqrt(len2);
+            } else if (isRayLike && pts.length >= 2) {
+              const a0 = pts[0], a1 = pts[1];
+              const dx = a1.x - a0.x, dy = a1.y - a0.y;
+              const len2 = dx * dx + dy * dy || 1;
+              const t = ((clickPx.x - a0.x) * dx + (clickPx.y - a0.y) * dy) / len2;
+              if (t < 0) {
+                bestPx = Math.hypot(clickPx.x - a0.x, clickPx.y - a0.y);
+              } else {
+                const num = Math.abs(dy * clickPx.x - dx * clickPx.y + a1.x * a0.y - a1.y * a0.x);
+                bestPx = num / Math.sqrt(len2);
+              }
+            } else {
+              // Polyline/segment: min distance to any segment between consecutive anchors,
+              // plus distance to each anchor (handles single-point and tight shapes).
+              for (const p of pts) {
+                bestPx = Math.min(bestPx, Math.hypot(clickPx.x - p.x, clickPx.y - p.y));
+              }
+              for (let i = 0; i < pts.length - 1; i += 1) {
+                const a0 = pts[i], a1 = pts[i + 1];
+                const dx = a1.x - a0.x, dy = a1.y - a0.y;
+                const len2 = dx * dx + dy * dy;
+                if (len2 < 1e-6) continue;
+                let t = ((clickPx.x - a0.x) * dx + (clickPx.y - a0.y) * dy) / len2;
+                t = Math.max(0, Math.min(1, t));
+                const px = a0.x + t * dx, py = a0.y + t * dy;
+                bestPx = Math.min(bestPx, Math.hypot(clickPx.x - px, clickPx.y - py));
+              }
+            }
+            if (bestPx > SELECT_PIXEL_TOLERANCE) selected = null;
+          }
+        }
         setSelectedDrawingId(selected);
         setHoveredDrawingId((prev) => (selected ? selected : (prev ? null : prev)));
         if (selected) {
