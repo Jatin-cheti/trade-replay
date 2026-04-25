@@ -3233,11 +3233,28 @@ export default function TradingChart({
         removeDrawing(selectedDrawingId);
         setSelectedDrawingId(null);
         setHoveredDrawingId((prev) => (prev === selectedDrawingId ? null : prev));
+        return;
+      }
+      // TV-parity: Ctrl+Z / Cmd+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo.
+      // Skip when typing in an input/textarea/contenteditable element.
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isEditable = tag === 'input' || tag === 'textarea' || (target?.isContentEditable === true);
+      if (isEditable) return;
+      const mod = event.ctrlKey || event.metaKey;
+      if (!mod) return;
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
+        event.preventDefault();
+        redo();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [drawingsRef, removeDrawing, selectedDrawingId]);
+  }, [drawingsRef, removeDrawing, selectedDrawingId, undo, redo]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -3256,7 +3273,24 @@ export default function TradingChart({
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       const wasDrawing = drawingActiveRef.current;
-      if (!wasDrawing && !dragMoveRef.current && !dragAnchorMoveRef.current && !dragAnchor) return;
+      const isInteracting = wasDrawing || dragMoveRef.current || dragAnchorMoveRef.current || dragAnchor;
+      if (!isInteracting) {
+        // TV-parity: Escape with no active interaction deselects the
+        // currently selected drawing (returns to normal mode) and exits any
+        // active tool. Do NOT touch focus on form elements.
+        const target = event.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || target?.isContentEditable === true) return;
+        if (selectedDrawingId) {
+          setSelectedDrawingId(null);
+          setHoveredDrawingId(null);
+        }
+        if (toolState.variant !== 'none') {
+          // Exit any active drawing tool (TV-parity Escape behavior).
+          exitDrawingModeIfNeeded(toolState.variant as Exclude<ToolVariant, 'none'>, true);
+        }
+        return;
+      }
       cancelDraft();
       clickClickPhaseRef.current = 0;
       clickClickStartRef.current = null;
@@ -3274,7 +3308,7 @@ export default function TradingChart({
 
     window.addEventListener('keydown', onEscape);
     return () => window.removeEventListener('keydown', onEscape);
-  }, [cancelDraft, dragAnchor, drawingActiveRef, exitDrawingModeIfNeeded, renderOverlay]);
+  }, [cancelDraft, dragAnchor, drawingActiveRef, exitDrawingModeIfNeeded, renderOverlay, selectedDrawingId, toolState.variant]);
 
   useEffect(() => {
     if (!fullView) return;
