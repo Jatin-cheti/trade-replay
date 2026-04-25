@@ -3467,9 +3467,14 @@ export default function TradingChart({
           const drawing = drawingsRef.current.find((d) => d.id === candidate);
           const chart = chartRef.current;
           const series = getActiveSeries?.();
-          const surface = (event.currentTarget as HTMLElement)?.getBoundingClientRect?.();
-          if (drawing && chart && series && surface && drawing.anchors?.length) {
-            const clickPx = { x: event.clientX - surface.left, y: event.clientY - surface.top };
+          // Use the chart container's bounding rect (not the surface) so that
+          // chart.timeScale().timeToCoordinate() / series.priceToCoordinate()
+          // (which are relative to the chart pane) line up with our click.
+          const chartRect = chartContainerRef.current?.getBoundingClientRect?.()
+            ?? overlayRef.current?.getBoundingClientRect?.()
+            ?? (event.currentTarget as HTMLElement)?.getBoundingClientRect?.();
+          if (drawing && chart && series && chartRect && drawing.anchors?.length) {
+            const clickPx = { x: event.clientX - chartRect.left, y: event.clientY - chartRect.top };
             const ts = chart.timeScale();
             const pts: Array<{ x: number; y: number }> = [];
             for (const a of drawing.anchors) {
