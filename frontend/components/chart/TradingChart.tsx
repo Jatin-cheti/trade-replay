@@ -2793,6 +2793,27 @@ export default function TradingChart({
       getHoverPoint: () => (hoverPoint ? { ...hoverPoint } : null),
       getMagnetMode: () => magnetMode,
       /**
+       * Returns the rendered pixel coordinates (relative to the chart pane)
+       * for each anchor of a drawing. Useful for tests/diagnostics that need
+       * to compare clicks-vs-drawings in pixel space.
+       */
+      getDrawingPixelAnchors: (id?: string | null) => {
+        const list = drawingsRef.current;
+        const drawing = id ? list.find((d) => d.id === id) : list[list.length - 1];
+        if (!drawing) return null;
+        const chart = chartRef.current;
+        const series = getActiveSeries();
+        if (!chart || !series) return null;
+        const ts = chart.timeScale();
+        const out: Array<{ x: number | null; y: number | null }> = [];
+        for (const a of drawing.anchors) {
+          const x = ts.timeToCoordinate(a.time as DrawPoint['time']);
+          const y = series.priceToCoordinate(a.price);
+          out.push({ x: typeof x === 'number' ? x : null, y: typeof y === 'number' ? y : null });
+        }
+        return { id: drawing.id, variant: drawing.variant, anchors: out };
+      },
+      /**
        * Return TV-parity info-line metrics for a given drawing id (or the
        * latest infoLine drawing if id is null). Includes both raw values and
        * formatted display strings used by the floating panel.
