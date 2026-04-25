@@ -253,29 +253,50 @@ async function drawN(page: Page, tool: ToolDef, box: Awaited<ReturnType<typeof s
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
   for (let i = 0; i < n; i++) {
+    // Move mouse away from any existing drawing to prevent hover toolbar & hit-detection interference
+    await page.mouse.move(box.x + 5, box.y + 5);
+    // Deselect any prior drawing so its floating toolbar doesn't occlude next clicks
+    await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null)).catch(() => undefined);
+    await page.waitForTimeout(150);
+    // Dismiss any lingering modal/toolbar before picking the tool
+    await dismissModalIfPresent(page);
+    const countBefore = await page.evaluate(() => (window as any).__chartDebug?.getDrawings?.()?.length ?? 0).catch(() => -1);
     await pickTool(page, tool.testId);
     const ox = (i % 5) * 40 - 80;
     const oy = Math.floor(i / 5) * 30 - 40;
-    if (tool.commitStyle === "single-click") {
-      await clickAt(page, cx + ox, cy + oy);
-    } else if (tool.commitStyle === "click-click") {
-      await clickAt(page, cx + ox - 25, cy + oy - 12);
-      await page.mouse.move(cx + ox + 25, cy + oy + 12);
-      await clickAt(page, cx + ox + 25, cy + oy + 12);
-    } else if (tool.commitStyle === "click-sequence") {
-      const k = tool.anchors;
-      for (let j = 0; j < k; j++) {
-        const fx = k === 1 ? 0 : -1 + (2 * j) / (k - 1);
-        const fy = j % 2 === 0 ? -1 : 1;
-        await clickAt(page, cx + ox + fx * 30, cy + oy + fy * 15);
-        await page.waitForTimeout(60);
+    const attempt = async () => {
+      if (tool.commitStyle === "single-click") {
+        await clickAt(page, cx + ox, cy + oy);
+      } else if (tool.commitStyle === "click-click") {
+        await clickAt(page, cx + ox - 25, cy + oy - 12);
+        await page.mouse.move(cx + ox + 25, cy + oy + 12);
+        await clickAt(page, cx + ox + 25, cy + oy + 12);
+      } else if (tool.commitStyle === "click-sequence") {
+        const k = tool.anchors;
+        for (let j = 0; j < k; j++) {
+          const fx = k === 1 ? 0 : -1 + (2 * j) / (k - 1);
+          const fy = j % 2 === 0 ? -1 : 1;
+          await clickAt(page, cx + ox + fx * 30, cy + oy + fy * 15);
+          await page.waitForTimeout(60);
+        }
+      } else {
+        await dragBetween(page, cx + ox - 40, cy + oy - 20, cx + ox + 40, cy + oy + 20);
       }
-    } else {
-      await dragBetween(page, cx + ox - 40, cy + oy - 20, cx + ox + 40, cy + oy + 20);
+      await page.waitForTimeout(120);
+      await dismissModalIfPresent(page);
+    };
+    await attempt();
+    // Retry once if the commit didn't register (e.g. toolbar/overlay absorbed the click)
+    if (countBefore >= 0) {
+      const countAfter = await page.evaluate(() => (window as any).__chartDebug?.getDrawings?.()?.length ?? 0).catch(() => -1);
+      if (countAfter === countBefore) {
+        await page.mouse.move(box.x + 5, box.y + 5);
+        await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null)).catch(() => undefined);
+        await page.waitForTimeout(100);
+        await pickTool(page, tool.testId);
+        await attempt();
+      }
     }
-    await page.waitForTimeout(100);
-    // Dismiss any prompt modal from infoLine/trendAngle text prompts
-    await dismissModalIfPresent(page);
   }
 }
 
