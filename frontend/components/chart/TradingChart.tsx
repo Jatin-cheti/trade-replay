@@ -153,6 +153,44 @@ function makeIndicatorAcronym(name: string): string {
     .join('');
 }
 
+/**
+ * Compute info-line metrics from two anchors and their screen positions.
+ * TV-parity: shows price delta / pct / ticks, bar count / day count / pixel
+ * distance, and angle in degrees. Tick size heuristic: 0.05 for INR equities.
+ */
+export function computeInfoLineMetrics(
+  a1: { time: number; price: number },
+  a2: { time: number; price: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+) {
+  const dp = a2.price - a1.price;
+  const pct = a1.price !== 0 ? (dp / a1.price) * 100 : 0;
+  const bars = Math.round((a2.time - a1.time) / 86400);
+  const days = bars;
+  const distPx = Math.round(Math.hypot(p2.x - p1.x, p2.y - p1.y));
+  const angleDeg = Math.atan2(-(p2.y - p1.y), p2.x - p1.x) * (180 / Math.PI);
+  const tickSize = a1.price > 1 ? 0.05 : 0.0001;
+  const ticks = Math.round(dp / tickSize);
+  const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '\u2212' : '');
+  const fmt = (n: number, d = 2) => `${sign(n)}${Math.abs(n).toFixed(d)}`;
+  const fmtInt = (n: number) => `${sign(n)}${Math.abs(n).toLocaleString('en-US')}`;
+  const arrow = dp > 0 ? '\u25B2' : dp < 0 ? '\u25BC' : '\u25C6';
+  return {
+    dp,
+    pct,
+    bars,
+    days,
+    distPx,
+    angleDeg,
+    ticks,
+    tickSize,
+    line1: `${arrow} ${fmt(dp, 2)} (${fmt(pct, 2)}%), ${fmtInt(ticks)}`,
+    line2: `\u2194 ${fmtInt(bars)} bars (${fmtInt(days)}d), distance: ${distPx} px`,
+    line3: `\u2220 ${fmt(angleDeg, 2)}\u00B0`,
+  };
+}
+
 function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y: number, text: string) {
   ctx.save();
   const weight = drawing.options.bold ? '700' : '400';
@@ -1420,13 +1458,56 @@ export default function TradingChart({
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
-          const a1 = activeDrawing.anchors[0];
-          const a2 = activeDrawing.anchors[1];
-          const dp = a2.price - a1.price;
-          const pct = a1.price !== 0 ? ((dp / a1.price) * 100).toFixed(2) : '0.00';
-          const bars = Math.abs(Math.round((a2.time - a1.time) / 86400));
-          const info = `${dp >= 0 ? '+' : ''}${dp.toFixed(2)} (${pct}%) ${bars}b`;
-          drawText(ctx, activeDrawing, (p1.x + p2.x) / 2 + 4, (p1.y + p2.y) / 2 - 8, info);
+          const metrics = computeInfoLineMetrics(activeDrawing.anchors[0], activeDrawing.anchors[1], p1, p2);
+          // Render rounded-rect panel near the line endpoint (TV places it near p2)
+          ctx.save();
+          const fontSize = Math.max(11, activeDrawing.options.textSize - 1);
+          ctx.font = `400 ${fontSize}px ${activeDrawing.options.font}, sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          const lines = [metrics.line1, metrics.line2, metrics.line3];
+          const lineH = fontSize + 4;
+          const padX = 8;
+          const padY = 6;
+          const widest = lines.reduce((max, l) => Math.max(max, ctx.measureText(l).width), 0);
+          const panelW = widest + padX * 2 + 14; // +handle
+          const panelH = lineH * lines.length + padY * 2;
+          // Position: offset toward the higher anchor (TV-style), clamp inside canvas.
+          let panelX = (p1.x + p2.x) / 2 + 8;
+          let panelY = Math.min(p1.y, p2.y) + 8;
+          panelX = Math.max(2, Math.min(panelX, cssWidth - panelW - 2));
+          panelY = Math.max(2, Math.min(panelY, cssHeight - panelH - 2));
+          // Background
+          ctx.fillStyle = 'rgba(20, 28, 42, 0.92)';
+          ctx.strokeStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.55)`;
+          ctx.lineWidth = 1;
+          const r = 4;
+          ctx.beginPath();
+          ctx.moveTo(panelX + r, panelY);
+          ctx.lineTo(panelX + panelW - r, panelY);
+          ctx.quadraticCurveTo(panelX + panelW, panelY, panelX + panelW, panelY + r);
+          ctx.lineTo(panelX + panelW, panelY + panelH - r);
+          ctx.quadraticCurveTo(panelX + panelW, panelY + panelH, panelX + panelW - r, panelY + panelH);
+          ctx.lineTo(panelX + r, panelY + panelH);
+          ctx.quadraticCurveTo(panelX, panelY + panelH, panelX, panelY + panelH - r);
+          ctx.lineTo(panelX, panelY + r);
+          ctx.quadraticCurveTo(panelX, panelY, panelX + r, panelY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          // Drag-handle dots (≡-style) at top-left
+          ctx.fillStyle = 'rgba(180, 196, 220, 0.8)';
+          for (let dy = 0; dy < 3; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              ctx.fillRect(panelX + 4 + dx * 3, panelY + 4 + dy * 3, 2, 2);
+            }
+          }
+          // Text
+          ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+          lines.forEach((line, idx) => {
+            ctx.fillText(line, panelX + padX + 10, panelY + padY + idx * lineH);
+          });
+          ctx.restore();
         } else if (v === 'trendAngle' && points.length >= 2) {
           const [p1, p2] = snapTrendAngleSegment(points[0], points[1]);
           ctx.beginPath();
@@ -2711,6 +2792,27 @@ export default function TradingChart({
       getHoveredDrawingId: () => hoveredDrawingId,
       getHoverPoint: () => (hoverPoint ? { ...hoverPoint } : null),
       getMagnetMode: () => magnetMode,
+      /**
+       * Return TV-parity info-line metrics for a given drawing id (or the
+       * latest infoLine drawing if id is null). Includes both raw values and
+       * formatted display strings used by the floating panel.
+       */
+      getInfoLineMetrics: (id?: string | null) => {
+        const list = drawingsRef.current.filter((d) => d.variant === 'infoLine');
+        const drawing = id ? list.find((d) => d.id === id) : list[list.length - 1];
+        if (!drawing || drawing.anchors.length < 2) return null;
+        const chart = chartRef.current;
+        const series = getActiveSeries();
+        if (!chart || !series) return null;
+        const a1 = drawing.anchors[0];
+        const a2 = drawing.anchors[1];
+        const x1 = chart.timeScale().timeToCoordinate(a1.time as DrawPoint['time']);
+        const y1 = series.priceToCoordinate(a1.price);
+        const x2 = chart.timeScale().timeToCoordinate(a2.time as DrawPoint['time']);
+        const y2 = series.priceToCoordinate(a2.price);
+        if (x1 == null || y1 == null || x2 == null || y2 == null) return null;
+        return computeInfoLineMetrics(a1, a2, { x: x1, y: y1 }, { x: x2, y: y2 });
+      },
       pointerToDataPoint: (clientX: number, clientY: number, snap: boolean) =>
         pointerToDataPoint(clientX, clientY, crosshairSnapMode, snap),
       getScrollPosition: () => chartRef.current?.timeScale().scrollPosition() ?? null,
