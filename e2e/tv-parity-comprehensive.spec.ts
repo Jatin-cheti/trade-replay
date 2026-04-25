@@ -153,6 +153,21 @@ async function pickTool(page: Page, testId: string) {
   ).catch(() => page.waitForTimeout(250));
 }
 
+/**
+ * Ensure the given tool's variant is active. Handles the case where pickTool
+ * toggles OFF a tool that was already active (e.g. when a previous draw didn't
+ * commit and left the tool active). Clicks again if the variant is 'none'.
+ */
+async function ensureToolActive(page: Page, tool: { testId: string; variant: string }) {
+  await pickTool(page, tool.testId);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const v = await page.evaluate(() => (window as any).__chartDebug?.getActiveVariant?.() ?? null);
+    if (v === null || v === tool.variant) return;
+    // Tool toggled OFF (variant === 'none' or wrong). Click it again to activate.
+    await pickTool(page, tool.testId);
+  }
+}
+
 async function surfaceBox(page: Page) {
   const surface = page.getByTestId("chart-interaction-surface");
   const box = await surface.boundingBox();
@@ -267,43 +282,34 @@ async function forceSelect(page: Page, id: string | null) {
 async function drawN(page: Page, tool: ToolDef, box: Awaited<ReturnType<typeof surfaceBox>>, n: number) {
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
+  // Tight 5×4 grid centered on the chart canvas. Wider/taller layouts hit UI
+  // overlays (ohlc-status, object-tree-panel, price scale) that intercept
+  // pointer events and prevent commits. With drag length 40px and grid spacing
+  // 60×30, all drawings stay within ±120/±45 of center and have >12px
+  // separation (HIT_RADIUS_PX) between hit zones.
   for (let i = 0; i < n; i++) {
-    // Move mouse away from any existing drawing to prevent hover toolbar & hit-detection interference
     await page.mouse.move(box.x + 5, box.y + 5);
-    // Deselect any prior drawing so its floating toolbar doesn't occlude next clicks
     await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null)).catch(() => undefined);
-    await page.waitForTimeout(150);
-    // Dismiss any lingering modal/toolbar before picking the tool
-    await dismissModalIfPresent(page);
-    const countBefore = await page.evaluate(() => (window as any).__chartDebug?.getDrawings?.()?.length ?? 0).catch(() => -1);
-    await pickTool(page, tool.testId);
-    const ox = (i % 5) * 40 - 80;
-    const oy = Math.floor(i / 5) * 30 - 40;
-    const attempt = async () => {
-      if (tool.commitStyle === "single-click") {
-        await clickAt(page, cx + ox, cy + oy);
-      } else if (tool.commitStyle === "click-click") {
-        await clickAt(page, cx + ox - 25, cy + oy - 12);
-        await page.mouse.move(cx + ox + 25, cy + oy + 12);
-        await clickAt(page, cx + ox + 25, cy + oy + 12);
-      } else {
-        await dragBetween(page, cx + ox - 40, cy + oy - 20, cx + ox + 40, cy + oy + 20);
-      }
-      await page.waitForTimeout(120);
-      await dismissModalIfPresent(page);
-    };
-    await attempt();
-    // Retry once if the commit didn't register (e.g. toolbar/overlay absorbed the click)
-    if (countBefore >= 0) {
-      const countAfter = await page.evaluate(() => (window as any).__chartDebug?.getDrawings?.()?.length ?? 0).catch(() => -1);
-      if (countAfter === countBefore) {
-        await page.mouse.move(box.x + 5, box.y + 5);
-        await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null)).catch(() => undefined);
-        await page.waitForTimeout(100);
-        await pickTool(page, tool.testId);
-        await attempt();
-      }
+    await page.waitForTimeout(80);
+    await ensureToolActive(page, tool);
+    const col = i % 5;
+    const row = Math.floor(i / 5);
+    const ox = (col - 2) * 55;
+    // Place all rows ABOVE the chart center to avoid the ohlc-status overlay
+    // and price scale that intercept pointer events near/below cy.
+    const oy = (row - 3) * 22;
+    if (tool.commitStyle === "single-click") {
+      await clickAt(page, cx + ox, cy + oy);
+    } else if (tool.commitStyle === "click-click") {
+      // Use drag-commit path (TV-parity click-click also accepts a drag with
+      // distance ≥ 8px). This avoids the second-click failing when a previous
+      // commit didn't deactivate the tool cleanly.
+      await dragBetween(page, cx + ox - 20, cy + oy, cx + ox + 20, cy + oy);
+    } else {
+      await dragBetween(page, cx + ox - 20, cy + oy, cx + ox + 20, cy + oy);
     }
+    await page.waitForTimeout(100);
+    await dismissModalIfPresent(page);
   }
 }
 
