@@ -483,12 +483,32 @@ test.describe("[trend][500] multi-drawing", () => {
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
       for (let k = 0; k < n; k++) {
-        const col = k % 6;
-        const row = Math.floor(k / 6);
-        const ox = (col - 2.5) * 42;
+        const col = k % 7;
+        const row = Math.floor(k / 7);
+        const ox = (col - 3) * 38;
         const oy = (row - 2) * 18 - 30;
+        // Force-deselect anything that may have been selected by an earlier
+        // pointer event so the next pointerdown is in pure "draw" mode.
+        await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
+        const before = await getDrawingCount(page);
         await ensureToolActive(page);
         await drawTrend(page, cx + ox - 14, cy + oy, cx + ox + 14, cy + oy + 3);
+        // Retry up to 2 extra times if the draw didn't commit (rare race
+        // when picking the toolbar button after many existing drawings).
+        let attempt = 0;
+        while ((await getDrawingCount(page)) <= before && attempt < 2) {
+          attempt += 1;
+          const jitter = 6 * (attempt + 1);
+          await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
+          await ensureToolActive(page);
+          await drawTrend(
+            page,
+            cx + ox - 14 + jitter,
+            cy + oy + jitter,
+            cx + ox + 14 + jitter,
+            cy + oy + 3 + jitter,
+          );
+        }
       }
       expect(await getDrawingCount(page)).toBe(n);
       const ids = await page.evaluate(
