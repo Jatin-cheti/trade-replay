@@ -3555,6 +3555,15 @@ export default function TradingChart({
               bestPx = Math.abs(clickPx.x - pts[0].x);
             } else if (isCross) {
               bestPx = Math.min(Math.abs(clickPx.y - pts[0].y), Math.abs(clickPx.x - pts[0].x));
+            } else if (v === 'horizontalRay' && pts.length === 1) {
+              // 1-anchor horizontal ray: extends horizontally to the right
+              // from anchor[0]. Distance is |dy| if click is right of anchor,
+              // else hypot to the anchor endpoint.
+              if (clickPx.x >= pts[0].x) {
+                bestPx = Math.abs(clickPx.y - pts[0].y);
+              } else {
+                bestPx = Math.hypot(clickPx.x - pts[0].x, clickPx.y - pts[0].y);
+              }
             } else if (isExtended && pts.length >= 2) {
               const a0 = pts[0], a1 = pts[1];
               const dx = a1.x - a0.x, dy = a1.y - a0.y;

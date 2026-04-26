@@ -30,11 +30,31 @@ export type ToolDef = {
   railTestId?: string;
   /** Optional override of the expected anchor count (defaults to 2) */
   anchorCount?: number;
+  /**
+   * How the tool commits a drawing:
+   *  - "drag" (default): mouse.down → move → mouse.up commits the 2-anchor segment.
+   *  - "click": tools whose drag-up commits a single-anchor placement (hline,
+   *    vline, crossLine, horizontalRay). Mid-draft Escape behaviour differs:
+   *    there's no "in-flight" segment to cancel, only a pending tool activation.
+   */
+  commitMode?: "drag" | "click";
+  /**
+   * Rendered geometry shape — controls how the selection bucket picks its
+   * "far" deselect point and "on-drawing" reselect point. Defaults to
+   * "segment" (perpendicular to the cursor drag at midpoint).
+   *  - "horizontal": hline (infinite horizontal at anchor[0].y).
+   *  - "vertical": vline (infinite vertical at anchor[0].x).
+   *  - "cross": crossLine (both axes through anchor[0]).
+   *  - "horizontalRay": horizontal half-line extending right from anchor[0].
+   */
+  selectionGeometry?: "segment" | "horizontal" | "vertical" | "cross" | "horizontalRay";
 };
 
 export function register500ToolSuite(TOOL: ToolDef) {
   const RAIL = TOOL.railTestId ?? "rail-lines";
   const ANCHOR_COUNT = TOOL.anchorCount ?? 2;
+  const COMMIT_MODE = TOOL.commitMode ?? "drag";
+  const SEL_GEOM = TOOL.selectionGeometry ?? "segment";
   const TAG = `[${TOOL.variant}][500]`;
 
   // ── Shared helpers ─────────────────────────────────────────────────────────
@@ -218,36 +238,84 @@ export function register500ToolSuite(TOOL: ToolDef) {
         expect(await getSelectedId(page)).toBe(id);
         const v = await getActiveVariant(page);
         expect([null, "none", undefined]).toContain(v);
-        // Click far from drawing to deselect. Must avoid the drawing's
-        // extended geometry (rays/extended-lines extend to infinity along
-        // their direction). Pick a point perpendicular to the drawing's
-        // direction at its midpoint, then push it 220 px out. Add a small
-        // index-based jitter so 50 tests don't all click the same place.
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.hypot(dx, dy) || 1;
-        // Perpendicular unit vector (rotated 90° CCW)
-        let nx = -dy / len;
-        let ny = dx / len;
-        // Always push toward the chart interior (down-right area is safe)
-        if (ny < 0) { nx = -nx; ny = -ny; }
-        const off = 220 + (i % 5) * 12;
-        let farX = midX + nx * off + ((i % 3) - 1) * 16;
-        let farY = midY + ny * off + ((i % 4) - 2) * 14;
-        // Clamp to safe zone inside the chart canvas (avoid bottom overlay
-        // and right-axis price scale).
+
+        // Compute deselect (`farX,farY`) and reselect (`hitX,hitY`) points
+        // based on the rendered geometry. For non-segment shapes (rays /
+        // infinite lines / crosses) we read the actual pixel anchors via
+        // __chartDebug instead of using the cursor-drag direction \u2014 the
+        // visual geometry doesn't follow (x1,y1)\u2192(x2,y2).
+        let farX: number, farY: number, hitX: number, hitY: number;
         const minX = box.x + 60;
         const maxX = box.x + box.width - 90;
         const minY = box.y + 60;
         const maxY = box.y + box.height - 90;
-        farX = Math.max(minX, Math.min(maxX, farX));
-        farY = Math.max(minY, Math.min(maxY, farY));
+        const clamp = (x: number, y: number) => ({
+          x: Math.max(minX, Math.min(maxX, x)),
+          y: Math.max(minY, Math.min(maxY, y)),
+        });
+
+        if (SEL_GEOM === "segment") {
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const len = Math.hypot(dx, dy) || 1;
+          let nx = -dy / len;
+          let ny = dx / len;
+          if (ny < 0) { nx = -nx; ny = -ny; }
+          const off = 220 + (i % 5) * 12;
+          const f = clamp(midX + nx * off + ((i % 3) - 1) * 16, midY + ny * off + ((i % 4) - 2) * 14);
+          farX = f.x; farY = f.y;
+          hitX = midX; hitY = midY;
+        } else {
+          const px = await getPixelAnchors(page, id);
+          // Pixel anchors are relative to the chart container; convert to
+          // viewport coords by adding the surface origin.
+          const ax = (px?.anchors?.[0]?.x ?? 0) + box.x;
+          const ay = (px?.anchors?.[0]?.y ?? 0) + box.y;
+          if (SEL_GEOM === "horizontalRay") {
+            // Geometry: horizontal half-line at y=ay, x>=ax.
+            // Far: well above the line AND to the left of the anchor.
+            const dy = 80 + (i % 5) * 8;
+            const upOrDown = (i % 2 === 0) ? -1 : 1;
+            const f = clamp(ax - 140 - (i % 6) * 10, ay + upOrDown * dy);
+            farX = f.x; farY = f.y;
+            // Hit: 60 px right of the anchor along the ray.
+            const h = clamp(ax + 60 + (i % 5) * 8, ay);
+            hitX = h.x; hitY = h.y;
+          } else if (SEL_GEOM === "horizontal") {
+            // Infinite horizontal: far means y far from ay.
+            const dy = 90 + (i % 5) * 10;
+            const upOrDown = (i % 2 === 0) ? -1 : 1;
+            const f = clamp(box.x + box.width / 2 + ((i % 3) - 1) * 60, ay + upOrDown * dy);
+            farX = f.x; farY = f.y;
+            const h = clamp(box.x + box.width / 2 + ((i % 7) - 3) * 30, ay);
+            hitX = h.x; hitY = h.y;
+          } else if (SEL_GEOM === "vertical") {
+            // Infinite vertical: far means x far from ax.
+            const dx = 90 + (i % 5) * 10;
+            const leftRight = (i % 2 === 0) ? -1 : 1;
+            const f = clamp(ax + leftRight * dx, box.y + box.height / 2 + ((i % 3) - 1) * 50);
+            farX = f.x; farY = f.y;
+            const h = clamp(ax, box.y + box.height / 2 + ((i % 7) - 3) * 30);
+            hitX = h.x; hitY = h.y;
+          } else {
+            // "cross": both axes intercept; far must avoid both.
+            const dx = 100 + (i % 5) * 10;
+            const dy = 100 + (i % 5) * 10;
+            const sx = (i % 2 === 0) ? -1 : 1;
+            const sy = (i % 4 < 2) ? -1 : 1;
+            const f = clamp(ax + sx * dx, ay + sy * dy);
+            farX = f.x; farY = f.y;
+            const h = clamp(ax, ay);
+            hitX = h.x; hitY = h.y;
+          }
+        }
+
         await page.mouse.click(farX, farY);
         await page.waitForTimeout(180);
         expect(await getSelectedId(page)).toBeNull();
-        await page.mouse.click(midX, midY);
+        await page.mouse.click(hitX, hitY);
         await page.waitForTimeout(220);
         const sel = await getSelectedId(page);
         expect(typeof sel === "string" && sel.length > 0).toBe(true);
@@ -564,15 +632,27 @@ export function register500ToolSuite(TOOL: ToolDef) {
         const cy = box.y + box.height / 2;
         if (phase === 0) {
           await ensureToolActive(page);
-          await page.mouse.move(cx - 20, cy);
-          await page.mouse.down();
-          await page.mouse.move(cx - 5, cy);
-          await page.keyboard.press("Escape");
-          await page.mouse.up();
-          await page.waitForTimeout(150);
-          expect(await getDrawingCount(page)).toBe(0);
-          const v = await getActiveVariant(page);
-          expect([null, "none", undefined]).toContain(v);
+          if (COMMIT_MODE === "click") {
+            // 1-anchor click-commit tools have no in-flight segment: mid-draft
+            // for them = "tool active, no anchors placed yet". Escape should
+            // simply deactivate the tool without committing anything.
+            await page.mouse.move(cx - 20, cy);
+            await page.keyboard.press("Escape");
+            await page.waitForTimeout(150);
+            expect(await getDrawingCount(page)).toBe(0);
+            const v = await getActiveVariant(page);
+            expect([null, "none", undefined]).toContain(v);
+          } else {
+            await page.mouse.move(cx - 20, cy);
+            await page.mouse.down();
+            await page.mouse.move(cx - 5, cy);
+            await page.keyboard.press("Escape");
+            await page.mouse.up();
+            await page.waitForTimeout(150);
+            expect(await getDrawingCount(page)).toBe(0);
+            const v = await getActiveVariant(page);
+            expect([null, "none", undefined]).toContain(v);
+          }
         } else if (phase === 1) {
           await drawToolOnce(page, cx - 26, cy - 4, cx + 26, cy + 4);
           expect(await getDrawingCount(page)).toBe(1);
