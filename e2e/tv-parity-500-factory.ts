@@ -91,6 +91,11 @@ export function register500ToolSuite(TOOL: ToolDef) {
       await cancel.first().click({ force: true });
       await page.waitForTimeout(80);
     }
+    const cancelBtn = page.getByTestId("chart-prompt-cancel-btn");
+    if (await cancelBtn.count()) {
+      await cancelBtn.first().click({ force: true });
+      await page.waitForTimeout(80);
+    }
   }
 
   async function openLinesRail(page: Page) {
@@ -166,13 +171,14 @@ export function register500ToolSuite(TOOL: ToolDef) {
       // Place ANCHOR_COUNT clicks evenly along the (x1,y1)→(x2,y2) line with
       // a small alternating y-jitter on internal anchors so the resulting
       // polyline isn't perfectly collinear (matches typical pattern shapes
-      // like xabcd, headAndShoulders, elliott waves).
+      // like xabcd, headAndShoulders, elliott waves). Keep jitter small (≤8 px)
+      // so multi-drawing grid rows can stay close enough to fit on-screen.
       const N = Math.max(2, ANCHOR_COUNT);
       for (let k = 0; k < N; k++) {
         const t = k / (N - 1);
         const px = x1 + (x2 - x1) * t;
         const internal = k > 0 && k < N - 1;
-        const jitter = internal ? ((k % 2 === 0 ? -1 : 1) * 12) : 0;
+        const jitter = internal ? ((k % 2 === 0 ? -1 : 1) * 8) : 0;
         const py = y1 + (y2 - y1) * t + jitter;
         await page.mouse.click(px, py);
         await page.waitForTimeout(70);
@@ -591,19 +597,43 @@ export function register500ToolSuite(TOOL: ToolDef) {
     for (let n = 2; n <= 31; n++) {
       test(`multi #${String(n).padStart(3, "0")} - ${n} drawings all persist with unique ids`, async ({ page }) => {
         await gotoCharts(page);
-        const box = await surfaceBox(page);
-        const cx = box.x + box.width / 2;
-        const cy = box.y + box.height / 2;
-        // Click-sequence patterns need wider columns so N anchors stay distinct.
+        // Click-sequence patterns need wider columns so N anchors stay distinct,
+        // and a much taller rowH so adjacent rows can't collide via internal
+        // y-jitter (some pattern variants like abcdPattern, elliottCorrection,
+        // elliottDoubleCombo silently refuse to commit when the click locations
+        // overlap an existing drawing's hit-test region — observed at n>=21).
         const colW = COMMIT_MODE === "click-sequence" ? Math.max(38, 22 * (ANCHOR_COUNT - 1)) : 38;
-        const rowH = COMMIT_MODE === "click-sequence" ? 28 : 18;
-        const cols = COMMIT_MODE === "click-sequence" ? 5 : 7;
+        const rowH = COMMIT_MODE === "click-sequence" ? 60 : 18;
+        const cols = COMMIT_MODE === "click-sequence" ? 4 : 7;
+        const rows = Math.ceil(31 / cols);
         const halfSpan = COMMIT_MODE === "click-sequence" ? Math.max(14, 9 * (ANCHOR_COUNT - 1)) : 14;
         for (let k = 0; k < n; k++) {
+          // Close the Object Tree panel if it auto-opened — at ~20 objects it
+          // can grow to 42vh, shrinking the chart's vertical space and causing
+          // clicks at higher row offsets to land outside the canvas (silent
+          // no-op). Closing it keeps the surface size stable across iterations.
+          await page.evaluate(() => {
+            const aside = document.querySelector('[data-testid="object-tree-panel"][data-open="true"]');
+            if (aside) {
+              const btn = aside.querySelector('button');
+              if (btn) (btn as HTMLButtonElement).click();
+            }
+          });
+          // Re-fetch surface box every iteration: the Object Tree side panel
+          // auto-opens around 20 objects, shrinking the chart's interaction
+          // surface. Without refetching, clicks at the original (cx,cy) basis
+          // land outside the new bounds and silently no-op.
+          const box = await surfaceBox(page);
+          const cx = box.x + box.width / 2;
+          const cy = box.y + box.height / 2;
           const col = k % cols;
           const row = Math.floor(k / cols);
           const ox = (col - (cols - 1) / 2) * colW;
-          const oy = (row - 2) * rowH - 30;
+          // Center the grid vertically using the actual row count (not a
+          // hardcoded 2) so click-sequence with rowH=60 doesn't overflow.
+          const oy = COMMIT_MODE === "click-sequence"
+            ? (row - (rows - 1) / 2) * rowH - 20
+            : (row - 2) * rowH - 30;
           await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
           const before = await getDrawingCount(page);
           await ensureToolActive(page);
