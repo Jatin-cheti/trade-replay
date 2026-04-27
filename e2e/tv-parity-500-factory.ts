@@ -36,8 +36,10 @@ export type ToolDef = {
    *  - "click": tools whose drag-up commits a single-anchor placement (hline,
    *    vline, crossLine, horizontalRay). Mid-draft Escape behaviour differs:
    *    there's no "in-flight" segment to cancel, only a pending tool activation.
+   *  - "click-sequence": multi-anchor pattern tools (xabcd, headAndShoulders,
+   *    elliott waves, etc.) that commit after `anchorCount` discrete clicks.
    */
-  commitMode?: "drag" | "click";
+  commitMode?: "drag" | "click" | "click-sequence";
   /**
    * Rendered geometry shape — controls how the selection bucket picks its
    * "far" deselect point and "on-drawing" reselect point. Defaults to
@@ -154,6 +156,31 @@ export function register500ToolSuite(TOOL: ToolDef) {
   }
 
   async function drawTool(page: Page, x1: number, y1: number, x2: number, y2: number) {
+    if (COMMIT_MODE === "click") {
+      await page.mouse.click(x1, y1);
+      await page.waitForTimeout(140);
+      await dismissModal(page);
+      return;
+    }
+    if (COMMIT_MODE === "click-sequence") {
+      // Place ANCHOR_COUNT clicks evenly along the (x1,y1)→(x2,y2) line with
+      // a small alternating y-jitter on internal anchors so the resulting
+      // polyline isn't perfectly collinear (matches typical pattern shapes
+      // like xabcd, headAndShoulders, elliott waves).
+      const N = Math.max(2, ANCHOR_COUNT);
+      for (let k = 0; k < N; k++) {
+        const t = k / (N - 1);
+        const px = x1 + (x2 - x1) * t;
+        const internal = k > 0 && k < N - 1;
+        const jitter = internal ? ((k % 2 === 0 ? -1 : 1) * 12) : 0;
+        const py = y1 + (y2 - y1) * t + jitter;
+        await page.mouse.click(px, py);
+        await page.waitForTimeout(70);
+      }
+      await page.waitForTimeout(160);
+      await dismissModal(page);
+      return;
+    }
     await page.mouse.move(x1, y1);
     await page.mouse.down();
     await page.mouse.move(x2, y2, { steps: 8 });
@@ -182,7 +209,11 @@ export function register500ToolSuite(TOOL: ToolDef) {
     const cy = box.y + box.height / 2;
     const { ox, oy } = gridOffset(i);
     const angle = ((i % 8) * Math.PI) / 8;
-    const r = 22 + (i % 5) * 4;
+    // Click-sequence patterns need enough span to spread N anchors with
+    // ≥18 px spacing (otherwise repeat-clicks may dedupe).
+    const r = COMMIT_MODE === "click-sequence"
+      ? Math.max(60, 18 * (ANCHOR_COUNT - 1)) + (i % 5) * 6
+      : 22 + (i % 5) * 4;
     return {
       x1: cx + ox - Math.cos(angle) * r,
       y1: cy + oy - Math.sin(angle) * r,
@@ -338,6 +369,13 @@ export function register500ToolSuite(TOOL: ToolDef) {
     }
   });
 
+  // Half-span used by hardcoded (cx±SPAN, …) sites. Click-sequence patterns
+  // need wider spread so N anchors don't dedupe; click/drag tools keep the
+  // original tighter span.
+  const SPAN = COMMIT_MODE === "click-sequence"
+    ? Math.max(60, 18 * (ANCHOR_COUNT - 1))
+    : 26;
+
   // ── 40 EDGE PERSISTENCE tests ──────────────────────────────────────────────
 
   test.describe(`${TAG} edge persistence`, () => {
@@ -360,7 +398,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
           const box = await surfaceBox(page);
           const cx = box.x + box.width / 2;
           const cy = box.y + box.height / 2;
-          await drawToolOnce(page, cx - 30, cy - 6, cx + 30, cy + 6);
+          await drawToolOnce(page, cx - SPAN, cy - 6, cx + SPAN, cy + 6);
           const id = await getLatestId(page);
           const before = await getDrawingCount(page);
           const step = 80 + s * 60;
@@ -393,7 +431,9 @@ export function register500ToolSuite(TOOL: ToolDef) {
           const cy = box.y + box.height / 2;
           await ensureToolActive(page);
           const angle = (i * Math.PI) / 10;
-          const r = 30;
+          const r = COMMIT_MODE === "click-sequence"
+            ? Math.max(60, 18 * (ANCHOR_COUNT - 1))
+            : 30;
           const x1 = cx - Math.cos(angle) * r;
           const y1 = cy - Math.sin(angle) * r - 40;
           const x2 = cx + Math.cos(angle) * r;
@@ -402,10 +442,14 @@ export function register500ToolSuite(TOOL: ToolDef) {
           if (mode === "shift") await page.keyboard.down("Shift");
           if (mode === "ctrl") await page.keyboard.down("Control");
           try {
-            await page.mouse.move(x1, y1);
-            await page.mouse.down();
-            await page.mouse.move(x2, y2, { steps: 8 });
-            await page.mouse.up();
+            if (COMMIT_MODE === "drag") {
+              await page.mouse.move(x1, y1);
+              await page.mouse.down();
+              await page.mouse.move(x2, y2, { steps: 8 });
+              await page.mouse.up();
+            } else {
+              await drawTool(page, x1, y1, x2, y2);
+            }
           } finally {
             if (mode === "shift") await page.keyboard.up("Shift");
             if (mode === "ctrl") await page.keyboard.up("Control");
@@ -435,11 +479,20 @@ export function register500ToolSuite(TOOL: ToolDef) {
           const cx = box.x + box.width / 2;
           const cy = box.y + box.height / 2;
           const baseOffset = (s - 2) * 12;
+          // Click-sequence patterns need wider per-drawing span; widen the
+          // grid spacing to match so adjacent drawings don't share anchors.
+          const undoSpan = COMMIT_MODE === "click-sequence"
+            ? Math.max(16, 9 * (ANCHOR_COUNT - 1))
+            : 16;
+          const undoColW = COMMIT_MODE === "click-sequence"
+            ? Math.max(50, 22 * (ANCHOR_COUNT - 1))
+            : 50;
+          const undoRowH = COMMIT_MODE === "click-sequence" ? 32 : 22;
           for (let k = 0; k < n; k++) {
-            const ox = (k % 5 - 2) * 50 + baseOffset;
-            const oy = (Math.floor(k / 5) - 2) * 22 - 20;
+            const ox = (k % 5 - 2) * undoColW + baseOffset;
+            const oy = (Math.floor(k / 5) - 2) * undoRowH - 20;
             await ensureToolActive(page);
-            await drawTool(page, cx + ox - 16, cy + oy, cx + ox + 16, cy + oy + 4);
+            await drawTool(page, cx + ox - undoSpan, cy + oy, cx + ox + undoSpan, cy + oy + 4);
           }
           expect(await getDrawingCount(page)).toBe(n);
           for (let k = 0; k < n; k++) {
@@ -468,7 +521,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
         const cy = box.y + box.height / 2;
         const placement = i % 3;
         const ox = (placement - 1) * 90;
-        await drawToolOnce(page, cx + ox - 28, cy - 4, cx + ox + 28, cy + 4);
+        await drawToolOnce(page, cx + ox - SPAN, cy - 4, cx + ox + SPAN, cy + 4);
         const before = await getDrawingCount(page);
         const id = await getLatestId(page);
         const panAmt = 80 + (i % 10) * 40;
@@ -496,7 +549,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
         const cy = box.y + box.height / 2;
         const ox = (i % 8 - 3.5) * 40;
         const oy = (Math.floor(i / 8) - 2) * 22 - 30;
-        await drawToolOnce(page, cx + ox - 22, cy + oy, cx + ox + 22, cy + oy + 4);
+        await drawToolOnce(page, cx + ox - SPAN, cy + oy, cx + ox + SPAN, cy + oy + 4);
         const id = await getLatestId(page);
         expect(id).not.toBeNull();
         const drawing = await page.evaluate(
@@ -541,15 +594,20 @@ export function register500ToolSuite(TOOL: ToolDef) {
         const box = await surfaceBox(page);
         const cx = box.x + box.width / 2;
         const cy = box.y + box.height / 2;
+        // Click-sequence patterns need wider columns so N anchors stay distinct.
+        const colW = COMMIT_MODE === "click-sequence" ? Math.max(38, 22 * (ANCHOR_COUNT - 1)) : 38;
+        const rowH = COMMIT_MODE === "click-sequence" ? 28 : 18;
+        const cols = COMMIT_MODE === "click-sequence" ? 5 : 7;
+        const halfSpan = COMMIT_MODE === "click-sequence" ? Math.max(14, 9 * (ANCHOR_COUNT - 1)) : 14;
         for (let k = 0; k < n; k++) {
-          const col = k % 7;
-          const row = Math.floor(k / 7);
-          const ox = (col - 3) * 38;
-          const oy = (row - 2) * 18 - 30;
+          const col = k % cols;
+          const row = Math.floor(k / cols);
+          const ox = (col - (cols - 1) / 2) * colW;
+          const oy = (row - 2) * rowH - 30;
           await page.evaluate(() => (window as any).__chartDebug?.forceSelectDrawing?.(null));
           const before = await getDrawingCount(page);
           await ensureToolActive(page);
-          await drawTool(page, cx + ox - 14, cy + oy, cx + ox + 14, cy + oy + 3);
+          await drawTool(page, cx + ox - halfSpan, cy + oy, cx + ox + halfSpan, cy + oy + 3);
           let attempt = 0;
           while ((await getDrawingCount(page)) <= before && attempt < 2) {
             attempt += 1;
@@ -558,9 +616,9 @@ export function register500ToolSuite(TOOL: ToolDef) {
             await ensureToolActive(page);
             await drawTool(
               page,
-              cx + ox - 14 + jitter,
+              cx + ox - halfSpan + jitter,
               cy + oy + jitter,
-              cx + ox + 14 + jitter,
+              cx + ox + halfSpan + jitter,
               cy + oy + 3 + jitter,
             );
           }
@@ -610,8 +668,8 @@ export function register500ToolSuite(TOOL: ToolDef) {
         const cy = box.y + box.height / 2;
         const ox = (i % 6 - 2.5) * 50;
         const oy = (Math.floor(i / 6) - 2) * 22 - 30;
-        const x1 = cx + ox - 26, y1 = cy + oy;
-        const x2 = cx + ox + 26, y2 = cy + oy + 4;
+        const x1 = cx + ox - SPAN, y1 = cy + oy;
+        const x2 = cx + ox + SPAN, y2 = cy + oy + 4;
         await drawToolOnce(page, x1, y1, x2, y2);
         const id = await getLatestId(page);
         const before = await getPixelAnchors(page, id);
@@ -647,7 +705,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
         const cy = box.y + box.height / 2;
         if (phase === 0) {
           await ensureToolActive(page);
-          if (COMMIT_MODE === "click") {
+          if (COMMIT_MODE === "click" || COMMIT_MODE === "click-sequence") {
             // 1-anchor click-commit tools have no in-flight segment: mid-draft
             // for them = "tool active, no anchors placed yet". Escape should
             // simply deactivate the tool without committing anything.
@@ -669,7 +727,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
             expect([null, "none", undefined]).toContain(v);
           }
         } else if (phase === 1) {
-          await drawToolOnce(page, cx - 26, cy - 4, cx + 26, cy + 4);
+          await drawToolOnce(page, cx - SPAN, cy - 4, cx + SPAN, cy + 4);
           expect(await getDrawingCount(page)).toBe(1);
           await page.keyboard.press("Escape");
           await page.waitForTimeout(120);
@@ -677,7 +735,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
           expect(sel).toBeNull();
           expect(await getDrawingCount(page)).toBe(1);
         } else {
-          await drawToolOnce(page, cx - 26, cy - 4, cx + 26, cy + 4);
+          await drawToolOnce(page, cx - SPAN, cy - 4, cx + SPAN, cy + 4);
           await page.mouse.click(box.x + box.width / 2 + 240, box.y + box.height / 2 + 130);
           await page.waitForTimeout(150);
           await page.keyboard.press("Escape");
