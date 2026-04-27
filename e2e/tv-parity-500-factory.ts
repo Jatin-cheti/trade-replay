@@ -284,28 +284,43 @@ export function register500ToolSuite(TOOL: ToolDef) {
             const h = clamp(ax + 60 + (i % 5) * 8, ay);
             hitX = h.x; hitY = h.y;
           } else if (SEL_GEOM === "horizontal") {
-            // Infinite horizontal: far means y far from ay.
-            const dy = 90 + (i % 5) * 10;
-            const upOrDown = (i % 2 === 0) ? -1 : 1;
-            const f = clamp(box.x + box.width / 2 + ((i % 3) - 1) * 60, ay + upOrDown * dy);
+            // Infinite horizontal at y=ay. Pick the side (up vs down) with
+            // more room and use a hard 150 px minimum (clamped to room - 20).
+            const baseDy = 150 + (i % 5) * 10;
+            const roomUp = ay - minY;
+            const roomDown = maxY - ay;
+            const goUp = roomUp > roomDown;
+            const dy = Math.min(baseDy, Math.max(80, (goUp ? roomUp : roomDown) - 20));
+            const f = clamp(box.x + box.width / 2 + ((i % 3) - 1) * 60, goUp ? ay - dy : ay + dy);
             farX = f.x; farY = f.y;
             const h = clamp(box.x + box.width / 2 + ((i % 7) - 3) * 30, ay);
             hitX = h.x; hitY = h.y;
           } else if (SEL_GEOM === "vertical") {
-            // Infinite vertical: far means x far from ax.
-            const dx = 90 + (i % 5) * 10;
-            const leftRight = (i % 2 === 0) ? -1 : 1;
-            const f = clamp(ax + leftRight * dx, box.y + box.height / 2 + ((i % 3) - 1) * 50);
+            // Infinite vertical at x=ax. Pick the side with more room AND
+            // a hard 150 px minimum so magnet/snap drift can't put the click
+            // back near the line.
+            const roomLeft = ax - minX;
+            const roomRight = maxX - ax;
+            const goLeft = roomLeft > roomRight;
+            const baseDx = 150 + (i % 5) * 10;
+            const dx = Math.min(baseDx, Math.max(80, (goLeft ? roomLeft : roomRight) - 20));
+            const f = clamp(goLeft ? ax - dx : ax + dx, box.y + box.height / 2 + ((i % 3) - 1) * 50);
             farX = f.x; farY = f.y;
             const h = clamp(ax, box.y + box.height / 2 + ((i % 7) - 3) * 30);
             hitX = h.x; hitY = h.y;
           } else {
-            // "cross": both axes intercept; far must avoid both.
-            const dx = 100 + (i % 5) * 10;
-            const dy = 100 + (i % 5) * 10;
-            const sx = (i % 2 === 0) ? -1 : 1;
-            const sy = (i % 4 < 2) ? -1 : 1;
-            const f = clamp(ax + sx * dx, ay + sy * dy);
+            // "cross": both axes intercept; far must avoid both. Pick the
+            // quadrant with the most room and use a 130 px minimum offset on
+            // both axes so the clamp can't pull either component near anchor.
+            const roomLeft = ax - minX;
+            const roomRight = maxX - ax;
+            const roomUp = ay - minY;
+            const roomDown = maxY - ay;
+            const goLeft = roomLeft > roomRight;
+            const goUp = roomUp > roomDown;
+            const dx = Math.min(130 + (i % 5) * 10, Math.max(80, (goLeft ? roomLeft : roomRight) - 20));
+            const dy = Math.min(130 + (i % 5) * 10, Math.max(80, (goUp ? roomUp : roomDown) - 20));
+            const f = clamp(goLeft ? ax - dx : ax + dx, goUp ? ay - dy : ay + dy);
             farX = f.x; farY = f.y;
             const h = clamp(ax, ay);
             hitX = h.x; hitY = h.y;
