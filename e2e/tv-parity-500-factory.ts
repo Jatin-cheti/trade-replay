@@ -300,7 +300,12 @@ export function register500ToolSuite(TOOL: ToolDef) {
           let nx = -dy / len;
           let ny = dx / len;
           if (ny < 0) { nx = -nx; ny = -ny; }
-          const off = 220 + (i % 5) * 12;
+          // click-sequence patterns have wide bbox + internal segments
+          // (esp. cypher / Elliott waves) — use a larger normal offset so
+          // the deselect click can't land on an internal extension line.
+          const off = COMMIT_MODE === "click-sequence"
+            ? 320 + (i % 5) * 18
+            : 220 + (i % 5) * 12;
           const f = clamp(midX + nx * off + ((i % 3) - 1) * 16, midY + ny * off + ((i % 4) - 2) * 14);
           farX = f.x; farY = f.y;
           hitX = midX; hitY = midY;
