@@ -4615,7 +4615,11 @@ export default function TradingChart({
             }}
             onClick={() => { if (plusMenuOpen) setPlusMenuOpen(false); }}
           >
-            <div className="chart-wrapper h-full w-full touch-pan-y">
+            {/* `touch-none` (touch-action: none) is required so two-finger
+                pinch-zoom and horizontal touch-drag reach lightweight-charts.
+                With `touch-pan-y`, the browser intercepts/cancels multi-finger
+                gestures per W3C spec, breaking pinch-zoom on tablet/mobile. */}
+            <div className="chart-wrapper h-full w-full touch-none">
               <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} overlayInteractive={overlayInteractive} overlayCursor={overlayCursor} containerCursor={overlayCursor} />
             </div>
 
