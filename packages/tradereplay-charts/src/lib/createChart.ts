@@ -813,6 +813,7 @@ export function createChart(
   // normally instead of the chart hijacking the wheel.
   let allowWheelZoom = initOpts?.handleScale?.mouseWheel !== false;
   let allowWheelScroll = initOpts?.handleScroll?.mouseWheel !== false;
+  let allowPinchZoom = initOpts?.handleScale?.pinch !== false;
 
   // Optional forced tick timestamps (UTC seconds, e.g. IST fake-UTC boundaries for 1D).
   // When set, drawTimeAxis uses nearest-bar lookup instead of the modulo heuristic.
@@ -2821,6 +2822,18 @@ export function createChart(
   let wheelAccumDelta = 0;
   let wheelAnchorX: number | null = null;
   let wheelRafId: number | null = null;
+  // ── Pinch-zoom state (touch) ──────────────────────────────────────────────
+  // Tracks active touch pointers by pointerId so we can detect two-finger
+  // gestures and zoom/pan the time scale anchored at the gesture midpoint.
+  type PinchPointer = { clientX: number; clientY: number; offsetX: number; offsetY: number };
+  const activeTouchPointers = new Map<number, PinchPointer>();
+  let pinchStart: {
+    distance: number;
+    midOffsetX: number;
+    barWidthAtStart: number;
+    rightAtStart: number;
+    anchorBar: number;
+  } | null = null;
   let paneResizeDrag: { dividerIndex: number; startY: number; startPanes: PaneDef[] } | null = null;
   let priceAxisDrag: {
     paneId: PaneId;
@@ -2919,6 +2932,47 @@ export function createChart(
   }
 
   function onPointerDown(e: PointerEvent): void {
+    // ── Multi-touch pinch-zoom (tablet/mobile) ────────────────────────────
+    // Track every touch pointer so we can detect a 2-finger pinch. When the
+    // second touch lands, cancel any in-flight pan/drag, capture the gesture
+    // baseline, and route subsequent moves to the pinch handler. We don't
+    // call setPointerCapture for touches participating in pinch so each
+    // finger's move events keep firing on the canvas.
+    if (e.pointerType === 'touch') {
+      activeTouchPointers.set(e.pointerId, {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        offsetX: e.offsetX,
+        offsetY: e.offsetY,
+      });
+      if (activeTouchPointers.size >= 2 && allowPinchZoom) {
+        // Cancel any in-progress single-finger pan
+        if (kineticRafId != null) {
+          cancelAnimationFrame(kineticRafId);
+          kineticRafId = null;
+        }
+        kineticVelocity = 0;
+        dragStart = null;
+        priceAxisDrag = null;
+        paneResizeDrag = null;
+
+        const touches = Array.from(activeTouchPointers.values()).slice(0, 2);
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const midOffsetX = (touches[0].offsetX + touches[1].offsetX) / 2;
+        pinchStart = {
+          distance,
+          midOffsetX,
+          barWidthAtStart: barWidth,
+          rightAtStart: rightmostIndex,
+          anchorBar: xToBar(midOffsetX),
+        };
+        e.preventDefault();
+        return;
+      }
+    }
+
     // Stop any in-progress kinetic scroll
     if (kineticRafId != null) {
       cancelAnimationFrame(kineticRafId);
@@ -2983,6 +3037,39 @@ export function createChart(
   }
 
   function onPointerMove(e: PointerEvent): void {
+    // ── Pinch-zoom move handler ──
+    if (e.pointerType === 'touch' && activeTouchPointers.has(e.pointerId)) {
+      activeTouchPointers.set(e.pointerId, {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        offsetX: e.offsetX,
+        offsetY: e.offsetY,
+      });
+      if (pinchStart && activeTouchPointers.size >= 2) {
+        const touches = Array.from(activeTouchPointers.values()).slice(0, 2);
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const midOffsetX = (touches[0].offsetX + touches[1].offsetX) / 2;
+
+        // Scale bar width by the ratio of finger distances, clamped to limits.
+        const ratio = distance / pinchStart.distance;
+        const targetBarWidth = Math.max(
+          MIN_BAR_WIDTH,
+          Math.min(maxBarWidthForViewport(), pinchStart.barWidthAtStart * ratio),
+        );
+        barWidth = targetBarWidth;
+        // Keep the original anchor bar pinned under the (possibly drifting)
+        // gesture midpoint so the chart pans + zooms naturally as fingers move.
+        rightmostIndex = clampRightmostIndex(
+          pinchStart.anchorBar + 0.5 - (cw() - midOffsetX) / barWidth,
+        );
+        scheduleRender();
+        e.preventDefault();
+        return;
+      }
+    }
+
     // ── Demo cursor: append point to current stroke ──
     if (demoCursorActive && demoStrokes.length > 0) {
       const stroke = demoStrokes[demoStrokes.length - 1];
@@ -3030,6 +3117,16 @@ export function createChart(
   }
 
   function onPointerUp(e: PointerEvent): void {
+    // ── Pinch-zoom: release this finger; end pinch when fewer than 2 remain ──
+    if (e.pointerType === 'touch' && activeTouchPointers.has(e.pointerId)) {
+      activeTouchPointers.delete(e.pointerId);
+      if (pinchStart && activeTouchPointers.size < 2) {
+        pinchStart = null;
+        // Suppress the pan/drag/kinetic logic below — this gesture was a pinch.
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        return;
+      }
+    }
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 
     // ── Demo cursor: end the current stroke and start fade-out ──
@@ -3138,6 +3235,7 @@ export function createChart(
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('click', onCanvasClick);
   canvas.addEventListener('dblclick', onDoubleClick);
@@ -3786,6 +3884,7 @@ export function createChart(
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('click', onCanvasClick);
       canvas.removeEventListener('dblclick', onDoubleClick);
