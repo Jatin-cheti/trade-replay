@@ -214,7 +214,13 @@ export function register500ToolSuite(TOOL: ToolDef) {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     const { ox, oy } = gridOffset(i);
-    const angle = ((i % 8) * Math.PI) / 8;
+    // Click-sequence patterns must keep a strong horizontal component:
+    // tools like threeDrives require monotonic time and reject sequences
+    // with collapsed dx (e.g., vertical i=4 angle=π/2). Bias angle toward
+    // horizontal: keep |sin| ≤ 0.5 (max ±30°). drag/click stay original.
+    const angle = COMMIT_MODE === "click-sequence"
+      ? (((i % 5) - 2) / 2) * (Math.PI / 6) // -π/6, -π/12, 0, π/12, π/6
+      : ((i % 8) * Math.PI) / 8;
     // Click-sequence patterns need enough span to spread N anchors with
     // ≥18 px spacing (otherwise repeat-clicks may dedupe).
     const r = COMMIT_MODE === "click-sequence"
