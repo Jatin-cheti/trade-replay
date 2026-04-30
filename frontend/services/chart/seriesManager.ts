@@ -145,11 +145,12 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   donutChart: [], stackedArea: ['area', 'mountainArea', 'rangeArea'],
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function addSeriesCompat(
   chart: IChartApi,
   type: 'Candlestick' | 'Line' | 'Area' | 'Baseline' | 'Histogram' | 'Bar',
   options: Record<string, unknown>,
-) {
+): any {
   const chartAny = chart as unknown as {
     addSeries?: (seriesType: string, seriesOptions: Record<string, unknown>) => unknown;
     addCandlestickSeries?: (seriesOptions: Record<string, unknown>) => unknown;
@@ -404,6 +405,6 @@ export function activeSeriesForType(map: ChartSeriesMap, chartType: ChartType): 
   if (chartType === 'volumeLine') return map.line;
   if (chartType === 'volumeCandles') return map.candlestick;
   // For coming-soon types (no series), fall back to candlestick (hidden, coordinate queries return null)
-  return (map as Record<string, ISeriesApi<'Line'>>)[chartType] ?? map.candlestick;
+  return (map as unknown as Record<string, ISeriesApi<'Line'>>)[chartType] ?? map.candlestick;
 }
 

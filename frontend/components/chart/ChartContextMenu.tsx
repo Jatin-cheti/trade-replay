@@ -81,7 +81,8 @@ export default function ChartContextMenu({
 
   const priceLabel = cursorPrice != null ? cursorPrice.toFixed(2) : "—";
 
-  type LucideIcon = React.FC<{ size?: number; className?: string }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type LucideIcon = React.ComponentType<any>;
 
   function item(
     label: string,

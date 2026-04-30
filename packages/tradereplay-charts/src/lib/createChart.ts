@@ -87,7 +87,7 @@ export interface ScaleMargins {
 }
 
 export interface IPriceScaleApi {
-  applyOptions(opts: { scaleMargins?: ScaleMargins }): void;
+  applyOptions(opts: { scaleMargins?: ScaleMargins; autoScale?: boolean; visible?: boolean }): void;
 }
 
 export interface ISeriesApi<_T extends SeriesType> {
@@ -133,6 +133,9 @@ export interface ITimeScaleApi {
   unsubscribeVisibleTimeRangeChange(handler: () => void): void;
   /** Fit all loaded data into the visible viewport. */
   fitContent(): void;
+  getVisibleRange(): TimeRange | null;
+  subscribeVisibleLogicalRangeChange(handler: (range: LogicalRange | null) => void): void;
+  unsubscribeVisibleLogicalRangeChange(handler: (range: LogicalRange | null) => void): void;
 }
 
 export interface ChartOptions {
@@ -150,17 +153,18 @@ export interface ChartOptions {
     fontSize?: number;
   };
   grid?: {
-    vertLines?: { color?: string };
+    vertLines?: { color?: string; visible?: boolean };
     horzLines?: { color?: string };
   };
   crosshair?: {
     mode?: number;
-    vertLine?: { color?: string; width?: number; style?: number; labelBackgroundColor?: string };
-    horzLine?: { color?: string; width?: number; style?: number; labelBackgroundColor?: string };
+    vertLine?: { color?: string; width?: number; style?: number; labelBackgroundColor?: string; visible?: boolean; labelVisible?: boolean };
+    horzLine?: { color?: string; width?: number; style?: number; labelBackgroundColor?: string; visible?: boolean; labelVisible?: boolean };
   };
-  rightPriceScale?: { borderColor?: string };
+  rightPriceScale?: { borderColor?: string; borderVisible?: boolean };
   timeScale?: {
     borderColor?: string;
+    borderVisible?: boolean;
     timeVisible?: boolean;
     secondsVisible?: boolean;
     rightBarStaysOnScroll?: boolean;
@@ -3429,11 +3433,18 @@ export function createChart(
   // ── time scale API ────────────────────────────────────────────────────────
 
   const visibleRangeListeners = new Set<() => void>();
+  const logicalRangeListeners = new Set<(range: LogicalRange | null) => void>();
 
   function notifyVisibleRangeChange(): void {
-    if (!visibleRangeListeners.size) return;
+    if (!visibleRangeListeners.size && !logicalRangeListeners.size) return;
     for (const fn of visibleRangeListeners) {
       try { fn(); } catch { /* listener error */ }
+    }
+    if (logicalRangeListeners.size) {
+      const range = timeIndex.length ? { from: xToBar(0), to: rightmostIndex } : null;
+      for (const fn of logicalRangeListeners) {
+        try { fn(range); } catch { /* listener error */ }
+      }
     }
   }
 
@@ -3500,6 +3511,21 @@ export function createChart(
       barWidth = Math.max(MIN_BAR_WIDTH, Math.min(maxBarWidthForViewport(), availableWidth / totalBars));
       rightmostIndex = clampRightmostIndex(totalBars - 1);
       scheduleRender();
+    },
+    getVisibleRange(): TimeRange | null {
+      if (!timeIndex.length) return null;
+      const fromBar = Math.max(0, Math.floor(xToBar(0)));
+      const toBar = Math.min(timeIndex.length - 1, Math.ceil(rightmostIndex));
+      const from = timeIndex.at(fromBar);
+      const to = timeIndex.at(toBar);
+      if (from == null || to == null) return null;
+      return { from, to };
+    },
+    subscribeVisibleLogicalRangeChange(handler: (range: LogicalRange | null) => void): void {
+      logicalRangeListeners.add(handler);
+    },
+    unsubscribeVisibleLogicalRangeChange(handler: (range: LogicalRange | null) => void): void {
+      logicalRangeListeners.delete(handler);
     },
   };
 

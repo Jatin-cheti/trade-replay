@@ -456,6 +456,23 @@ export function heikinAshiTransform(rows: OhlcRow[]): CandlestickData[] {
   return output;
 }
 
+export function normalizeOhlcRows(data: CandleData[], count: number): OhlcRow[] {
+  const visible = data.slice(0, count);
+  let previousTime: UTCTimestamp | undefined;
+  return visible.map((item) => {
+    const time = toTimestamp(item.time, previousTime);
+    previousTime = time;
+    return {
+      time,
+      open: item.open,
+      high: item.high,
+      low: item.low,
+      close: item.close,
+      volume: item.volume,
+    };
+  });
+}
+
 export function stepLineTransform(rows: LineData[]): LineData[] {
   if (rows.length < 2) return rows;
   const output: LineData[] = [rows[0]];

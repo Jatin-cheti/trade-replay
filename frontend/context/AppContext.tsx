@@ -50,6 +50,7 @@ interface AppState {
   isAuthenticated: boolean;
   username: string;
   token: string | null;
+  socketReady: boolean;
   currency: Currency;
   balance: number;
   holdings: Holding[];
@@ -406,7 +407,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      isAuthenticated, username, token, currency, balance, holdings, trades,
+      isAuthenticated, username, token, socketReady, currency, balance, holdings, trades,
       scenarioId, selectedStock, candles, allStockCandles, startDate, endDate, totalCandles, dataSource,
       activePortfolioId, isInitializingSimulation,
       currentCandleIndex, isPlaying, playSpeed,

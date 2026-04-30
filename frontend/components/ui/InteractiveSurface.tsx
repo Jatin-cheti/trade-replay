@@ -8,6 +8,7 @@ interface InteractiveSurfaceProps {
   disabled?: boolean;
   intensity?: number;
   onClick?: () => void;
+  style?: React.CSSProperties;
 }
 
 export default function InteractiveSurface({
@@ -16,6 +17,7 @@ export default function InteractiveSurface({
   disabled = false,
   intensity = 8,
   onClick,
+  style,
 }: InteractiveSurfaceProps) {
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -47,6 +49,7 @@ export default function InteractiveSurface({
       onClick={onClick}
       whileTap={disabled ? undefined : { scale: 0.995 }}
       className={cn("interactive-surface", !disabled && "interactive-surface--active", className)}
+      style={style}
     >
       <div className="interactive-surface__glow" aria-hidden="true" />
       {children}

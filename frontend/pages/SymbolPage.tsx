@@ -536,7 +536,7 @@ export default function SymbolPage() {
       });
       if (!filtered.length) filtered = candles;
       if (isIntraday) {
-        return filtered.map((c) => ({ ...c, time: String((c.time as number) + IST_OFFSET_SEC) }));
+        return filtered.map((c) => ({ ...c, time: String(Number(c.time) + IST_OFFSET_SEC) }));
       }
       return filtered;
     }
@@ -557,7 +557,7 @@ export default function SymbolPage() {
     if (isIntraday) {
       return baseCandles.map((c) => ({
         ...c,
-        time: String((c.time as number) + IST_OFFSET_SEC),
+        time: String(Number(c.time) + IST_OFFSET_SEC),
       }));
     }
 
