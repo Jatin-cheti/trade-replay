@@ -19,7 +19,7 @@ export default defineConfig({
       command: "npm --prefix ..\\frontend run dev",
       url: "http://localhost:8080",
       reuseExistingServer: true,
-      timeout: 120_000,
+      timeout: 240_000,
       env: {
         VITE_API_URL: "https://api.tradereplay.me",
       },

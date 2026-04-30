@@ -93,6 +93,7 @@ type InteractionLatencySnapshot = {
 };
 
 const HOVER_SWITCH_MARGIN = 0.28;
+const PRICE_AXIS_WIDTH_PX = 68;
 
 const TOP_INDICATOR_IDS = ['sma', 'ema', 'vwap', 'rsi', 'macd'] as const;
 
@@ -324,7 +325,9 @@ export default function TradingChart({
   const [enabledIndicators, setEnabledIndicators] = useState<string[]>([]);
   const [keepDrawing, setKeepDrawing] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('chart-keep-drawing') === 'true';
+    const stored = window.localStorage.getItem('chart-keep-drawing');
+    // TV default: one-shot drawing unless user explicitly enables keep-drawing.
+    return stored === null ? false : stored === 'true';
   });
   const [lockAll, setLockAll] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -392,6 +395,18 @@ export default function TradingChart({
   const toolbarAnchorRef = useRef<FloatingToolbarAnchor>(null);
   const touchTooltipTimerRef = useRef<number | null>(null);
   const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lastPointerDownDebugRef = useRef<{
+    source: 'capture' | 'overlay';
+    variant: ToolVariant;
+    clientX: number;
+    clientY: number;
+    localX: number | null;
+    chartWidth: number | null;
+    axisWidth: number;
+    clickedPriceAxis: boolean;
+    targetTag: string | null;
+    targetTestId: string | null;
+  } | null>(null);
 
   const {
     toolState,
@@ -1258,11 +1273,75 @@ export default function TradingChart({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssWidth, cssHeight);
 
+      const timeScaleApi = chartRef.current?.timeScale();
+      const visibleTimeRange = (() => {
+        try {
+          return timeScaleApi?.getVisibleRange?.() ?? null;
+        } catch {
+          return null;
+        }
+      })();
+      const firstVisibleTime = Number(
+        visibleTimeRange?.from
+        ?? transformedData.times[0]
+        ?? 0,
+      );
+      const lastVisibleTime = Number(
+        visibleTimeRange?.to
+        ?? transformedData.times[transformedData.times.length - 1]
+        ?? (firstVisibleTime + 1),
+      );
+      const visibleTimeSpan = Math.max(1, lastVisibleTime - firstVisibleTime);
+
+      const topVisiblePrice = series.coordinateToPrice(0);
+      const bottomVisiblePrice = series.coordinateToPrice(cssHeight);
+      const hasVisiblePriceBounds = topVisiblePrice != null && bottomVisiblePrice != null
+        && Number.isFinite(topVisiblePrice)
+        && Number.isFinite(bottomVisiblePrice);
+      const maxVisiblePrice = hasVisiblePriceBounds
+        ? Math.max(topVisiblePrice as number, bottomVisiblePrice as number)
+        : null;
+      const minVisiblePrice = hasVisiblePriceBounds
+        ? Math.min(topVisiblePrice as number, bottomVisiblePrice as number)
+        : null;
+      const visiblePriceSpan = (maxVisiblePrice != null && minVisiblePrice != null)
+        ? Math.max(1e-6, maxVisiblePrice - minVisiblePrice)
+        : null;
+
+      const estimateXFromTime = (time: number): number | null => {
+        if (!Number.isFinite(time)) return null;
+        return ((time - firstVisibleTime) / visibleTimeSpan) * cssWidth;
+      };
+
+      const estimateYFromPrice = (price: number): number | null => {
+        if (!Number.isFinite(price)) return null;
+        if (maxVisiblePrice == null || minVisiblePrice == null || visiblePriceSpan == null) return null;
+        return ((maxVisiblePrice - price) / visiblePriceSpan) * cssHeight;
+      };
+
+      const clampOffscreen = (value: number, extent: number): number => {
+        const pad = 2048;
+        return Math.max(-pad, Math.min(extent + pad, value));
+      };
+
       const toXY = (point: DrawPoint) => {
-        const x = chartRef.current?.timeScale().timeToCoordinate(point.time);
-        const y = series.priceToCoordinate(point.price);
-        if (x == null || y == null) return null;
-        return { x, y };
+        const price = Number(point.price);
+        const time = Number(point.time);
+        let x = timeScaleApi?.timeToCoordinate(point.time) ?? null;
+        let y = series.priceToCoordinate(price);
+
+        if (x == null) {
+          x = estimateXFromTime(time);
+        }
+        if (y == null) {
+          y = estimateYFromPrice(price);
+        }
+        if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+        return {
+          x: clampOffscreen(x, cssWidth),
+          y: clampOffscreen(y, cssHeight),
+        };
       };
 
       const buildRegressionSample = (startPoint: DrawPoint, endPoint: DrawPoint): CanvasPoint[] => {
@@ -2784,6 +2863,7 @@ export default function TradingChart({
       getLatestDrawingId: () => drawingsRef.current[drawingsRef.current.length - 1]?.id ?? null,
       getSelectedDrawingId: () => selectedDrawingId,
       getActiveVariant: () => toolVariantRef.current,
+      getLastPointerDownDebug: () => (lastPointerDownDebugRef.current ? { ...lastPointerDownDebugRef.current } : null),
       forceSelectDrawing: (id: string | null) => {
         setSelectedDrawingId(id);
         setHoveredDrawingId(id);
@@ -2838,6 +2918,16 @@ export default function TradingChart({
         pointerToDataPoint(clientX, clientY, crosshairSnapMode, snap),
       getScrollPosition: () => chartRef.current?.timeScale().scrollPosition() ?? null,
       getVisibleLogicalRange: () => chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
+      getChartBounds: () => {
+        const rect = chartContainerRef.current?.getBoundingClientRect();
+        if (!rect) return null;
+        return {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      },
       getAxisDimensions: () => {
         const chart = chartRef.current;
         if (!chart) return null;
@@ -2968,7 +3058,8 @@ export default function TradingChart({
         };
       },
       clearDrawingsFast: () => {
-        updateAllDrawings(() => [], false);
+        // Use clearDrawings() so a history checkpoint is pushed — prevents undo from restoring stale test state
+        clearDrawings();
         setSelectedDrawingId(null);
         setHoveredDrawingId(null);
         return 0;
@@ -3042,6 +3133,7 @@ export default function TradingChart({
     toolState.options,
     transformedData.ohlcRows,
     transformedData.times,
+    clearDrawings,
     updateAllDrawings,
   ]);
 
@@ -3227,6 +3319,18 @@ export default function TradingChart({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+Z: undo drawing history
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      // Ctrl+Y or Ctrl+Shift+Z: redo drawing history
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+        event.preventDefault();
+        redo();
+        return;
+      }
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDrawingId) {
         const d = drawingsRef.current.find((item) => item.id === selectedDrawingId);
         if (d?.locked) return;
@@ -3284,6 +3388,7 @@ export default function TradingChart({
         if (selectedDrawingId) {
           setSelectedDrawingId(null);
           setHoveredDrawingId(null);
+          renderOverlay();
         }
         if (toolState.variant !== 'none') {
           // Exit any active drawing tool (TV-parity Escape behavior).
@@ -3363,6 +3468,67 @@ export default function TradingChart({
       touchTooltipTimerRef.current = null;
     }, 450);
   }, [fallbackPoint, magnetMode, pointerToDataPoint, resolvePointerSnapMode, valuesTooltip]);
+
+  const getPriceAxisHitInfo = useCallback((clientX: number) => {
+    const chartRect = chartContainerRef.current?.getBoundingClientRect();
+    if (!chartRect || chartRect.width <= 0) {
+      return {
+        isAxis: false,
+        localX: null,
+        chartWidth: null,
+        axisWidth: PRICE_AXIS_WIDTH_PX,
+      };
+    }
+
+    const chartWidth = chartRect.width;
+    const axisWidth = chartWidth <= PRICE_AXIS_WIDTH_PX + 20
+      ? Math.max(24, Math.floor(chartWidth * 0.24))
+      : PRICE_AXIS_WIDTH_PX;
+
+    const localX = clientX - chartRect.left;
+    return {
+      isAxis: localX > chartWidth - axisWidth,
+      localX,
+      chartWidth,
+      axisWidth,
+    };
+  }, [chartContainerRef, chartRef]);
+
+  const isPriceAxisClientX = useCallback((clientX: number): boolean => getPriceAxisHitInfo(clientX).isAxis, [getPriceAxisHitInfo]);
+
+  useEffect(() => {
+    const surface = chartContainerRef.current?.closest<HTMLDivElement>('[data-testid="chart-interaction-surface"]');
+    if (!surface) return;
+
+    const onPointerDownCapture = (event: PointerEvent) => {
+      if (toolVariantRef.current !== 'none') return;
+      const axisInfo = getPriceAxisHitInfo(event.clientX);
+      const target = event.target as HTMLElement | null;
+      lastPointerDownDebugRef.current = {
+        source: 'capture',
+        variant: toolVariantRef.current,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        localX: axisInfo.localX,
+        chartWidth: axisInfo.chartWidth,
+        axisWidth: axisInfo.axisWidth,
+        clickedPriceAxis: axisInfo.isAxis,
+        targetTag: target?.tagName?.toLowerCase() ?? null,
+        targetTestId: target?.getAttribute?.('data-testid') ?? null,
+      };
+
+      if (!axisInfo.isAxis) return;
+
+      setSelectedDrawingId(null);
+      setHoveredDrawingId(null);
+      renderOverlay();
+    };
+
+    surface.addEventListener('pointerdown', onPointerDownCapture, true);
+    return () => {
+      surface.removeEventListener('pointerdown', onPointerDownCapture, true);
+    };
+  }, [chartContainerRef, getPriceAxisHitInfo, renderOverlay]);
 
   const onChartTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     if (event.touches.length >= 2) {
@@ -3461,6 +3627,21 @@ export default function TradingChart({
       }
 
       const freePoint = pointerToDataPoint(event.clientX, event.clientY, 'free', false);
+      const axisInfo = getPriceAxisHitInfo(event.clientX);
+      const clickedPriceAxis = axisInfo.isAxis;
+      const target = event.target as HTMLElement | null;
+      lastPointerDownDebugRef.current = {
+        source: 'overlay',
+        variant: toolState.variant,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        localX: axisInfo.localX,
+        chartWidth: axisInfo.chartWidth,
+        axisWidth: axisInfo.axisWidth,
+        clickedPriceAxis,
+        targetTag: target?.tagName?.toLowerCase() ?? null,
+        targetTestId: target?.getAttribute?.('data-testid') ?? null,
+      };
 
       if (cursorMode === 'eraser' && toolState.variant === 'none') {
         const preferred = [selectedDrawingId, hoveredDrawingId].filter((id): id is string => Boolean(id));
@@ -3506,7 +3687,19 @@ export default function TradingChart({
       }
 
       if (toolState.variant === 'none') {
-        if (!freePoint) return;
+        if (clickedPriceAxis) {
+          setSelectedDrawingId(null);
+          setHoveredDrawingId(null);
+          renderOverlay();
+          return;
+        }
+
+        if (!freePoint) {
+          setSelectedDrawingId(null);
+          setHoveredDrawingId(null);
+          renderOverlay();
+          return;
+        }
 
         const candidate = resolveHitTarget(freePoint, 'select', [selectedDrawingId, hoveredDrawingId]).id;
         // Pixel-space sanity check: the data-space hit-test (resolveHitTarget)
@@ -3692,7 +3885,7 @@ export default function TradingChart({
         return;
       }
 
-      const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
+      const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode);
       if (!point) return;
 
       const needsText = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText && toolState.variant !== 'priceLabel';
@@ -3833,8 +4026,8 @@ export default function TradingChart({
         shouldUseFreePointer ? 'free' : resolvePointerSnapMode(),
         shouldUseFreePointer ? false : magnetMode,
       );
-      const point = pointerPoint ?? (drawingActiveRef.current ? fallbackPoint() : null);
-      if (!point) return;
+      if (!pointerPoint) return;
+      const point = pointerPoint;
 
       if (dragMoveRef.current) {
         dragMoveRef.current = { ...dragMoveRef.current, currentPoint: point };
