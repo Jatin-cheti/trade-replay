@@ -395,6 +395,9 @@ export default function TradingChart({
   const toolbarAnchorRef = useRef<FloatingToolbarAnchor>(null);
   const touchTooltipTimerRef = useRef<number | null>(null);
   const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Becomes true once the long-press timer fires; while true, finger movement
+  // updates the tooltip in place (TradingView-style) instead of dismissing it.
+  const touchTooltipActiveRef = useRef<boolean>(false);
   const lastPointerDownDebugRef = useRef<{
     source: 'capture' | 'overlay';
     variant: ToolVariant;
@@ -3447,6 +3450,7 @@ export default function TradingChart({
       touchTooltipTimerRef.current = null;
     }
     touchTooltipStartRef.current = null;
+    touchTooltipActiveRef.current = false;
     setTouchTooltip(null);
   }, []);
 
@@ -3461,13 +3465,30 @@ export default function TradingChart({
     }
 
     touchTooltipStartRef.current = { x: clientX, y: clientY };
+    touchTooltipActiveRef.current = false;
     touchTooltipTimerRef.current = window.setTimeout(() => {
       const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), magnetMode) ?? fallbackPoint();
       if (!point) return;
+      touchTooltipActiveRef.current = true;
       setTouchTooltip({ point, x: localX, y: localY });
       touchTooltipTimerRef.current = null;
+      // Haptic nudge if supported (TradingView mobile-style feedback)
+      try { (navigator as Navigator & { vibrate?: (p: number) => boolean }).vibrate?.(8); } catch { /* ignore */ }
     }, 450);
   }, [fallbackPoint, magnetMode, pointerToDataPoint, resolvePointerSnapMode, valuesTooltip]);
+
+  // Update tooltip position + data while finger drags during an active long-press.
+  // Returns true if the tooltip consumed the move (caller should suppress pan/zoom).
+  const updateTouchTooltipDrag = useCallback((currentTarget: HTMLDivElement, clientX: number, clientY: number): boolean => {
+    if (!touchTooltipActiveRef.current) return false;
+    const bounds = currentTarget.getBoundingClientRect();
+    const localX = Math.min(bounds.width, Math.max(0, clientX - bounds.left));
+    const localY = Math.min(bounds.height, Math.max(0, clientY - bounds.top));
+    const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), magnetMode) ?? fallbackPoint();
+    if (!point) return true;
+    setTouchTooltip({ point, x: localX, y: localY });
+    return true;
+  }, [fallbackPoint, magnetMode, pointerToDataPoint, resolvePointerSnapMode]);
 
   const getPriceAxisHitInfo = useCallback((clientX: number) => {
     const chartRect = chartContainerRef.current?.getBoundingClientRect();
@@ -3564,6 +3585,15 @@ export default function TradingChart({
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
 
+    // If the long-press tooltip is already active, finger drag updates the
+    // crosshair/tooltip in place (TradingView-style) — suppress pan/zoom.
+    if (touchTooltipActiveRef.current) {
+      updateTouchTooltipDrag(event.currentTarget, touch.clientX, touch.clientY);
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+
+    // Pre-fire: any meaningful drag cancels the pending long-press.
     if (touchTooltipStartRef.current && Math.hypot(dx, dy) > 12) {
       clearTouchTooltip();
     }
@@ -5054,26 +5084,62 @@ export default function TradingChart({
               </div>
             ) : null}
 
-            {valuesTooltip && touchTooltip && currentLegendRow ? (
-              <div
-                data-testid="values-tooltip"
-                className="pointer-events-none absolute z-40 rounded-xl border border-primary/25 bg-slate-950/90 px-3 py-2 text-[11px] text-foreground shadow-2xl shadow-black/50 backdrop-blur-md"
-                style={{
-                  left: `${Math.min(chartContainerRef.current?.clientWidth ?? 0, Math.max(0, touchTooltip.x + 12))}px`,
-                  top: `${Math.min(chartContainerRef.current?.clientHeight ?? 0, Math.max(0, touchTooltip.y - 12))}px`,
-                  transform: 'translateY(-100%)',
-                }}
-              >
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary/80">Long press values</div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums">
-                  <span>O {currentLegendRow.open.toFixed(2)}</span>
-                  <span>H {currentLegendRow.high.toFixed(2)}</span>
-                  <span>L {currentLegendRow.low.toFixed(2)}</span>
-                  <span>C {currentLegendRow.close.toFixed(2)}</span>
-                  <span className="col-span-2 text-muted-foreground">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', month: 'short', day: '2-digit', timeZone: 'UTC' }) : ''}</span>
+            {valuesTooltip && touchTooltip && currentLegendRow ? (() => {
+              // TradingView-style values tooltip on long-press:
+              //   Date/Time \u2022 O/H/L/C \u2022 Volume \u2022 Change (vs prev close) \u2022 Change % \u2022 Cursor price
+              // Auto-flips above/below and left/right of the finger to stay in viewport.
+              const containerW = chartContainerRef.current?.clientWidth ?? 0;
+              const containerH = chartContainerRef.current?.clientHeight ?? 0;
+              const TT_W = 168;
+              const TT_H = 132;
+              const PAD = 14;
+              const placeRight = touchTooltip.x + PAD + TT_W <= containerW;
+              const placeAbove = touchTooltip.y - PAD - TT_H >= 0;
+              const left = placeRight ? touchTooltip.x + PAD : Math.max(4, touchTooltip.x - PAD - TT_W);
+              const top = placeAbove ? touchTooltip.y - PAD - TT_H : Math.min(containerH - TT_H - 4, touchTooltip.y + PAD);
+
+              const ohlcRows = transformedData.ohlcRows;
+              const idx = nearestCandleIndex(transformedData.times, currentLegendRow.time);
+              const prevClose = idx > 0 ? ohlcRows[idx - 1]?.close : currentLegendRow.open;
+              const change = currentLegendRow.close - (prevClose ?? currentLegendRow.open);
+              const changePct = prevClose && prevClose !== 0 ? (change / prevClose) * 100 : 0;
+              const changeClass = change >= 0 ? 'text-emerald-300' : 'text-rose-300';
+              const sign = change >= 0 ? '+' : '';
+              const cursorPrice = touchTooltip.point?.price;
+              const formatVolume = (v: number): string => {
+                if (!Number.isFinite(v)) return '\u2014';
+                if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`;
+                if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+                if (v >= 1_000) return `${(v / 1_000).toFixed(2)}K`;
+                return v.toFixed(0);
+              };
+
+              return (
+                <div
+                  data-testid="values-tooltip"
+                  className="pointer-events-none absolute z-40 rounded-xl border border-primary/25 bg-slate-950/92 px-3 py-2 text-[11px] text-foreground shadow-2xl shadow-black/50 backdrop-blur-md"
+                  style={{ left: `${left}px`, top: `${top}px`, width: `${TT_W}px` }}
+                >
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary/80">
+                    {new Date(Number(currentLegendRow.time) * 1000).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' })}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
+                    <span className="text-muted-foreground">O</span><span className="text-right">{currentLegendRow.open.toFixed(2)}</span>
+                    <span className="text-muted-foreground">H</span><span className="text-right">{currentLegendRow.high.toFixed(2)}</span>
+                    <span className="text-muted-foreground">L</span><span className="text-right">{currentLegendRow.low.toFixed(2)}</span>
+                    <span className="text-muted-foreground">C</span><span className="text-right">{currentLegendRow.close.toFixed(2)}</span>
+                    <span className="text-muted-foreground">Vol</span><span className="text-right">{formatVolume(currentLegendRow.volume ?? 0)}</span>
+                    <span className="text-muted-foreground">Chg</span><span className={`text-right ${changeClass}`}>{sign}{change.toFixed(2)} ({sign}{changePct.toFixed(2)}%)</span>
+                  </div>
+                  {cursorPrice != null && Number.isFinite(cursorPrice) ? (
+                    <div className="mt-1.5 border-t border-primary/15 pt-1 flex items-center justify-between text-[10px]">
+                      <span className="text-muted-foreground uppercase tracking-[0.12em]">Cursor</span>
+                      <span className="tabular-nums text-primary">{cursorPrice.toFixed(2)}</span>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            ) : null}
+              );
+            })() : null}
 
             <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={handleToolOptionsChange} />
 
