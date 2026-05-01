@@ -14,89 +14,45 @@ const COLUMN_OPTIONS = [1, 2, 3, 4, 5, 6];
 interface ChartCatalogItem { id: ChartType; name: string }
 interface ChartCatalogGroup { group: string; label: string; items: ChartCatalogItem[] }
 
+// Aligned with main chart-type dropdown: 20 TradingView-parity types only.
+// Indicators (MA/EMA/VWAP/RSI/MACD/etc) live in the indicator picker, and
+// analytics/widgets (equity curve, monte carlo, treemap, heatmap, …) are
+// dedicated panels — none of them are chart types.
 const CHART_CATALOG: ChartCatalogGroup[] = [
   {
-    group: "Standard", label: "Time-Series", items: [
-      { id: "line", name: "Line Chart" },
-      { id: "candlestick", name: "Japanese Candlestick" },
-      { id: "bar", name: "Bar Chart (OHLC)" },
-      { id: "hlcBar", name: "HLC Bar" },
-      { id: "area", name: "Area Chart" },
-      { id: "baseline", name: "Baseline Chart" },
-      { id: "heikinAshi", name: "Heikin-Ashi" },
+    group: "Core", label: "Core", items: [
+      { id: "candlestick", name: "Candlestick" },
+      { id: "line", name: "Line" },
+      { id: "area", name: "Area" },
+      { id: "baseline", name: "Baseline" },
+      { id: "histogram", name: "Histogram" },
+      { id: "bar", name: "Bar" },
+      { id: "ohlc", name: "OHLC" },
+    ],
+  },
+  {
+    group: "Advanced", label: "Advanced", items: [
+      { id: "heikinAshi", name: "Heikin Ashi" },
       { id: "hollowCandles", name: "Hollow Candles" },
-      { id: "ohlc", name: "Colored Bar" },
       { id: "stepLine", name: "Step Line" },
-      { id: "mountainArea", name: "Mountain Chart" },
-      { id: "dotChart", name: "Dot Chart" },
-      { id: "rangeArea", name: "High-Low Chart" },
-      { id: "openClose", name: "Open-Close Chart" },
-      { id: "avgPriceBar", name: "Average Price Bar" },
+      { id: "rangeArea", name: "Range Area" },
+      { id: "mountainArea", name: "Mountain Area" },
     ],
   },
   {
-    group: "Price Action", label: "Non-Time Based", items: [
+    group: "Premium", label: "Premium", items: [
       { id: "renko", name: "Renko" },
-      { id: "pointFigure", name: "Point & Figure" },
-      { id: "kagi", name: "Kagi" },
-      { id: "lineBreak", name: "3-Line Break" },
       { id: "rangeBars", name: "Range Bars" },
-      { id: "brick", name: "Brick Chart" },
+      { id: "lineBreak", name: "3-Line Break" },
+      { id: "kagi", name: "Kagi" },
+      { id: "pointFigure", name: "Point & Figure" },
+      { id: "brick", name: "Brick" },
     ],
   },
   {
-    group: "Volume", label: "Volume & Order Flow", items: [
+    group: "Volume", label: "Volume", items: [
       { id: "volumeCandles", name: "Candles + Volume" },
       { id: "volumeLine", name: "Line + Volume" },
-      { id: "histogram", name: "Volume Histogram" },
-    ],
-  },
-  {
-    group: "Indicators", label: "Indicators & Overlays", items: [
-      { id: "maLine", name: "MA Line (20)" },
-      { id: "emaLine", name: "EMA Line (20)" },
-      { id: "vwapLine", name: "VWAP" },
-      { id: "priceChange", name: "Price Change" },
-      { id: "rsiLine", name: "RSI Line" },
-      { id: "macdHistogram", name: "MACD Histogram" },
-      { id: "volumeOscillator", name: "Volume Oscillator" },
-      { id: "zScoreLine", name: "Z-Score Line" },
-    ],
-  },
-  {
-    group: "Analysis", label: "Statistical & Quantitative", items: [
-      { id: "equityCurve", name: "Equity Curve" },
-      { id: "drawdownChart", name: "Drawdown Chart" },
-      { id: "returnsHistogram", name: "Returns Histogram" },
-      { id: "scatterPlot", name: "Scatter Plot" },
-      { id: "bubblePlot", name: "Bubble Plot" },
-      { id: "boxPlot", name: "Box Plot" },
-      { id: "heatMap", name: "Heat Map" },
-      { id: "regressionChannel", name: "Regression Channel" },
-      { id: "seasonality", name: "Seasonality" },
-      { id: "monteCarlo", name: "Monte Carlo" },
-    ],
-  },
-  {
-    group: "Advanced", label: "Advanced Analytics", items: [
-      { id: "radarChart", name: "Radar Chart" },
-      { id: "treemap", name: "Treemap" },
-      { id: "waterfallChart", name: "Waterfall Chart" },
-      { id: "sunburst", name: "Sunburst Chart" },
-      { id: "fanChart", name: "Fan Chart" },
-      { id: "paretoChart", name: "Pareto Chart" },
-      { id: "funnelChart", name: "Funnel Chart" },
-      { id: "networkGraph", name: "Network Graph" },
-    ],
-  },
-  {
-    group: "Layouts", label: "Economic & Layouts", items: [
-      { id: "yieldCurve", name: "Yield Curve" },
-      { id: "volatilitySurface", name: "Volatility Surface" },
-      { id: "correlationMatrix", name: "Correlation Matrix" },
-      { id: "optionsPayoff", name: "Options Payoff" },
-      { id: "donutChart", name: "Donut Chart" },
-      { id: "stackedArea", name: "Stacked Area" },
     ],
   },
 ];
