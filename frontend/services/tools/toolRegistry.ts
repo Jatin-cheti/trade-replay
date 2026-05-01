@@ -214,7 +214,8 @@ export const toolDefinitions: ToolDefinition[] = [
   def({ id: 'crossLine', label: 'Cross line', category: 'lines', subSection: 'Lines', family: 'line', iconKey: 'Crosshair', capabilities: { anchors: 1, draggable: true, resizable: false, supportsText: false, supportsFill: false, supportsLevels: false }, optionsSchema: lineSchema }),
 
   /* ── Lines → CHANNELS ───────────────────────────────────────── */
-  def({ id: 'channel', label: 'Parallel channel', category: 'lines', subSection: 'Channels', family: 'line', iconKey: 'Layers', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: false }, optionsSchema: lineSchema }),
+  // TV-parity: parallel channel uses 3 anchors (baseline start, baseline end, parallel-rail position) drawn via wizard click flow.
+  def({ id: 'channel', label: 'Parallel channel', category: 'lines', subSection: 'Channels', family: 'line', iconKey: 'Layers', capabilities: { anchors: 3, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: false }, optionsSchema: lineSchema }),
   // TV-parity default colors: regression trend = data-driven (set at render time when slope known); flat top/bottom = yellow; disjoint channel = green.
   def({ id: 'regressionTrend', label: 'Regression trend', category: 'lines', subSection: 'Channels', family: 'line', iconKey: 'TrendingUp', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: false }, optionsSchema: lineSchema }),
   def({ id: 'flatTopBottom', label: 'Flat top/bottom', category: 'lines', subSection: 'Channels', family: 'line', iconKey: 'AlignHorizontalSpaceAround', capabilities: { anchors: 2, draggable: true, resizable: true, supportsText: false, supportsFill: true, supportsLevels: false }, defaultOptions: { color: '#FFD60A' }, optionsSchema: lineSchema }),

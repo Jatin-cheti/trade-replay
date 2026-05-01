@@ -5,7 +5,15 @@ import { interpolateDrawPoint } from './drawingGeometry.ts';
 
 export function isWizardVariant(variant: ToolVariant): boolean {
   const definition = getToolDefinition(variant);
-  return Boolean(definition && definition.family === 'pattern' && definition.capabilities.anchors > 2);
+  if (!definition) return false;
+  if (definition.capabilities.anchors <= 2) return false;
+  // Pattern family always uses wizard flow.
+  if (definition.family === 'pattern') return true;
+  // TV-parity: line-family tools with >2 anchors (e.g. parallel channel)
+  // also use wizard flow — click baseline start, click baseline end, then
+  // click to set rail offset.
+  if (definition.family === 'line') return true;
+  return false;
 }
 
 export function makeId(): string {
@@ -481,12 +489,18 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
   }
 
   if (variant === 'channel' && a && b) {
-    const span = Math.max(0.1, distance(a, b));
-    const offset = span * 0.24;
+    // TV-parity: 3-anchor channel uses signed distance from rail anchor to baseline.
+    // Falls back to legacy 0.24-span ratio when only 2 anchors (legacy drawings).
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const magnitude = Math.hypot(dx, dy) || 1;
     const normal = { x: -dy / magnitude, y: dx / magnitude };
+    let offset: number;
+    if (c) {
+      offset = signedDistanceToLine(c, a, b);
+    } else {
+      offset = Math.max(0.1, distance(a, b)) * 0.24;
+    }
     const upperStart = { x: a.x + normal.x * offset, y: a.y + normal.y * offset };
     const upperEnd = { x: b.x + normal.x * offset, y: b.y + normal.y * offset };
     const lowerStart = { x: a.x - normal.x * offset, y: a.y - normal.y * offset };

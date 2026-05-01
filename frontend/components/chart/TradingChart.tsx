@@ -1766,7 +1766,7 @@ export default function TradingChart({
           drawSegment(geometry.upper);
           drawSegment(geometry.lower);
         } else if (v === 'channel' && points.length >= 2) {
-          const geometry = getParallelChannelGeometry([points[0], points[1]], cssWidth, cssHeight);
+          const geometry = getParallelChannelGeometry(points, cssWidth, cssHeight);
           ctx.save();
           ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
           ctx.beginPath();

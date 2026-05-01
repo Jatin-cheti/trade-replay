@@ -128,18 +128,33 @@ function offsetSegment(start: CanvasPoint, end: CanvasPoint, offset: number, wid
     : getExtendedLineSegment(shiftedStart, shiftedEnd, width, height);
 }
 
-export function getParallelChannelGeometry(points: [CanvasPoint, CanvasPoint], width: number, height: number): {
+export function getParallelChannelGeometry(points: CanvasPoint[], width: number, height: number): {
   center: [CanvasPoint, CanvasPoint];
   upper: [CanvasPoint, CanvasPoint];
   lower: [CanvasPoint, CanvasPoint];
   fill: [CanvasPoint, CanvasPoint, CanvasPoint, CanvasPoint];
 } {
-  const [start, end] = points;
-  const span = Math.max(12, distance(start, end));
-  const offset = span * 0.24;
+  const start = points[0];
+  const end = points[1];
+  // TV-parity: 3-anchor channel — third anchor controls the perpendicular
+  // offset of the parallel rail. Falls back to the legacy fixed-ratio offset
+  // when only 2 anchors are present (load-from-storage / legacy drawings).
+  const widthAnchor = points[2];
+  let upperOffset: number;
+  let lowerOffset: number;
+  if (widthAnchor) {
+    const signed = signedDistanceToLine(widthAnchor, start, end);
+    upperOffset = signed;
+    lowerOffset = -signed;
+  } else {
+    const span = Math.max(12, distance(start, end));
+    const fallback = span * 0.24;
+    upperOffset = fallback;
+    lowerOffset = -fallback;
+  }
   const center = getExtendedLineSegment(start, end, width, height);
-  const upper = offsetSegment(start, end, offset, width, height, 'extended');
-  const lower = offsetSegment(start, end, -offset, width, height, 'extended');
+  const upper = offsetSegment(start, end, upperOffset, width, height, 'extended');
+  const lower = offsetSegment(start, end, lowerOffset, width, height, 'extended');
   return {
     center,
     upper,
