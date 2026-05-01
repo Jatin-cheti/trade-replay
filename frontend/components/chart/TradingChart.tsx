@@ -5097,12 +5097,15 @@ export default function TradingChart({
               const containerW = chartContainerRef.current?.clientWidth ?? 0;
               const containerH = chartContainerRef.current?.clientHeight ?? 0;
               const TT_W = 168;
-              const TT_H = 132;
+              // Effective rendered height includes top/bottom padding (py-2 ≈ 16px)
+              // plus 1px borders. Empirically ~144px; use 150 for a safety margin
+              // so the bottom-edge auto-flip never overflows the chart container.
+              const TT_H = 150;
               const PAD = 14;
               const placeRight = touchTooltip.x + PAD + TT_W <= containerW;
               const placeAbove = touchTooltip.y - PAD - TT_H >= 0;
               const left = placeRight ? touchTooltip.x + PAD : Math.max(4, touchTooltip.x - PAD - TT_W);
-              const top = placeAbove ? touchTooltip.y - PAD - TT_H : Math.min(containerH - TT_H - 4, touchTooltip.y + PAD);
+              const top = placeAbove ? touchTooltip.y - PAD - TT_H : Math.max(4, Math.min(containerH - TT_H - 4, touchTooltip.y + PAD));
 
               const ohlcRows = transformedData.ohlcRows;
               const idx = nearestCandleIndex(transformedData.times, currentLegendRow.time);
