@@ -627,10 +627,17 @@ export async function searchSymbols(params: {
             return [] as ExternalSymbolCandidate[];
           });
 
-          if (externalCandidates.length > 0) {
+          // External (FMP) only supplies stock/etf/crypto/forex/index types.
+          // Filter out candidates whose mapped type doesn't match the requested type
+          // so categories like bond/derivative/economy don't get polluted with stocks.
+          const filteredExternalCandidates = params.type
+            ? externalCandidates.filter((c) => toSymbolTypeFromExternal(c.type) === params.type)
+            : externalCandidates;
+
+          if (filteredExternalCandidates.length > 0) {
             const merged = mergeLocalAndExternalResults({
               localItems: enrichedSmartItems,
-              externalCandidates,
+              externalCandidates: filteredExternalCandidates,
               limit,
             });
             enrichedSmartItems = merged.items;
