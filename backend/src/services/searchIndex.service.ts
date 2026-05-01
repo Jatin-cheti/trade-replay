@@ -397,6 +397,32 @@ async function buildPrefixItems(prefix: string): Promise<SearchIndexItem[]> {
 
   let docs = docsByPrefix;
 
+  // Derivatives (futures/options) are not marked isCleanAsset:true and may not have searchPrefixes,
+  // so backfill the prefix bucket with type=derivative rows that match the prefix.
+  {
+    const existingFullSymbols = new Set(docs.map((item) => item.fullSymbol));
+    const derivRemainder = Math.max(0, PREFIX_DB_FETCH_LIMIT - docs.length);
+    if (derivRemainder > 0) {
+      const derivDocs = await SymbolModel.find({
+        type: "derivative",
+        $or: [
+          { symbol: { $regex: `^${escaped}`, $options: "i" } },
+          { fullSymbol: { $regex: `:${escaped}`, $options: "i" } },
+        ],
+      })
+        .select(projection)
+        .sort({ priorityScore: -1 })
+        .limit(derivRemainder)
+        .lean<IndexedRow[]>();
+      for (const doc of derivDocs) {
+        if (!existingFullSymbols.has(doc.fullSymbol)) {
+          docs.push(doc);
+          existingFullSymbols.add(doc.fullSymbol);
+        }
+      }
+    }
+  }
+
   if (docs.length < Math.max(40, Math.floor(PREFIX_DB_FETCH_LIMIT / 4))) {
     const existingFullSymbols = new Set(docs.map((item) => item.fullSymbol));
     const remainder = Math.max(0, PREFIX_DB_FETCH_LIMIT - docs.length);
