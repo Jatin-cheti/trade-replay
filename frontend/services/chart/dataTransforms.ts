@@ -41,48 +41,30 @@ export type ChartType =
 
 /** Chart types not yet implemented — truly canvas-only, cannot be rendered in LightweightCharts. */
 export const COMING_SOON_CHART_TYPES: ReadonlySet<ChartType> = new Set<ChartType>([
-  'bubblePlot', 'boxPlot', 'heatMap',
-  'radarChart', 'treemap', 'sunburst',
-  'volatilitySurface', 'correlationMatrix',
-  'networkGraph', 'donutChart', 'funnelChart',
+  // Empty: dropdown is restricted to the original 20 chart types (TradingView
+  // parity baseline). The extra types in the ChartType union remain only so
+  // the engine's series renderers and visibility map keep type-checking; they
+  // are intentionally NOT reachable from the chart-type dropdown UI. Indicator
+  // / analytics types were moved out of "chart types" since they are overlays
+  // or backtest analytics, not standalone price visualizations.
 ]);
 
 export const chartTypeGroups: Array<{ id: string; label: string; types: ChartType[] }> = [
   {
-    id: 'standard', label: 'Standard',
-    types: ['candlestick', 'line', 'area', 'baseline', 'histogram', 'bar', 'ohlc', 'stepLine'],
+    id: 'core', label: 'Core',
+    types: ['candlestick', 'line', 'area', 'baseline', 'histogram', 'bar', 'ohlc'],
   },
   {
-    id: 'derived', label: 'Derived Price',
-    types: ['heikinAshi', 'hollowCandles', 'hlcBar', 'avgPriceBar', 'openClose', 'dotChart', 'mountainArea', 'rangeArea'],
+    id: 'advanced', label: 'Advanced',
+    types: ['heikinAshi', 'hollowCandles', 'stepLine', 'rangeArea', 'mountainArea'],
   },
   {
-    id: 'indicators', label: 'Indicators',
-    types: ['maLine', 'emaLine', 'vwapLine', 'priceChange'],
+    id: 'premium', label: 'Premium',
+    types: ['renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick'],
   },
   {
     id: 'volume', label: 'Volume',
     types: ['volumeCandles', 'volumeLine'],
-  },
-  {
-    id: 'priceAction', label: 'Price Action',
-    types: ['renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick'],
-  },
-  {
-    id: 'analytical', label: 'Analytical',
-    types: ['equityCurve', 'drawdownChart', 'returnsHistogram', 'zScoreLine', 'rsiLine', 'macdHistogram', 'volumeOscillator'],
-  },
-  {
-    id: 'statistical', label: 'Statistical',
-    types: ['scatterPlot', 'bubblePlot', 'boxPlot', 'heatMap', 'radarChart', 'treemap', 'waterfallChart', 'sunburst'],
-  },
-  {
-    id: 'financial', label: 'Financial',
-    types: ['yieldCurve', 'volatilitySurface', 'correlationMatrix', 'optionsPayoff', 'monteCarlo', 'seasonality', 'regressionChannel'],
-  },
-  {
-    id: 'layouts', label: 'Layouts',
-    types: ['fanChart', 'paretoChart', 'funnelChart', 'networkGraph', 'donutChart', 'stackedArea'],
   },
 ];
 
