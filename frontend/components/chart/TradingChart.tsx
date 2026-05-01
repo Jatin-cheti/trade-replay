@@ -1654,7 +1654,13 @@ export default function TradingChart({
         } else if (v === 'regressionTrend' && points.length >= 2) {
           const geometry = getRegressionTrendGeometry(buildRegressionSample(activeDrawing.anchors[0], activeDrawing.anchors[1]));
           if (geometry) {
+            // TV-parity: regression trend is colored by slope direction.
+            // Canvas Y grows downward, so slope < 0 = uptrend (green), > 0 = downtrend (red).
             ctx.save();
+            const trendColor = geometry.slope <= 0 ? '#22C55E' : '#EF4444';
+            const trendRgb = rgbFromHex(trendColor);
+            ctx.strokeStyle = `rgba(${trendRgb}, ${activeDrawing.options.opacity})`;
+            ctx.fillStyle = `rgba(${trendRgb}, ${activeDrawing.options.opacity})`;
             ctx.globalAlpha = Math.max(0.08, activeDrawing.options.opacity * 0.12);
             ctx.beginPath();
             ctx.moveTo(geometry.fill[0].x, geometry.fill[0].y);
@@ -1663,10 +1669,11 @@ export default function TradingChart({
             }
             ctx.closePath();
             ctx.fill();
-            ctx.restore();
+            ctx.globalAlpha = 1;
             drawSegment(geometry.upper);
             drawSegment(geometry.median);
             drawSegment(geometry.lower);
+            ctx.restore();
           } else {
             ctx.beginPath();
             ctx.moveTo(points[0].x, points[0].y);
