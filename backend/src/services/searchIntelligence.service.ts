@@ -599,7 +599,10 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
     item.isSynthetic = klass.isSynthetic;
   }
 
-  if (query.length < 3) {
+  // Skip the short-query derivative-strip when the caller explicitly asked for
+  // derivatives (futures/options categories) — otherwise q="A" with type=derivative
+  // would always return 0.
+  if (query.length < 3 && params.type?.toLowerCase() !== "derivative") {
     const strict = allItems.filter((item) => {
       if (item._isDerivative || item.isSynthetic) return false;
       if (item._symbolClass === "stock") return true;
