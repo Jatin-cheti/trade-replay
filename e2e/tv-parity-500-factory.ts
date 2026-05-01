@@ -235,6 +235,15 @@ export function register500ToolSuite(TOOL: ToolDef) {
   }
 
   // ── 100 GEOMETRY tests ─────────────────────────────────────────────────────
+  //
+  // Pixel-diff infrastructure: when E2E_PIXEL_DIFF=1, each geometry test also
+  // asserts the rendered canvas region matches the stored baseline snapshot
+  // under e2e/__snapshots__/<spec>-snapshots/. First run with
+  // --update-snapshots seeds the baseline; subsequent runs catch any visual
+  // regression. TV-reference equivalence is verified manually by comparing
+  // baseline images to TV captures at e2e/tv-references/<variant>/state-NNN.png
+  // (see e2e/tv-reference-capture.md for capture flow).
+  const PIXEL_DIFF = process.env.E2E_PIXEL_DIFF === "1";
 
   test.describe(`${TAG} geometry`, () => {
     for (let i = 0; i < 100; i++) {
@@ -264,6 +273,31 @@ export function register500ToolSuite(TOOL: ToolDef) {
         expect(a0x).toBeLessThan(box.x + box.width + 50);
         expect(a0y).toBeGreaterThan(box.y - 50);
         expect(a0y).toBeLessThan(box.y + box.height + 50);
+
+        if (PIXEL_DIFF) {
+          // Crop to the bounding box of the drawing's anchors (with padding)
+          // so the diff is invariant to chart panning between baseline and run.
+          const pad = 40;
+          const minX = Math.max(box.x, Math.min(a0x, a1x) - pad);
+          const minY = Math.max(box.y, Math.min(a0y, a1y) - pad);
+          const maxX = Math.min(box.x + box.width, Math.max(a0x, a1x) + pad);
+          const maxY = Math.min(box.y + box.height, Math.max(a0y, a1y) + pad);
+          const clip = {
+            x: minX,
+            y: minY,
+            width: Math.max(20, maxX - minX),
+            height: Math.max(20, maxY - minY),
+          };
+          await expect(page).toHaveScreenshot(
+            `${TOOL.variant}-state-${String(i).padStart(3, "0")}.png`,
+            {
+              clip,
+              maxDiffPixelRatio: 0.04,
+              animations: "disabled",
+              caret: "hide",
+            },
+          );
+        }
       });
     }
   });
