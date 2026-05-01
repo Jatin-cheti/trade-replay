@@ -2712,7 +2712,16 @@ export default function TradingChart({
         }
 
         if (isSelected) {
-          for (const anchor of points) {
+          // TV-parity: handle dots must sit exactly at the *rendered* endpoints,
+          // not the raw anchor pixels. For tools that transform anchors before
+          // drawing (currently trendAngle's 15° snap), use the transformed
+          // endpoints so the white dots line up with the visible line ends.
+          let handlePoints: { x: number; y: number }[] = points;
+          if (v === 'trendAngle' && points.length >= 2) {
+            const [hp1, hp2] = snapTrendAngleSegment(points[0], points[1]);
+            handlePoints = [hp1, hp2];
+          }
+          for (const anchor of handlePoints) {
             ctx.beginPath();
             ctx.fillStyle = 'rgba(255,255,255,0.95)';
             ctx.arc(anchor.x, anchor.y, 4, 0, Math.PI * 2);
