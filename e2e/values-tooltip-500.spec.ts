@@ -205,7 +205,9 @@ function gridPositions(box: { x: number; y: number; width: number; height: numbe
 // ── Suite ────────────────────────────────────────────────────────────────────
 
 test.describe("[values-tooltip] 500 TradingView-parity tests", () => {
-  test.describe.configure({ mode: "serial", retries: 1 });
+  // NOTE: do NOT use `mode: serial` — under serial, a single failure skips
+  // every remaining test in the suite, and we need full 500/500 visibility.
+  test.describe.configure({ retries: 1 });
   let page: Page;
   let cdp: CDPSession;
 

@@ -1200,13 +1200,19 @@ export default function TradingChart({
     setHoverPoint(null);
     setHoveredDrawingId(null);
     setPatternWizardHint(null);
+  }, [symbol, transformedData]);
+
+  // Only reset the long-press values tooltip when the symbol changes — not on
+  // every live tick (which would mid-flight cancel an in-progress long press).
+  useEffect(() => {
     if (touchTooltipTimerRef.current != null) {
       window.clearTimeout(touchTooltipTimerRef.current);
       touchTooltipTimerRef.current = null;
     }
     touchTooltipStartRef.current = null;
+    touchTooltipActiveRef.current = false;
     setTouchTooltip(null);
-  }, [symbol, transformedData]);
+  }, [symbol]);
 
   useEffect(() => {
     const availableIds = new Set(indicatorCatalog.map((indicator) => indicator.id));
