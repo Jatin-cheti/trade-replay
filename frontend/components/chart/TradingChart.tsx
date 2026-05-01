@@ -3585,9 +3585,22 @@ export default function TradingChart({
       return;
     }
 
+    const touch = event.touches[0];
+
+    // Pre-fire cancel runs FIRST and is computed from touchTooltipStartRef
+    // (not touchStartRef) so a meaningful drag always cancels the pending
+    // long-press even if touchStartRef was cleared/missed for any reason.
+    const ttStart = touchTooltipStartRef.current;
+    if (ttStart && !touchTooltipActiveRef.current) {
+      const ddx = touch.clientX - ttStart.x;
+      const ddy = touch.clientY - ttStart.y;
+      if (Math.hypot(ddx, ddy) > 12) {
+        clearTouchTooltip();
+      }
+    }
+
     const start = touchStartRef.current;
     if (!start) return;
-    const touch = event.touches[0];
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
 
@@ -3597,11 +3610,6 @@ export default function TradingChart({
       updateTouchTooltipDrag(event.currentTarget, touch.clientX, touch.clientY);
       if (event.cancelable) event.preventDefault();
       return;
-    }
-
-    // Pre-fire: any meaningful drag cancels the pending long-press.
-    if (touchTooltipStartRef.current && Math.hypot(dx, dy) > 12) {
-      clearTouchTooltip();
     }
 
     if (start.zone === 'center') {
