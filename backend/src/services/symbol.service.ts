@@ -1154,12 +1154,14 @@ export function mapCategoryToSymbolType(category?: string): SymbolType | undefin
   const normalized = category.toLowerCase();
   if (normalized === "stocks") return "stock";
   if (normalized === "funds") return "etf";
-  if (normalized === "options") return "options";
-  if (normalized === "futures") return "futures";
+  // DB stores both options and futures under type="derivative"; classifier splits them via isOptionLikeSymbol/isFutureLikeSymbol.
+  if (normalized === "options") return "derivative";
+  if (normalized === "futures") return "derivative";
   if (normalized === "bonds") return "bond";
   if (normalized === "crypto") return "crypto";
   if (normalized === "forex") return "forex";
-  if (normalized === "indices" || normalized === "economy") return "index";
+  if (normalized === "indices") return "index";
+  if (normalized === "economy") return "economy";
   return undefined;
 }
 
