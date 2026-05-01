@@ -107,8 +107,11 @@ function categoryMarket(category: KnownCategory): AssetSearchItem["market"] {
 
 export function mapSymbolItemToUi(item: AssetSearchItem, requestedCategory?: string): AssetSearchItem {
   const category = inferCategory(item);
+  const ticker = item.ticker || item.symbol || "";
   const normalized = {
     ...item,
+    ticker,
+    symbol: item.symbol || ticker,
     logoUrl: item.displayIconUrl || item.logoUrl || item.iconUrl,
   };
   const icons = resolveAssetIcons(normalized);

@@ -57,7 +57,9 @@ export interface AssetSearchResponse {
 }
 
 interface TradingViewSymbolSearchResponse {
-  symbols: AssetSearchItem[];
+  // Backend returns `items`; some legacy mocks return `symbols`. Accept either.
+  items?: AssetSearchItem[];
+  symbols?: AssetSearchItem[];
   total?: number;
   nextCursor?: string | null;
   hasMore: boolean;
@@ -280,23 +282,32 @@ export async function searchAssetsTradingView(params: AssetSearchParams): Promis
       ? requestedCategory
       : undefined;
 
+  const cursor = params.cursor ?? "0";
+  const offset = Number.parseInt(String(cursor), 10);
+  const safeOffset = Number.isFinite(offset) && offset > 0 ? offset : 0;
+
   const response = await api.get<TradingViewSymbolSearchResponse>("/symbol-search", {
     signal: params.signal,
     params: {
+      // Backend accepts `q`/`query`; keep `text` for any TV-style proxies.
+      q: params.q,
       text: params.q,
+      query: params.q,
       exchange,
       type: queryType,
-      start: params.cursor ?? "0",
+      country: params.country && params.country !== "all" ? params.country : undefined,
+      category: requestedCategory && requestedCategory !== "all" ? requestedCategory : undefined,
+      offset: safeOffset,
+      start: safeOffset,
       limit,
     },
   });
 
-  const mappedAssets = decorateAssets(response.data.symbols ?? [], requestedCategory, params);
+  const rawAssets = response.data.items ?? response.data.symbols ?? [];
+  const mappedAssets = decorateAssets(rawAssets, requestedCategory, params);
   const sortedAssets = sortAssets(mappedAssets, params.sort);
 
-  const cursorAsNumber = Number.parseInt(String(params.cursor ?? "0"), 10);
-  const safeCursor = Number.isFinite(cursorAsNumber) && cursorAsNumber > 0 ? cursorAsNumber : 0;
-  const fallbackTotal = safeCursor + sortedAssets.length + (response.data.hasMore ? 1 : 0);
+  const fallbackTotal = safeOffset + sortedAssets.length + (response.data.hasMore ? 1 : 0);
   const total = typeof response.data.total === "number" && Number.isFinite(response.data.total)
     ? response.data.total
     : fallbackTotal;
