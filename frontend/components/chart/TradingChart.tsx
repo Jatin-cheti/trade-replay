@@ -2620,6 +2620,91 @@ export default function TradingChart({
             ctx.fillRect(x, y, w, h);
             ctx.strokeRect(x, y, w, h);
           }
+        } else if (v === 'fibRetracement') {
+          // ── TradingView-parity Fib Retracement ────────────────────
+          // Per-level colors, left-aligned `<ratio> (<price>)` labels,
+          // dashed grey diagonal from anchor[0] to anchor[1], filled
+          // bands between adjacent levels using the higher level's color.
+          const p1 = points[0];
+          const p2 = points[1] || p1;
+          const levels = resolveFibLevels(def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618, 2.618, 3.618, 4.236]);
+          const left = Math.min(p1.x, p2.x);
+          const right = Math.max(p1.x, p2.x);
+          const width = right - left;
+          // TradingView per-level color palette (hex). Falls through to drawing color for unknown levels.
+          const TV_FIB_COLORS: Record<string, string> = {
+            '0': '#787b86',
+            '0.236': '#f23645',
+            '0.382': '#ff9800',
+            '0.5': '#fbc02d',
+            '0.618': '#4caf50',
+            '0.786': '#00bcd4',
+            '1': '#787b86',
+            '1.272': '#2962ff',
+            '1.414': '#2962ff',
+            '1.618': '#2962ff',
+            '2': '#2962ff',
+            '2.272': '#9c27b0',
+            '2.414': '#9c27b0',
+            '2.618': '#f23645',
+            '3.618': '#9c27b0',
+            '4.236': '#e91e63',
+          };
+          const colorForLevel = (lv: number): string => TV_FIB_COLORS[String(lv)] ?? activeDrawing.options.color;
+          const baseAlpha = activeDrawing.options.opacity;
+          const fillAlpha = Math.max(0.04, baseAlpha * 0.08);
+          // Bands between adjacent levels — colored using the lower-edge level's color.
+          ctx.save();
+          for (let li = 0; li < levels.length - 1; li += 1) {
+            const y1 = p1.y + (p2.y - p1.y) * levels[li];
+            const y2 = p1.y + (p2.y - p1.y) * levels[li + 1];
+            ctx.fillStyle = `rgba(${rgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
+            ctx.fillRect(left, Math.min(y1, y2), width, Math.abs(y2 - y1));
+          }
+          ctx.restore();
+          // Horizontal level lines + labels.
+          const labelMode = activeDrawing.options.fibLabelMode;
+          for (const level of levels) {
+            const y = p1.y + (p2.y - p1.y) * level;
+            const lineColor = colorForLevel(level);
+            ctx.save();
+            ctx.strokeStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
+            ctx.lineWidth = activeDrawing.options.lineWidth;
+            ctx.beginPath();
+            ctx.moveTo(left, y);
+            ctx.lineTo(right, y);
+            ctx.stroke();
+            ctx.restore();
+            if (activeDrawing.options.priceLabel) {
+              const fromAnchor = activeDrawing.anchors[0];
+              const toAnchor = activeDrawing.anchors[1] || activeDrawing.anchors[0];
+              const value = fromAnchor.price + (toAnchor.price - fromAnchor.price) * level;
+              const ratio = level === 0 || level === 1
+                ? `${level}`
+                : level.toString();
+              const priceStr = value.toFixed(2);
+              let label: string;
+              if (labelMode === 'price') label = `(${priceStr})`;
+              else if (labelMode === 'percent') label = `${(level * 100).toFixed(1)}%`;
+              else label = `${ratio} (${priceStr})`;
+              ctx.save();
+              ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
+              ctx.fillStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
+              ctx.textBaseline = 'middle';
+              ctx.fillText(label, left + 6, y - 6);
+              ctx.restore();
+            }
+          }
+          // Dashed grey diagonal connecting anchor[0] -> anchor[1] (TV signature).
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = 'rgba(120, 123, 134, 0.7)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          ctx.restore();
         } else if (def.family === 'fib') {
           const p1 = points[0];
           const p2 = points[1] || p1;
