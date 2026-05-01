@@ -5098,9 +5098,10 @@ export default function TradingChart({
               const containerH = chartContainerRef.current?.clientHeight ?? 0;
               const TT_W = 168;
               // Effective rendered height includes top/bottom padding (py-2 ≈ 16px)
-              // plus 1px borders. Empirically ~144px; use 150 for a safety margin
-              // so the bottom-edge auto-flip never overflows the chart container.
-              const TT_H = 150;
+              // plus 1px borders. Empirically ~144px; use 160 for a safety margin
+              // so the bottom-edge auto-flip never overflows the chart container
+              // even when chartContainerRef height differs from the outer surface.
+              const TT_H = 160;
               const PAD = 14;
               const placeRight = touchTooltip.x + PAD + TT_W <= containerW;
               const placeAbove = touchTooltip.y - PAD - TT_H >= 0;
