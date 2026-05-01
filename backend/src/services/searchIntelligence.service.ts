@@ -408,7 +408,7 @@ export async function intelligentSearch(params: IntelligentSearchParams): Promis
   const typeFilter: FilterQuery<SymbolDocument> = {};
   if (params.type) {
     const t = params.type.toLowerCase();
-    if (["stock", "etf", "crypto", "forex", "index", "derivative"].includes(t)) typeFilter.type = t;
+    if (["stock", "etf", "crypto", "forex", "index", "derivative", "bond", "economy", "options", "futures"].includes(t)) typeFilter.type = t;
   }
   const countryFilter = buildCountryFilterInput(params.country);
   if (countryFilter) {
