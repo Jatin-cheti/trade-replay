@@ -398,6 +398,11 @@ export default function TradingChart({
   // Becomes true once the long-press timer fires; while true, finger movement
   // updates the tooltip in place (TradingView-style) instead of dismissing it.
   const touchTooltipActiveRef = useRef<boolean>(false);
+  // Monotonically-increasing counter. scheduleTouchTooltip captures its value;
+  // clearTouchTooltip bumps it so the pending callback self-aborts even if
+  // clearTimeout() fires too late (race between React synthetic event queue
+  // and native browser setTimeout).
+  const touchTooltipSessionRef = useRef<number>(0);
   const lastPointerDownDebugRef = useRef<{
     source: 'capture' | 'overlay';
     variant: ToolVariant;
@@ -3467,6 +3472,8 @@ export default function TradingChart({
   }, []);
 
   const clearTouchTooltip = useCallback(() => {
+    // Bump session to self-abort any in-flight setTimeout callback.
+    touchTooltipSessionRef.current++;
     if (touchTooltipTimerRef.current != null) {
       window.clearTimeout(touchTooltipTimerRef.current);
       touchTooltipTimerRef.current = null;
@@ -3488,7 +3495,10 @@ export default function TradingChart({
 
     touchTooltipStartRef.current = { x: clientX, y: clientY };
     touchTooltipActiveRef.current = false;
+    const sessionId = ++touchTooltipSessionRef.current;
     touchTooltipTimerRef.current = window.setTimeout(() => {
+      // Abort if clearTouchTooltip() was called after setTimeout was queued.
+      if (touchTooltipSessionRef.current !== sessionId) return;
       const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), magnetMode) ?? fallbackPoint();
       if (!point) return;
       touchTooltipActiveRef.current = true;
