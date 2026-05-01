@@ -186,8 +186,12 @@ export function computeInfoLineMetrics(
     angleDeg,
     ticks,
     tickSize,
-    line1: `${arrow} ${fmt(dp, 2)} (${fmt(pct, 2)}%), ${fmtInt(ticks)}`,
-    line2: `\u2194 ${fmtInt(bars)} bars (${fmtInt(days)}d), distance: ${distPx} px`,
+    // TV-parity tooltip lines.
+    // Line 1: arrow + price delta + (pct%) + signed-tick count
+    // Line 2: bars (days) + pixel distance
+    // Line 3: angle in degrees
+    line1: `${arrow} ${fmt(dp, 2)} (${fmt(pct, 2)}%)  ${fmtInt(ticks)} ticks`,
+    line2: `${fmtInt(bars)} bars (${fmtInt(days)}d)  \u00B7  ${distPx} px`,
     line3: `\u2220 ${fmt(angleDeg, 2)}\u00B0`,
   };
 }
@@ -1738,6 +1742,26 @@ export default function TradingChart({
           ctx.stroke();
         } else if ((v === 'pitchfork' || v === 'schiffPitchfork' || v === 'modifiedSchiffPitchfork' || v === 'insidePitchfork') && points.length >= 3) {
           const geometry = getPitchforkGeometry([points[0], points[1], points[2]], v as PitchforkVariant, cssWidth, cssHeight);
+          // TV-parity: translucent fill between upper and lower rails.
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.06, activeDrawing.options.opacity * 0.10);
+          ctx.beginPath();
+          ctx.moveTo(geometry.fill[0].x, geometry.fill[0].y);
+          for (let index = 1; index < geometry.fill.length; index += 1) {
+            ctx.lineTo(geometry.fill[index].x, geometry.fill[index].y);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          // TV-parity: handle from anchor[0] to median origin (the trigger leg).
+          ctx.save();
+          ctx.setLineDash([4, 3]);
+          ctx.globalAlpha = Math.max(0.35, activeDrawing.options.opacity * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          ctx.lineTo(geometry.median[0].x, geometry.median[0].y);
+          ctx.stroke();
+          ctx.restore();
           drawSegment(geometry.median);
           drawSegment(geometry.upper);
           drawSegment(geometry.lower);
@@ -2695,7 +2719,12 @@ export default function TradingChart({
           ctx.restore();
 
           // Anchor dots on hover (lighter than selected dots)
-          for (const anchor of points) {
+          let hoverPoints = points;
+          if (v === 'trendAngle' && points.length >= 2) {
+            const [hp1, hp2] = snapTrendAngleSegment(points[0], points[1]);
+            hoverPoints = [hp1, hp2];
+          }
+          for (const anchor of hoverPoints) {
             ctx.beginPath();
             ctx.fillStyle = 'rgba(255,255,255,0.6)';
             ctx.arc(anchor.x, anchor.y, 3.5, 0, Math.PI * 2);
