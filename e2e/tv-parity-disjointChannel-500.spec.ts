@@ -9,4 +9,5 @@ register500ToolSuite({
   variant: "disjointChannel",
   testId: "tool-disjoint-channel",
   anchorCount: 4,
+  commitMode: "click-sequence",
 });
