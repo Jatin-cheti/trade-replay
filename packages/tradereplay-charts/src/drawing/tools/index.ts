@@ -8,6 +8,33 @@ export { RayLineTool } from './rayLine.ts';
 export { HorizontalLineTool } from './horizontalLine.ts';
 export { VerticalLineTool } from './verticalLine.ts';
 export { RectangleTool } from './rectangle.ts';
+export { ExtendedLineTool } from './extendedLine.ts';
+export { InfoLineTool } from './infoLine.ts';
+export { TrendAngleTool } from './trendAngle.ts';
+export { HorizontalRayTool } from './horizontalRay.ts';
+export { CrossLineTool } from './crossLine.ts';
+export { RegressionTrendTool } from './regressionTrend.ts';
+export {
+  PitchforkTool,
+  SchiffPitchforkTool,
+  ModifiedSchiffPitchforkTool,
+  InsidePitchforkTool,
+} from './pitchforks.ts';
+export {
+  AbcdPatternTool,
+  XabcdPatternTool,
+  CypherPatternTool,
+  HeadAndShouldersTool,
+  TrianglePatternTool,
+  ThreeDrivesTool,
+  ElliottImpulseTool,
+  ElliottCorrectionTool,
+  ElliottTriangleTool,
+  ElliottDoubleComboTool,
+  ElliottTripleComboTool,
+  CyclicLinesTool,
+  TimeCyclesTool,
+} from './patternTools.ts';
 
 export {
   FibBaseTool,
@@ -45,6 +72,33 @@ import { RayLineTool } from './rayLine.ts';
 import { HorizontalLineTool } from './horizontalLine.ts';
 import { VerticalLineTool } from './verticalLine.ts';
 import { RectangleTool } from './rectangle.ts';
+import { ExtendedLineTool } from './extendedLine.ts';
+import { InfoLineTool } from './infoLine.ts';
+import { TrendAngleTool } from './trendAngle.ts';
+import { HorizontalRayTool } from './horizontalRay.ts';
+import { CrossLineTool } from './crossLine.ts';
+import { RegressionTrendTool } from './regressionTrend.ts';
+import {
+  PitchforkTool,
+  SchiffPitchforkTool,
+  ModifiedSchiffPitchforkTool,
+  InsidePitchforkTool,
+} from './pitchforks.ts';
+import {
+  AbcdPatternTool,
+  XabcdPatternTool,
+  CypherPatternTool,
+  HeadAndShouldersTool,
+  TrianglePatternTool,
+  ThreeDrivesTool,
+  ElliottImpulseTool,
+  ElliottCorrectionTool,
+  ElliottTriangleTool,
+  ElliottDoubleComboTool,
+  ElliottTripleComboTool,
+  CyclicLinesTool,
+  TimeCyclesTool,
+} from './patternTools.ts';
 import { FibRetracementTool } from './fibRetracement.ts';
 import { FibExtensionTool } from './fibExtension.ts';
 import { FibChannelTool } from './fibChannel.ts';
@@ -70,8 +124,13 @@ export function createDefaultTools(): IDrawingTool[] {
   return [
     new TrendLineTool(),
     new RayLineTool(),
+    new ExtendedLineTool(),
+    new InfoLineTool(),
+    new TrendAngleTool(),
     new HorizontalLineTool() as unknown as IDrawingTool,
+    new HorizontalRayTool(),
     new VerticalLineTool() as unknown as IDrawingTool,
+    new CrossLineTool(),
     new RectangleTool(),
     new FibRetracementTool(),
     new FibExtensionTool(),
@@ -85,13 +144,31 @@ export function createDefaultTools(): IDrawingTool[] {
     new FibWedgeTool(),
     new PitchfanTool() as unknown as IDrawingTool,
     new ParallelChannelTool(),
+    new RegressionTrendTool(),
     new DisjointChannelTool(),
     new FlatTopBottomTool(),
     new SineLineTool(),
+    new PitchforkTool(),
+    new SchiffPitchforkTool(),
+    new ModifiedSchiffPitchforkTool(),
+    new InsidePitchforkTool(),
     new GannBoxTool(),
     new GannSquareFixedTool() as unknown as IDrawingTool,
     new GannSquareTool(),
     new GannFanTool(),
+    new AbcdPatternTool(),
+    new XabcdPatternTool(),
+    new CypherPatternTool(),
+    new HeadAndShouldersTool(),
+    new TrianglePatternTool(),
+    new ThreeDrivesTool(),
+    new ElliottImpulseTool(),
+    new ElliottCorrectionTool(),
+    new ElliottTriangleTool(),
+    new ElliottDoubleComboTool(),
+    new ElliottTripleComboTool(),
+    new CyclicLinesTool(),
+    new TimeCyclesTool(),
   ];
 }
 
