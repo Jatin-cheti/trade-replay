@@ -3,6 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
 import { listIndicators, getGlobalPerfTelemetry, resolutionToSeconds, isIntradayResolution, formatCountdown, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
+import {
+  colorForFibLevel as libColorForFibLevel,
+  formatFibLabel as libFormatFibLabel,
+  rgbFromHex as libRgbFromHex,
+} from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -976,20 +981,40 @@ export default function TradingChart({
 
   const syncPatternWizardHint = useCallback(() => {
     const draft = draftRef.current;
-    if (!draft || !drawingActiveRef.current || !isWizardVariant(draft.variant)) {
+    if (!draft || !drawingActiveRef.current) {
       setPatternWizardHint(null);
       return;
     }
 
+    const definition = getToolDefinition(draft.variant);
     const total = draft.anchors.length;
     const step = Math.max(1, Math.min(total, draftProgressRef.current + 1));
-    const labels = PATTERN_LABELS_BY_VARIANT[draft.variant] || [];
-    const pointLabel = labels[step - 1] || `P${step}`;
-    const definition = getToolDefinition(draft.variant);
 
+    if (isWizardVariant(draft.variant)) {
+      const labels = PATTERN_LABELS_BY_VARIANT[draft.variant] || [];
+      const pointLabel = labels[step - 1] || `P${step}`;
+      setPatternWizardHint({
+        toolLabel: definition?.label || draft.variant,
+        pointLabel,
+        step,
+        total,
+      });
+      return;
+    }
+
+    // TV-parity hint for non-wizard, multi-anchor draws (fib, trend, ray, etc.)
+    // Mirrors TradingView's "Click to set …" prompt that follows the cursor
+    // tooltip on tool selection. Skip 1-anchor tools (hline/vline/point) —
+    // the first click commits them so a hint adds no value.
+    if (!definition || definition.capabilities.anchors <= 1) {
+      setPatternWizardHint(null);
+      return;
+    }
+    const ordinalWords = ['first', 'second', 'third', 'fourth', 'fifth'];
+    const ordinal = ordinalWords[step - 1] || `point ${step}`;
     setPatternWizardHint({
-      toolLabel: definition?.label || draft.variant,
-      pointLabel,
+      toolLabel: definition.label,
+      pointLabel: `${ordinal} point`,
       step,
       total,
     });
@@ -1437,10 +1462,14 @@ export default function TradingChart({
           const pct = `${(level * 100).toFixed(1)}%`;
           const value = from.price + (to.price - from.price) * level;
           const price = value.toFixed(2);
-
-          if (activeDrawing.options.fibLabelMode === 'price') return price;
-          if (activeDrawing.options.fibLabelMode === 'both') return `${pct} (${price})`;
-          return pct;
+          const mode = activeDrawing.options.fibLabelMode;
+          // TV-parity: default is "<ratio> (<price>)" e.g. "0.236 (1,398.80)".
+          if (mode === 'price') return price;
+          if (mode === 'both') return `${pct} (${price})`;
+          if (mode === 'percent') return pct;
+          if (mode === 'ratio') return `${level}`;
+          // 'ratio-price' (default) or any unrecognised value falls through to TV format.
+          return `${level} (${price})`;
         };
 
         const vwapBucketKey = (time: number, interval: 'session' | 'week' | 'month'): string => {
@@ -2631,26 +2660,9 @@ export default function TradingChart({
           const left = Math.min(p1.x, p2.x);
           const right = Math.max(p1.x, p2.x);
           const width = right - left;
-          // TradingView per-level color palette (hex). Falls through to drawing color for unknown levels.
-          const TV_FIB_COLORS: Record<string, string> = {
-            '0': '#787b86',
-            '0.236': '#f23645',
-            '0.382': '#ff9800',
-            '0.5': '#fbc02d',
-            '0.618': '#4caf50',
-            '0.786': '#00bcd4',
-            '1': '#787b86',
-            '1.272': '#2962ff',
-            '1.414': '#2962ff',
-            '1.618': '#2962ff',
-            '2': '#2962ff',
-            '2.272': '#9c27b0',
-            '2.414': '#9c27b0',
-            '2.618': '#f23645',
-            '3.618': '#9c27b0',
-            '4.236': '#e91e63',
-          };
-          const colorForLevel = (lv: number): string => TV_FIB_COLORS[String(lv)] ?? activeDrawing.options.color;
+          // TradingView per-level color palette is sourced from @tradereplay/charts so the
+          // app and the library's 7500 parity tests share a single source of truth.
+          const colorForLevel = (lv: number): string => libColorForFibLevel(lv, activeDrawing.options.color);
           const baseAlpha = activeDrawing.options.opacity;
           const fillAlpha = Math.max(0.04, baseAlpha * 0.08);
           // Bands between adjacent levels — colored using the lower-edge level's color.
@@ -2658,7 +2670,7 @@ export default function TradingChart({
           for (let li = 0; li < levels.length - 1; li += 1) {
             const y1 = p1.y + (p2.y - p1.y) * levels[li];
             const y2 = p1.y + (p2.y - p1.y) * levels[li + 1];
-            ctx.fillStyle = `rgba(${rgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
+            ctx.fillStyle = `rgba(${libRgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
             ctx.fillRect(left, Math.min(y1, y2), width, Math.abs(y2 - y1));
           }
           ctx.restore();
@@ -2668,8 +2680,8 @@ export default function TradingChart({
             const y = p1.y + (p2.y - p1.y) * level;
             const lineColor = colorForLevel(level);
             ctx.save();
-            ctx.strokeStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
-            ctx.lineWidth = activeDrawing.options.lineWidth;
+            ctx.strokeStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
+            ctx.lineWidth = activeDrawing.options.thickness;
             ctx.beginPath();
             ctx.moveTo(left, y);
             ctx.lineTo(right, y);
@@ -2679,17 +2691,10 @@ export default function TradingChart({
               const fromAnchor = activeDrawing.anchors[0];
               const toAnchor = activeDrawing.anchors[1] || activeDrawing.anchors[0];
               const value = fromAnchor.price + (toAnchor.price - fromAnchor.price) * level;
-              const ratio = level === 0 || level === 1
-                ? `${level}`
-                : level.toString();
-              const priceStr = value.toFixed(2);
-              let label: string;
-              if (labelMode === 'price') label = `(${priceStr})`;
-              else if (labelMode === 'percent') label = `${(level * 100).toFixed(1)}%`;
-              else label = `${ratio} (${priceStr})`;
+              const label = libFormatFibLabel(level, value, labelMode as 'ratio-price' | 'price' | 'percent' | 'ratio' | undefined);
               ctx.save();
               ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
-              ctx.fillStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
+              ctx.fillStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
               ctx.textBaseline = 'middle';
               ctx.fillText(label, left + 6, y - 6);
               ctx.restore();
@@ -2712,25 +2717,33 @@ export default function TradingChart({
           const left = Math.min(p1.x, p2.x);
           const right = Math.max(p1.x, p2.x);
           const width = right - left;
+          // TV-parity: use library palette so per-level colors match TradingView for
+          // every fib/gann tool (Channel, TimeZone, Circles, Wedge, Pitchfan, Gann*, etc.).
+          const colorForLevel = (lv: number): string => libColorForFibLevel(lv, activeDrawing.options.color);
+          const baseAlpha = activeDrawing.options.opacity;
           // Draw zone fills between adjacent levels (TradingView style)
           ctx.save();
-          const fillAlpha = Math.max(0.04, activeDrawing.options.opacity * 0.06);
+          const fillAlpha = Math.max(0.04, baseAlpha * 0.06);
           for (let li = 0; li < levels.length - 1; li += 1) {
             const y1 = p1.y + (p2.y - p1.y) * levels[li];
             const y2 = p1.y + (p2.y - p1.y) * levels[li + 1];
-            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${fillAlpha * (li % 2 === 0 ? 1 : 0.6)})`;
+            ctx.fillStyle = `rgba(${libRgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
             ctx.fillRect(left, Math.min(y1, y2), width, Math.abs(y2 - y1));
           }
           ctx.restore();
           // Draw level lines + labels
           for (const level of levels) {
             const y = p1.y + (p2.y - p1.y) * level;
+            const lineColor = colorForLevel(level);
+            ctx.save();
+            ctx.strokeStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
             ctx.beginPath();
             ctx.moveTo(left, y);
             ctx.lineTo(right, y);
             ctx.stroke();
+            ctx.restore();
             if (activeDrawing.options.priceLabel) {
-              // Label with background
+              // Label with background; text color matches the level's TV-palette color.
               const label = fibLabelText(level, activeDrawing.anchors[0], activeDrawing.anchors[1] || activeDrawing.anchors[0]);
               ctx.save();
               ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
@@ -2739,7 +2752,7 @@ export default function TradingChart({
               const labelY = y + 3;
               ctx.fillStyle = 'rgba(8, 18, 30, 0.7)';
               ctx.fillRect(labelX - 2, labelY - 10, metrics.width + 6, 14);
-              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+              ctx.fillStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
               ctx.fillText(label, labelX, labelY);
               ctx.restore();
             }

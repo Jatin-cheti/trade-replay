@@ -10,7 +10,8 @@ export type ToolOptions = {
   axisLabel: boolean;
   snapMode: 'off' | 'ohlc' | 'candle';
   fibLevels: string;
-  fibLabelMode: 'percent' | 'price' | 'both';
+  // 'ratio-price' is TradingView's default Fib label format: e.g. "0.236 (1,398.80)".
+  fibLabelMode: 'ratio-price' | 'percent' | 'price' | 'both' | 'ratio';
   vwapInterval: 'session' | 'week' | 'month';
   positionLabelMode: 'rr' | 'price' | 'both';
   brushSmoothness: number;
@@ -72,9 +73,12 @@ export const baseOptionSchema: OptionField[] = [
     label: 'Fib Label Mode',
     type: 'select',
     options: [
+      // TradingView default, e.g. "0.236 (1,398.80)".
+      { label: 'Ratio + Price', value: 'ratio-price' },
+      { label: 'Ratio', value: 'ratio' },
       { label: 'Percent', value: 'percent' },
       { label: 'Price', value: 'price' },
-      { label: 'Both', value: 'both' },
+      { label: 'Percent + Price', value: 'both' },
     ],
   },
   {
@@ -144,7 +148,8 @@ export const defaultToolOptions: ToolOptions = {
   axisLabel: true,
   snapMode: 'off',
   fibLevels: '',
-  fibLabelMode: 'percent',
+  // Match TradingView default labelling for Fib tools.
+  fibLabelMode: 'ratio-price',
   vwapInterval: 'session',
   positionLabelMode: 'rr',
   brushSmoothness: 0.45,
