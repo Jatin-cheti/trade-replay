@@ -1,17 +1,17 @@
-﻿/**
- * Fibonacci Retracement â€” 500 TradingView browser-parity tests
+/**
+ * Fibonacci Retracement — 500 TradingView browser-parity tests
  *
- * TV reference: Fibonacci Retracement tool (fib â†’ Fibonacci Retracement)
+ * TV reference: Fibonacci Retracement tool (fib → Fibonacci Retracement)
  *   - 2-anchor tool, family='fib'
- *   - Committed via drag (pointerdownâ†’moveâ†’pointerup)
+ *   - Committed via drag (pointerdown→move→pointerup)
  *   - Levels: 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0
  *   - Selectable, draggable, resizable, supportsLevels, supportsText
  *
- * Section A (GS-A001â€“A100): Tool activation & configuration
- * Section B (GS-B101â€“B200): Drawing creation (drag to draw)
- * Section C (GS-C201â€“C300): Selection & keyboard interactions
- * Section D (GS-D301â€“D400): Multi-drawing, undo/redo
- * Section E (GS-E401â€“E500): Advanced behaviors & integrations
+ * Section A (GS-A001–A100): Tool activation & configuration
+ * Section B (GS-B101–B200): Drawing creation (drag to draw)
+ * Section C (GS-C201–C300): Selection & keyboard interactions
+ * Section D (GS-D301–D400): Multi-drawing, undo/redo
+ * Section E (GS-E401–E500): Advanced behaviors & integrations
  *
  * Run:
  *   npx playwright test e2e/fib-retracement-500.spec.ts \
@@ -45,14 +45,15 @@ const VARIANT = "gannSquare";
 const TOOL_TEST_ID = "gann-square";
 const RAIL_TEST_ID = "rail-fib";
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SECTION A â€” Tool Activation & Configuration (GS-A001â€“A100)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION A — Tool Activation & Configuration (GS-A001–A100)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 test.describe.serial("GS Section A: Tool Activation (001-100)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -150,14 +151,15 @@ test.describe.serial("GS Section A: Tool Activation (001-100)", () => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SECTION B â€” Drawing Creation (GS-B101â€“B200)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION B — Drawing Creation (GS-B101–B200)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 test.describe.serial("GS Section B: Drawing Creation (101-200)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -275,14 +277,15 @@ test.describe.serial("GS Section B: Drawing Creation (101-200)", () => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SECTION C â€” Selection & Keyboard Interactions (GS-C201â€“C300)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION C — Selection & Keyboard Interactions (GS-C201–C300)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 test.describe.serial("GS Section C: Selection & Keyboard (201-300)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -426,14 +429,15 @@ test.describe.serial("GS Section C: Selection & Keyboard (201-300)", () => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SECTION D â€” Multi-Drawing, Drag & Resize (GS-D301â€“D400)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION D — Multi-Drawing, Drag & Resize (GS-D301–D400)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 test.describe.serial("GS Section D: Multi-Drawing & Drag (301-400)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -565,14 +569,15 @@ test.describe.serial("GS Section D: Multi-Drawing & Drag (301-400)", () => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SECTION E â€” Advanced Behaviors & Integrations (GS-E401â€“E500)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION E — Advanced Behaviors & Integrations (GS-E401–E500)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 test.describe.serial("GS Section E: Advanced Behaviors (401-500)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });

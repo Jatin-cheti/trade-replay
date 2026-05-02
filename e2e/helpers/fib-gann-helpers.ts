@@ -44,11 +44,24 @@ export async function gotoChart(page: Page, options: GotoChartOptions = {}): Pro
     try {
       await page.goto(targetUrl, {
         waitUntil: "domcontentloaded",
-        timeout: 60_000,
+        timeout: 30_000,
       });
 
+      // Off-hours / weekends the default period returns "No data"; promote to
+      // a wider period until the chart surface mounts.
+      for (const period of ["1m", "1y", "5y", "all"]) {
+        if (await page.locator('[data-testid="chart-interaction-surface"]').count()) break;
+        const btn = page.locator(`[data-testid="period-btn-${period}"]`).first();
+        if (await btn.count()) {
+          await btn
+            .dispatchEvent("click")
+            .catch(() => {});
+          await page.waitForTimeout(2000);
+        }
+      }
+
       await page.waitForSelector('[data-testid="chart-interaction-surface"]', {
-        timeout: 60_000,
+        timeout: 30_000,
       });
 
       await page.waitForFunction(
@@ -60,7 +73,7 @@ export async function gotoChart(page: Page, options: GotoChartOptions = {}): Pro
             d.getScrollPosition() !== null
           );
         },
-        { timeout: 60_000 }
+        { timeout: 30_000 }
       );
 
       await page.waitForTimeout(700);

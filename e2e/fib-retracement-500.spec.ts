@@ -53,6 +53,7 @@ test.describe.serial("FR Section A: Tool Activation (001-100)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -158,6 +159,7 @@ test.describe.serial("FR Section B: Drawing Creation (101-200)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -283,6 +285,7 @@ test.describe.serial("FR Section C: Selection & Keyboard (201-300)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -434,6 +437,7 @@ test.describe.serial("FR Section D: Multi-Drawing & Drag (301-400)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
@@ -573,6 +577,7 @@ test.describe.serial("FR Section E: Advanced Behaviors (401-500)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     page = await browser.newPage();
     await gotoChart(page);
   });
