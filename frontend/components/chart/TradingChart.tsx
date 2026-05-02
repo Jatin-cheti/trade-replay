@@ -2620,8 +2620,8 @@ export default function TradingChart({
             ctx.fillRect(x, y, w, h);
             ctx.strokeRect(x, y, w, h);
           }
-        } else if (v === 'fibRetracement') {
-          // ── TradingView-parity Fib Retracement ────────────────────
+        } else if (v === 'fibRetracement' || v === 'fibExtension') {
+          // ── TradingView-parity Fib Retracement / Trend-based Fib Extension ──
           // Per-level colors, left-aligned `<ratio> (<price>)` labels,
           // dashed grey diagonal from anchor[0] to anchor[1], filled
           // bands between adjacent levels using the higher level's color.
