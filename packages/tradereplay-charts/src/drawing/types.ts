@@ -123,6 +123,14 @@ export interface DrawingOptions {
   textBackground?: boolean;
   /** Show text border. */
   textBorder?: boolean;
+  /** Fib/Gann: explicit list of levels to render (e.g., [0, 0.382, 0.618, 1]). */
+  fibLevels?: number[];
+  /** Fib/Gann: how level labels are formatted. */
+  fibLabelMode?: 'ratio-price' | 'price' | 'percent' | 'ratio';
+  /** Fib/Gann: show price-tagged labels at each level. */
+  priceLabel?: boolean;
+  /** Fib/Gann: stroke/fill alpha (0..1). */
+  opacity?: number;
 }
 
 /** Supported drawing tool variants. */
@@ -157,6 +165,19 @@ export type DrawingVariant =
   | 'priceLabel'
   | 'fibRetracement'
   | 'fibExtension'
+  | 'fibChannel'
+  | 'fibTimeZone'
+  | 'fibSpeedResistFan'
+  | 'fibTrendTime'
+  | 'fibCircles'
+  | 'fibSpiral'
+  | 'fibSpeedResistArcs'
+  | 'fibWedge'
+  | 'pitchfan'
+  | 'gannBox'
+  | 'gannSquareFixed'
+  | 'gannSquare'
+  | 'gannFan'
   | 'longPosition'
   | 'shortPosition';
 
