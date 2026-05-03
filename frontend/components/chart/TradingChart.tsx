@@ -1918,15 +1918,33 @@ export default function TradingChart({
             }
           }
         } else if (v === 'fibTrendTime' && points.length >= 2) {
-          const start = points[0];
-          const end = points[1];
+          // TV-parity: trend-based fib time uses 3 anchors A->B->C. The time
+          // levels are projected from C using the (B-A) horizontal interval.
+          // Falls back to a 2-anchor preview while the 3rd point is being
+          // placed (start..end behaves like the original implementation).
+          const a = points[0];
+          const b = points[1];
+          const c = points[2] ?? b;
+          const isThreeAnchor = activeDrawing.anchors.length >= 3 && points.length >= 3;
+          const start = a;
+          const end = isThreeAnchor ? c : b;
+          const spacing = Math.abs(b.x - a.x);
+          // Dashed connector A->B (and B->C when 3 anchors).
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = 'rgba(120, 123, 134, 0.7)';
+          ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          if (isThreeAnchor) {
+            ctx.moveTo(b.x, b.y);
+            ctx.lineTo(c.x, c.y);
+          }
           ctx.stroke();
-          const spacing = Math.abs(end.x - start.x);
+          ctx.restore();
           if (spacing > 2) {
-            const sequence = [1, 2, 3, 5, 8];
+            const sequence = [0, 1, 2, 3, 5, 8];
             // Zone fills
             ctx.save();
             ctx.globalAlpha = Math.max(0.03, activeDrawing.options.opacity * 0.05);
@@ -1960,6 +1978,11 @@ export default function TradingChart({
               ctx.restore();
             }
           }
+          // Suppress the legacy non-fib stroke that would have drawn A->B as a
+          // solid line — we already drew the dashed connector above.
+          ctx.beginPath();
+        } else if (v === 'fibTrendTime') {
+          // No-op: handled above when points.length >= 2.
         } else if (v === 'fibCircles' && points.length >= 2) {
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0.236, 0.382, 0.5, 0.618, 0.786, 1]);
           const radiusBase = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
@@ -2654,11 +2677,24 @@ export default function TradingChart({
           // Per-level colors, left-aligned `<ratio> (<price>)` labels,
           // dashed grey diagonal from anchor[0] to anchor[1], filled
           // bands between adjacent levels using the higher level's color.
-          const p1 = points[0];
-          const p2 = points[1] || p1;
+          //
+          // For Trend-based Fib Extension (3 anchors A→B→C) the levels are
+          // projected from C using the price delta (B - A): level=0 sits at
+          // C.price, level=1 at C.price + (B.price - A.price). The box spans
+          // horizontally from C onward (anchors[2] is the reference point).
+          const isTrendExt = v === 'fibExtension' && activeDrawing.anchors.length >= 3 && points.length >= 3;
+          const pA = points[0];
+          const pB = points[1] || pA;
+          const pC = isTrendExt ? points[2] : pA;
+          const refTop = isTrendExt ? pC : pA;
+          const refBot = isTrendExt
+            ? { x: pC.x, y: pC.y + (pB.y - pA.y) }
+            : pB;
+          const p1 = refTop;
+          const p2 = refBot;
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618, 2.618, 3.618, 4.236]);
-          const left = Math.min(p1.x, p2.x);
-          const right = Math.max(p1.x, p2.x);
+          const left = isTrendExt ? Math.min(pC.x, pB.x, pA.x) : Math.min(p1.x, p2.x);
+          const right = isTrendExt ? Math.max(pC.x + Math.max(40, Math.abs(pB.x - pA.x)), pC.x + 40) : Math.max(p1.x, p2.x);
           const width = right - left;
           // TradingView per-level color palette is sourced from @tradereplay/charts so the
           // app and the library's 7500 parity tests share a single source of truth.
@@ -2688,9 +2724,12 @@ export default function TradingChart({
             ctx.stroke();
             ctx.restore();
             if (activeDrawing.options.priceLabel) {
-              const fromAnchor = activeDrawing.anchors[0];
-              const toAnchor = activeDrawing.anchors[1] || activeDrawing.anchors[0];
-              const value = fromAnchor.price + (toAnchor.price - fromAnchor.price) * level;
+              const aAnchor = activeDrawing.anchors[0];
+              const bAnchor = activeDrawing.anchors[1] || activeDrawing.anchors[0];
+              const cAnchor = activeDrawing.anchors[2] || bAnchor;
+              const value = isTrendExt
+                ? cAnchor.price + (bAnchor.price - aAnchor.price) * level
+                : aAnchor.price + (bAnchor.price - aAnchor.price) * level;
               const label = libFormatFibLabel(level, value, labelMode as 'ratio-price' | 'price' | 'percent' | 'ratio' | undefined);
               ctx.save();
               ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
@@ -2700,14 +2739,21 @@ export default function TradingChart({
               ctx.restore();
             }
           }
-          // Dashed grey diagonal connecting anchor[0] -> anchor[1] (TV signature).
+          // Dashed grey connector(s). 2-anchor: A->B diagonal. 3-anchor
+          // (trend-based fib extension): A->B impulse + B->C retracement.
           ctx.save();
           ctx.setLineDash([4, 4]);
           ctx.strokeStyle = 'rgba(120, 123, 134, 0.7)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
+          if (isTrendExt) {
+            ctx.moveTo(pA.x, pA.y);
+            ctx.lineTo(pB.x, pB.y);
+            ctx.lineTo(pC.x, pC.y);
+          } else {
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+          }
           ctx.stroke();
           ctx.restore();
         } else if (def.family === 'fib') {

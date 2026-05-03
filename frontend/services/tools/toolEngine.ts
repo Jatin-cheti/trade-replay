@@ -13,6 +13,9 @@ export function isWizardVariant(variant: ToolVariant): boolean {
   // also use wizard flow — click baseline start, click baseline end, then
   // click to set rail offset.
   if (definition.family === 'line') return true;
+  // TV-parity: fib-family tools with >2 anchors (pitchfan, trend-based fib
+  // extension, trend-based fib time) use the same multi-click wizard flow.
+  if (definition.family === 'fib') return true;
   return false;
 }
 
