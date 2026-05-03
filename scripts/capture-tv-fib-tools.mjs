@@ -57,10 +57,15 @@ async function dismissModals(page) {
     await page.keyboard.press('Escape').catch(() => {});
     await page.waitForTimeout(180);
   }
-  // Click "Got it!" tutorial bubble if present.
-  const gotIt = page.getByRole('button', { name: /Got it/i });
-  if (await gotIt.count().catch(() => 0)) {
-    await gotIt.first().click({ timeout: 600 }).catch(() => {});
+  // Click "Got it!" tutorial bubble if present (may appear multiple times).
+  for (let i = 0; i < 3; i += 1) {
+    const gotIt = page.getByRole('button', { name: /Got it/i });
+    if (await gotIt.count().catch(() => 0)) {
+      await gotIt.first().click({ timeout: 600 }).catch(() => {});
+      await page.waitForTimeout(300);
+    } else {
+      break;
+    }
   }
   const closeButtons = page.locator('button[aria-label="Close"], div[data-name="close"], button[data-name="close"]');
   const count = await closeButtons.count().catch(() => 0);
@@ -211,7 +216,19 @@ async function captureTool(page, tool) {
 
     // Click second anchor (commits 2-anchor tools).
     await page.mouse.click(x2, y2);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(300);
+
+    // 3-anchor tools (Trend-based fib extension / time) require a third click.
+    const threeAnchor = tool.slug === 'trend-based-fib-extension' || tool.slug === 'trend-based-fib-time';
+    if (threeAnchor) {
+      const x3 = box.x + box.width * 0.80;
+      const y3 = box.y + box.height * 0.30;
+      await page.mouse.move(x3, y3);
+      await page.waitForTimeout(250);
+      await page.mouse.click(x3, y3);
+      await page.waitForTimeout(400);
+    }
+
     const drawnShot = path.join(OUT_DIR, `${tool.slug}-04-drawn.png`);
     await page.screenshot({ path: drawnShot, fullPage: false });
     result.files.drawn = path.relative(path.resolve(OUT_DIR, '..'), drawnShot);
@@ -258,6 +275,10 @@ async function main() {
 
   await dismissModals(page);
   await ensureChartReady(page);
+  await dismissModals(page);
+  // After the chart canvas appears, TV often pops the "Press and hold..."
+  // tutorial bubble a few seconds later. Wait + dismiss again to catch it.
+  await page.waitForTimeout(3_500);
   await dismissModals(page);
 
   const baseShot = path.join(OUT_DIR, '_00-baseline.png');
