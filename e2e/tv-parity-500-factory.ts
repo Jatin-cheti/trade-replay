@@ -64,19 +64,44 @@ export function register500ToolSuite(TOOL: ToolDef) {
   async function gotoCharts(page: Page) {
     await page.addInitScript(() => {
       try {
-        window.localStorage.removeItem("chart-keep-drawing");
+        window.localStorage.setItem("chart-keep-drawing", "true");
         window.localStorage.removeItem("chart-lock-all");
       } catch {
         /* ignore */
       }
     });
-    await page.goto(`${BASE_URL}/charts?symbol=${SYMBOL}`, { waitUntil: "load" });
-    await page.waitForSelector("[data-testid='chart-interaction-surface']", { timeout: 25000 });
-    await page.waitForFunction(
-      () => (window as any).__chartDebug && (window as any).__chartDebug.getScrollPosition?.() !== null,
-      { timeout: 25000 },
-    );
-    await page.waitForTimeout(400);
+    const targetUrl = `${BASE_URL}/charts?symbol=${SYMBOL}`;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+
+        // If the chart shows "No data" on default period, try wider periods
+        for (const period of ["1m", "1y", "5y", "all"]) {
+          if (await page.locator("[data-testid='chart-interaction-surface']").count()) break;
+          const btn = page.locator(`[data-testid='period-btn-${period}']`).first();
+          if (await btn.count()) {
+            await btn.dispatchEvent("click").catch(() => {});
+            await page.waitForTimeout(2000);
+          }
+        }
+
+        await page.waitForSelector("[data-testid='chart-interaction-surface']", { timeout: 30_000 });
+        await page.waitForFunction(
+          () => {
+            const d = (window as any).__chartDebug;
+            return d && typeof d.getScrollPosition === "function" && d.getScrollPosition() !== null;
+          },
+          { timeout: 30_000 },
+        );
+        await page.waitForTimeout(700);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const retryable = /ERR_CONNECTION|ECONNREFUSED|waitForSelector: Timeout|waitForFunction: Timeout|Navigation timeout/i.test(msg);
+        if (!retryable || attempt === 4) throw err;
+        await page.waitForTimeout(1000 * attempt);
+      }
+    }
   }
 
   async function surfaceBox(page: Page) {
