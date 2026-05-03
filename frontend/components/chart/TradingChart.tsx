@@ -114,6 +114,10 @@ const PATTERN_LABELS_BY_VARIANT: Partial<Record<ToolVariant, string[]>> = {
   elliottTriangle: ['A', 'B', 'C', 'D', 'E'],
   elliottDoubleCombo: ['W', 'X', 'Y'],
   elliottTripleCombo: ['W', 'X', 'Y', 'X', 'Z'],
+  // 3-anchor fib tools (TV-parity): A → impulse end → retracement anchor.
+  fibExtension: ['A', 'B', 'C'],
+  fibTrendTime: ['A', 'B', 'C'],
+  pitchfan: ['A', 'B', 'C'],
 };
 
 function makeMetricBucket(): InteractionMetricBucket {
