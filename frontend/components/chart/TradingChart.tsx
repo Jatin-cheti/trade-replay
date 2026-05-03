@@ -118,6 +118,14 @@ const PATTERN_LABELS_BY_VARIANT: Partial<Record<ToolVariant, string[]>> = {
   fibExtension: ['A', 'B', 'C'],
   fibTrendTime: ['A', 'B', 'C'],
   pitchfan: ['A', 'B', 'C'],
+  // Channels (TV-parity wizard labels).
+  channel: ['A', 'B', 'C'],
+  disjointChannel: ['A', 'B', 'C', 'D'],
+  // Pitchforks (TV-parity): A pivot → B/C handles forming the median line.
+  pitchfork: ['A', 'B', 'C'],
+  schiffPitchfork: ['A', 'B', 'C'],
+  modifiedSchiffPitchfork: ['A', 'B', 'C'],
+  insidePitchfork: ['A', 'B', 'C'],
 };
 
 function makeMetricBucket(): InteractionMetricBucket {

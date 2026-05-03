@@ -1,0 +1,274 @@
+{
+  "capturedAt": "2026-05-03T03:45:39.205Z",
+  "sourceUrl": "https://in.tradingview.com/chart/?symbol=NSE%3ARELIANCE",
+  "tools": [
+    {
+      "slug": "trend-line",
+      "tooltip": "Trend Line",
+      "family": "lines",
+      "anchors": 2,
+      "clicked": false,
+      "files": {},
+      "contextMenu": []
+    },
+    {
+      "slug": "ray",
+      "tooltip": "Ray",
+      "family": "lines",
+      "anchors": 2,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\ray-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\ray-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\ray-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\ray-03-after-anchor-2.png",
+        "drawn": "tv-line-screenshots\\ray-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\ray-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "info-line",
+      "tooltip": "Info Line",
+      "family": "lines",
+      "anchors": 2,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\info-line-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\info-line-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\info-line-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\info-line-03-after-anchor-2.png",
+        "drawn": "tv-line-screenshots\\info-line-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\info-line-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "extended-line",
+      "tooltip": "Extended Line",
+      "family": "lines",
+      "anchors": 2,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\extended-line-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\extended-line-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\extended-line-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\extended-line-03-after-anchor-2.png",
+        "drawn": "tv-line-screenshots\\extended-line-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\extended-line-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "trend-angle",
+      "tooltip": "Trend Angle",
+      "family": "lines",
+      "anchors": 2,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\trend-angle-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\trend-angle-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\trend-angle-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\trend-angle-03-after-anchor-2.png",
+        "drawn": "tv-line-screenshots\\trend-angle-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\trend-angle-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "horizontal-line",
+      "tooltip": "Horizontal Line",
+      "family": "lines",
+      "anchors": 1,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\horizontal-line-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\horizontal-line-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\horizontal-line-03-after-anchor-1.png",
+        "drawn": "tv-line-screenshots\\horizontal-line-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\horizontal-line-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "horizontal-ray",
+      "tooltip": "Horizontal Ray",
+      "family": "lines",
+      "anchors": 1,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\horizontal-ray-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\horizontal-ray-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\horizontal-ray-03-after-anchor-1.png",
+        "drawn": "tv-line-screenshots\\horizontal-ray-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\horizontal-ray-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "vertical-line",
+      "tooltip": "Vertical Line",
+      "family": "lines",
+      "anchors": 1,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\vertical-line-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\vertical-line-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\vertical-line-03-after-anchor-1.png",
+        "drawn": "tv-line-screenshots\\vertical-line-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\vertical-line-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "cross-line",
+      "tooltip": "Cross Line",
+      "family": "lines",
+      "anchors": 1,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\cross-line-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\cross-line-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\cross-line-03-after-anchor-1.png",
+        "drawn": "tv-line-screenshots\\cross-line-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\cross-line-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "parallel-channel",
+      "tooltip": "Parallel Channel",
+      "family": "channels",
+      "anchors": 3,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\parallel-channel-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\parallel-channel-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\parallel-channel-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\parallel-channel-03-after-anchor-2.png",
+        "afterAnchor3": "tv-line-screenshots\\parallel-channel-03-after-anchor-3.png",
+        "drawn": "tv-line-screenshots\\parallel-channel-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\parallel-channel-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "regression-trend",
+      "tooltip": "Regression Trend",
+      "family": "channels",
+      "anchors": 2,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\regression-trend-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\regression-trend-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\regression-trend-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\regression-trend-03-after-anchor-2.png",
+        "drawn": "tv-line-screenshots\\regression-trend-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\regression-trend-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "flat-top-bottom",
+      "tooltip": "Flat Top/Bottom",
+      "family": "channels",
+      "anchors": 2,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\flat-top-bottom-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\flat-top-bottom-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\flat-top-bottom-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\flat-top-bottom-03-after-anchor-2.png",
+        "drawn": "tv-line-screenshots\\flat-top-bottom-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\flat-top-bottom-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "disjoint-channel",
+      "tooltip": "Disjoint Channel",
+      "family": "channels",
+      "anchors": 4,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\disjoint-channel-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\disjoint-channel-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\disjoint-channel-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\disjoint-channel-03-after-anchor-2.png",
+        "afterAnchor3": "tv-line-screenshots\\disjoint-channel-03-after-anchor-3.png",
+        "afterAnchor4": "tv-line-screenshots\\disjoint-channel-03-after-anchor-4.png",
+        "drawn": "tv-line-screenshots\\disjoint-channel-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\disjoint-channel-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "pitchfork",
+      "tooltip": "Pitchfork",
+      "family": "pitchforks",
+      "anchors": 3,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\pitchfork-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\pitchfork-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\pitchfork-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\pitchfork-03-after-anchor-2.png",
+        "afterAnchor3": "tv-line-screenshots\\pitchfork-03-after-anchor-3.png",
+        "drawn": "tv-line-screenshots\\pitchfork-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\pitchfork-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "schiff-pitchfork",
+      "tooltip": "Schiff Pitchfork",
+      "family": "pitchforks",
+      "anchors": 3,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\schiff-pitchfork-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\schiff-pitchfork-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\schiff-pitchfork-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\schiff-pitchfork-03-after-anchor-2.png",
+        "afterAnchor3": "tv-line-screenshots\\schiff-pitchfork-03-after-anchor-3.png",
+        "drawn": "tv-line-screenshots\\schiff-pitchfork-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\schiff-pitchfork-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "modified-schiff-pitchfork",
+      "tooltip": "Modified Schiff Pitchfork",
+      "family": "pitchforks",
+      "anchors": 3,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\modified-schiff-pitchfork-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\modified-schiff-pitchfork-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\modified-schiff-pitchfork-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\modified-schiff-pitchfork-03-after-anchor-2.png",
+        "afterAnchor3": "tv-line-screenshots\\modified-schiff-pitchfork-03-after-anchor-3.png",
+        "drawn": "tv-line-screenshots\\modified-schiff-pitchfork-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\modified-schiff-pitchfork-05-context-menu.png"
+      },
+      "contextMenu": []
+    },
+    {
+      "slug": "inside-pitchfork",
+      "tooltip": "Inside Pitchfork",
+      "family": "pitchforks",
+      "anchors": 3,
+      "clicked": true,
+      "files": {
+        "cursorTooltip": "tv-line-screenshots\\inside-pitchfork-01-cursor-tooltip.png",
+        "placingFirstPoint": "tv-line-screenshots\\inside-pitchfork-02-placing-first-point.png",
+        "afterAnchor1": "tv-line-screenshots\\inside-pitchfork-03-after-anchor-1.png",
+        "afterAnchor2": "tv-line-screenshots\\inside-pitchfork-03-after-anchor-2.png",
+        "afterAnchor3": "tv-line-screenshots\\inside-pitchfork-03-after-anchor-3.png",
+        "drawn": "tv-line-screenshots\\inside-pitchfork-04-drawn.png",
+        "contextMenu": "tv-line-screenshots\\inside-pitchfork-05-context-menu.png"
+      },
+      "contextMenu": []
+    }
+  ]
+}
