@@ -30,6 +30,10 @@ export { FibSpiralTool } from './fibSpiral.ts';
 export { FibSpeedResistArcsTool } from './fibSpeedResistArcs.ts';
 export { FibWedgeTool } from './fibWedge.ts';
 export { PitchfanTool } from './pitchfan.ts';
+export { ParallelChannelTool } from './parallelChannel.ts';
+export { DisjointChannelTool } from './disjointChannel.ts';
+export { FlatTopBottomTool } from './flatTopBottom.ts';
+export { SineLineTool } from './sineLine.ts';
 export { GannBoxTool } from './gannBox.ts';
 export { GannSquareFixedTool } from './gannSquareFixed.ts';
 export { GannSquareTool } from './gannSquare.ts';
@@ -52,6 +56,10 @@ import { FibSpiralTool } from './fibSpiral.ts';
 import { FibSpeedResistArcsTool } from './fibSpeedResistArcs.ts';
 import { FibWedgeTool } from './fibWedge.ts';
 import { PitchfanTool } from './pitchfan.ts';
+import { ParallelChannelTool } from './parallelChannel.ts';
+import { DisjointChannelTool } from './disjointChannel.ts';
+import { FlatTopBottomTool } from './flatTopBottom.ts';
+import { SineLineTool } from './sineLine.ts';
 import { GannBoxTool } from './gannBox.ts';
 import { GannSquareFixedTool } from './gannSquareFixed.ts';
 import { GannSquareTool } from './gannSquare.ts';
@@ -76,6 +84,10 @@ export function createDefaultTools(): IDrawingTool[] {
     new FibSpeedResistArcsTool(),
     new FibWedgeTool(),
     new PitchfanTool() as unknown as IDrawingTool,
+    new ParallelChannelTool(),
+    new DisjointChannelTool(),
+    new FlatTopBottomTool(),
+    new SineLineTool(),
     new GannBoxTool(),
     new GannSquareFixedTool() as unknown as IDrawingTool,
     new GannSquareTool(),
