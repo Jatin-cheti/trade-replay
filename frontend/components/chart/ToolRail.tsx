@@ -111,6 +111,21 @@ const requiredTestIdByVariant: Partial<Record<ToolVariant, string>> = {
   gannSquareFixed: 'gann-square-fixed',
   gannSquare: 'gann-square',
   gannFan: 'gann-fan',
+  /* Text & annotation tools */
+  plainText: 'tool-plain-text',
+  anchoredText: 'tool-anchored-text',
+  note: 'tool-note',
+  priceNote: 'tool-price-note',
+  pin: 'tool-pin',
+  table: 'tool-table',
+  callout: 'tool-callout',
+  comment: 'tool-comment',
+  priceLabel: 'tool-price-label',
+  signpost: 'tool-signpost',
+  flagMark: 'tool-flag-mark',
+  image: 'tool-image',
+  post: 'tool-post',
+  idea: 'tool-idea',
 };
 
 /* ── Props ──────────────────────────────────────────────────── */
