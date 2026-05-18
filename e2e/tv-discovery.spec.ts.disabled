@@ -1,0 +1,180 @@
+/**
+ * TV Discovery Spec
+ * =================
+ * One-shot exploration of the TradingView left toolbar.
+ * Goal: discover the actual selectors / aria-labels / tooltip text for
+ * the Forecasting, Volume-based and Measurer tools so the capture spec
+ * can target them reliably.
+ *
+ * Output: e2e/tv-capture-output/_discovery/tv-toolbar.json
+ *
+ * Run:
+ *   node_modules/.bin/playwright test e2e/tv-discovery.spec.ts \
+ *     --config=e2e/playwright.tv-capture.config.ts \
+ *     --project=chromium --headed
+ */
+
+import { test } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+
+const TV_URL = "https://in.tradingview.com/chart/?symbol=NSE%3ARELIANCE";
+const OUT_DIR = path.join(__dirname, "tv-capture-output", "_discovery");
+
+interface TVButton {
+  text: string;
+  ariaLabel: string;
+  dataName: string;
+  title: string;
+  classes: string;
+  bbox: { x: number; y: number; w: number; h: number } | null;
+}
+
+test("Discover TV left toolbar", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  await page.goto(TV_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(8000); // let TV fully load
+
+  // Save initial screenshot
+  await page.screenshot({
+    path: path.join(OUT_DIR, "01-initial.png"),
+    fullPage: false,
+  });
+
+  // ── Step 1: Enumerate all visible buttons in the left rail ────────────────
+  // The left rail is roughly x: 0-50, y: 30-bottom
+  const buttons: TVButton[] = await page.evaluate(() => {
+    const all = Array.from(
+      document.querySelectorAll(
+        'button, [role="button"], [class*="button"]',
+      ),
+    );
+    return all
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return (
+          r.width > 8 &&
+          r.height > 8 &&
+          r.x < 60 && // left rail
+          r.y > 20 &&
+          r.y < window.innerHeight - 20
+        );
+      })
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          text: (el.textContent ?? "").trim().slice(0, 60),
+          ariaLabel: el.getAttribute("aria-label") ?? "",
+          dataName: el.getAttribute("data-name") ?? "",
+          title: el.getAttribute("title") ?? "",
+          classes: el.className.toString().slice(0, 100),
+          bbox: { x: r.x, y: r.y, w: r.width, h: r.height },
+        };
+      });
+  });
+
+  console.log(`Found ${buttons.length} buttons in left rail`);
+  fs.writeFileSync(
+    path.join(OUT_DIR, "left-rail-buttons.json"),
+    JSON.stringify(buttons, null, 2),
+  );
+
+  // ── Step 2: Hover each button and capture its tooltip ─────────────────────
+  const tooltipMap: { idx: number; tooltip: string; button: TVButton }[] = [];
+  for (let i = 0; i < buttons.length; i++) {
+    const b = buttons[i];
+    if (!b.bbox) continue;
+    try {
+      await page.mouse.move(b.bbox.x + b.bbox.w / 2, b.bbox.y + b.bbox.h / 2);
+      await page.waitForTimeout(900);
+      const tooltip = await page
+        .locator('[class*="tooltip"]:visible, [role="tooltip"]:visible')
+        .first()
+        .textContent({ timeout: 1500 })
+        .catch(() => "");
+      tooltipMap.push({ idx: i, tooltip: (tooltip ?? "").trim(), button: b });
+    } catch {
+      tooltipMap.push({ idx: i, tooltip: "(error)", button: b });
+    }
+  }
+  fs.writeFileSync(
+    path.join(OUT_DIR, "left-rail-tooltips.json"),
+    JSON.stringify(tooltipMap, null, 2),
+  );
+
+  // ── Step 3: For each rail button, click it and enumerate the popover ──────
+  // The popover (sub-toolbar) appears to the right of the rail
+  const railWithPopover: {
+    idx: number;
+    railTooltip: string;
+    popoverItems: TVButton[];
+  }[] = [];
+  for (let i = 0; i < buttons.length; i++) {
+    const b = buttons[i];
+    if (!b.bbox) continue;
+    try {
+      // Click the rail button
+      await page.mouse.click(b.bbox.x + b.bbox.w / 2, b.bbox.y + b.bbox.h / 2);
+      await page.waitForTimeout(700);
+      // Capture popover items (any clickable element with x > 50, y near rail button)
+      const popoverItems: TVButton[] = await page.evaluate((rail) => {
+        const all = Array.from(
+          document.querySelectorAll(
+            'button, [role="button"], [class*="item"], [class*="row"], [class*="menu"]',
+          ),
+        );
+        return all
+          .filter((el) => {
+            const r = el.getBoundingClientRect();
+            return (
+              r.width > 8 &&
+              r.height > 8 &&
+              r.x > 50 &&
+              r.x < 400 &&
+              r.y > rail.y - 20 &&
+              r.y < rail.y + 600
+            );
+          })
+          .slice(0, 50)
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            return {
+              text: (el.textContent ?? "").trim().slice(0, 80),
+              ariaLabel: el.getAttribute("aria-label") ?? "",
+              dataName: el.getAttribute("data-name") ?? "",
+              title: el.getAttribute("title") ?? "",
+              classes: el.className.toString().slice(0, 100),
+              bbox: { x: r.x, y: r.y, w: r.width, h: r.height },
+            };
+          });
+      }, { y: b.bbox.y });
+      // Save popover screenshot
+      await page.screenshot({
+        path: path.join(OUT_DIR, `popover-${String(i).padStart(2, "0")}.png`),
+        clip: {
+          x: 0,
+          y: Math.max(0, b.bbox.y - 100),
+          width: 500,
+          height: Math.min(900, b.bbox.h + 600),
+        },
+      });
+      railWithPopover.push({
+        idx: i,
+        railTooltip:
+          tooltipMap.find((t) => t.idx === i)?.tooltip ?? "(unknown)",
+        popoverItems,
+      });
+      // Close popover
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+    } catch (e) {
+      console.log(`Rail ${i} error:`, e);
+    }
+  }
+  fs.writeFileSync(
+    path.join(OUT_DIR, "rail-popover-tree.json"),
+    JSON.stringify(railWithPopover, null, 2),
+  );
+
+  console.log("Discovery complete. Output:", OUT_DIR);
+});

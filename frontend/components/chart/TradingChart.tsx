@@ -16,6 +16,7 @@ import { rgbFromHex } from '@/services/tools/toolOptions';
 import {
   compareDrawingRenderOrder,
   createDrawing,
+  drawingBounds,
   DrawingSpatialIndex,
   getHitTestTelemetrySnapshot,
   isClickClickVariant,
@@ -1068,6 +1069,54 @@ export default function TradingChart({
     }
     setVariant(variant, group);
   }, [clearPromptState, setVariant]);
+
+  // Library API hooks — expose programmatic drawing control for external consumers (chartLibraryAPI.ts).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as Record<string, unknown>;
+
+    // setActiveTool: activate a drawing tool variant programmatically
+    w.__tradereplaySetActiveTool = (variant: string) => {
+      const def = getToolDefinition(variant as ToolVariant);
+      handleVariantSelect((def?.category ?? 'lines') as ToolCategory, variant as ToolVariant);
+    };
+
+    // addDrawing: commit a drawing without user interaction
+    w.__tradereplayAddDrawing = (
+      variant: string,
+      anchors: Array<{ time: number; price: number }>,
+      options?: Record<string, unknown>,
+      text?: string,
+    ): string | null => {
+      if (!anchors || anchors.length === 0) return null;
+      const def = getToolDefinition(variant as ToolVariant);
+      if (!def) return null;
+      const baseOptions = { ...toolState.options, ...(options ?? {}), ...(text ? { text } : {}) };
+      const typedAnchors = anchors.map((a) => ({ time: a.time as DrawPoint['time'], price: a.price }));
+      const firstAnchor = typedAnchors[0];
+      const secondAnchor = typedAnchors[1] ?? firstAnchor;
+      const drawing = {
+        ...createDrawing(variant as Exclude<ToolVariant, 'none'>, baseOptions, firstAnchor, secondAnchor, text),
+        anchors: typedAnchors,
+        bounds: drawingBounds(typedAnchors),
+      };
+      updateAllDrawings((prev) => [...prev, drawing], true);
+      return drawing.id;
+    };
+
+    // removeDrawing: delete a drawing by id programmatically
+    w.__tradereplayRemoveDrawing = (id: string): boolean => {
+      const exists = drawingsRef.current.some((d) => d.id === id);
+      if (exists) removeDrawing(id);
+      return exists;
+    };
+
+    return () => {
+      delete w.__tradereplaySetActiveTool;
+      delete w.__tradereplayAddDrawing;
+      delete w.__tradereplayRemoveDrawing;
+    };
+  }, [handleVariantSelect, toolState.options, updateAllDrawings, removeDrawing, drawingsRef]);
 
   const translateAnchors = useCallback((anchors: DrawPoint[], from: DrawPoint, to: DrawPoint) => {
     const deltaTime = to.time - from.time;
@@ -3274,6 +3323,13 @@ export default function TradingChart({
       },
       clearDrawingsFast: () => {
         // Use clearDrawings() so a history checkpoint is pushed — prevents undo from restoring stale test state
+        clearDrawings();
+        setSelectedDrawingId(null);
+        setHoveredDrawingId(null);
+        return 0;
+      },
+      /** Alias used by prod-parity-shared-factory and any external library consumer. */
+      clearAllDrawings: () => {
         clearDrawings();
         setSelectedDrawingId(null);
         setHoveredDrawingId(null);

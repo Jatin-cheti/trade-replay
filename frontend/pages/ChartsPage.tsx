@@ -126,7 +126,7 @@ export default function ChartsPage() {
 
   const rawSymbol = searchParams.get("symbol") ?? "RELIANCE";
   const { bare: symbol, exchange: symbolExchange } = useMemo(() => stripExchange(rawSymbol), [rawSymbol]);
-  const [period, setPeriod] = useState("1d");
+  const [period, setPeriod] = useState(() => searchParams.get("period") ?? "1y");
   const [adjEnabled, setAdjEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 

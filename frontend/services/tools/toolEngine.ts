@@ -49,7 +49,7 @@ const FAMILY_INTERACTION_PRIORITY: Record<ToolFamily, number> = {
   system: 10,
 };
 
-function drawingBounds(anchors: DrawPoint[]): BoundingBox | undefined {
+export function drawingBounds(anchors: DrawPoint[]): BoundingBox | undefined {
   if (!anchors.length) return undefined;
   let minTime = Number.POSITIVE_INFINITY;
   let maxTime = Number.NEGATIVE_INFINITY;
