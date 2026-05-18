@@ -38,6 +38,7 @@ desktop.ini
 # Test artifacts & generated output
 test-results/
 playwright-report/
+playwright/.cache/
 debug-screenshots/
 artifacts/
 reports/
@@ -46,12 +47,13 @@ e2e/tv-deep-parity-output/
 e2e/tv-references/
 e2e/output/
 e2e/**/*.log
+tests/integration/e2e/test-results/
 
 # Misc
 tmp-*
 tmp/
 *.tgz
-.vercel
+.vercel/
 *.bundle
 debug-page.*
 
@@ -59,4 +61,16 @@ debug-page.*
 e2e-*.txt
 tsc_output.txt
 
+# Sensitive / dev-only directories (never commit)
 FRIEND-SETUP/
+
+# Build outputs (server-side, local only)
+backend/scripts/tmp-*.cjs
+backend/scripts/tmp-*.ts
+backend/src/agent/
+
+# One-off/incident scripts (never commit — use git history if needed)
+scripts/_*
+scripts/sec006_*
+scripts/loop[0-9]*
+scripts/fix-*.js
