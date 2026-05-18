@@ -26,10 +26,9 @@ const SnapshotMenu = lazy(() => import("@/components/symbol/SnapshotMenu"));
 const CustomRangePicker = lazy(() => import("@/components/symbol/CustomRangePicker"));
 const SavedPeriodsMenu = lazy(() => import("@/components/symbol/SavedPeriodsMenu"));
 import type { CustomRange } from "@/components/symbol/CustomRangePicker";
-import axios from "axios";
+import { fetchLiveSnapshot } from "@/services/live/liveMarketApi";
 import type { CandleData } from "@/data/stockData";
-import { chartTypeGroups, chartTypeLabels, COMING_SOON_CHART_TYPES, type ChartType } from "@/services/chart/dataTransforms";
-import { useAllPeriodReturns } from "@/hooks/useAllPeriodReturns";
+import { chartTypeGroups, chartTypeLabels, type ChartType } from "@/services/chart/dataTransforms";
 
 interface SymbolDetail {
   symbol: string;
@@ -146,79 +145,30 @@ function getTabSlug(tab: string): string {
   return tab.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-// Bar-count targets match TradingView's resolution choices for each period
-// on NSE (session 09:15–15:30 = 375 min/day, ~252 trading days/year).
 const TIME_PERIODS = [
-  { label: "1 day",        key: "1d",  limit: 375  }, // 1m  bars × ~375/session
-  { label: "5 days",       key: "5d",  limit: 375  }, // 15m bars × 75/day × 5 days
-  { label: "1 month",      key: "1m",  limit: 300  }, // 30m bars × ~12/day × 22 days
-  { label: "3 months",     key: "3m",  limit: 65   }, // daily bars × ~65 trading days
-  { label: "6 months",     key: "6m",  limit: 130  }, // daily bars × ~130 trading days
-  { label: "Year to date", key: "ytd", limit: 252  }, // daily bars (Jan 1 → now)
-  { label: "1 year",       key: "1y",  limit: 52   }, // weekly bars × 52
-  { label: "5 years",      key: "5y",  limit: 260  }, // weekly bars × 5 × 52
-  { label: "10 years",     key: "10y", limit: 520  }, // weekly bars × 10 × 52
-  { label: "All time",     key: "all", limit: 240  }, // monthly bars ~20 years
+  { label: "1 day",       key: "1d",  limit: 78   },
+  { label: "5 days",      key: "5d",  limit: 390  },
+  { label: "1 month",     key: "1m",  limit: 500  },
+  { label: "6 months",    key: "6m",  limit: 500  },
+  { label: "Year to date",key: "ytd", limit: 500  },
+  { label: "1 year",      key: "1y",  limit: 500  },
+  { label: "5 years",     key: "5y",  limit: 500  },
+  { label: "10 years",    key: "10y", limit: 500  },
+  { label: "All time",    key: "all", limit: 500  },
 ] as const;
 
-// Axios instance using a relative baseURL so requests route via the Vite proxy
-// in development and through the Vercel rewrite in production.
-const chartCandlesAxios = axios.create({ baseURL: "/api" });
-
-/** Returns the most recent NSE trading day's 09:15 IST open (as UTC seconds).
- *  If the current UTC time is before today's 03:45 UTC (09:15 IST), steps back
- *  to the previous weekday so fromSec is always in the past. */
-function getNseDayOpen(daysBack = 0): number {
-  const IST_OPEN_UTC_H = 3, IST_OPEN_UTC_M = 45; // 09:15 IST = 03:45 UTC
-  const now = Date.now();
-  let d = new Date(now);
-  d.setUTCHours(IST_OPEN_UTC_H, IST_OPEN_UTC_M, 0, 0);
-  let candidate = Math.floor(d.getTime() / 1000);
-  // If today's open is in the future, shift back 1 day
-  if (candidate > Math.floor(now / 1000)) candidate -= 86400;
-  candidate -= daysBack * 86400;
-  // Skip backwards over weekends
-  let probe = new Date(candidate * 1000);
-  while (probe.getUTCDay() === 0 || probe.getUTCDay() === 6) {
-    candidate -= 86400;
-    probe = new Date(candidate * 1000);
-  }
-  return candidate;
-}
-
-// Per-period resolution + time-range config for real Yahoo Finance candles.
-// Resolution codes: "1"=1m, "15"=15m, "30"=30m, "D"=1d, "W"=1wk, "M"=1mo
-const PERIOD_CANDLE_PARAMS: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
-  "1d":  { resolution: "1",  fromSec: () => getNseDayOpen(0),                                                    toSec: () => Math.floor(Date.now() / 1000) },
-  "5d":  { resolution: "15", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "1m":  { resolution: "30", fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "3m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
-  "1y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
-  "10y": { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 3700 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
-  "all": { resolution: "M",  fromSec: () => 946684800,                                                           toSec: () => Math.floor(Date.now() / 1000) },
-};
-
-// OHLC chart types need wider bar intervals so candles have enough pixel width to render clearly.
-// (375 × 1m bars at 1200px = 3.2px/candle → illegible; 75 × 5m bars = 16px/candle → perfect)
-const OHLC_FAMILY = new Set<ChartType>(['candlestick', 'bar', 'ohlc', 'heikinAshi', 'hollowCandles', 'renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick']);
-
-// Wider-interval resolution table for OHLC-family charts.
-// Intraday periods (1d/5d/1m) use 5m / 30m / 1h instead of 1m / 15m / 30m.
-// Daily+ periods are identical to the line table.
-const PERIOD_CANDLE_PARAMS_OHLC: Record<string, { resolution: string; fromSec: () => number; toSec: () => number }> = {
-  "1d":  { resolution: "5",  fromSec: () => getNseDayOpen(0),                                                    toSec: () => Math.floor(Date.now() / 1000) },
-  "5d":  { resolution: "30", fromSec: () => Math.floor(Date.now() / 1000) - 8   * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "1m":  { resolution: "60", fromSec: () => Math.floor(Date.now() / 1000) - 35  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "3m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 95  * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "6m":  { resolution: "D",  fromSec: () => Math.floor(Date.now() / 1000) - 190 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "ytd": { resolution: "D",  fromSec: () => Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000), toSec: () => Math.floor(Date.now() / 1000) },
-  "1y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 370 * 86400,                        toSec: () => Math.floor(Date.now() / 1000) },
-  "5y":  { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 1850 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
-  "10y": { resolution: "W",  fromSec: () => Math.floor(Date.now() / 1000) - 3700 * 86400,                       toSec: () => Math.floor(Date.now() / 1000) },
-  "all": { resolution: "M",  fromSec: () => 946684800,                                                           toSec: () => Math.floor(Date.now() / 1000) },
+// Duration each period spans in milliseconds — used to re-timestamp
+// synthetic backend candles so the chart x-axis shows real recent dates.
+const PERIOD_DURATION_MS: Record<string, number> = {
+  "1d":  6.5 * 60 * 60 * 1000,               // 6.5 trading hours
+  "5d":  5 * 6.5 * 60 * 60 * 1000,           // 5 trading days
+  "1m":  30 * 24 * 60 * 60 * 1000,           // 30 days
+  "6m":  180 * 24 * 60 * 60 * 1000,          // ~6 months
+  "ytd": 0,                                   // computed at runtime (Jan 1 → now)
+  "1y":  365 * 24 * 60 * 60 * 1000,          // 1 year
+  "5y":  5 * 365 * 24 * 60 * 60 * 1000,      // 5 years
+  "10y": 10 * 365 * 24 * 60 * 60 * 1000,     // 10 years
+  "all": 20 * 365 * 24 * 60 * 60 * 1000,     // ~20 years
 };
 
 const chartTypeIconMap: Partial<Record<ChartType, typeof CandlestickChart>> = {
@@ -355,7 +305,6 @@ export default function SymbolPage() {
   const [activeTimePeriod, setActiveTimePeriod] = useState("1d");
   const [overviewChartType, setOverviewChartType] = useState<ChartType>("area");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
-  const [chartTypeSearch, setChartTypeSearch] = useState("");
 
   // Custom range + saved periods state
   const [customRange, setCustomRange] = useState<CustomRange | null>(null);
@@ -388,20 +337,6 @@ export default function SymbolPage() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState(false);
-  // Resolution used for the most recently loaded candles (needed for IST-offset logic).
-  const [candleResolution, setCandleResolution] = useState<string>("1");
-  // Tracks whether the current chart type is in the OHLC family (candlestick/bar/ohlc/…).
-  // Stored in a ref so loadChartCandles can read the live value without being re-memoized.
-  const isOhlcFamilyRef = useRef(false);
-  // Used to detect family transitions and trigger a reload (line ↔ OHLC).
-  const prevChartFamilyRef = useRef<'line' | 'ohlc'>('line');
-
-  // Per-period performance % — fetched via useAllPeriodReturns (real Yahoo Finance data).
-  const { returns: perfByPeriod } = useAllPeriodReturns(
-    detail?.symbol,
-    detail?.exchange,
-    detail?.price,
-  );
 
   useEffect(() => {
     if (!symbol) return;
@@ -413,172 +348,86 @@ export default function SymbolPage() {
       .finally(() => setLoading(false));
   }, [symbol]);
 
-  // Fetch real historical candles from /api/candles (Yahoo Finance) for a given period.
-  // Old candles are intentionally kept visible until new data arrives (no flash).
-  const loadChartCandles = useCallback((periodKey: string) => {
+  // Fetch candle data for chart
+  const loadCandles = useCallback((limit?: number) => {
     if (!detail?.symbol) return;
-    // Pick the correct resolution table based on current chart type family.
-    const paramsTable = isOhlcFamilyRef.current ? PERIOD_CANDLE_PARAMS_OHLC : PERIOD_CANDLE_PARAMS;
-    const params = paramsTable[periodKey] ?? PERIOD_CANDLE_PARAMS["1d"];
-    const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
+    const candleSymbol = detail.fullSymbol || detail.symbol;
+    // Default to 1-day (78 × 5-min bars). Backend hard-caps at 500.
+    const effectiveLimit = Math.max(20, Math.min(500, limit ?? 78));
+    setChartLoading(true);
     setChartError(false);
-    setCandleResolution(params.resolution);
-    chartCandlesAxios
-      .get<{ candles: CandleData[] }>(
-        `/candles/${encodeURIComponent(detail.symbol)}?resolution=${params.resolution}&from=${params.fromSec()}&to=${params.toSec()}${exchangeParam}`
-      )
-      .then((res) => {
-        const c = res.data?.candles;
+    fetchLiveSnapshot({ symbols: [candleSymbol], candleSymbols: [candleSymbol], candleLimit: effectiveLimit })
+      .then((snap) => {
+        const c = snap.candlesBySymbol?.[candleSymbol];
         if (c?.length) setCandles(c);
         else setChartError(true);
       })
-      .catch(() => setChartError(true));
-  }, [detail?.symbol, detail?.exchange]);
+      .catch(() => setChartError(true))
+      .finally(() => setChartLoading(false));
+  }, [detail?.fullSymbol, detail?.symbol]);
 
-  // Load on symbol/exchange change
+  // Initial load for default period
   useEffect(() => {
-    loadChartCandles(activeTimePeriod);
-  }, [loadChartCandles]); // loadChartCandles changes when symbol/exchange changes
+    loadCandles(TIME_PERIODS.find((p) => p.key === "1d")?.limit);
+  }, [loadCandles]);
 
-  // Live polling: refresh every 30 s while the tab is visible
+  // Live polling: keep chart data fresh while the tab is visible
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
-      if (!activeTimePeriod) return; // custom range active — don't clobber it
-      loadChartCandles(activeTimePeriod);
+      const period = TIME_PERIODS.find((p) => p.key === activeTimePeriod);
+      loadCandles(period?.limit ?? 78);
     };
-    const id = setInterval(tick, 30_000);
+    const id = setInterval(tick, 10_000);
     return () => clearInterval(id);
-  }, [activeTimePeriod, loadChartCandles]);
-
-  // Reload candles when the user switches between line-type and OHLC-type chart families,
-  // because the bar interval must change (area can use 1m; candlestick needs 5m for 1D).
-  useEffect(() => {
-    const family: 'line' | 'ohlc' = OHLC_FAMILY.has(overviewChartType) ? 'ohlc' : 'line';
-    isOhlcFamilyRef.current = family === 'ohlc';
-    if (prevChartFamilyRef.current === family) return; // no family change
-    prevChartFamilyRef.current = family;
-    if (customRange) {
-      handleCustomRangeApply(customRange);
-    } else if (activeTimePeriod) {
-      loadChartCandles(activeTimePeriod);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overviewChartType]);
+  }, [activeTimePeriod, loadCandles]);
 
   const handleTimePeriodChange = useCallback((key: string) => {
     setActiveTimePeriod(key);
     setCustomRange(null);
     setActiveSavedPeriodId(undefined);
-    loadChartCandles(key);
-  }, [loadChartCandles]);
+    const period = TIME_PERIODS.find((p) => p.key === key);
+    loadCandles(period?.limit);
+  }, [loadCandles]);
 
   const handleCustomRangeApply = useCallback((range: CustomRange) => {
     setCustomRange(range);
     setActiveTimePeriod("");
     setActiveSavedPeriodId(undefined);
-    if (!detail?.symbol) return;
-    const from = Math.floor(range.from.getTime() / 1000);
-    const to   = Math.floor(range.to.getTime()   / 1000);
-    const days = (to - from) / 86400;
-    const isOhlc = isOhlcFamilyRef.current;
+    // Load a generous amount of candles for filtering
+    loadCandles(9999);
+  }, [loadCandles]);
 
-    // OHLC charts need wider bars: use 5m/30m/1h instead of 1m/15m/30m for intraday spans.
-    let resolution: string;
-    if (isOhlc) {
-      if      (days <= 2)   resolution = "5";   // 5m bars ≤2d → ~75 candles/session
-      else if (days <= 7)   resolution = "30";  // 30m bars ≤7d → ~60 candles/session
-      else if (days <= 35)  resolution = "60";  // 1h bars  ≤35d → ~130 candles
-      else if (days <= 400) resolution = "D";
-      else                  resolution = "W";
-    } else {
-      if      (days <= 2)   resolution = "1";   // 1m bars for ≤2 days
-      else if (days <= 7)   resolution = "15";  // 15m bars for ≤7 days
-      else if (days <= 35)  resolution = "30";  // 30m bars for ≤35 days
-      else if (days <= 400) resolution = "D";   // daily bars for ≤1 year
-      else                  resolution = "W";   // weekly bars for >1 year
-    }
-
-    const exchangeParam = detail.exchange ? `&exchange=${encodeURIComponent(detail.exchange)}` : "";
-    setChartError(false);
-    setCandleResolution(resolution);
-    chartCandlesAxios
-      .get<{ candles: CandleData[] }>(
-        `/candles/${encodeURIComponent(detail.symbol)}?resolution=${resolution}&from=${from}&to=${to}${exchangeParam}`
-      )
-      .then((res) => {
-        const c = res.data?.candles;
-        if (c?.length) setCandles(c);
-        else setChartError(true);
-      })
-      .catch(() => setChartError(true));
-  }, [detail?.symbol, detail?.exchange]);
-
-  // Candles for the chart.
-  // For custom range: filter by the selected date window, then apply IST offset for intraday.
-  // For preset intraday periods (1d, 5d, 1m with 30m bars): add IST offset (19 800 s) so the
-  //   chart's x-axis displays IST local times (Yahoo Finance serves UTC epochs).
-  // For daily/weekly/monthly periods: use timestamps as-is.
+  // Candles for the chart — re-timestamped to the selected period ending at "now".
+  // The backend serves synthetic data with historical timestamps; we remap them
+  // so the x-axis always shows the correct real date range for the chosen period.
   const displayCandles = useMemo(() => {
     if (!candles.length) return candles;
-    const IST_OFFSET_SEC = 19800; // 5h30m
-    // Intraday resolutions that need the IST fake-UTC trick (includes 1h = "60")
-    const INTRADAY = new Set(["1", "2", "5", "15", "30", "60"]);
-    const isIntraday = INTRADAY.has(candleResolution);
 
+    // Custom range: filter by raw calendar dates (user-specified, keep as-is)
     if (customRange) {
       const from = customRange.from.getTime();
       const to   = customRange.to.getTime();
-      let filtered = candles.filter((c) => {
-        const t  = typeof c.time === "number" ? c.time : Number(c.time);
-        const ms = t < 1e11 ? t * 1000 : t;
-        return Number.isFinite(ms) && ms >= from && ms <= to;
+      return candles.filter((c) => {
+        const t = (typeof c.time === "number" ? c.time : Number(c.time)) * 1000;
+        return t >= from && t <= to;
       });
-      if (!filtered.length) filtered = candles;
-      if (isIntraday) {
-        return filtered.map((c) => ({ ...c, time: String(Number(c.time) + IST_OFFSET_SEC) }));
-      }
-      return filtered;
     }
 
-    // For the "1d" predefined period with intraday resolution, filter to today's session only.
-    // Yahoo Finance returns range=5d for 5m resolution (needed for OHLC readability), but
-    // for 1D we only want today's bars (from NSE open onward).
-    let baseCandles = candles;
-    if (!customRange && activeTimePeriod === "1d" && isIntraday) {
-      const todayOpenSec = getNseDayOpen(0);
-      const filtered = candles.filter((c) => {
-        const t = typeof c.time === "number" ? c.time : Number(c.time);
-        return t >= todayOpenSec;
-      });
-      if (filtered.length > 0) baseCandles = filtered;
+    // Re-timestamp: evenly space candles over the selected period ending at now
+    const now = Date.now();
+    let durationMs = PERIOD_DURATION_MS[activeTimePeriod] ?? 6.5 * 60 * 60 * 1000;
+    if (activeTimePeriod === "ytd") {
+      durationMs = now - new Date(new Date().getFullYear(), 0, 1).getTime();
     }
-
-    if (isIntraday) {
-      return baseCandles.map((c) => ({
-        ...c,
-        time: String(Number(c.time) + IST_OFFSET_SEC),
-      }));
-    }
-
-    return baseCandles;
-  }, [candles, customRange, candleResolution, activeTimePeriod]);
-
-  // Previous-close reference line value.
-  //   1D + line/area type : API-reported yesterday's close (most accurate).
-  //   Multi-day + line/area: first bar's close = "period start" reference.
-  //   OHLC chart types    : null — the open is already visible inside each candle.
-  const prevCloseValue = useMemo(() => {
-    if (!detail) return null;
-    if (OHLC_FAMILY.has(overviewChartType)) return null; // candles encode their own open
-    if (activeTimePeriod === "1d" && !customRange) {
-      if (typeof detail.price === "number" && typeof detail.change === "number" && detail.change !== 0) {
-        return detail.price - detail.change;
-      }
-    }
-    // All other periods: use the close of the first loaded bar as the period-start reference.
-    return displayCandles.length > 1 ? (displayCandles[0].close ?? null) : null;
-  }, [detail, overviewChartType, activeTimePeriod, customRange, displayCandles]);
+    const n = candles.length;
+    const stepMs = n > 1 ? durationMs / (n - 1) : 0;
+    const startMs = now - durationMs;
+    return candles.map((c, i) => ({
+      ...c,
+      time: String(Math.floor((startMs + i * stepMs) / 1000)),
+    }));
+  }, [candles, customRange, activeTimePeriod]);
 
   // Close symbol picker on outside click
   useEffect(() => {
@@ -730,7 +579,6 @@ export default function SymbolPage() {
   const isStock = detail.type === "stock";
   const isCrypto = detail.type === "crypto" || detail.marketClass === "cex" || detail.marketClass === "dex";
   const simulationHref = `/simulation?symbol=${encodeURIComponent(detail.fullSymbol || detail.symbol)}&from=symbol&parityData=1`;
-  const chartsHref = `/charts?symbol=${encodeURIComponent(detail.fullSymbol || detail.symbol)}`;
   const symbolLookupKey = detail.fullSymbol || detail.symbol;
   const isInWatchlist = watchlist.has(symbolLookupKey);
   const isInPortfolio = portfolioList.has(symbolLookupKey);
@@ -774,10 +622,10 @@ export default function SymbolPage() {
         activeTab={activeTab}
         tabs={[...TABS]}
         onTabChange={(t) => setActiveTab(t as Tab)}
-        onFullChart={() => navigate(chartsHref)}
+        onFullChart={() => navigate(simulationHref)}
         heroRef={heroRef}
       />
-      <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10">
+      <div className="mx-auto max-w-[1200px] px-4 md:px-6">
 
         {/* ── Breadcrumb (TradingView exact) ────────────────────────────── */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5 flex-wrap">
@@ -1062,7 +910,7 @@ export default function SymbolPage() {
             );})}
             {/* See on Supercharts — TradingView style right-aligned link */}
             <Link
-              to={chartsHref}
+              to={simulationHref}
               className="ml-auto shrink-0 flex items-center gap-1.5 rounded-lg border border-border/40 px-3 py-1.5 text-sm text-foreground hover:bg-secondary/30 transition-colors whitespace-nowrap"
             >
               <BarChart3 className="w-3.5 h-3.5" /> See on Supercharts
@@ -1092,7 +940,7 @@ export default function SymbolPage() {
                   {/* Chart type dropdown */}
                   <div className="relative" ref={chartTypeRef}>
                     <button
-                      onClick={() => { setChartTypeOpen((v) => !v); setChartTypeSearch(""); }}
+                      onClick={() => setChartTypeOpen((v) => !v)}
                       className="flex items-center gap-1.5 h-8 rounded-md border border-border/40 px-2.5 text-xs font-medium text-foreground hover:bg-secondary/30 transition-colors"
                       title="Chart type"
                       aria-label="Change chart type"
@@ -1110,76 +958,30 @@ export default function SymbolPage() {
                     </button>
 
                     {chartTypeOpen && (
-                      <div className="absolute right-0 mt-1 max-h-[70vh] w-64 flex flex-col rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30">
-                        {/* Search box */}
-                        <div className="p-2 border-b border-border/30 shrink-0">
-                          <div className="relative">
-                            <svg className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
-                              <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 L14 14" strokeLinecap="round" />
-                            </svg>
-                            <input
-                              autoFocus
-                              value={chartTypeSearch}
-                              onChange={(e) => setChartTypeSearch(e.target.value)}
-                              placeholder="Search chart types…"
-                              className="w-full rounded border border-border/30 bg-secondary/20 py-1 pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
-                            />
+                      <div className="absolute right-0 mt-1 max-h-[60vh] w-56 overflow-y-auto rounded-md border border-border/50 bg-background/95 backdrop-blur shadow-xl z-30 p-1.5">
+                        {chartTypeGroups.map((group) => (
+                          <div key={group.id} className="mb-1.5 last:mb-0">
+                            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {group.label}
+                            </div>
+                            {group.types.map((type) => (
+                              <button
+                                key={type}
+                                onClick={() => {
+                                  setOverviewChartType(type);
+                                  setChartTypeOpen(false);
+                                }}
+                                className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors ${
+                                  overviewChartType === type
+                                    ? "bg-secondary/50 text-foreground"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                                }`}
+                              >
+                                {chartTypeLabels[type]}
+                              </button>
+                            ))}
                           </div>
-                        </div>
-                        {/* Grouped list */}
-                        <div className="overflow-y-auto p-1.5">
-                          {(() => {
-                            const q = chartTypeSearch.trim().toLowerCase();
-                            const filtered = chartTypeGroups
-                              .map((group) => ({
-                                ...group,
-                                types: q
-                                  ? group.types.filter((t) =>
-                                      chartTypeLabels[t].toLowerCase().includes(q) ||
-                                      group.label.toLowerCase().includes(q)
-                                    )
-                                  : group.types,
-                              }))
-                              .filter((g) => g.types.length > 0);
-                            if (!filtered.length) {
-                              return (
-                                <p className="py-6 text-center text-xs text-muted-foreground">No chart types found</p>
-                              );
-                            }
-                            return filtered.map((group) => (
-                              <div key={group.id} className="mb-1.5 last:mb-0">
-                                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  {group.label}
-                                </div>
-                                {group.types.map((type) => {
-                                  const isSoon = COMING_SOON_CHART_TYPES.has(type);
-                                  return (
-                                    <button
-                                      key={type}
-                                      onClick={() => {
-                                        setOverviewChartType(type);
-                                        setChartTypeOpen(false);
-                                        setChartTypeSearch("");
-                                      }}
-                                      className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1.5 ${
-                                        overviewChartType === type
-                                          ? "bg-secondary/50 text-foreground"
-                                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
-                                      }`}
-                                    >
-                                      <span className="flex-1">{chartTypeLabels[type]}</span>
-                                      {isSoon && (
-                                        <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 px-1 py-0.5 rounded leading-none shrink-0">
-                                          Soon
-                                        </span>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ));
-                          })()}
-                        </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -1210,8 +1012,7 @@ export default function SymbolPage() {
                   </Suspense>
                   {/* Full chart button — matches image5 */}
                   <button
-                    data-testid="symbol-open-full-chart"
-                    onClick={() => navigate(`/simulation?symbol=${encodeURIComponent(detail.fullSymbol || detail.symbol)}&layout=chart&from=symbol`)}
+                    onClick={() => navigate(simulationHref)}
                     className="flex items-center gap-1.5 h-8 rounded-md border border-border/50 bg-secondary/30 px-3 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
                   >
                     <BarChart3 className="w-3.5 h-3.5" /> Full chart
@@ -1219,16 +1020,17 @@ export default function SymbolPage() {
                 </div>
               </div>
 
-              {/* Chart — overview area chart.
-                  The chart is rendered whenever we have candles (even stale ones during a reload).
-                  We never show a loading spinner here — old data stays visible until new data
-                  arrives, eliminating the flash / page-shake on period switches. */}
-              {chartError && displayCandles.length === 0 ? (
-                <div ref={chartContainerRef} style={{ height: "clamp(380px, 58vh, 680px)" }} className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+              {/* Chart — lightweight area chart for overview */}
+              {chartLoading ? (
+                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+                </div>
+              ) : chartError && displayCandles.length === 0 ? (
+                <div ref={chartContainerRef} className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm mb-2">Failed to load chart data</p>
                     <button
-                      onClick={() => loadChartCandles(activeTimePeriod)}
+                      onClick={() => loadCandles(TIME_PERIODS.find((p) => p.key === activeTimePeriod)?.limit)}
                       className="text-xs text-primary hover:underline"
                     >
                       Retry
@@ -1236,22 +1038,19 @@ export default function SymbolPage() {
                   </div>
                 </div>
               ) : displayCandles.length > 0 ? (
-                <div ref={chartContainerRef} style={{ height: "clamp(380px, 58vh, 680px)" }} className="w-full rounded-xl border border-border/30 bg-background/40 overflow-hidden">
+                <div ref={chartContainerRef} className="rounded-xl border border-border/30 bg-background/40 overflow-hidden">
                   <SymbolMiniTradingChart
+                    key={activeTimePeriod + (customRange ? customRange.from.getTime() : '')}
                     data={displayCandles}
-                    height="100%"
+                    height={520}
                     chartType={overviewChartType}
-                    prevClose={prevCloseValue}
-                    periodReturn={perfPercent}
-                    timePeriod={activeTimePeriod}
                   />
                 </div>
               ) : (
                 <div
-                  onClick={() => navigate(chartsHref)}
+                  onClick={() => navigate(simulationHref)}
                   ref={chartContainerRef}
-                  style={{ height: "clamp(380px, 58vh, 680px)" }}
-                  className="w-full rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
+                  className="h-[520px] rounded-xl border border-border/30 bg-secondary/5 flex items-center justify-center cursor-pointer hover:bg-secondary/15 transition-colors group"
                 >
                   <div className="text-center">
                     <BarChart3 className="w-14 h-14 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
@@ -1260,53 +1059,27 @@ export default function SymbolPage() {
                 </div>
               )}
 
-              {/* Time period chips — active custom range shows as first chip */}
+              {/* Time period chips — TradingView exact layout with performance % */}
               <div className="mt-3 flex flex-col gap-2">
-                <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                  {/* Active custom period chip — shown BEFORE predefined periods */}
-                  {customRange && (
-                    <button
-                      type="button"
-                      onClick={() => setPickerOpen(true)}
-                      title="Click to edit custom range"
-                      className="flex flex-col items-center px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[90px] bg-primary/10 text-foreground border-2 border-primary shrink-0"
-                    >
-                      <span className="font-semibold text-[11px] leading-tight">
-                        {format(customRange.from, "MMM d")} – {format(customRange.to, "MMM d, yy")}
-                      </span>
-                      <span className={`text-[10px] tabular-nums mt-0.5 ${perfPercent >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                        {perfPercent >= 0 ? "+" : ""}{perfPercent.toFixed(2)}%
-                      </span>
-                    </button>
-                  )}
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 {TIME_PERIODS.map((p) => {
-                  // All chips use real period returns from useAllPeriodReturns (Yahoo Finance data).
-                  const pctValue = perfByPeriod[p.key];
-                  const hasPct = pctValue != null && Number.isFinite(pctValue);
-                  const pctColor = hasPct
-                    ? pctValue >= 0
-                      ? "text-emerald-500"
-                      : "text-red-500"
-                    : "";
+                  // Show changePercent for active period, perfPercent for 1d
+                  const pctValue = p.key === activeTimePeriod ? perfPercent : null;
+                  const pctColor = pctValue != null ? (pctValue >= 0 ? "text-emerald-500" : "text-red-500") : "";
                   return (
                     <button
                       key={p.key}
-                      data-period={p.key}
                       onClick={() => handleTimePeriodChange(p.key)}
                       className={`flex flex-col items-center px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors min-w-[80px] ${
-                        activeTimePeriod === p.key && !customRange
+                        activeTimePeriod === p.key
                           ? "bg-primary/10 text-foreground border-2 border-primary"
                           : "border-2 border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/20"
                       }`}
                     >
-                      <span className={activeTimePeriod === p.key && !customRange ? "text-foreground font-semibold" : ""}>{p.label}</span>
-                      {hasPct ? (
-                        <span data-percent className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
-                          {pctValue >= 0 ? "+" : ""}{(pctValue as number).toFixed(2)}%
-                        </span>
-                      ) : (
-                        <span data-percent className="text-[10px] tabular-nums mt-0.5 text-muted-foreground/40">
-                          &nbsp;
+                      <span className={activeTimePeriod === p.key ? "text-foreground font-semibold" : ""}>{p.label}</span>
+                      {pctValue != null && (
+                        <span className={`text-[10px] tabular-nums mt-0.5 ${pctColor}`}>
+                          {pctValue >= 0 ? "+" : ""}{pctValue.toFixed(2)}%
                         </span>
                       )}
                     </button>
@@ -1315,24 +1088,22 @@ export default function SymbolPage() {
                   <button
                     type="button"
                     onClick={() => setPickerOpen(true)}
-                    className="h-9 shrink-0 rounded-lg border border-border/40 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/20 transition-colors whitespace-nowrap"
+                    className={`h-9 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors ${
+                      customRange ? "border-primary/40 bg-primary/10 text-primary" : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                    }`}
                   >
-                    {customRange ? "Edit range" : "Custom period"}
+                    Custom period
                   </button>
                   {customRange && (
                     <button
                       type="button"
                       onClick={() => {
-                        const fallback = "1d";
                         setCustomRange(null);
                         setActiveSavedPeriodId(undefined);
-                        setActiveTimePeriod(fallback);
-                        loadChartCandles(fallback);
                       }}
-                      title="Clear custom range"
-                      className="h-9 shrink-0 rounded-lg border border-border/30 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/20 transition-colors"
+                      className="h-9 shrink-0 rounded-lg border border-border/30 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/20"
                     >
-                      ✕
+                      Clear
                     </button>
                   )}
                   <Suspense fallback={null}>
@@ -1343,7 +1114,7 @@ export default function SymbolPage() {
                       setActiveSavedPeriodId(period.id);
                       setActiveTimePeriod("");
                       setCustomRange(period.range);
-                      handleCustomRangeApply(period.range);
+                      loadCandles(9999);
                     }}
                     onOpenCustom={() => setPickerOpen(true)}
                     onEdit={(id, name) => {
@@ -1598,7 +1369,7 @@ export default function SymbolPage() {
             {/* ── Quick Actions ──────────────────────────────────────────── */}
             <div className="flex items-center gap-3 pt-6 border-t border-border/20">
               <button
-                onClick={() => navigate(chartsHref)}
+                onClick={() => navigate(simulationHref)}
                 className="flex items-center gap-2 rounded-lg bg-primary/15 border border-primary/30 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/25 transition-colors"
               >
                 <BarChart3 className="w-4 h-4" />
@@ -1625,7 +1396,7 @@ export default function SymbolPage() {
             <p className="text-sm text-muted-foreground mb-4">This data lives in the advanced chart workspace.</p>
             <button
               type="button"
-              onClick={() => navigate(chartsHref)}
+              onClick={() => navigate(simulationHref)}
               className="inline-flex items-center gap-2 rounded-lg border border-border/40 px-4 py-2 text-sm text-foreground hover:bg-secondary/30 transition-colors"
             >
               <BarChart3 className="w-4 h-4" />

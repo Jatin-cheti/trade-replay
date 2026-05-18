@@ -51,6 +51,9 @@ docs/tradingview-parity/reports/**
 !docs/tradingview-parity/reports/.gitkeep
 docs/tradingview-parity/tradingview/**
 !docs/tradingview-parity/tradingview/.gitkeep
+e2e/tv-capture-output/
+e2e/tv-deep-parity-output/
+e2e/tv-references/
 
 # Misc
 tmp-*

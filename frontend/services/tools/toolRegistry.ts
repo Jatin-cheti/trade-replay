@@ -380,3 +380,4 @@ export function buildToolOptions(variant: Exclude<ToolVariant, 'none'>): ToolOpt
   const definition = getToolDefinition(variant);
   return mergeToolOptions(defaultToolOptions, definition?.defaultOptions || {});
 }
+ 
