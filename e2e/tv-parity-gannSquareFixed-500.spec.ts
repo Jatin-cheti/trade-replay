@@ -1,15 +1,13 @@
 /**
- * TV-Parity 500 Tests — Gann Square Fixed (1-anchor click, family='fib').
- * Rail: rail-fib. isPointOnly=true, anchorCount=1.
- * Fixed 200×200 px square anchored at the click point; 9 angular rays at slopes
- * 1/8, 1/4, 1/3, 1/2, 1/1, 2/1, 3/1, 4/1, 8/1 with ratio labels at endpoints.
+ * TV-Parity 500 Tests — Gann Square Fixed (fib category)
+ * 2-anchor drag-commit drawing.
  */
 import { register500ToolSuite } from "./tv-parity-500-factory";
 
 register500ToolSuite({
   variant: "gannSquareFixed",
-  testId: "gann-square-fixed",
+  testId: "tool-gannSquareFixed",
   railTestId: "rail-fib",
-  anchorCount: 1,
-  commitMode: "click",
+  anchorCount: 2,
+  commitMode: "drag",
 });

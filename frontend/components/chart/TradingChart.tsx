@@ -3,11 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
 import { listIndicators, getGlobalPerfTelemetry, resolutionToSeconds, isIntradayResolution, formatCountdown, type CrosshairMoveEvent, type IChartApi } from '@tradereplay/charts';
-import {
-  colorForFibLevel as libColorForFibLevel,
-  formatFibLabel as libFormatFibLabel,
-  rgbFromHex as libRgbFromHex,
-} from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
@@ -16,7 +11,6 @@ import { rgbFromHex } from '@/services/tools/toolOptions';
 import {
   compareDrawingRenderOrder,
   createDrawing,
-  drawingBounds,
   DrawingSpatialIndex,
   getHitTestTelemetrySnapshot,
   isClickClickVariant,
@@ -41,8 +35,6 @@ import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 import IndicatorsModal from '@/components/chart/IndicatorsModal';
 import ChartPromptModal, { type ChartPromptRequest } from '@/components/chart/ChartPromptModal';
 import FloatingDrawingToolbar, { type FloatingToolbarAnchor } from '@/components/chart/FloatingDrawingToolbar';
-import DrawingContextMenu from '@/components/chart/DrawingContextMenu';
-import DrawingSettingsPanel from '@/components/chart/DrawingSettingsPanel';
 import type { IconPresetSelection } from '@/components/chart/IconToolPanel';
 import { toast } from 'sonner';
 
@@ -117,18 +109,6 @@ const PATTERN_LABELS_BY_VARIANT: Partial<Record<ToolVariant, string[]>> = {
   elliottTriangle: ['A', 'B', 'C', 'D', 'E'],
   elliottDoubleCombo: ['W', 'X', 'Y'],
   elliottTripleCombo: ['W', 'X', 'Y', 'X', 'Z'],
-  // 3-anchor fib tools (TV-parity): A → impulse end → retracement anchor.
-  fibExtension: ['A', 'B', 'C'],
-  fibTrendTime: ['A', 'B', 'C'],
-  pitchfan: ['A', 'B', 'C'],
-  // Channels (TV-parity wizard labels).
-  channel: ['A', 'B', 'C'],
-  disjointChannel: ['A', 'B', 'C', 'D'],
-  // Pitchforks (TV-parity): A pivot → B/C handles forming the median line.
-  pitchfork: ['A', 'B', 'C'],
-  schiffPitchfork: ['A', 'B', 'C'],
-  modifiedSchiffPitchfork: ['A', 'B', 'C'],
-  insidePitchfork: ['A', 'B', 'C'],
 };
 
 function makeMetricBucket(): InteractionMetricBucket {
@@ -368,8 +348,6 @@ export default function TradingChart({
   const [fullView, setFullView] = useState(false);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [hoveredDrawingId, setHoveredDrawingId] = useState<string | null>(null);
-  const [drawingContextMenu, setDrawingContextMenu] = useState<{ x: number; y: number; drawingId: string } | null>(null);
-  const [drawingSettingsId, setDrawingSettingsId] = useState<string | null>(null);
   // Ref mirror so renderOverlay's RAF callback can read hoveredDrawingId
   // without stale-closure issues (updated synchronously in every setter call).
   const hoveredDrawingIdRef = useRef<string | null>(null);
@@ -986,20 +964,6 @@ export default function TradingChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawingsRef, selectedDrawingId, toolState.drawings]
   );
-  const drawingContextTarget = useMemo(
-    () => drawingsRef.current.find((drawing) => drawing.id === drawingContextMenu?.drawingId) || null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [drawingContextMenu?.drawingId, drawingsRef, toolState.drawings]
-  );
-  const drawingSettingsTarget = useMemo(
-    () => drawingsRef.current.find((drawing) => drawing.id === drawingSettingsId) || null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [drawingSettingsId, drawingsRef, toolState.drawings]
-  );
-  const drawingSettingsDefinition = useMemo(
-    () => drawingSettingsTarget ? getToolDefinition(drawingSettingsTarget.variant) : null,
-    [drawingSettingsTarget],
-  );
 
   const clearPromptState = useCallback(() => {
     setPromptRequest(null);
@@ -1012,40 +976,20 @@ export default function TradingChart({
 
   const syncPatternWizardHint = useCallback(() => {
     const draft = draftRef.current;
-    if (!draft || !drawingActiveRef.current) {
+    if (!draft || !drawingActiveRef.current || !isWizardVariant(draft.variant)) {
       setPatternWizardHint(null);
       return;
     }
 
-    const definition = getToolDefinition(draft.variant);
     const total = draft.anchors.length;
     const step = Math.max(1, Math.min(total, draftProgressRef.current + 1));
+    const labels = PATTERN_LABELS_BY_VARIANT[draft.variant] || [];
+    const pointLabel = labels[step - 1] || `P${step}`;
+    const definition = getToolDefinition(draft.variant);
 
-    if (isWizardVariant(draft.variant)) {
-      const labels = PATTERN_LABELS_BY_VARIANT[draft.variant] || [];
-      const pointLabel = labels[step - 1] || `P${step}`;
-      setPatternWizardHint({
-        toolLabel: definition?.label || draft.variant,
-        pointLabel,
-        step,
-        total,
-      });
-      return;
-    }
-
-    // TV-parity hint for non-wizard, multi-anchor draws (fib, trend, ray, etc.)
-    // Mirrors TradingView's "Click to set …" prompt that follows the cursor
-    // tooltip on tool selection. Skip 1-anchor tools (hline/vline/point) —
-    // the first click commits them so a hint adds no value.
-    if (!definition || definition.capabilities.anchors <= 1) {
-      setPatternWizardHint(null);
-      return;
-    }
-    const ordinalWords = ['first', 'second', 'third', 'fourth', 'fifth'];
-    const ordinal = ordinalWords[step - 1] || `point ${step}`;
     setPatternWizardHint({
-      toolLabel: definition.label,
-      pointLabel: `${ordinal} point`,
+      toolLabel: definition?.label || draft.variant,
+      pointLabel,
       step,
       total,
     });
@@ -1111,13 +1055,7 @@ export default function TradingChart({
       if (!def) return null;
       const baseOptions = { ...toolState.options, ...(options ?? {}), ...(text ? { text } : {}) };
       const typedAnchors = anchors.map((a) => ({ time: a.time as DrawPoint['time'], price: a.price }));
-      const firstAnchor = typedAnchors[0];
-      const secondAnchor = typedAnchors[1] ?? firstAnchor;
-      const drawing = {
-        ...createDrawing(variant as Exclude<ToolVariant, 'none'>, baseOptions, firstAnchor, secondAnchor, text),
-        anchors: typedAnchors,
-        bounds: drawingBounds(typedAnchors),
-      };
+      const drawing = createDrawing(variant as Exclude<ToolVariant, 'none'>, baseOptions, ...typedAnchors);
       updateAllDrawings((prev) => [...prev, drawing], true);
       return drawing.id;
     };
@@ -1541,14 +1479,10 @@ export default function TradingChart({
           const pct = `${(level * 100).toFixed(1)}%`;
           const value = from.price + (to.price - from.price) * level;
           const price = value.toFixed(2);
-          const mode = activeDrawing.options.fibLabelMode;
-          // TV-parity: default is "<ratio> (<price>)" e.g. "0.236 (1,398.80)".
-          if (mode === 'price') return price;
-          if (mode === 'both') return `${pct} (${price})`;
-          if (mode === 'percent') return pct;
-          if (mode === 'ratio') return `${level}`;
-          // 'ratio-price' (default) or any unrecognised value falls through to TV format.
-          return `${level} (${price})`;
+
+          if (activeDrawing.options.fibLabelMode === 'price') return price;
+          if (activeDrawing.options.fibLabelMode === 'both') return `${pct} (${price})`;
+          return pct;
         };
 
         const vwapBucketKey = (time: number, interval: 'session' | 'week' | 'month'): string => {
@@ -1997,33 +1931,15 @@ export default function TradingChart({
             }
           }
         } else if (v === 'fibTrendTime' && points.length >= 2) {
-          // TV-parity: trend-based fib time uses 3 anchors A->B->C. The time
-          // levels are projected from C using the (B-A) horizontal interval.
-          // Falls back to a 2-anchor preview while the 3rd point is being
-          // placed (start..end behaves like the original implementation).
-          const a = points[0];
-          const b = points[1];
-          const c = points[2] ?? b;
-          const isThreeAnchor = activeDrawing.anchors.length >= 3 && points.length >= 3;
-          const start = a;
-          const end = isThreeAnchor ? c : b;
-          const spacing = Math.abs(b.x - a.x);
-          // Dashed connector A->B (and B->C when 3 anchors).
-          ctx.save();
-          ctx.setLineDash([4, 4]);
-          ctx.strokeStyle = 'rgba(120, 123, 134, 0.7)';
-          ctx.lineWidth = 1;
+          const start = points[0];
+          const end = points[1];
           ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          if (isThreeAnchor) {
-            ctx.moveTo(b.x, b.y);
-            ctx.lineTo(c.x, c.y);
-          }
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(end.x, end.y);
           ctx.stroke();
-          ctx.restore();
+          const spacing = Math.abs(end.x - start.x);
           if (spacing > 2) {
-            const sequence = [0, 1, 2, 3, 5, 8];
+            const sequence = [1, 2, 3, 5, 8];
             // Zone fills
             ctx.save();
             ctx.globalAlpha = Math.max(0.03, activeDrawing.options.opacity * 0.05);
@@ -2057,11 +1973,6 @@ export default function TradingChart({
               ctx.restore();
             }
           }
-          // Suppress the legacy non-fib stroke that would have drawn A->B as a
-          // solid line — we already drew the dashed connector above.
-          ctx.beginPath();
-        } else if (v === 'fibTrendTime') {
-          // No-op: handled above when points.length >= 2.
         } else if (v === 'fibCircles' && points.length >= 2) {
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0.236, 0.382, 0.5, 0.618, 0.786, 1]);
           const radiusBase = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
@@ -2756,28 +2667,32 @@ export default function TradingChart({
           // Per-level colors, left-aligned `<ratio> (<price>)` labels,
           // dashed grey diagonal from anchor[0] to anchor[1], filled
           // bands between adjacent levels using the higher level's color.
-          //
-          // For Trend-based Fib Extension (3 anchors A→B→C) the levels are
-          // projected from C using the price delta (B - A): level=0 sits at
-          // C.price, level=1 at C.price + (B.price - A.price). The box spans
-          // horizontally from C onward (anchors[2] is the reference point).
-          const isTrendExt = v === 'fibExtension' && activeDrawing.anchors.length >= 3 && points.length >= 3;
-          const pA = points[0];
-          const pB = points[1] || pA;
-          const pC = isTrendExt ? points[2] : pA;
-          const refTop = isTrendExt ? pC : pA;
-          const refBot = isTrendExt
-            ? { x: pC.x, y: pC.y + (pB.y - pA.y) }
-            : pB;
-          const p1 = refTop;
-          const p2 = refBot;
+          const p1 = points[0];
+          const p2 = points[1] || p1;
           const levels = resolveFibLevels(def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618, 2.618, 3.618, 4.236]);
-          const left = isTrendExt ? Math.min(pC.x, pB.x, pA.x) : Math.min(p1.x, p2.x);
-          const right = isTrendExt ? Math.max(pC.x + Math.max(40, Math.abs(pB.x - pA.x)), pC.x + 40) : Math.max(p1.x, p2.x);
+          const left = Math.min(p1.x, p2.x);
+          const right = Math.max(p1.x, p2.x);
           const width = right - left;
-          // TradingView per-level color palette is sourced from @tradereplay/charts so the
-          // app and the library's 7500 parity tests share a single source of truth.
-          const colorForLevel = (lv: number): string => libColorForFibLevel(lv, activeDrawing.options.color);
+          // TradingView per-level color palette (hex). Falls through to drawing color for unknown levels.
+          const TV_FIB_COLORS: Record<string, string> = {
+            '0': '#787b86',
+            '0.236': '#f23645',
+            '0.382': '#ff9800',
+            '0.5': '#fbc02d',
+            '0.618': '#4caf50',
+            '0.786': '#00bcd4',
+            '1': '#787b86',
+            '1.272': '#2962ff',
+            '1.414': '#2962ff',
+            '1.618': '#2962ff',
+            '2': '#2962ff',
+            '2.272': '#9c27b0',
+            '2.414': '#9c27b0',
+            '2.618': '#f23645',
+            '3.618': '#9c27b0',
+            '4.236': '#e91e63',
+          };
+          const colorForLevel = (lv: number): string => TV_FIB_COLORS[String(lv)] ?? activeDrawing.options.color;
           const baseAlpha = activeDrawing.options.opacity;
           const fillAlpha = Math.max(0.04, baseAlpha * 0.08);
           // Bands between adjacent levels — colored using the lower-edge level's color.
@@ -2785,7 +2700,7 @@ export default function TradingChart({
           for (let li = 0; li < levels.length - 1; li += 1) {
             const y1 = p1.y + (p2.y - p1.y) * levels[li];
             const y2 = p1.y + (p2.y - p1.y) * levels[li + 1];
-            ctx.fillStyle = `rgba(${libRgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
+            ctx.fillStyle = `rgba(${rgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
             ctx.fillRect(left, Math.min(y1, y2), width, Math.abs(y2 - y1));
           }
           ctx.restore();
@@ -2795,44 +2710,41 @@ export default function TradingChart({
             const y = p1.y + (p2.y - p1.y) * level;
             const lineColor = colorForLevel(level);
             ctx.save();
-            ctx.strokeStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
-            ctx.lineWidth = activeDrawing.options.thickness;
+            ctx.strokeStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
+            ctx.lineWidth = activeDrawing.options.lineWidth;
             ctx.beginPath();
             ctx.moveTo(left, y);
             ctx.lineTo(right, y);
             ctx.stroke();
             ctx.restore();
             if (activeDrawing.options.priceLabel) {
-              const aAnchor = activeDrawing.anchors[0];
-              const bAnchor = activeDrawing.anchors[1] || activeDrawing.anchors[0];
-              const cAnchor = activeDrawing.anchors[2] || bAnchor;
-              const value = isTrendExt
-                ? cAnchor.price + (bAnchor.price - aAnchor.price) * level
-                : aAnchor.price + (bAnchor.price - aAnchor.price) * level;
-              const label = libFormatFibLabel(level, value, labelMode as 'ratio-price' | 'price' | 'percent' | 'ratio' | undefined);
+              const fromAnchor = activeDrawing.anchors[0];
+              const toAnchor = activeDrawing.anchors[1] || activeDrawing.anchors[0];
+              const value = fromAnchor.price + (toAnchor.price - fromAnchor.price) * level;
+              const ratio = level === 0 || level === 1
+                ? `${level}`
+                : level.toString();
+              const priceStr = value.toFixed(2);
+              let label: string;
+              if (labelMode === 'price') label = `(${priceStr})`;
+              else if (labelMode === 'percent') label = `${(level * 100).toFixed(1)}%`;
+              else label = `${ratio} (${priceStr})`;
               ctx.save();
               ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
-              ctx.fillStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
+              ctx.fillStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
               ctx.textBaseline = 'middle';
               ctx.fillText(label, left + 6, y - 6);
               ctx.restore();
             }
           }
-          // Dashed grey connector(s). 2-anchor: A->B diagonal. 3-anchor
-          // (trend-based fib extension): A->B impulse + B->C retracement.
+          // Dashed grey diagonal connecting anchor[0] -> anchor[1] (TV signature).
           ctx.save();
           ctx.setLineDash([4, 4]);
           ctx.strokeStyle = 'rgba(120, 123, 134, 0.7)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          if (isTrendExt) {
-            ctx.moveTo(pA.x, pA.y);
-            ctx.lineTo(pB.x, pB.y);
-            ctx.lineTo(pC.x, pC.y);
-          } else {
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-          }
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
           ctx.restore();
         } else if (def.family === 'fib') {
@@ -2842,33 +2754,25 @@ export default function TradingChart({
           const left = Math.min(p1.x, p2.x);
           const right = Math.max(p1.x, p2.x);
           const width = right - left;
-          // TV-parity: use library palette so per-level colors match TradingView for
-          // every fib/gann tool (Channel, TimeZone, Circles, Wedge, Pitchfan, Gann*, etc.).
-          const colorForLevel = (lv: number): string => libColorForFibLevel(lv, activeDrawing.options.color);
-          const baseAlpha = activeDrawing.options.opacity;
           // Draw zone fills between adjacent levels (TradingView style)
           ctx.save();
-          const fillAlpha = Math.max(0.04, baseAlpha * 0.06);
+          const fillAlpha = Math.max(0.04, activeDrawing.options.opacity * 0.06);
           for (let li = 0; li < levels.length - 1; li += 1) {
             const y1 = p1.y + (p2.y - p1.y) * levels[li];
             const y2 = p1.y + (p2.y - p1.y) * levels[li + 1];
-            ctx.fillStyle = `rgba(${libRgbFromHex(colorForLevel(levels[li]))}, ${fillAlpha})`;
+            ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${fillAlpha * (li % 2 === 0 ? 1 : 0.6)})`;
             ctx.fillRect(left, Math.min(y1, y2), width, Math.abs(y2 - y1));
           }
           ctx.restore();
           // Draw level lines + labels
           for (const level of levels) {
             const y = p1.y + (p2.y - p1.y) * level;
-            const lineColor = colorForLevel(level);
-            ctx.save();
-            ctx.strokeStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
             ctx.beginPath();
             ctx.moveTo(left, y);
             ctx.lineTo(right, y);
             ctx.stroke();
-            ctx.restore();
             if (activeDrawing.options.priceLabel) {
-              // Label with background; text color matches the level's TV-palette color.
+              // Label with background
               const label = fibLabelText(level, activeDrawing.anchors[0], activeDrawing.anchors[1] || activeDrawing.anchors[0]);
               ctx.save();
               ctx.font = `${Math.max(10, activeDrawing.options.textSize - 2)}px ${activeDrawing.options.font || 'JetBrains Mono'}, sans-serif`;
@@ -2877,7 +2781,7 @@ export default function TradingChart({
               const labelY = y + 3;
               ctx.fillStyle = 'rgba(8, 18, 30, 0.7)';
               ctx.fillRect(labelX - 2, labelY - 10, metrics.width + 6, 14);
-              ctx.fillStyle = `rgba(${libRgbFromHex(lineColor)}, ${baseAlpha})`;
+              ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
               ctx.fillText(label, labelX, labelY);
               ctx.restore();
             }
@@ -4397,7 +4301,11 @@ export default function TradingChart({
       return;
     }
 
-    setDrawingContextMenu({ x: event.clientX, y: event.clientY, drawingId: selected });
+    const definition = getToolDefinition(drawing.variant);
+    handleVariantSelect(definition?.category ?? 'lines', drawing.variant);
+    setOptions({ ...drawing.options });
+    setOptionsOpen(true);
+    setExpandedCategory(null);
     renderOverlay();
   };
 
@@ -4981,7 +4889,10 @@ export default function TradingChart({
     setHoveredDrawingId(null);
   }, [removeDrawing, selectedDrawingId]);
 
-  const cloneDrawingWithOffset = useCallback((src: Drawing): Drawing => {
+  const handleToolbarDuplicate = useCallback(() => {
+    if (!selectedDrawingId) return;
+    const src = drawingsRef.current.find((d) => d.id === selectedDrawingId);
+    if (!src) return;
     // Offset each anchor by ~12 bars in time and ~0.5% in price so the copy is visible.
     const offsetSec = 12 * 60;
     const priceDelta = Math.max(0.01, Math.abs(src.anchors[0]?.price ?? 1) * 0.005);
@@ -4997,56 +4908,9 @@ export default function TradingChart({
       selected: false,
       text: src.text,
     };
-    return clone;
-  }, []);
-
-  const duplicateDrawing = useCallback((id: string) => {
-    const src = drawingsRef.current.find((d) => d.id === id);
-    if (!src || src.locked) return;
-    const clone = cloneDrawingWithOffset(src);
     updateAllDrawings((prev) => [...prev, clone]);
     setSelectedDrawingId(clone.id);
-    setHoveredDrawingId(clone.id);
-    renderOverlay();
-  }, [cloneDrawingWithOffset, drawingsRef, renderOverlay, updateAllDrawings]);
-
-  const handleToolbarDuplicate = useCallback(() => {
-    if (!selectedDrawingId) return;
-    duplicateDrawing(selectedDrawingId);
-  }, [duplicateDrawing, selectedDrawingId]);
-
-  const copyDrawingToClipboard = useCallback((id: string) => {
-    const src = drawingsRef.current.find((d) => d.id === id);
-    if (!src) return;
-    try {
-      window.sessionStorage.setItem('drawing-clipboard', JSON.stringify({
-        drawing: {
-          ...src,
-          anchors: src.anchors.map((anchor) => ({ ...anchor })),
-          options: { ...src.options },
-        },
-        timestamp: Date.now(),
-      }));
-    } catch {
-      /* sessionStorage can be unavailable in private contexts */
-    }
-  }, [drawingsRef]);
-
-  const pasteDrawingFromClipboard = useCallback(() => {
-    try {
-      const raw = window.sessionStorage.getItem('drawing-clipboard');
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { drawing?: Drawing };
-      if (!parsed.drawing) return;
-      const clone = cloneDrawingWithOffset(parsed.drawing);
-      updateAllDrawings((prev) => [...prev, clone]);
-      setSelectedDrawingId(clone.id);
-      setHoveredDrawingId(clone.id);
-      renderOverlay();
-    } catch {
-      /* Ignore malformed clipboard payloads. */
-    }
-  }, [cloneDrawingWithOffset, renderOverlay, updateAllDrawings]);
+  }, [drawingsRef, selectedDrawingId, updateAllDrawings]);
 
   const handleToolbarAddText = useCallback(() => {
     if (!selectedDrawingId) return;
@@ -5107,118 +4971,8 @@ export default function TradingChart({
   }, [drawingsRef, selectedDrawingId, toolState.options]);
 
   const handleToolbarOpenSettings = useCallback(() => {
-    if (!selectedDrawingId) return;
-    setDrawingSettingsId(selectedDrawingId);
-  }, [selectedDrawingId]);
-
-  const openDrawingSettings = useCallback((id: string) => {
-    const drawing = drawingsRef.current.find((item) => item.id === id);
-    if (!drawing) return;
-    const definition = getToolDefinition(drawing.variant);
-    handleVariantSelect(definition?.category ?? 'lines', drawing.variant);
-    setOptions({ ...drawing.options });
-    setOptionsOpen(false);
-    setExpandedCategory(null);
-    setDrawingSettingsId(id);
-  }, [drawingsRef, handleVariantSelect, setOptions]);
-
-  const handleSaveDrawingSettings = useCallback((partial: Partial<Drawing['options']>) => {
-    if (!drawingSettingsId) return;
-    updateDrawing(
-      drawingSettingsId,
-      (drawing) => {
-        const nextOptions = { ...drawing.options, ...partial };
-        return {
-          ...drawing,
-          options: nextOptions,
-          locked: partial.locked ?? drawing.locked,
-          visible: partial.visible ?? drawing.visible,
-        };
-      },
-      false,
-    );
-    setOptions(partial);
-    setDrawingSettingsId(null);
-    renderOverlay();
-  }, [drawingSettingsId, renderOverlay, setOptions, updateDrawing]);
-
-  const closeDrawingSettings = useCallback(() => {
-    setDrawingSettingsId(null);
+    setOptionsOpen(true);
   }, []);
-
-  const handleDrawingContextDelete = useCallback(() => {
-    const id = drawingContextMenu?.drawingId;
-    if (!id) return;
-    const drawing = drawingsRef.current.find((item) => item.id === id);
-    if (drawing?.locked) return;
-    removeDrawing(id);
-    setSelectedDrawingId((current) => (current === id ? null : current));
-    setHoveredDrawingId((current) => (current === id ? null : current));
-    renderOverlay();
-  }, [drawingContextMenu?.drawingId, drawingsRef, removeDrawing, renderOverlay]);
-
-  const handleDrawingContextEdit = useCallback(() => {
-    const id = drawingContextMenu?.drawingId;
-    if (!id) return;
-    setSelectedDrawingId(id);
-    const drawing = drawingsRef.current.find((item) => item.id === id);
-    if (!drawing) return;
-    const definition = getToolDefinition(drawing.variant);
-    if (definition?.capabilities.supportsText) {
-      const anchor = drawing.anchors[0];
-      if (!anchor) return;
-      pendingTextPointRef.current = anchor;
-      pendingTextVariantRef.current = drawing.variant as Exclude<ToolVariant, 'none'>;
-      editingDrawingIdRef.current = drawing.id;
-      setPromptRequest({
-        title: `Edit ${definition.label}`,
-        label: 'Text',
-        defaultValue: drawing.text ?? '',
-        preview: true,
-        allowStyleControls: true,
-        styleOptions: {
-          font: drawing.options.font,
-          textSize: drawing.options.textSize,
-          bold: drawing.options.bold,
-          italic: drawing.options.italic,
-          align: drawing.options.align,
-          textBackground: drawing.options.textBackground,
-          textBorder: drawing.options.textBorder,
-        },
-      });
-      return;
-    }
-    openDrawingSettings(id);
-  }, [drawingContextMenu?.drawingId, drawingsRef, openDrawingSettings]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable === true) return;
-      if (!(event.ctrlKey || event.metaKey)) return;
-
-      const key = event.key.toLowerCase();
-      if (key === 'c' && selectedDrawingId) {
-        event.preventDefault();
-        copyDrawingToClipboard(selectedDrawingId);
-      } else if (key === 'v') {
-        event.preventDefault();
-        pasteDrawingFromClipboard();
-      } else if (key === 'd' && selectedDrawingId) {
-        event.preventDefault();
-        duplicateDrawing(selectedDrawingId);
-      } else if (key === 'a' && drawingsRef.current.length > 0) {
-        event.preventDefault();
-        const top = drawingsRef.current[drawingsRef.current.length - 1];
-        setSelectedDrawingId(top.id);
-        setHoveredDrawingId(top.id);
-        renderOverlay();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [copyDrawingToClipboard, drawingsRef, duplicateDrawing, pasteDrawingFromClipboard, renderOverlay, selectedDrawingId]);
 
   const floatingPortalZIndex = fullView ? 165 : 60;
   const dialogPortalZIndex = fullView ? 170 : 50;
@@ -5609,34 +5363,6 @@ export default function TradingChart({
               onDuplicate={handleToolbarDuplicate}
               onDelete={handleToolbarDelete}
               onOpenSettings={handleToolbarOpenSettings}
-            />
-
-            <DrawingContextMenu
-              open={Boolean(drawingContextMenu && drawingContextTarget)}
-              drawing={drawingContextTarget}
-              x={drawingContextMenu?.x ?? 0}
-              y={drawingContextMenu?.y ?? 0}
-              onClose={() => setDrawingContextMenu(null)}
-              onCopy={() => {
-                if (drawingContextMenu?.drawingId) copyDrawingToClipboard(drawingContextMenu.drawingId);
-              }}
-              onEdit={handleDrawingContextEdit}
-              onDuplicate={() => {
-                if (drawingContextMenu?.drawingId) duplicateDrawing(drawingContextMenu.drawingId);
-              }}
-              onDelete={handleDrawingContextDelete}
-              onSettings={() => {
-                if (drawingContextMenu?.drawingId) openDrawingSettings(drawingContextMenu.drawingId);
-              }}
-            />
-
-            <DrawingSettingsPanel
-              open={Boolean(drawingSettingsId && drawingSettingsTarget)}
-              drawing={drawingSettingsTarget}
-              optionsSchema={drawingSettingsDefinition?.optionsSchema || []}
-              portalZIndex={dialogPortalZIndex + 2}
-              onSave={handleSaveDrawingSettings}
-              onCancel={closeDrawingSettings}
             />
 
             <IndicatorsModal open={indicatorsOpen} onOpenChange={setIndicatorsOpen} enabledIndicators={enabledIndicators} onAddIndicator={addIndicator} onRemoveIndicator={removeEnabledIndicator} builtinIds={builtinIds} portalZIndex={dialogPortalZIndex} />
