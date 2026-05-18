@@ -35,30 +35,28 @@ desktop.ini
 *.swp
 *.swo
 
-# Test artifacts
-test-results/**
-playwright-report/**
+# Test artifacts & generated output
+test-results/
+playwright-report/
 debug-screenshots/
-artifacts/**
-!artifacts/.gitkeep
-!artifacts/baselines/
-!artifacts/baselines/**
-docs/tradingview-parity/ours/**
-!docs/tradingview-parity/ours/.gitkeep
-docs/tradingview-parity/diffs/**
-!docs/tradingview-parity/diffs/.gitkeep
-docs/tradingview-parity/reports/**
-!docs/tradingview-parity/reports/.gitkeep
-docs/tradingview-parity/tradingview/**
-!docs/tradingview-parity/tradingview/.gitkeep
+artifacts/
+reports/
 e2e/tv-capture-output/
 e2e/tv-deep-parity-output/
 e2e/tv-references/
+e2e/output/
+e2e/**/*.log
 
 # Misc
 tmp-*
 tmp/
 *.tgz
 .vercel
+*.bundle
+debug-page.*
+
+# Root-level accumulated junk (never commit these)
+e2e-*.txt
+tsc_output.txt
 
 FRIEND-SETUP/

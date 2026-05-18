@@ -1,0 +1,6 @@
+# Generated test output — never commit
+output/
+tv-capture-output/
+tv-deep-parity-output/
+tv-references/
+*.log
