@@ -19,9 +19,10 @@ export class PitchfanTool extends BaseTool {
     return this._makeDrawing(anchors, options);
   }
 
-  override updateDraft(drawing: Drawing, pointer: DrawPoint): Drawing {
+  override updateDraft(drawing: Drawing, pointer: DrawPoint, _vp?: Viewport, anchorIndex?: number): Drawing {
     const anchors = [...drawing.anchors];
-    anchors[anchors.length - 1] = { ...pointer };
+    const idx = anchorIndex ?? anchors.length - 1;
+    anchors[idx] = { ...pointer };
     return { ...drawing, anchors };
   }
 

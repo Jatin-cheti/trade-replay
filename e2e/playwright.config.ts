@@ -4,13 +4,16 @@ const useExternalStack = process.env.E2E_USE_EXTERNAL_STACK === "true";
 
 export default defineConfig({
   testDir: ".",
-  timeout: 60_000,
+  testMatch: useExternalStack ? "**/tv-parity-tv-*.spec.ts" : "**/*.spec.ts",
+  timeout: useExternalStack ? 120_000 : 60_000,
   fullyParallel: false,
   workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : 1,
   reporter: "list",
   use: {
-    baseURL: useExternalStack ? "https://tradereplay.me" : "http://localhost:8080",
+    baseURL: useExternalStack ? "https://in.tradingview.com" : "http://localhost:8080",
     trace: "on-first-retry",
+    navigationTimeout: useExternalStack ? 30_000 : undefined,
+    actionTimeout: useExternalStack ? 10_000 : undefined,
   },
   webServer: useExternalStack
     ? undefined
@@ -28,7 +31,12 @@ export default defineConfig({
         timeout: 120_000,
       },
     ],
-  projects: [
+  projects: useExternalStack ? [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ] : [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },

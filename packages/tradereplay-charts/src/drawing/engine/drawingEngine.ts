@@ -6,6 +6,12 @@
  * This class is framework-agnostic (no React, no DOM) and is designed to be
  * driven by an InteractionManager that translates pointer/key events into
  * engine method calls.
+ * 
+ * PHASE 1 ENHANCEMENTS:
+ * - Undo/Redo stack (>100 levels)
+ * - Tool state machine transitions
+ * - Keyboard shortcut integration
+ * - Modal handler integration
  */
 
 import type {
@@ -22,6 +28,27 @@ import { DrawingState, DEFAULT_DRAWING_OPTIONS } from '../types.ts';
 import type { IDrawingTool } from '../types.ts';
 import type { ScreenPoint } from '../types.ts';
 import { dataToScreen } from '../geometry.ts';
+import type { KeyboardManager } from './keyboard-handlers.ts';
+import { createDefaultKeyboardManager } from './keyboard-handlers.ts';
+import { dismissModals, ensurePageReady } from './modal-handler.ts';
+
+// ─── Undo/Redo State Management ────────────────────────────────────────────
+
+interface UndoRedoState {
+  undoStack: Drawing[];
+  redoStack: Drawing[];
+  maxStackSize: number;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+// ─── Tool State Machine ─────────────────────────────────────────────────────
+
+interface ToolStateMachine {
+  currentState: DrawingState;
+  previousState: DrawingState;
+  transitionCallbacks: Map<string, () => void>;
+}
 
 // ─── Internal helpers ──────────────────────────────────────────────────────
 
@@ -81,9 +108,30 @@ export class DrawingEngine {
   private _renderSeq = 0;
   private _listeners = new Set<DrawingEngineListener>();
   private readonly _toolRegistry: Map<DrawingVariant, IDrawingTool>;
+  
+  // PHASE 1: Undo/Redo Stack
+  private _undoRedoState: UndoRedoState = {
+    undoStack: [],
+    redoStack: [],
+    maxStackSize: 500,
+    canUndo: false,
+    canRedo: false,
+  };
+  
+  // PHASE 1: Keyboard Manager
+  private _keyboardManager: KeyboardManager | null = null;
+  
+  // PHASE 1: Tool State Machine
+  private _toolStateMachine: ToolStateMachine = {
+    currentState: DrawingState.IDLE,
+    previousState: DrawingState.IDLE,
+    transitionCallbacks: new Map(),
+  };
 
   constructor(tools: IDrawingTool[]) {
     this._toolRegistry = new Map(tools.map((t) => [t.variant, t]));
+    this._initializeKeyboardManager();
+    this._initializeModalHandling();
   }
 
   // ─── Public getters ──────────────────────────────────────────────────────
@@ -452,6 +500,137 @@ export class DrawingEngine {
     return () => this._listeners.delete(listener);
   }
 
+  // ─── PHASE 1: Undo/Redo Public Methods ─────────────────────────────────
+
+  /**
+   * Undo the last drawing action (commit or modification).
+   * Restores the drawings array to a previous state.
+   */
+  undo(): void {
+    if (this._undoRedoState.undoStack.length === 0) return;
+    
+    // Push current state to redo stack
+    if (this._selectedId) {
+      const selected = this._drawings.find((d) => d.id === this._selectedId);
+      if (selected) {
+        this._undoRedoState.redoStack.unshift(selected);
+        if (this._undoRedoState.redoStack.length > this._undoRedoState.maxStackSize) {
+          this._undoRedoState.redoStack.pop();
+        }
+      }
+    }
+    
+    // Pop from undo stack
+    const prev = this._undoRedoState.undoStack.shift();
+    if (prev) {
+      const idx = this._drawings.findIndex((d) => d.id === prev.id);
+      if (idx >= 0) {
+        this._drawings[idx] = prev;
+      }
+    }
+    
+    this._updateUndoRedoState();
+    this._emit({ type: 'renderRequested' });
+  }
+
+  /**
+   * Redo the last undone drawing action.
+   * Restores a drawing to a state that was previously undone.
+   */
+  redo(): void {
+    if (this._undoRedoState.redoStack.length === 0) return;
+    
+    const next = this._undoRedoState.redoStack.shift();
+    if (next) {
+      // Push current state to undo stack
+      const current = this._drawings.find((d) => d.id === next.id);
+      if (current) {
+        this._undoRedoState.undoStack.unshift(current);
+        if (this._undoRedoState.undoStack.length > this._undoRedoState.maxStackSize) {
+          this._undoRedoState.undoStack.pop();
+        }
+      }
+      
+      const idx = this._drawings.findIndex((d) => d.id === next.id);
+      if (idx >= 0) {
+        this._drawings[idx] = next;
+      } else {
+        this._drawings.push(next);
+      }
+    }
+    
+    this._updateUndoRedoState();
+    this._emit({ type: 'renderRequested' });
+  }
+
+  /**
+   * Record the current state for undo. Call this after significant changes
+   * (anchor drag, drawing modification, etc.)
+   */
+  recordUndoState(): void {
+    if (this._selectedId) {
+      const selected = this._drawings.find((d) => d.id === this._selectedId);
+      if (selected) {
+        const copy = { ...selected, anchors: selected.anchors.map((a) => ({ ...a })) };
+        this._undoRedoState.undoStack.unshift(copy);
+        if (this._undoRedoState.undoStack.length > this._undoRedoState.maxStackSize) {
+          this._undoRedoState.undoStack.pop();
+        }
+        // Clear redo stack on new action
+        this._undoRedoState.redoStack = [];
+        this._updateUndoRedoState();
+      }
+    }
+  }
+
+  /**
+   * Get current undo/redo state (for UI indicators).
+   */
+  getUndoRedoState(): UndoRedoState {
+    return { ...this._undoRedoState };
+  }
+
+  // ─── PHASE 1: Keyboard Manager Integration ──────────────────────────────
+
+  /**
+   * Attach keyboard manager to handle shortcuts.
+   */
+  attachKeyboardManager(kbm: KeyboardManager): void {
+    this._keyboardManager = kbm;
+    this._registerKeyboardCallbacks();
+  }
+
+  /**
+   * Get the current keyboard manager (if attached).
+   */
+  getKeyboardManager(): KeyboardManager | null {
+    return this._keyboardManager;
+  }
+
+  // ─── PHASE 1: Modal Handler Integration ──────────────────────────────────
+
+  /**
+   * Ensure page is ready (modals dismissed, page idle).
+   */
+  async ensurePageReady(page: any): Promise<void> {
+    try {
+      await ensurePageReady(page);
+    } catch (err) {
+      console.warn('[DrawingEngine] Modal handler error:', err);
+    }
+  }
+
+  /**
+   * Dismiss any open modals on the page.
+   */
+  async dismissPageModals(page: any): Promise<void> {
+    try {
+      await dismissModals(page);
+    } catch (err) {
+      console.warn('[DrawingEngine] Failed to dismiss modals:', err);
+    }
+  }
+
   // ─── Private helpers ─────────────────────────────────────────────────────
 
   private _transition(next: DrawingState): void {
@@ -485,7 +664,7 @@ export class DrawingEngine {
   private _hitTest(sp: ScreenPoint): HitResult {
     if (!this._viewport) return { drawing: null, anchorIndex: -1, distancePx: Infinity };
 
-    const HIT_RADIUS = 8; // pixels
+    const HIT_RADIUS = 24; // TV-style body hit tolerance in pixels
     const HANDLE_RADIUS = 6;
 
     let best: HitResult = { drawing: null, anchorIndex: -1, distancePx: Infinity };
@@ -558,6 +737,137 @@ export class DrawingEngine {
     this._dragMoveOriginals = [];
     this._transition(DrawingState.SELECTED);
     this._emit({ type: 'renderRequested' });
+  }
+
+  // ─── PHASE 1: Initialization Methods ─────────────────────────────────────
+
+  private _initializeKeyboardManager(): void {
+    try {
+      this._keyboardManager = createDefaultKeyboardManager();
+      this._registerKeyboardCallbacks();
+    } catch (err) {
+      console.warn('[DrawingEngine] Failed to initialize keyboard manager:', err);
+    }
+  }
+
+  private _registerKeyboardCallbacks(): void {
+    if (!this._keyboardManager) return;
+
+    // Escape: Cancel draft or deselect
+    this._keyboardManager.register('Escape', () => {
+      if (this._draft) {
+        this.cancel();
+      } else if (this._selectedId) {
+        this.select(null);
+      }
+    });
+
+    // Delete / Backspace: Delete selected drawing
+    this._keyboardManager.register('Delete', () => { this.deleteSelected(); });
+    this._keyboardManager.register('Backspace', () => { this.deleteSelected(); });
+
+    // Ctrl+Z: Undo
+    this._keyboardManager.register('Control+z', () => this.undo());
+    this._keyboardManager.register('Control+Z', () => this.undo());
+
+    // Ctrl+Y: Redo
+    this._keyboardManager.register('Control+y', () => this.redo());
+    this._keyboardManager.register('Control+Y', () => this.redo());
+
+    // Ctrl+A: Select all drawings
+    this._keyboardManager.register('Control+a', () => this._selectAllDrawings());
+    this._keyboardManager.register('Control+A', () => this._selectAllDrawings());
+
+    // Ctrl+C: Copy selected drawing
+    this._keyboardManager.register('Control+c', () => this._copySelectedDrawing());
+    this._keyboardManager.register('Control+C', () => this._copySelectedDrawing());
+
+    // Ctrl+V: Paste drawing
+    this._keyboardManager.register('Control+v', () => this._pasteDrawing());
+    this._keyboardManager.register('Control+V', () => this._pasteDrawing());
+
+    // Ctrl+D: Duplicate selected drawing
+    this._keyboardManager.register('Control+d', () => this._duplicateSelectedDrawing());
+    this._keyboardManager.register('Control+D', () => this._duplicateSelectedDrawing());
+  }
+
+  private _initializeModalHandling(): void {
+    // Modal handler is available as async methods on the engine
+    // Called when needed (e.g., before critical operations)
+  }
+
+  // ─── PHASE 1: Helper Methods ─────────────────────────────────────────────
+
+  private _updateUndoRedoState(): void {
+    this._undoRedoState.canUndo = this._undoRedoState.undoStack.length > 0;
+    this._undoRedoState.canRedo = this._undoRedoState.redoStack.length > 0;
+  }
+
+  private _selectAllDrawings(): void {
+    if (this._drawings.length === 0) return;
+    // Select first drawing (can extend to multi-select in future)
+    this.select(this._drawings[0].id);
+  }
+
+  private _copySelectedDrawing(): void {
+    if (!this._selectedId) return;
+    const drawing = this._drawings.find((d) => d.id === this._selectedId);
+    if (drawing) {
+      try {
+        // Store in sessionStorage for cross-session copy/paste
+        sessionStorage.setItem(
+          'drawing-clipboard',
+          JSON.stringify({
+            drawing: { ...drawing, id: makeId() },
+            timestamp: Date.now(),
+          })
+        );
+      } catch (err) {
+        console.warn('[DrawingEngine] Copy to clipboard failed:', err);
+      }
+    }
+  }
+
+  private _pasteDrawing(): void {
+    try {
+      const data = sessionStorage.getItem('drawing-clipboard');
+      if (!data) return;
+        const { drawing } = JSON.parse(data) as { drawing?: Drawing };
+        if (drawing) {
+        // Offset slightly to avoid overlap
+        const offset: DrawPoint = drawing.anchors[0];
+        const offsetted: DrawPoint = {
+          ...offset,
+          time: (Number(offset.time) + 86400) as DrawPoint['time'], // +1 day
+        };
+        const offsettedAnchors = drawing.anchors.map((a: DrawPoint, i: number) => 
+          i === 0 ? offsetted : a
+        );
+        this.addDrawing({ ...drawing, anchors: offsettedAnchors });
+      }
+    } catch (err) {
+      console.warn('[DrawingEngine] Paste from clipboard failed:', err);
+    }
+  }
+
+  private _duplicateSelectedDrawing(): void {
+    if (!this._selectedId) return;
+    const drawing = this._drawings.find((d) => d.id === this._selectedId);
+    if (drawing) {
+      const dup: Drawing = {
+        ...drawing,
+        id: makeId(),
+        anchors: drawing.anchors.map((a) => ({ ...a })),
+      };
+      // Offset duplicate slightly
+      const offset: DrawPoint = dup.anchors[0];
+      dup.anchors[0] = {
+        ...offset,
+        time: (Number(offset.time) + 86400) as DrawPoint['time'],
+      };
+      this.addDrawing(dup);
+      this.select(dup.id);
+    }
   }
 
   private _renderHandle(ctx: CanvasRenderingContext2D, handle: HandleDescriptor, color: string): void {

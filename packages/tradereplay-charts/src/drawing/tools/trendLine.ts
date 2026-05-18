@@ -13,6 +13,7 @@
 
 import type {
   Drawing,
+  DrawingVariant,
   DrawPoint,
   HandleDescriptor,
   DrawingOptions,
@@ -33,8 +34,8 @@ import {
 import { BaseTool } from './base.ts';
 
 export class TrendLineTool extends BaseTool {
-  readonly variant = 'trend' as const;
-  readonly label = 'Trend Line';
+  readonly variant: DrawingVariant = 'trend';
+  readonly label: string = 'Trend Line';
   readonly anchorCount = 2;
   readonly isPointOnly = false;
 

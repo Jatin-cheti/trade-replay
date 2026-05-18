@@ -9,6 +9,6 @@ import { registerV2ToolSuite } from "./tv-parity-v2-factory";
 
 registerV2ToolSuite({
   variant: "fibSpeedResistArcs",
-  testId: "fib-speed-resist-arcs",
+  testId: "fib-speed-resistance-arcs",
   railTestId: "rail-fib",
 });

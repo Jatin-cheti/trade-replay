@@ -21,7 +21,7 @@
  *   registerV2ToolSuite({ variant: "trend", testId: "tool-trendline" });
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const BASE_URL = process.env.E2E_TARGET_URL || "https://tradereplay.me";
@@ -84,6 +84,12 @@ export function registerV2ToolSuite(TOOL: ToolDefV2) {
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+        // Always set 1Y period first so chart data loads reliably
+        const yearBtn = page.locator("[data-testid='period-btn-1y']").first();
+        if (await yearBtn.count()) {
+          await yearBtn.dispatchEvent("click").catch(() => {});
+          await page.waitForTimeout(1500);
+        }
         for (const period of ["1m", "1y", "5y", "all"]) {
           if (await page.locator("[data-testid='chart-interaction-surface']").count()) break;
           const btn = page.locator(`[data-testid='period-btn-${period}']`).first();

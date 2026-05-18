@@ -9,6 +9,6 @@ import { registerV2ToolSuite } from "./tv-parity-v2-factory";
 
 registerV2ToolSuite({
   variant: "fibSpeedResistFan",
-  testId: "fib-speed-resist-fan",
+  testId: "fib-speed-resistance-fan",
   railTestId: "rail-fib",
 });

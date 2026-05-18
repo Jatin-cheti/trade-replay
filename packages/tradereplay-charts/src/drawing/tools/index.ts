@@ -5,8 +5,13 @@
 
 export { TrendLineTool } from './trendLine.ts';
 export { RayLineTool } from './rayLine.ts';
+export { InfoLineTool } from './infoLine.ts';
+export { ExtendedLineTool } from './extendedLine.ts';
+export { TrendAngleTool } from './trendAngle.ts';
 export { HorizontalLineTool } from './horizontalLine.ts';
+export { HorizontalRayTool } from './horizontalRay.ts';
 export { VerticalLineTool } from './verticalLine.ts';
+export { CrossLineTool } from './crossLine.ts';
 export { RectangleTool } from './rectangle.ts';
 export { ExtendedLineTool } from './extendedLine.ts';
 export { InfoLineTool } from './infoLine.ts';
@@ -69,8 +74,13 @@ export { GannFanTool } from './gannFan.ts';
 import type { IDrawingTool } from '../types.ts';
 import { TrendLineTool } from './trendLine.ts';
 import { RayLineTool } from './rayLine.ts';
+import { InfoLineTool } from './infoLine.ts';
+import { ExtendedLineTool } from './extendedLine.ts';
+import { TrendAngleTool } from './trendAngle.ts';
 import { HorizontalLineTool } from './horizontalLine.ts';
+import { HorizontalRayTool } from './horizontalRay.ts';
 import { VerticalLineTool } from './verticalLine.ts';
+import { CrossLineTool } from './crossLine.ts';
 import { RectangleTool } from './rectangle.ts';
 import { ExtendedLineTool } from './extendedLine.ts';
 import { InfoLineTool } from './infoLine.ts';

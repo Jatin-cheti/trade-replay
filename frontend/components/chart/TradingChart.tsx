@@ -41,6 +41,8 @@ import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 import IndicatorsModal from '@/components/chart/IndicatorsModal';
 import ChartPromptModal, { type ChartPromptRequest } from '@/components/chart/ChartPromptModal';
 import FloatingDrawingToolbar, { type FloatingToolbarAnchor } from '@/components/chart/FloatingDrawingToolbar';
+import DrawingContextMenu from '@/components/chart/DrawingContextMenu';
+import DrawingSettingsPanel from '@/components/chart/DrawingSettingsPanel';
 import type { IconPresetSelection } from '@/components/chart/IconToolPanel';
 import { toast } from 'sonner';
 
@@ -366,6 +368,8 @@ export default function TradingChart({
   const [fullView, setFullView] = useState(false);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [hoveredDrawingId, setHoveredDrawingId] = useState<string | null>(null);
+  const [drawingContextMenu, setDrawingContextMenu] = useState<{ x: number; y: number; drawingId: string } | null>(null);
+  const [drawingSettingsId, setDrawingSettingsId] = useState<string | null>(null);
   // Ref mirror so renderOverlay's RAF callback can read hoveredDrawingId
   // without stale-closure issues (updated synchronously in every setter call).
   const hoveredDrawingIdRef = useRef<string | null>(null);
@@ -981,6 +985,20 @@ export default function TradingChart({
     () => drawingsRef.current.find((drawing) => drawing.id === selectedDrawingId) || null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawingsRef, selectedDrawingId, toolState.drawings]
+  );
+  const drawingContextTarget = useMemo(
+    () => drawingsRef.current.find((drawing) => drawing.id === drawingContextMenu?.drawingId) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drawingContextMenu?.drawingId, drawingsRef, toolState.drawings]
+  );
+  const drawingSettingsTarget = useMemo(
+    () => drawingsRef.current.find((drawing) => drawing.id === drawingSettingsId) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drawingSettingsId, drawingsRef, toolState.drawings]
+  );
+  const drawingSettingsDefinition = useMemo(
+    () => drawingSettingsTarget ? getToolDefinition(drawingSettingsTarget.variant) : null,
+    [drawingSettingsTarget],
   );
 
   const clearPromptState = useCallback(() => {
@@ -4379,11 +4397,7 @@ export default function TradingChart({
       return;
     }
 
-    const definition = getToolDefinition(drawing.variant);
-    handleVariantSelect(definition?.category ?? 'lines', drawing.variant);
-    setOptions({ ...drawing.options });
-    setOptionsOpen(true);
-    setExpandedCategory(null);
+    setDrawingContextMenu({ x: event.clientX, y: event.clientY, drawingId: selected });
     renderOverlay();
   };
 
@@ -4967,10 +4981,7 @@ export default function TradingChart({
     setHoveredDrawingId(null);
   }, [removeDrawing, selectedDrawingId]);
 
-  const handleToolbarDuplicate = useCallback(() => {
-    if (!selectedDrawingId) return;
-    const src = drawingsRef.current.find((d) => d.id === selectedDrawingId);
-    if (!src) return;
+  const cloneDrawingWithOffset = useCallback((src: Drawing): Drawing => {
     // Offset each anchor by ~12 bars in time and ~0.5% in price so the copy is visible.
     const offsetSec = 12 * 60;
     const priceDelta = Math.max(0.01, Math.abs(src.anchors[0]?.price ?? 1) * 0.005);
@@ -4986,9 +4997,56 @@ export default function TradingChart({
       selected: false,
       text: src.text,
     };
+    return clone;
+  }, []);
+
+  const duplicateDrawing = useCallback((id: string) => {
+    const src = drawingsRef.current.find((d) => d.id === id);
+    if (!src || src.locked) return;
+    const clone = cloneDrawingWithOffset(src);
     updateAllDrawings((prev) => [...prev, clone]);
     setSelectedDrawingId(clone.id);
-  }, [drawingsRef, selectedDrawingId, updateAllDrawings]);
+    setHoveredDrawingId(clone.id);
+    renderOverlay();
+  }, [cloneDrawingWithOffset, drawingsRef, renderOverlay, updateAllDrawings]);
+
+  const handleToolbarDuplicate = useCallback(() => {
+    if (!selectedDrawingId) return;
+    duplicateDrawing(selectedDrawingId);
+  }, [duplicateDrawing, selectedDrawingId]);
+
+  const copyDrawingToClipboard = useCallback((id: string) => {
+    const src = drawingsRef.current.find((d) => d.id === id);
+    if (!src) return;
+    try {
+      window.sessionStorage.setItem('drawing-clipboard', JSON.stringify({
+        drawing: {
+          ...src,
+          anchors: src.anchors.map((anchor) => ({ ...anchor })),
+          options: { ...src.options },
+        },
+        timestamp: Date.now(),
+      }));
+    } catch {
+      /* sessionStorage can be unavailable in private contexts */
+    }
+  }, [drawingsRef]);
+
+  const pasteDrawingFromClipboard = useCallback(() => {
+    try {
+      const raw = window.sessionStorage.getItem('drawing-clipboard');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { drawing?: Drawing };
+      if (!parsed.drawing) return;
+      const clone = cloneDrawingWithOffset(parsed.drawing);
+      updateAllDrawings((prev) => [...prev, clone]);
+      setSelectedDrawingId(clone.id);
+      setHoveredDrawingId(clone.id);
+      renderOverlay();
+    } catch {
+      /* Ignore malformed clipboard payloads. */
+    }
+  }, [cloneDrawingWithOffset, renderOverlay, updateAllDrawings]);
 
   const handleToolbarAddText = useCallback(() => {
     if (!selectedDrawingId) return;
@@ -5049,8 +5107,118 @@ export default function TradingChart({
   }, [drawingsRef, selectedDrawingId, toolState.options]);
 
   const handleToolbarOpenSettings = useCallback(() => {
-    setOptionsOpen(true);
+    if (!selectedDrawingId) return;
+    setDrawingSettingsId(selectedDrawingId);
+  }, [selectedDrawingId]);
+
+  const openDrawingSettings = useCallback((id: string) => {
+    const drawing = drawingsRef.current.find((item) => item.id === id);
+    if (!drawing) return;
+    const definition = getToolDefinition(drawing.variant);
+    handleVariantSelect(definition?.category ?? 'lines', drawing.variant);
+    setOptions({ ...drawing.options });
+    setOptionsOpen(false);
+    setExpandedCategory(null);
+    setDrawingSettingsId(id);
+  }, [drawingsRef, handleVariantSelect, setOptions]);
+
+  const handleSaveDrawingSettings = useCallback((partial: Partial<Drawing['options']>) => {
+    if (!drawingSettingsId) return;
+    updateDrawing(
+      drawingSettingsId,
+      (drawing) => {
+        const nextOptions = { ...drawing.options, ...partial };
+        return {
+          ...drawing,
+          options: nextOptions,
+          locked: partial.locked ?? drawing.locked,
+          visible: partial.visible ?? drawing.visible,
+        };
+      },
+      false,
+    );
+    setOptions(partial);
+    setDrawingSettingsId(null);
+    renderOverlay();
+  }, [drawingSettingsId, renderOverlay, setOptions, updateDrawing]);
+
+  const closeDrawingSettings = useCallback(() => {
+    setDrawingSettingsId(null);
   }, []);
+
+  const handleDrawingContextDelete = useCallback(() => {
+    const id = drawingContextMenu?.drawingId;
+    if (!id) return;
+    const drawing = drawingsRef.current.find((item) => item.id === id);
+    if (drawing?.locked) return;
+    removeDrawing(id);
+    setSelectedDrawingId((current) => (current === id ? null : current));
+    setHoveredDrawingId((current) => (current === id ? null : current));
+    renderOverlay();
+  }, [drawingContextMenu?.drawingId, drawingsRef, removeDrawing, renderOverlay]);
+
+  const handleDrawingContextEdit = useCallback(() => {
+    const id = drawingContextMenu?.drawingId;
+    if (!id) return;
+    setSelectedDrawingId(id);
+    const drawing = drawingsRef.current.find((item) => item.id === id);
+    if (!drawing) return;
+    const definition = getToolDefinition(drawing.variant);
+    if (definition?.capabilities.supportsText) {
+      const anchor = drawing.anchors[0];
+      if (!anchor) return;
+      pendingTextPointRef.current = anchor;
+      pendingTextVariantRef.current = drawing.variant as Exclude<ToolVariant, 'none'>;
+      editingDrawingIdRef.current = drawing.id;
+      setPromptRequest({
+        title: `Edit ${definition.label}`,
+        label: 'Text',
+        defaultValue: drawing.text ?? '',
+        preview: true,
+        allowStyleControls: true,
+        styleOptions: {
+          font: drawing.options.font,
+          textSize: drawing.options.textSize,
+          bold: drawing.options.bold,
+          italic: drawing.options.italic,
+          align: drawing.options.align,
+          textBackground: drawing.options.textBackground,
+          textBorder: drawing.options.textBorder,
+        },
+      });
+      return;
+    }
+    openDrawingSettings(id);
+  }, [drawingContextMenu?.drawingId, drawingsRef, openDrawingSettings]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable === true) return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+
+      const key = event.key.toLowerCase();
+      if (key === 'c' && selectedDrawingId) {
+        event.preventDefault();
+        copyDrawingToClipboard(selectedDrawingId);
+      } else if (key === 'v') {
+        event.preventDefault();
+        pasteDrawingFromClipboard();
+      } else if (key === 'd' && selectedDrawingId) {
+        event.preventDefault();
+        duplicateDrawing(selectedDrawingId);
+      } else if (key === 'a' && drawingsRef.current.length > 0) {
+        event.preventDefault();
+        const top = drawingsRef.current[drawingsRef.current.length - 1];
+        setSelectedDrawingId(top.id);
+        setHoveredDrawingId(top.id);
+        renderOverlay();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [copyDrawingToClipboard, drawingsRef, duplicateDrawing, pasteDrawingFromClipboard, renderOverlay, selectedDrawingId]);
 
   const floatingPortalZIndex = fullView ? 165 : 60;
   const dialogPortalZIndex = fullView ? 170 : 50;
@@ -5441,6 +5609,34 @@ export default function TradingChart({
               onDuplicate={handleToolbarDuplicate}
               onDelete={handleToolbarDelete}
               onOpenSettings={handleToolbarOpenSettings}
+            />
+
+            <DrawingContextMenu
+              open={Boolean(drawingContextMenu && drawingContextTarget)}
+              drawing={drawingContextTarget}
+              x={drawingContextMenu?.x ?? 0}
+              y={drawingContextMenu?.y ?? 0}
+              onClose={() => setDrawingContextMenu(null)}
+              onCopy={() => {
+                if (drawingContextMenu?.drawingId) copyDrawingToClipboard(drawingContextMenu.drawingId);
+              }}
+              onEdit={handleDrawingContextEdit}
+              onDuplicate={() => {
+                if (drawingContextMenu?.drawingId) duplicateDrawing(drawingContextMenu.drawingId);
+              }}
+              onDelete={handleDrawingContextDelete}
+              onSettings={() => {
+                if (drawingContextMenu?.drawingId) openDrawingSettings(drawingContextMenu.drawingId);
+              }}
+            />
+
+            <DrawingSettingsPanel
+              open={Boolean(drawingSettingsId && drawingSettingsTarget)}
+              drawing={drawingSettingsTarget}
+              optionsSchema={drawingSettingsDefinition?.optionsSchema || []}
+              portalZIndex={dialogPortalZIndex + 2}
+              onSave={handleSaveDrawingSettings}
+              onCancel={closeDrawingSettings}
             />
 
             <IndicatorsModal open={indicatorsOpen} onOpenChange={setIndicatorsOpen} enabledIndicators={enabledIndicators} onAddIndicator={addIndicator} onRemoveIndicator={removeEnabledIndicator} builtinIds={builtinIds} portalZIndex={dialogPortalZIndex} />
