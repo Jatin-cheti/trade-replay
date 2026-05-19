@@ -79,15 +79,12 @@ async function drawPitchfork(page: Page, c: PitchforkCase): Promise<string> {
   // wizard. They commit on a single pointer drag (down → move → up), with
   // remaining anchors auto-filled.
   const p1 = { x: box.x + plotW * 0.30, y: box.y + h * 0.60 };
-  const p2 = { x: box.x + plotW * 0.70, y: box.y + h * 0.35 };
-  await page.mouse.move(p1.x, p1.y);
-  await page.mouse.down();
-  for (let i = 1; i <= 6; i += 1) {
-    const t = i / 6;
-    await page.mouse.move(p1.x + (p2.x - p1.x) * t, p1.y + (p2.y - p1.y) * t);
-  }
-  await page.mouse.up();
-  await page.waitForTimeout(200);
+  const p2 = { x: box.x + plotW * 0.50, y: box.y + h * 0.32 };
+  const p3 = { x: box.x + plotW * 0.72, y: box.y + h * 0.66 };
+  await clickAt(page, p1.x, p1.y);
+  await clickAt(page, p2.x, p2.y);
+  await clickAt(page, p3.x, p3.y);
+  await page.waitForTimeout(150);
   const id = await page.evaluate(() =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__chartDebug?.getLatestDrawingId?.() ?? null,

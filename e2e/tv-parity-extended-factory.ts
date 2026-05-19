@@ -242,6 +242,36 @@ async function drawSingleClick(
   await dismissModal(page);
 }
 
+async function drawClickSequence(
+  page: Page,
+  box: { x: number; y: number; width: number; height: number },
+  i: number,
+  anchorCount: number,
+) {
+  const cx = box.x + box.width / 2 + ((i % 8) - 3.5) * 30;
+  const cy = box.y + box.height / 2 + ((Math.floor(i / 8) % 4) - 1.5) * 20;
+  const N = Math.max(2, anchorCount);
+  // Bias angle toward horizontal so clicks keep strong x-separation (avoids
+  // the "collapsed dx" rejection seen in pattern tools with vertical sequences).
+  const angle = (((i % 5) - 2) / 2) * (Math.PI / 6);
+  const span = Math.max(60, 18 * (N - 1)) + (i % 5) * 6;
+  const x1 = cx - Math.cos(angle) * span;
+  const y1 = cy - Math.sin(angle) * span;
+  const x2 = cx + Math.cos(angle) * span;
+  const y2 = cy + Math.sin(angle) * span;
+  for (let k = 0; k < N; k++) {
+    const t = k / (N - 1);
+    const px = x1 + (x2 - x1) * t;
+    const internal = k > 0 && k < N - 1;
+    const jitter = internal ? ((k % 2 === 0 ? -1 : 1) * 8) : 0;
+    const py = y1 + (y2 - y1) * t + jitter;
+    await page.mouse.click(px, py);
+    await page.waitForTimeout(70);
+  }
+  await page.waitForTimeout(160);
+  await dismissModal(page);
+}
+
 async function drawTool(
   page: Page,
   def: ExtendedToolDef,
@@ -260,8 +290,11 @@ async function drawTool(
       return drawSingleClick(page, box, i);
     case "brush":
     case "arrowLine":
+      return drawDrag(page, box, i);
     case "shape":
-      // 2-anchor drag-commit tools.
+      if (def.commitMode === "click-sequence") {
+        return drawClickSequence(page, box, i, def.anchorCount ?? 3);
+      }
       return drawDrag(page, box, i);
     default:
       return drawDrag(page, box, i);

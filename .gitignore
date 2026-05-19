@@ -47,6 +47,9 @@ e2e/tv-deep-parity-output/
 e2e/tv-references/
 e2e/output/
 e2e/**/*.log
+e2e/factories/run-report*.json
+e2e/factories/_*/
+e2e/factories/*/screenshots/
 tests/integration/e2e/test-results/
 
 # Misc
