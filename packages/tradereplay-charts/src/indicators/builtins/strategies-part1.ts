@@ -285,7 +285,7 @@ const atrTrailingDef = strategyDef('strat_atrTrailing', 'ATR Trailing Stop Strat
     for (let i = p; i < n; i++) {
       if (!close[i] || !atr[i]) continue;
       const c = close[i]!, a = atr[i]! * mult;
-      const prevLong = isLong;
+      const prevLong: boolean = isLong;
       if (isLong) { stop = Math.max(stop, c - a); if (c < stop) { isLong = false; stop = c + a; } }
       else { stop = Math.min(stop, c + a); if (c > stop) { isLong = true; stop = c - a; } }
       if (isLong !== prevLong) out[i] = isLong ? 1 : -1;

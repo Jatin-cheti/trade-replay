@@ -72,7 +72,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
         /* ignore */
       }
     }, prodToken);
-    await page.goto(`${BASE_URL}/charts?symbol=${SYMBOL}&period=1y`, { waitUntil: "load" });
+    await page.goto(`${BASE_URL}/charts?symbol=${SYMBOL}`, { waitUntil: "load" });
     await page.waitForSelector("[data-testid='chart-interaction-surface']", { timeout: 25000 });
     await page.waitForFunction(
       () => (window as any).__chartDebug && (window as any).__chartDebug.getScrollPosition?.() !== null,
@@ -165,13 +165,7 @@ export function register500ToolSuite(TOOL: ToolDef) {
   async function drawTool(page: Page, x1: number, y1: number, x2: number, y2: number) {
     if (COMMIT_MODE === "click") {
       await page.mouse.click(x1, y1);
-      await page.waitForTimeout(250);
-      // Press Escape first to commit any open text editor (TV parity: Escape exits
-      // text-edit mode and keeps the drawing with whatever text was typed, even empty).
-      // Safe for non-text click tools (hline/vline/crossLine/horizontalRay) — Escape
-      // just deactivates the tool after the drawing is already committed.
-      await page.keyboard.press("Escape");
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(140);
       await dismissModal(page);
       return;
     }

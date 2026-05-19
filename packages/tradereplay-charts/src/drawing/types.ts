@@ -123,13 +123,13 @@ export interface DrawingOptions {
   textBackground?: boolean;
   /** Show text border. */
   textBorder?: boolean;
-  /** Fib/Gann: explicit list of levels to render (e.g., [0, 0.382, 0.618, 1]). */
+  /** Fib/Gann: explicit list of levels to render. */
   fibLevels?: number[];
   /** Fib/Gann: how level labels are formatted. */
   fibLabelMode?: 'ratio-price' | 'price' | 'percent' | 'ratio';
-  /** Fib/Gann: show price-tagged labels at each level. */
+  /** Fib/Gann: show per-level price labels. */
   priceLabel?: boolean;
-  /** Fib/Gann: stroke/fill alpha (0..1). */
+  /** Shared fill/stroke alpha for tools that expose opacity in settings. */
   opacity?: number;
 }
 
@@ -146,6 +146,12 @@ export type DrawingVariant =
   | 'crossLine'
   | 'channel'
   | 'regressionTrend'
+  | 'flatTopBottom'
+  | 'disjointChannel'
+  | 'pitchfork'
+  | 'schiffPitchfork'
+  | 'modifiedSchiffPitchfork'
+  | 'insidePitchfork'
   | 'rectangle'
   | 'brush'
   | 'highlighter'
@@ -174,18 +180,13 @@ export type DrawingVariant =
   | 'fibSpeedResistArcs'
   | 'fibWedge'
   | 'pitchfan'
-  | 'pitchfork'
-  | 'schiffPitchfork'
-  | 'modifiedSchiffPitchfork'
-  | 'insidePitchfork'
-  | 'parallelChannel'
-  | 'disjointChannel'
-  | 'flatTopBottom'
-  | 'sineLine'
   | 'gannBox'
   | 'gannSquareFixed'
   | 'gannSquare'
   | 'gannFan'
+  | 'sineLine'
+  | 'cyclicLines'
+  | 'timeCycles'
   | 'xabcd'
   | 'cypherPattern'
   | 'headAndShoulders'
@@ -197,8 +198,6 @@ export type DrawingVariant =
   | 'elliottTriangle'
   | 'elliottDoubleCombo'
   | 'elliottTripleCombo'
-  | 'cyclicLines'
-  | 'timeCycles'
   | 'longPosition'
   | 'shortPosition';
 

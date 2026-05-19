@@ -18,7 +18,7 @@ interface ChannelCase {
 }
 
 const CASES: ChannelCase[] = [
-  { variant: "channel", testId: "tool-parallel-channel", anchors: 2 },
+  { variant: "channel", testId: "tool-parallel-channel", anchors: 3 },
   { variant: "regressionTrend", testId: "tool-regression-trend", anchors: 2 },
   { variant: "flatTopBottom", testId: "tool-flat-top-bottom", anchors: 2 },
   { variant: "disjointChannel", testId: "tool-disjoint-channel", anchors: 4 },
@@ -78,16 +78,19 @@ async function drawChannel(page: Page, c: ChannelCase): Promise<string> {
   // For 4-anchor (disjointChannel), pick two well-separated pairs.
   const p1 = { x: box.x + plotW * 0.30, y: box.y + h * 0.60 };
   const p2 = { x: box.x + plotW * 0.70, y: box.y + h * 0.40 };
-  if (c.anchors > 2) {
-    // Non-click-click variants (>=3 anchors on line-family) commit via a
-    // click-drag between two points (pointerdown → move → pointerup).
-    await page.mouse.move(p1.x, p1.y);
-    await page.mouse.down();
-    for (let i = 1; i <= 6; i += 1) {
-      const t = i / 6;
-      await page.mouse.move(p1.x + (p2.x - p1.x) * t, p1.y + (p2.y - p1.y) * t);
-    }
-    await page.mouse.up();
+  if (c.anchors === 3) {
+    const p3 = { x: box.x + plotW * 0.52, y: box.y + h * 0.25 };
+    await clickAt(page, p1.x, p1.y);
+    await clickAt(page, p2.x, p2.y);
+    await clickAt(page, p3.x, p3.y);
+    await page.waitForTimeout(150);
+  } else if (c.anchors === 4) {
+    const p3 = { x: box.x + plotW * 0.36, y: box.y + h * 0.78 };
+    const p4 = { x: box.x + plotW * 0.74, y: box.y + h * 0.57 };
+    await clickAt(page, p1.x, p1.y);
+    await clickAt(page, p2.x, p2.y);
+    await clickAt(page, p3.x, p3.y);
+    await clickAt(page, p4.x, p4.y);
     await page.waitForTimeout(150);
   } else {
     await clickAt(page, p1.x, p1.y);

@@ -1,12 +1,12 @@
 /**
- * ParallelChannel tool — two parallel extended lines with a fill between them.
+ * ParallelChannel tool — 3-anchor channel with baseline + parallel rail.
  *
  * TV parity:
- * - 3 anchors: anchor[0]+anchor[1] define the baseline (center line),
- *   anchor[2] controls the perpendicular offset of the parallel rail.
- * - All three lines extend across the full canvas.
- * - Semi-transparent fill between the upper and lower rails.
- * - Selection: 3 circle handles (one per anchor).
+ * - Anchor[0] = baseline start, anchor[1] = baseline end, anchor[2] = rail offset
+ * - Renders: center baseline, upper rail, lower rail (parallel), translucent fill
+ * - 3-click wizard: click baseline-start → click baseline-end → click rail position
+ * - Hit test: near any of the three lines
+ * - Selection handles at all 3 anchors
  */
 
 import type {
@@ -15,119 +15,84 @@ import type {
   HandleDescriptor,
   DrawingOptions,
   Viewport,
+  AxisHighlight,
 } from '../types.ts';
 import {
   dataToScreen,
   distanceToLine,
   distanceToSegment,
+  clipSegment,
   rayEndpoint,
   reverseRayEndpoint,
   applyLineStyle,
   drawCircleHandle,
+  drawPriceLabel,
   hexToRgba,
 } from '../geometry.ts';
+import type { ScreenPoint } from '../types.ts';
 import { BaseTool } from './base.ts';
 
-type SP = { x: number; y: number };
-
-const EPSILON = 1e-6;
-
-function normalize(v: SP): SP {
-  const mag = Math.hypot(v.x, v.y);
-  return mag < EPSILON ? { x: 0, y: 0 } : { x: v.x / mag, y: v.y / mag };
+function perpNormalize(dx: number, dy: number): { nx: number; ny: number } {
+  const len = Math.hypot(dx, dy) || 1;
+  return { nx: -dy / len, ny: dx / len };
 }
 
-function perpendicular(v: SP): SP {
-  return { x: -v.y, y: v.x };
+function signedDist(point: ScreenPoint, lineStart: ScreenPoint, lineEnd: ScreenPoint): number {
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return 0;
+  return ((point.x - lineStart.x) * dy - (point.y - lineStart.y) * dx) / len;
 }
 
-function signedDistanceToLine(pt: SP, a: SP, b: SP): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const mag = Math.hypot(dx, dy);
-  if (mag < EPSILON) return 0;
-  return ((pt.x - a.x) * dy - (pt.y - a.y) * dx) / mag;
-}
-
-function shiftPoint(p: SP, normal: SP, offset: number): SP {
-  return { x: p.x + normal.x * offset, y: p.y + normal.y * offset };
-}
-
-function extendedLine(a: SP, b: SP, w: number, h: number): [SP, SP] {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  if (Math.abs(dx) < EPSILON && Math.abs(dy) < EPSILON) return [a, b];
-
-  // Find t values where line exits the [0,w] x [0,h] canvas
-  const ts: number[] = [];
-  if (Math.abs(dx) >= EPSILON) {
-    ts.push((0 - a.x) / dx);
-    ts.push((w - a.x) / dx);
-  }
-  if (Math.abs(dy) >= EPSILON) {
-    ts.push((0 - a.y) / dy);
-    ts.push((h - a.y) / dy);
-  }
-
-  const inBounds = (t: number) => {
-    const px = a.x + dx * t;
-    const py = a.y + dy * t;
-    return px >= -0.5 && px <= w + 0.5 && py >= -0.5 && py <= h + 0.5;
-  };
-
-  const valid = ts.filter(inBounds).sort((x, y) => x - y);
-  if (valid.length < 2) return [a, b];
-  const t0 = valid[0];
-  const t1 = valid[valid.length - 1];
-  return [
-    { x: a.x + dx * t0, y: a.y + dy * t0 },
-    { x: a.x + dx * t1, y: a.y + dy * t1 },
-  ];
-}
-
-function shiftedExtendedLine(a: SP, b: SP, offset: number, w: number, h: number): [SP, SP] {
-  const dir = normalize({ x: b.x - a.x, y: b.y - a.y });
-  const perp = perpendicular(dir);
-  const sa = shiftPoint(a, perp, offset);
-  const sb = shiftPoint(b, perp, offset);
-  return extendedLine(sa, sb, w, h);
+function offsetLine(
+  start: ScreenPoint,
+  end: ScreenPoint,
+  offset: number,
+  w: number,
+  h: number,
+): [ScreenPoint, ScreenPoint] | null {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const { nx, ny } = perpNormalize(dx, dy);
+  const os = { x: start.x + nx * offset, y: start.y + ny * offset };
+  const oe = { x: end.x + nx * offset, y: end.y + ny * offset };
+  const extStart = reverseRayEndpoint(os, oe, w, h);
+  const extEnd = rayEndpoint(os, oe, w, h);
+  return clipSegment(extStart, extEnd, w, h);
 }
 
 export class ParallelChannelTool extends BaseTool {
-  readonly variant = 'parallelChannel' as const;
+  readonly variant = 'channel' as const;
   readonly label = 'Parallel Channel';
   readonly anchorCount = 3;
   readonly isPointOnly = false;
 
-  override hitTest(drawing: Drawing, pointer: SP, viewport: Viewport): number {
+  override hitTest(drawing: Drawing, pointer: { x: number; y: number }, viewport: Viewport): number {
     if (drawing.anchors.length < 2) return Infinity;
     const a = dataToScreen(drawing.anchors[0], viewport);
     const b = dataToScreen(drawing.anchors[1], viewport);
     const w = viewport.width - viewport.priceAxisWidth;
     const h = viewport.height - viewport.timeAxisHeight;
 
-    // Center line
     const centerDist = distanceToLine(pointer, a, b);
 
-    // Offset rails
-    let upperOffset = 0;
-    let lowerOffset = 0;
-    if (drawing.anchors.length >= 3) {
-      const c = dataToScreen(drawing.anchors[2], viewport);
-      const signed = signedDistanceToLine(c, a, b);
-      upperOffset = signed;
-      lowerOffset = -signed;
-    } else {
-      const span = Math.max(12, Math.hypot(b.x - a.x, b.y - a.y));
-      upperOffset = span * 0.24;
-      lowerOffset = -upperOffset;
-    }
+    if (drawing.anchors.length < 3) return centerDist;
 
-    const [ua, ub] = shiftedExtendedLine(a, b, upperOffset, w, h);
-    const [la, lb] = shiftedExtendedLine(a, b, lowerOffset, w, h);
+    const c = dataToScreen(drawing.anchors[2], viewport);
+    const offset = signedDist(c, a, b);
 
-    const upperDist = distanceToLine(pointer, ua, ub);
-    const lowerDist = distanceToLine(pointer, la, lb);
+    const upperDist = (() => {
+      const seg = offsetLine(a, b, offset, w, h);
+      if (!seg) return Infinity;
+      return distanceToLine(pointer, seg[0], seg[1]);
+    })();
+
+    const lowerDist = (() => {
+      const seg = offsetLine(a, b, -offset, w, h);
+      if (!seg) return Infinity;
+      return distanceToLine(pointer, seg[0], seg[1]);
+    })();
 
     return Math.min(centerDist, upperDist, lowerDist);
   }
@@ -145,68 +110,61 @@ export class ParallelChannelTool extends BaseTool {
     const w = viewport.width - viewport.priceAxisWidth;
     const h = viewport.height - viewport.timeAxisHeight;
 
-    let upperOffset = 0;
-    let lowerOffset = 0;
+    // Compute offset from 3rd anchor or fallback
+    let offset: number;
     if (drawing.anchors.length >= 3) {
       const c = dataToScreen(drawing.anchors[2], viewport);
-      const signed = signedDistanceToLine(c, a, b);
-      upperOffset = signed;
-      lowerOffset = -signed;
+      offset = signedDist(c, a, b);
     } else {
       const span = Math.max(12, Math.hypot(b.x - a.x, b.y - a.y));
-      upperOffset = span * 0.24;
-      lowerOffset = -upperOffset;
+      offset = span * 0.24;
     }
 
-    const [ca, cb] = extendedLine(a, b, w, h);
-    const [ua, ub] = shiftedExtendedLine(a, b, upperOffset, w, h);
-    const [la, lb] = shiftedExtendedLine(a, b, lowerOffset, w, h);
+    const centerSeg = (() => {
+      const s = reverseRayEndpoint(a, b, w, h);
+      const e = rayEndpoint(a, b, w, h);
+      return clipSegment(s, e, w, h);
+    })();
+    const upperSeg = offsetLine(a, b, offset, w, h);
+    const lowerSeg = offsetLine(a, b, -offset, w, h);
 
     ctx.save();
+    ctx.strokeStyle = drawing.options.color;
+    ctx.lineWidth = drawing.options.lineWidth + (selected ? 1 : 0);
 
-    // Fill between upper and lower rails
-    ctx.beginPath();
-    ctx.moveTo(ua.x, ua.y);
-    ctx.lineTo(ub.x, ub.y);
-    ctx.lineTo(lb.x, lb.y);
-    ctx.lineTo(la.x, la.y);
-    ctx.closePath();
-    ctx.fillStyle = hexToRgba(drawing.options.color, 0.08);
-    ctx.fill();
+    // Translucent fill between rails
+    if (upperSeg && lowerSeg) {
+      ctx.globalAlpha = selected ? 0.14 : 0.08;
+      ctx.fillStyle = drawing.options.color;
+      ctx.beginPath();
+      ctx.moveTo(upperSeg[0].x, upperSeg[0].y);
+      ctx.lineTo(upperSeg[1].x, upperSeg[1].y);
+      ctx.lineTo(lowerSeg[1].x, lowerSeg[1].y);
+      ctx.lineTo(lowerSeg[0].x, lowerSeg[0].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
-    const color = drawing.options.color;
-    const lw = drawing.options.lineWidth + (selected ? 1 : 0);
-    applyLineStyle(ctx, drawing.options.lineStyle, lw);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = lw;
+    applyLineStyle(ctx, drawing.options.lineStyle, drawing.options.lineWidth);
 
-    // Upper rail
-    ctx.beginPath();
-    ctx.moveTo(ua.x, ua.y);
-    ctx.lineTo(ub.x, ub.y);
-    ctx.stroke();
-
-    // Lower rail
-    ctx.beginPath();
-    ctx.moveTo(la.x, la.y);
-    ctx.lineTo(lb.x, lb.y);
-    ctx.stroke();
-
-    // Center line (dashed by convention matching TV)
-    ctx.setLineDash([6, 4]);
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    ctx.moveTo(ca.x, ca.y);
-    ctx.lineTo(cb.x, cb.y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.setLineDash([]);
-
-    if (selected || hovered) {
-      for (const anchor of drawing.anchors) {
-        const sp = dataToScreen(anchor, viewport);
-        drawCircleHandle(ctx, sp, 5, color, true);
-      }
+    if (centerSeg) {
+      ctx.beginPath();
+      ctx.moveTo(centerSeg[0].x, centerSeg[0].y);
+      ctx.lineTo(centerSeg[1].x, centerSeg[1].y);
+      ctx.stroke();
+    }
+    if (upperSeg) {
+      ctx.beginPath();
+      ctx.moveTo(upperSeg[0].x, upperSeg[0].y);
+      ctx.lineTo(upperSeg[1].x, upperSeg[1].y);
+      ctx.stroke();
+    }
+    if (lowerSeg) {
+      ctx.beginPath();
+      ctx.moveTo(lowerSeg[0].x, lowerSeg[0].y);
+      ctx.lineTo(lowerSeg[1].x, lowerSeg[1].y);
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -218,8 +176,7 @@ export class ParallelChannelTool extends BaseTool {
     this.render(ctx, draft, viewport, false, false);
     ctx.globalAlpha = 1;
     for (const anchor of draft.anchors) {
-      const sp = dataToScreen(anchor, viewport);
-      drawCircleHandle(ctx, sp, 5, draft.options.color, false);
+      drawCircleHandle(ctx, dataToScreen(anchor, viewport), 5, draft.options.color, false);
     }
     ctx.restore();
   }
@@ -231,5 +188,29 @@ export class ParallelChannelTool extends BaseTool {
       radius: 5,
       active: false,
     }));
+  }
+
+  override getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (drawing.anchors.length < 2) return null;
+    const a = dataToScreen(drawing.anchors[0], viewport);
+    const b = dataToScreen(drawing.anchors[1], viewport);
+    const w = viewport.width - viewport.priceAxisWidth;
+    const h = viewport.height - viewport.timeAxisHeight;
+
+    if (drawing.anchors.length < 3) {
+      return {
+        xRange: [0, w],
+        yRange: [Math.min(a.y, b.y), Math.max(a.y, b.y)],
+      };
+    }
+
+    const c = dataToScreen(drawing.anchors[2], viewport);
+    const offset = Math.abs(signedDist(c, a, b));
+    const midY = (a.y + b.y) / 2;
+
+    return {
+      xRange: [0, w],
+      yRange: [midY - offset, midY + offset],
+    };
   }
 }

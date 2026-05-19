@@ -1,7 +1,14 @@
 import type { UTCTimestamp } from '@tradereplay/charts';
 import { buildToolOptions, getToolDefinition, type BoundingBox, type DrawPoint, type Drawing, type ToolFamily, type ToolVariant } from './toolRegistry.ts';
 import type { ToolOptions } from './toolOptions.ts';
-import { interpolateDrawPoint } from './drawingGeometry.ts';
+import { getPitchforkGeometry, interpolateDrawPoint, type CanvasPoint, type PitchforkVariant } from './drawingGeometry.ts';
+
+function isPitchforkVariant(variant: ToolVariant): boolean {
+  return variant === 'pitchfork'
+    || variant === 'schiffPitchfork'
+    || variant === 'modifiedSchiffPitchfork'
+    || variant === 'insidePitchfork';
+}
 
 export function isWizardVariant(variant: ToolVariant): boolean {
   const definition = getToolDefinition(variant);
@@ -13,9 +20,7 @@ export function isWizardVariant(variant: ToolVariant): boolean {
   // also use wizard flow — click baseline start, click baseline end, then
   // click to set rail offset.
   if (definition.family === 'line') return true;
-  // TV-parity: fib-family tools with >2 anchors (pitchfan, trend-based fib
-  // extension, trend-based fib time) use the same multi-click wizard flow.
-  if (definition.family === 'fib') return true;
+  if (isPitchforkVariant(variant)) return true;
   return false;
 }
 
@@ -49,7 +54,7 @@ const FAMILY_INTERACTION_PRIORITY: Record<ToolFamily, number> = {
   system: 10,
 };
 
-export function drawingBounds(anchors: DrawPoint[]): BoundingBox | undefined {
+function drawingBounds(anchors: DrawPoint[]): BoundingBox | undefined {
   if (!anchors.length) return undefined;
   let minTime = Number.POSITIVE_INFINITY;
   let maxTime = Number.NEGATIVE_INFINITY;
@@ -188,6 +193,40 @@ export function createDrawing(variant: Exclude<ToolVariant, 'none'>, options: To
   const anchors: DrawPoint[] = [p1];
   while (anchors.length < anchorCount) {
     anchors.push(p2 || p1);
+  }
+
+  const layerDefaults = resolveDrawingLayerDefaults(variant, definition?.family ?? 'line');
+  const renderOrder = ++DRAWING_RENDER_ORDER_SEQ;
+
+  return normalizeDrawing({
+    id: makeId(),
+    type: definition?.family ?? 'line',
+    variant,
+    anchors,
+    bounds: drawingBounds(anchors),
+    text,
+    options: { ...buildToolOptions(variant), ...options },
+    zIndex: layerDefaults.zIndex,
+    renderOrder,
+    interactionPriority: layerDefaults.interactionPriority,
+    selected: false,
+    locked: options.locked,
+    visible: options.visible,
+  }, renderOrder);
+}
+
+export function createDrawingFromAnchors(
+  variant: Exclude<ToolVariant, 'none'>,
+  options: ToolOptions,
+  anchorsInput: DrawPoint[],
+  text?: string,
+): Drawing | null {
+  if (!anchorsInput.length) return null;
+  const definition = getToolDefinition(variant);
+  const anchorCount = Math.max(1, definition?.capabilities.anchors ?? anchorsInput.length);
+  const anchors = anchorsInput.slice(0, anchorCount).map((anchor) => ({ ...anchor }));
+  while (anchors.length < anchorCount) {
+    anchors.push({ ...anchors[anchors.length - 1] });
   }
 
   const layerDefaults = resolveDrawingLayerDefaults(variant, definition?.family ?? 'line');
@@ -403,6 +442,21 @@ function pointToRayDistance(point: NormalizedPoint, start: NormalizedPoint, thro
   return distance(point, { x: start.x + dx * t, y: start.y + dy * t });
 }
 
+function pointInPolygon(point: CanvasPoint, polygon: CanvasPoint[]): boolean {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    const intersects = ((yi > point.y) !== (yj > point.y))
+      && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-9) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
 function pointToLineDistance(point: NormalizedPoint, start: NormalizedPoint, end: NormalizedPoint): number {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -516,7 +570,20 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
   }
 
   if (variant === 'regressionTrend' && a && b) {
-    return pointToSegmentDistance(normalizedPoint, a, b);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const magnitude = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / magnitude, y: dx / magnitude };
+    const offset = Math.max(0.1, distance(a, b) * 0.22);
+    const upperStart = { x: a.x + normal.x * offset, y: a.y + normal.y * offset };
+    const upperEnd = { x: b.x + normal.x * offset, y: b.y + normal.y * offset };
+    const lowerStart = { x: a.x - normal.x * offset, y: a.y - normal.y * offset };
+    const lowerEnd = { x: b.x - normal.x * offset, y: b.y - normal.y * offset };
+    return Math.min(
+      pointToSegmentDistance(normalizedPoint, a, b),
+      pointToSegmentDistance(normalizedPoint, upperStart, upperEnd),
+      pointToSegmentDistance(normalizedPoint, lowerStart, lowerEnd),
+    );
   }
 
   if (variant === 'flatTopBottom' && a && b) {
@@ -535,82 +602,17 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
     );
   }
 
-  if (variant === 'pitchfork' && a && b && c) {
-    const target = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
-    const offsetUpper = signedDistanceToLine(b, a, target);
-    const offsetLower = signedDistanceToLine(c, a, target);
-    const dx = target.x - a.x;
-    const dy = target.y - a.y;
-    const magnitude = Math.hypot(dx, dy) || 1;
-    const normal = { x: -dy / magnitude, y: dx / magnitude };
-    const upperStart = { x: a.x + normal.x * offsetUpper, y: a.y + normal.y * offsetUpper };
-    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
-    const lowerStart = { x: a.x + normal.x * offsetLower, y: a.y + normal.y * offsetLower };
-    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
+  if (isPitchforkVariant(variant) && a && b && c) {
+    const width = 1;
+    const height = 1;
+    const geometry = getPitchforkGeometry([a, b, c], variant as PitchforkVariant, width, height);
+    if (pointInPolygon(normalizedPoint, geometry.fill)) {
+      return 0;
+    }
     return Math.min(
-      pointToRayDistance(normalizedPoint, a, target),
-      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
-      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
-    );
-  }
-
-  if (variant === 'schiffPitchfork' && a && b && c) {
-    const origin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const target = c;
-    const offsetUpper = signedDistanceToLine(a, origin, target);
-    const offsetLower = signedDistanceToLine(b, origin, target);
-    const dx = target.x - origin.x;
-    const dy = target.y - origin.y;
-    const magnitude = Math.hypot(dx, dy) || 1;
-    const normal = { x: -dy / magnitude, y: dx / magnitude };
-    const upperStart = { x: origin.x + normal.x * offsetUpper, y: origin.y + normal.y * offsetUpper };
-    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
-    const lowerStart = { x: origin.x + normal.x * offsetLower, y: origin.y + normal.y * offsetLower };
-    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
-    return Math.min(
-      pointToRayDistance(normalizedPoint, origin, target),
-      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
-      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
-    );
-  }
-
-  if (variant === 'modifiedSchiffPitchfork' && a && b && c) {
-    const origin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const target = c;
-    const offsetUpper = signedDistanceToLine(a, origin, target) * 0.82;
-    const offsetLower = signedDistanceToLine(b, origin, target) * 0.82;
-    const dx = target.x - origin.x;
-    const dy = target.y - origin.y;
-    const magnitude = Math.hypot(dx, dy) || 1;
-    const normal = { x: -dy / magnitude, y: dx / magnitude };
-    const upperStart = { x: origin.x + normal.x * offsetUpper, y: origin.y + normal.y * offsetUpper };
-    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
-    const lowerStart = { x: origin.x + normal.x * offsetLower, y: origin.y + normal.y * offsetLower };
-    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
-    return Math.min(
-      pointToRayDistance(normalizedPoint, origin, target),
-      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
-      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
-    );
-  }
-
-  if (variant === 'insidePitchfork' && a && b && c) {
-    const origin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const target = c;
-    const offsetUpper = signedDistanceToLine(a, origin, target) * 0.62;
-    const offsetLower = signedDistanceToLine(b, origin, target) * 0.62;
-    const dx = target.x - origin.x;
-    const dy = target.y - origin.y;
-    const magnitude = Math.hypot(dx, dy) || 1;
-    const normal = { x: -dy / magnitude, y: dx / magnitude };
-    const upperStart = { x: origin.x + normal.x * offsetUpper, y: origin.y + normal.y * offsetUpper };
-    const upperEnd = { x: target.x + normal.x * offsetUpper, y: target.y + normal.y * offsetUpper };
-    const lowerStart = { x: origin.x + normal.x * offsetLower, y: origin.y + normal.y * offsetLower };
-    const lowerEnd = { x: target.x + normal.x * offsetLower, y: target.y + normal.y * offsetLower };
-    return Math.min(
-      pointToRayDistance(normalizedPoint, origin, target),
-      pointToRayDistance(normalizedPoint, upperStart, upperEnd),
-      pointToRayDistance(normalizedPoint, lowerStart, lowerEnd),
+      pointToRayDistance(normalizedPoint, geometry.median[0], geometry.median[1]),
+      pointToRayDistance(normalizedPoint, geometry.upper[0], geometry.upper[1]),
+      pointToRayDistance(normalizedPoint, geometry.lower[0], geometry.lower[1]),
     );
   }
 
@@ -752,6 +754,10 @@ const UNBOUNDED_VARIANTS = new Set<ToolVariant>([
   'vline',
   'crossLine',
   'ray',
+  'pitchfork',
+  'schiffPitchfork',
+  'modifiedSchiffPitchfork',
+  'insidePitchfork',
   'fibTimeZone',
   'fibTrendTime',
 ]);

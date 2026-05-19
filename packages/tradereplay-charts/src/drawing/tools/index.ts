@@ -3,44 +3,21 @@
  * that creates the default tool set for createDrawingEngine().
  */
 
+// Line tools
 export { TrendLineTool } from './trendLine.ts';
 export { RayLineTool } from './rayLine.ts';
-export { InfoLineTool } from './infoLine.ts';
-export { ExtendedLineTool } from './extendedLine.ts';
-export { TrendAngleTool } from './trendAngle.ts';
 export { HorizontalLineTool } from './horizontalLine.ts';
-export { HorizontalRayTool } from './horizontalRay.ts';
 export { VerticalLineTool } from './verticalLine.ts';
-export { CrossLineTool } from './crossLine.ts';
-export { RectangleTool } from './rectangle.ts';
 export { ExtendedLineTool } from './extendedLine.ts';
 export { InfoLineTool } from './infoLine.ts';
 export { TrendAngleTool } from './trendAngle.ts';
 export { HorizontalRayTool } from './horizontalRay.ts';
 export { CrossLineTool } from './crossLine.ts';
-export { RegressionTrendTool } from './regressionTrend.ts';
-export {
-  PitchforkTool,
-  SchiffPitchforkTool,
-  ModifiedSchiffPitchforkTool,
-  InsidePitchforkTool,
-} from './pitchforks.ts';
-export {
-  AbcdPatternTool,
-  XabcdPatternTool,
-  CypherPatternTool,
-  HeadAndShouldersTool,
-  TrianglePatternTool,
-  ThreeDrivesTool,
-  ElliottImpulseTool,
-  ElliottCorrectionTool,
-  ElliottTriangleTool,
-  ElliottDoubleComboTool,
-  ElliottTripleComboTool,
-  CyclicLinesTool,
-  TimeCyclesTool,
-} from './patternTools.ts';
 
+// Shape tools
+export { RectangleTool } from './rectangle.ts';
+
+// Fib/Gann shared exports
 export {
   FibBaseTool,
   TV_FIB_COLORS,
@@ -62,32 +39,73 @@ export { FibSpiralTool } from './fibSpiral.ts';
 export { FibSpeedResistArcsTool } from './fibSpeedResistArcs.ts';
 export { FibWedgeTool } from './fibWedge.ts';
 export { PitchfanTool } from './pitchfan.ts';
-export { ParallelChannelTool } from './parallelChannel.ts';
-export { DisjointChannelTool } from './disjointChannel.ts';
-export { FlatTopBottomTool } from './flatTopBottom.ts';
-export { SineLineTool } from './sineLine.ts';
 export { GannBoxTool } from './gannBox.ts';
 export { GannSquareFixedTool } from './gannSquareFixed.ts';
 export { GannSquareTool } from './gannSquare.ts';
 export { GannFanTool } from './gannFan.ts';
 
+// Channel tools
+export { ParallelChannelTool } from './parallelChannel.ts';
+export { RegressionTrendTool } from './regressionTrend.ts';
+export { FlatTopBottomTool } from './flatTopBottom.ts';
+export { DisjointChannelTool } from './disjointChannel.ts';
+
+// Pitchfork tools
+export {
+  PitchforkTool,
+  SchiffPitchforkTool,
+  ModifiedSchiffPitchforkTool,
+  InsidePitchforkTool,
+} from './pitchforks.ts';
+
+// Pattern tools
+export {
+  AbcdPatternTool,
+  XabcdPatternTool,
+  CypherPatternTool,
+  HeadAndShouldersTool,
+  TrianglePatternTool,
+  ThreeDrivesTool,
+  ElliottImpulseTool,
+  ElliottCorrectionTool,
+  ElliottTriangleTool,
+  ElliottDoubleComboTool,
+  ElliottTripleComboTool,
+  SineLineTool,
+  CyclicLinesTool,
+  TimeCyclesTool,
+} from './patternTools.ts';
+
 import type { IDrawingTool } from '../types.ts';
 import { TrendLineTool } from './trendLine.ts';
 import { RayLineTool } from './rayLine.ts';
-import { InfoLineTool } from './infoLine.ts';
-import { ExtendedLineTool } from './extendedLine.ts';
-import { TrendAngleTool } from './trendAngle.ts';
 import { HorizontalLineTool } from './horizontalLine.ts';
-import { HorizontalRayTool } from './horizontalRay.ts';
 import { VerticalLineTool } from './verticalLine.ts';
+import { ExtendedLineTool } from './extendedLine.ts';
+import { InfoLineTool } from './infoLine.ts';
+import { TrendAngleTool } from './trendAngle.ts';
+import { HorizontalRayTool } from './horizontalRay.ts';
 import { CrossLineTool } from './crossLine.ts';
 import { RectangleTool } from './rectangle.ts';
-import { ExtendedLineTool } from './extendedLine.ts';
-import { InfoLineTool } from './infoLine.ts';
-import { TrendAngleTool } from './trendAngle.ts';
-import { HorizontalRayTool } from './horizontalRay.ts';
-import { CrossLineTool } from './crossLine.ts';
+import { FibRetracementTool } from './fibRetracement.ts';
+import { FibExtensionTool } from './fibExtension.ts';
+import { FibChannelTool } from './fibChannel.ts';
+import { FibTimeZoneTool } from './fibTimeZone.ts';
+import { FibSpeedResistFanTool } from './fibSpeedResistFan.ts';
+import { FibTrendTimeTool } from './fibTrendTime.ts';
+import { FibCirclesTool } from './fibCircles.ts';
+import { FibSpiralTool } from './fibSpiral.ts';
+import { FibSpeedResistArcsTool } from './fibSpeedResistArcs.ts';
+import { FibWedgeTool } from './fibWedge.ts';
+import { PitchfanTool } from './pitchfan.ts';
+import { ParallelChannelTool } from './parallelChannel.ts';
 import { RegressionTrendTool } from './regressionTrend.ts';
+import { FlatTopBottomTool } from './flatTopBottom.ts';
+import { DisjointChannelTool } from './disjointChannel.ts';
+import { GannBoxTool } from './gannBox.ts';
+import { GannSquareFixedTool } from './gannSquareFixed.ts';
+import { GannSquareTool } from './gannSquare.ts';
+import { GannFanTool } from './gannFan.ts';
 import {
   PitchforkTool,
   SchiffPitchforkTool,
@@ -106,79 +124,67 @@ import {
   ElliottTriangleTool,
   ElliottDoubleComboTool,
   ElliottTripleComboTool,
+  SineLineTool,
   CyclicLinesTool,
   TimeCyclesTool,
 } from './patternTools.ts';
-import { FibRetracementTool } from './fibRetracement.ts';
-import { FibExtensionTool } from './fibExtension.ts';
-import { FibChannelTool } from './fibChannel.ts';
-import { FibTimeZoneTool } from './fibTimeZone.ts';
-import { FibSpeedResistFanTool } from './fibSpeedResistFan.ts';
-import { FibTrendTimeTool } from './fibTrendTime.ts';
-import { FibCirclesTool } from './fibCircles.ts';
-import { FibSpiralTool } from './fibSpiral.ts';
-import { FibSpeedResistArcsTool } from './fibSpeedResistArcs.ts';
-import { FibWedgeTool } from './fibWedge.ts';
-import { PitchfanTool } from './pitchfan.ts';
-import { ParallelChannelTool } from './parallelChannel.ts';
-import { DisjointChannelTool } from './disjointChannel.ts';
-import { FlatTopBottomTool } from './flatTopBottom.ts';
-import { SineLineTool } from './sineLine.ts';
-import { GannBoxTool } from './gannBox.ts';
-import { GannSquareFixedTool } from './gannSquareFixed.ts';
-import { GannSquareTool } from './gannSquare.ts';
-import { GannFanTool } from './gannFan.ts';
 
 /** Create the default set of built-in drawing tools. */
 export function createDefaultTools(): IDrawingTool[] {
   return [
+    // Lines
     new TrendLineTool(),
     new RayLineTool(),
+    new HorizontalLineTool() as unknown as IDrawingTool,
+    new VerticalLineTool() as unknown as IDrawingTool,
     new ExtendedLineTool(),
     new InfoLineTool(),
     new TrendAngleTool(),
-    new HorizontalLineTool() as unknown as IDrawingTool,
-    new HorizontalRayTool(),
-    new VerticalLineTool() as unknown as IDrawingTool,
-    new CrossLineTool(),
+    new HorizontalRayTool() as unknown as IDrawingTool,
+    new CrossLineTool() as unknown as IDrawingTool,
+    // Shapes
     new RectangleTool(),
-    new FibRetracementTool(),
-    new FibExtensionTool(),
-    new FibChannelTool(),
-    new FibTimeZoneTool(),
-    new FibSpeedResistFanTool(),
-    new FibTrendTimeTool(),
-    new FibCirclesTool(),
-    new FibSpiralTool(),
-    new FibSpeedResistArcsTool(),
-    new FibWedgeTool(),
+    // Fib/Gann
+    new FibRetracementTool() as unknown as IDrawingTool,
+    new FibExtensionTool() as unknown as IDrawingTool,
+    new FibChannelTool() as unknown as IDrawingTool,
+    new FibTimeZoneTool() as unknown as IDrawingTool,
+    new FibSpeedResistFanTool() as unknown as IDrawingTool,
+    new FibTrendTimeTool() as unknown as IDrawingTool,
+    new FibCirclesTool() as unknown as IDrawingTool,
+    new FibSpiralTool() as unknown as IDrawingTool,
+    new FibSpeedResistArcsTool() as unknown as IDrawingTool,
+    new FibWedgeTool() as unknown as IDrawingTool,
     new PitchfanTool() as unknown as IDrawingTool,
-    new ParallelChannelTool(),
-    new RegressionTrendTool(),
-    new DisjointChannelTool(),
-    new FlatTopBottomTool(),
-    new SineLineTool(),
-    new PitchforkTool(),
-    new SchiffPitchforkTool(),
-    new ModifiedSchiffPitchforkTool(),
-    new InsidePitchforkTool(),
-    new GannBoxTool(),
+    // Channels
+    new ParallelChannelTool() as unknown as IDrawingTool,
+    new RegressionTrendTool() as unknown as IDrawingTool,
+    new FlatTopBottomTool() as unknown as IDrawingTool,
+    new DisjointChannelTool() as unknown as IDrawingTool,
+    // Gann
+    new GannBoxTool() as unknown as IDrawingTool,
     new GannSquareFixedTool() as unknown as IDrawingTool,
-    new GannSquareTool(),
-    new GannFanTool(),
-    new AbcdPatternTool(),
-    new XabcdPatternTool(),
-    new CypherPatternTool(),
-    new HeadAndShouldersTool(),
-    new TrianglePatternTool(),
-    new ThreeDrivesTool(),
-    new ElliottImpulseTool(),
-    new ElliottCorrectionTool(),
-    new ElliottTriangleTool(),
-    new ElliottDoubleComboTool(),
-    new ElliottTripleComboTool(),
-    new CyclicLinesTool(),
-    new TimeCyclesTool(),
+    new GannSquareTool() as unknown as IDrawingTool,
+    new GannFanTool() as unknown as IDrawingTool,
+    // Pitchforks
+    new PitchforkTool() as unknown as IDrawingTool,
+    new SchiffPitchforkTool() as unknown as IDrawingTool,
+    new ModifiedSchiffPitchforkTool() as unknown as IDrawingTool,
+    new InsidePitchforkTool() as unknown as IDrawingTool,
+    // Patterns
+    new AbcdPatternTool() as unknown as IDrawingTool,
+    new XabcdPatternTool() as unknown as IDrawingTool,
+    new CypherPatternTool() as unknown as IDrawingTool,
+    new HeadAndShouldersTool() as unknown as IDrawingTool,
+    new TrianglePatternTool() as unknown as IDrawingTool,
+    new ThreeDrivesTool() as unknown as IDrawingTool,
+    new ElliottImpulseTool() as unknown as IDrawingTool,
+    new ElliottCorrectionTool() as unknown as IDrawingTool,
+    new ElliottTriangleTool() as unknown as IDrawingTool,
+    new ElliottDoubleComboTool() as unknown as IDrawingTool,
+    new ElliottTripleComboTool() as unknown as IDrawingTool,
+    new SineLineTool() as unknown as IDrawingTool,
+    new CyclicLinesTool() as unknown as IDrawingTool,
+    new TimeCyclesTool() as unknown as IDrawingTool,
   ];
 }
-

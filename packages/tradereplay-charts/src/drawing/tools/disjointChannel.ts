@@ -1,11 +1,12 @@
 /**
- * DisjointChannel tool — two independent line segments with a fill between them.
+ * DisjointChannel tool — two separate non-parallel line segments forming a channel.
  *
  * TV parity:
- * - 4 anchors: anchor[0]→anchor[1] = segment AB, anchor[2]→anchor[3] = segment CD
- * - Fill polygon: A → B → D → C (closed trapezoid)
- * - During 2-anchor preview: only segment AB shown.
- * - Hit test: any of the 4 border edges or inside the fill polygon.
+ * - 4 anchors: [topStart, topEnd, bottomStart, bottomEnd] — two independent segments
+ * - Default color: green (#22C55E)
+ * - Renders: two line segments + translucent fill quad between them
+ * - 4-click wizard: click topStart → topEnd → bottomStart → bottomEnd
+ * - Hit test: near either segment
  */
 
 import type {
@@ -14,30 +15,19 @@ import type {
   HandleDescriptor,
   DrawingOptions,
   Viewport,
+  AxisHighlight,
 } from '../types.ts';
 import {
   dataToScreen,
   distanceToSegment,
+  clipSegment,
   applyLineStyle,
   drawCircleHandle,
-  hexToRgba,
+  drawPriceLabel,
 } from '../geometry.ts';
 import { BaseTool } from './base.ts';
 
-type SP = { x: number; y: number };
-
-function shoelaceContains(pt: SP, poly: SP[]): boolean {
-  let inside = false;
-  const n = poly.length;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y;
-    const xj = poly[j].x, yj = poly[j].y;
-    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi)) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
+const DISJOINT_CHANNEL_COLOR = '#22C55E';
 
 export class DisjointChannelTool extends BaseTool {
   readonly variant = 'disjointChannel' as const;
@@ -45,32 +35,17 @@ export class DisjointChannelTool extends BaseTool {
   readonly anchorCount = 4;
   readonly isPointOnly = false;
 
-  override hitTest(drawing: Drawing, pointer: SP, viewport: Viewport): number {
-    const anchors = drawing.anchors;
-    if (anchors.length < 2) return Infinity;
+  override createDraft(p1: DrawPoint, options: DrawingOptions): Drawing {
+    return super.createDraft(p1, { ...options, color: options.color === '#2962ff' ? DISJOINT_CHANNEL_COLOR : options.color });
+  }
 
-    const a = dataToScreen(anchors[0], viewport);
-    const b = dataToScreen(anchors[1], viewport);
-
-    // Only 2 anchors: hit-test segment AB
-    if (anchors.length < 4) {
-      return distanceToSegment(pointer, a, b);
-    }
-
-    const c = dataToScreen(anchors[2], viewport);
-    const d = dataToScreen(anchors[3], viewport);
-
-    // Check fill interior
-    const poly = [a, b, d, c];
-    if (shoelaceContains(pointer, poly)) return 0;
-
-    // Check 4 border segments
-    return Math.min(
-      distanceToSegment(pointer, a, b),
-      distanceToSegment(pointer, c, d),
-      distanceToSegment(pointer, b, d),
-      distanceToSegment(pointer, a, c),
-    );
+  override hitTest(drawing: Drawing, pointer: { x: number; y: number }, viewport: Viewport): number {
+    if (drawing.anchors.length < 2) return Infinity;
+    const pts = drawing.anchors.map((a) => dataToScreen(a, viewport));
+    const [a, b, c, d] = pts;
+    let best = distanceToSegment(pointer, a, b);
+    if (c && d) best = Math.min(best, distanceToSegment(pointer, c, d));
+    return best;
   }
 
   override render(
@@ -80,71 +55,50 @@ export class DisjointChannelTool extends BaseTool {
     selected: boolean,
     hovered: boolean,
   ): void {
-    const anchors = drawing.anchors;
-    if (anchors.length < 2) return;
+    if (drawing.anchors.length < 2) return;
+    const pts = drawing.anchors.map((a) => dataToScreen(a, viewport));
+    const [a, b, c, d] = pts;
 
-    const a = dataToScreen(anchors[0], viewport);
-    const b = dataToScreen(anchors[1], viewport);
-    const color = drawing.options.color;
-    const lw = drawing.options.lineWidth + (selected ? 1 : 0);
+    const color = drawing.options.color || DISJOINT_CHANNEL_COLOR;
 
     ctx.save();
-    applyLineStyle(ctx, drawing.options.lineStyle, lw);
     ctx.strokeStyle = color;
-    ctx.lineWidth = lw;
+    ctx.lineWidth = drawing.options.lineWidth + (selected ? 1 : 0);
+    applyLineStyle(ctx, drawing.options.lineStyle, drawing.options.lineWidth);
 
-    if (anchors.length >= 4) {
-      const c = dataToScreen(anchors[2], viewport);
-      const d = dataToScreen(anchors[3], viewport);
-
-      // Fill polygon A→B→D→C
+    // Fill quad if all 4 anchors present
+    if (c && d) {
+      ctx.globalAlpha = selected ? 0.14 : 0.08;
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.lineTo(d.x, d.y);
       ctx.lineTo(c.x, c.y);
       ctx.closePath();
-      ctx.fillStyle = hexToRgba(color, 0.08);
       ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
-      // Segment AB
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+    // Top segment
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
 
-      // Segment CD
+    // Bottom segment (if placed)
+    if (c && d) {
       ctx.beginPath();
       ctx.moveTo(c.x, c.y);
       ctx.lineTo(d.x, d.y);
       ctx.stroke();
-
-      // Connecting sides (thin, semi-transparent like TV)
-      ctx.globalAlpha = 0.35;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(c.x, c.y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(b.x, b.y);
-      ctx.lineTo(d.x, d.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
-    } else {
-      // Preview with only AB
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
     }
 
-    if (selected || hovered) {
-      for (const anchor of anchors) {
-        const sp = dataToScreen(anchor, viewport);
-        drawCircleHandle(ctx, sp, 5, color, true);
-      }
+    if (drawing.options.axisLabel) {
+      const canvasW = viewport.width;
+      const pw = viewport.priceAxisWidth;
+      drawPriceLabel(ctx, drawing.anchors[0].price, a.y, canvasW, color, pw);
+      if (c) drawPriceLabel(ctx, drawing.anchors[2].price, c.y, canvasW, color, pw);
     }
 
     ctx.restore();
@@ -156,8 +110,7 @@ export class DisjointChannelTool extends BaseTool {
     this.render(ctx, draft, viewport, false, false);
     ctx.globalAlpha = 1;
     for (const anchor of draft.anchors) {
-      const sp = dataToScreen(anchor, viewport);
-      drawCircleHandle(ctx, sp, 5, draft.options.color, false);
+      drawCircleHandle(ctx, dataToScreen(anchor, viewport), 5, draft.options.color || DISJOINT_CHANNEL_COLOR, false);
     }
     ctx.restore();
   }
@@ -169,5 +122,16 @@ export class DisjointChannelTool extends BaseTool {
       radius: 5,
       active: false,
     }));
+  }
+
+  override getAxisHighlight(drawing: Drawing, viewport: Viewport): AxisHighlight | null {
+    if (drawing.anchors.length < 2) return null;
+    const pts = drawing.anchors.map((a) => dataToScreen(a, viewport));
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    return {
+      xRange: [Math.min(...xs), Math.max(...xs)],
+      yRange: [Math.min(...ys), Math.max(...ys)],
+    };
   }
 }

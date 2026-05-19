@@ -40,7 +40,7 @@ interface ToolDef {
   variant: string;
   testId: string;
   /** How this tool commits a drawing */
-  commitStyle: "click-click" | "single-click" | "drag";
+  commitStyle: "click-click" | "single-click" | "drag" | "wizard";
   anchors: number;
   /** Optional extra field checks on the committed drawing object */
   expectedOptions?: Record<string, unknown>;
@@ -58,16 +58,16 @@ const TOOLS: ToolDef[] = [
   { variant: "horizontalRay", testId: "tool-horizontal-ray",   commitStyle: "single-click", anchors: 1 },
   { variant: "vline",         testId: "tool-vertical-line",    commitStyle: "single-click", anchors: 1 },
   { variant: "crossLine",     testId: "tool-cross-line",       commitStyle: "single-click", anchors: 1 },
-  // ── Channel tools (click-click) ───────────────────────────────────────────
-  { variant: "channel",           testId: "tool-parallel-channel",    commitStyle: "click-click", anchors: 2 },
+  // ── Channel tools ─────────────────────────────────────────────────────────
+  { variant: "channel",           testId: "tool-parallel-channel",    commitStyle: "wizard",      anchors: 3 },
   { variant: "regressionTrend",   testId: "tool-regression-trend",    commitStyle: "click-click", anchors: 2 },
   { variant: "flatTopBottom",     testId: "tool-flat-top-bottom",     commitStyle: "click-click", anchors: 2 },
-  { variant: "disjointChannel",   testId: "tool-disjoint-channel",    commitStyle: "drag",        anchors: 4 },
-  // ── Pitchfork tools (drag) ────────────────────────────────────────────────
-  { variant: "pitchfork",               testId: "tool-pitchfork",                commitStyle: "drag", anchors: 3 },
-  { variant: "schiffPitchfork",         testId: "tool-schiff-pitchfork",         commitStyle: "drag", anchors: 3 },
-  { variant: "modifiedSchiffPitchfork", testId: "tool-modified-schiff-pitchfork",commitStyle: "drag", anchors: 3 },
-  { variant: "insidePitchfork",         testId: "tool-inside-pitchfork",         commitStyle: "drag", anchors: 3 },
+  { variant: "disjointChannel",   testId: "tool-disjoint-channel",    commitStyle: "wizard",      anchors: 4 },
+  // ── Pitchfork tools (3-click wizard) ──────────────────────────────────────
+  { variant: "pitchfork",               testId: "tool-pitchfork",                commitStyle: "wizard", anchors: 3 },
+  { variant: "schiffPitchfork",         testId: "tool-schiff-pitchfork",         commitStyle: "wizard", anchors: 3 },
+  { variant: "modifiedSchiffPitchfork", testId: "tool-modified-schiff-pitchfork",commitStyle: "wizard", anchors: 3 },
+  { variant: "insidePitchfork",         testId: "tool-inside-pitchfork",         commitStyle: "wizard", anchors: 3 },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -192,6 +192,35 @@ async function dragBetween(page: Page, x1: number, y1: number, x2: number, y2: n
   await page.waitForTimeout(100);
 }
 
+function wizardPointsForTool(
+  tool: ToolDef,
+  box: Awaited<ReturnType<typeof surfaceBox>>,
+): Array<{ x: number; y: number }> {
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const plotW = box.width - 70;
+  if (tool.variant === "channel") {
+    return [
+      { x: box.x + plotW * 0.34, y: cy + 28 },
+      { x: box.x + plotW * 0.68, y: cy - 18 },
+      { x: box.x + plotW * 0.52, y: cy - 76 },
+    ];
+  }
+  if (tool.variant === "disjointChannel") {
+    return [
+      { x: box.x + plotW * 0.30, y: cy - 24 },
+      { x: box.x + plotW * 0.70, y: cy - 44 },
+      { x: box.x + plotW * 0.36, y: cy + 74 },
+      { x: box.x + plotW * 0.74, y: cy + 28 },
+    ];
+  }
+  return [
+    { x: cx - 64, y: cy + 18 },
+    { x: cx, y: cy - 54 },
+    { x: cx + 62, y: cy + 34 },
+  ];
+}
+
 /** Draw any tool using the appropriate commit style */
 async function drawTool(page: Page, tool: ToolDef, box: Awaited<ReturnType<typeof surfaceBox>>) {
   const cx = box.x + box.width / 2;
@@ -206,6 +235,11 @@ async function drawTool(page: Page, tool: ToolDef, box: Awaited<ReturnType<typeo
     await page.mouse.move(cx + dx, cy + dy);
     await page.waitForTimeout(60);
     await clickAt(page, cx + dx, cy + dy);
+  } else if (tool.commitStyle === "wizard") {
+    for (const point of wizardPointsForTool(tool, box)) {
+      await clickAt(page, point.x, point.y);
+      await page.waitForTimeout(70);
+    }
   } else {
     // drag
     await dragBetween(page, cx - dx, cy - dy, cx + dx, cy + dy);
@@ -305,6 +339,12 @@ async function drawN(page: Page, tool: ToolDef, box: Awaited<ReturnType<typeof s
       // distance ≥ 8px). This avoids the second-click failing when a previous
       // commit didn't deactivate the tool cleanly.
       await dragBetween(page, cx + ox - 20, cy + oy, cx + ox + 20, cy + oy);
+    } else if (tool.commitStyle === "wizard") {
+      const localBox = { ...box, x: box.x + ox, y: box.y + oy };
+      for (const point of wizardPointsForTool(tool, localBox)) {
+        await clickAt(page, point.x, point.y);
+        await page.waitForTimeout(60);
+      }
     } else {
       await dragBetween(page, cx + ox - 20, cy + oy, cx + ox + 20, cy + oy);
     }
@@ -477,6 +517,10 @@ function buildToolTests(tool: ToolDef) {
         await clickAt(page, cx - 40, cy - 20);
         await page.mouse.move(cx + 40, cy + 20);
         await page.waitForTimeout(60);
+      } else if (tool.commitStyle === "wizard") {
+        const [first] = wizardPointsForTool(tool, box);
+        await clickAt(page, first.x, first.y);
+        await page.waitForTimeout(60);
       } else if (tool.commitStyle === "drag") {
         // Start a drag but don't finish
         await page.mouse.move(cx - 40, cy - 20);
@@ -505,6 +549,10 @@ function buildToolTests(tool: ToolDef) {
       if (tool.commitStyle === "click-click") {
         await clickAt(page, cx - 40, cy - 20);
         await page.mouse.move(cx + 40, cy + 20);
+        await page.waitForTimeout(60);
+      } else if (tool.commitStyle === "wizard") {
+        const [first] = wizardPointsForTool(tool, box);
+        await clickAt(page, first.x, first.y);
         await page.waitForTimeout(60);
       } else if (tool.commitStyle === "drag") {
         await page.mouse.move(cx - 40, cy - 20);
@@ -583,6 +631,11 @@ function buildToolTests(tool: ToolDef) {
         await clickAt(page, cx2 - 30, cy2 - 15);
         await page.mouse.move(cx2 + 30, cy2 + 15);
         await clickAt(page, cx2 + 30, cy2 + 15);
+      } else if (tool.commitStyle === "wizard") {
+        for (const point of wizardPointsForTool(tool, box)) {
+          await clickAt(page, point.x - (box.x + box.width / 2) + cx2, point.y - (box.y + box.height / 2) + cy2);
+          await page.waitForTimeout(60);
+        }
       } else {
         await dragBetween(page, cx2 - 50, cy2 - 30, cx2 + 50, cy2 + 30);
       }
@@ -766,6 +819,12 @@ function buildToolTests(tool: ToolDef) {
           await clickAt(page, cx - 40 + off, cy - 20);
           await page.mouse.move(cx + 40 + off, cy + 20);
           await clickAt(page, cx + 40 + off, cy + 20);
+        } else if (tool.commitStyle === "wizard") {
+          const wizardBox = { ...box, x: box.x + off, y: box.y + off * 0.5 };
+          for (const point of wizardPointsForTool(tool, wizardBox)) {
+            await clickAt(page, point.x, point.y);
+            await page.waitForTimeout(60);
+          }
         } else {
           await dragBetween(page, cx - 60 + off, cy - 30, cx + 60 + off, cy + 30);
         }
@@ -905,6 +964,12 @@ function buildToolTests(tool: ToolDef) {
           await clickAt(page, cx - 25, cy - 12);
           await page.mouse.move(cx + 25, cy + 12);
           await clickAt(page, cx + 25, cy + 12);
+        } else if (tool.commitStyle === "wizard") {
+          const wizardBox = { ...box, x: box.x + ox, y: box.y + oy };
+          for (const point of wizardPointsForTool(tool, wizardBox)) {
+            await clickAt(page, point.x, point.y);
+            await page.waitForTimeout(60);
+          }
         } else {
           await dragBetween(page, cx - 40, cy - 20, cx + 40, cy + 20);
         }
@@ -1934,7 +1999,7 @@ test.describe("Cross-tool TV-parity", () => {
     const toolsToCheck = [
       { testId: "tool-trendline", style: "click-click" as const },
       { testId: "tool-horizontal-line", style: "single-click" as const },
-      { testId: "tool-pitchfork", style: "drag" as const },
+      { testId: "tool-pitchfork", style: "wizard" as const },
     ];
     for (const t of toolsToCheck) {
       await pickTool(page, t.testId);
@@ -1944,6 +2009,11 @@ test.describe("Cross-tool TV-parity", () => {
         await clickAt(page, cx - 50, cy - 20);
         await page.mouse.move(cx + 50, cy + 20);
         await clickAt(page, cx + 50, cy + 20);
+      } else if (t.style === "wizard") {
+        for (const point of wizardPointsForTool(TOOLS.find((tool) => tool.testId === t.testId)!, box)) {
+          await clickAt(page, point.x, point.y);
+          await page.waitForTimeout(60);
+        }
       } else {
         await dragBetween(page, cx - 60, cy - 30, cx + 60, cy + 30);
       }

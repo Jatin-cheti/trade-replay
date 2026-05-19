@@ -11,6 +11,7 @@ import { rgbFromHex } from '@/services/tools/toolOptions';
 import {
   compareDrawingRenderOrder,
   createDrawing,
+  createDrawingFromAnchors,
   DrawingSpatialIndex,
   getHitTestTelemetrySnapshot,
   isClickClickVariant,
@@ -191,7 +192,7 @@ export function computeInfoLineMetrics(
     // Line 2: bars (days) + pixel distance
     // Line 3: angle in degrees
     line1: `${arrow} ${fmt(dp, 2)} (${fmt(pct, 2)}%)  ${fmtInt(ticks)} ticks`,
-    line2: `${fmtInt(bars)} bars (${fmtInt(days)}d)  \u00B7  ${distPx} px`,
+    line2: `${fmtInt(bars)} bars (${fmtInt(days)}d), distance: ${distPx} px`,
     line3: `\u2220 ${fmt(angleDeg, 2)}\u00B0`,
   };
 }
@@ -262,6 +263,22 @@ function formatExportTimestamp(date: Date): string {
   const hh = String(date.getHours()).padStart(2, '0');
   const mm = String(date.getMinutes()).padStart(2, '0');
   return `${y}${m}${d}-${hh}${mm}`;
+}
+
+function pointToSegmentPixelDistance(
+  point: { x: number; y: number },
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq <= 1e-6) return Math.hypot(point.x - start.x, point.y - start.y);
+  let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq;
+  t = Math.max(0, Math.min(1, t));
+  const px = start.x + t * dx;
+  const py = start.y + t * dy;
+  return Math.hypot(point.x - px, point.y - py);
 }
 
 function logicalRangeEquals(
@@ -1032,37 +1049,37 @@ export default function TradingChart({
     setVariant(variant, group);
   }, [clearPromptState, setVariant]);
 
-  // Library API hooks — expose programmatic drawing control for external consumers (chartLibraryAPI.ts).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const w = window as unknown as Record<string, unknown>;
 
-    // setActiveTool: activate a drawing tool variant programmatically
     w.__tradereplaySetActiveTool = (variant: string) => {
       const def = getToolDefinition(variant as ToolVariant);
       handleVariantSelect((def?.category ?? 'lines') as ToolCategory, variant as ToolVariant);
     };
 
-    // addDrawing: commit a drawing without user interaction
     w.__tradereplayAddDrawing = (
       variant: string,
       anchors: Array<{ time: number; price: number }>,
       options?: Record<string, unknown>,
       text?: string,
     ): string | null => {
-      if (!anchors || anchors.length === 0) return null;
       const def = getToolDefinition(variant as ToolVariant);
-      if (!def) return null;
-      const baseOptions = { ...toolState.options, ...(options ?? {}), ...(text ? { text } : {}) };
-      const typedAnchors = anchors.map((a) => ({ time: a.time as DrawPoint['time'], price: a.price }));
-      const drawing = createDrawing(variant as Exclude<ToolVariant, 'none'>, baseOptions, ...typedAnchors);
+      if (!def || !anchors?.length) return null;
+      const typedAnchors = anchors.map((anchor) => ({ time: anchor.time as DrawPoint['time'], price: anchor.price }));
+      const drawing = createDrawingFromAnchors(
+        variant as Exclude<ToolVariant, 'none'>,
+        { ...toolState.options, ...(options ?? {}) },
+        typedAnchors,
+        text,
+      );
+      if (!drawing) return null;
       updateAllDrawings((prev) => [...prev, drawing], true);
       return drawing.id;
     };
 
-    // removeDrawing: delete a drawing by id programmatically
     w.__tradereplayRemoveDrawing = (id: string): boolean => {
-      const exists = drawingsRef.current.some((d) => d.id === id);
+      const exists = drawingsRef.current.some((drawing) => drawing.id === id);
       if (exists) removeDrawing(id);
       return exists;
     };
@@ -1072,7 +1089,7 @@ export default function TradingChart({
       delete w.__tradereplayAddDrawing;
       delete w.__tradereplayRemoveDrawing;
     };
-  }, [handleVariantSelect, toolState.options, updateAllDrawings, removeDrawing, drawingsRef]);
+  }, [drawingsRef, handleVariantSelect, removeDrawing, toolState.options, updateAllDrawings]);
 
   const translateAnchors = useCallback((anchors: DrawPoint[], from: DrawPoint, to: DrawPoint) => {
     const deltaTime = to.time - from.time;
@@ -1422,6 +1439,25 @@ export default function TradingChart({
         }
 
         return sample;
+      };
+
+      const getRenderedHandlePoints = (activeDrawing: Drawing, points: Array<{ x: number; y: number }>) => {
+        const variant = activeDrawing.variant;
+        if (variant === 'trendAngle' && points.length >= 2) {
+          const [hp1, hp2] = snapTrendAngleSegment(points[0], points[1]);
+          return [hp1, hp2];
+        }
+        if (variant === 'channel' && points.length >= 2) {
+          const geometry = getParallelChannelGeometry(points, cssWidth, cssHeight);
+          return [geometry.upper[0], geometry.upper[1], geometry.lower[1], geometry.lower[0]];
+        }
+        if (variant === 'regressionTrend' && activeDrawing.anchors.length >= 2) {
+          const geometry = getRegressionTrendGeometry(buildRegressionSample(activeDrawing.anchors[0], activeDrawing.anchors[1]));
+          if (geometry) {
+            return [geometry.upper[0], geometry.upper[1], geometry.lower[1], geometry.lower[0]];
+          }
+        }
+        return points;
       };
 
       const moveState = dragMoveRef.current;
@@ -2711,7 +2747,7 @@ export default function TradingChart({
             const lineColor = colorForLevel(level);
             ctx.save();
             ctx.strokeStyle = `rgba(${rgbFromHex(lineColor)}, ${baseAlpha})`;
-            ctx.lineWidth = activeDrawing.options.lineWidth;
+            ctx.lineWidth = activeDrawing.options.thickness;
             ctx.beginPath();
             ctx.moveTo(left, y);
             ctx.lineTo(right, y);
@@ -2846,11 +2882,7 @@ export default function TradingChart({
           ctx.restore();
 
           // Anchor dots on hover (lighter than selected dots)
-          let hoverPoints = points;
-          if (v === 'trendAngle' && points.length >= 2) {
-            const [hp1, hp2] = snapTrendAngleSegment(points[0], points[1]);
-            hoverPoints = [hp1, hp2];
-          }
+          const hoverPoints = getRenderedHandlePoints(activeDrawing, points);
           for (const anchor of hoverPoints) {
             ctx.beginPath();
             ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -2884,11 +2916,7 @@ export default function TradingChart({
           // not the raw anchor pixels. For tools that transform anchors before
           // drawing (currently trendAngle's 15° snap), use the transformed
           // endpoints so the white dots line up with the visible line ends.
-          let handlePoints: { x: number; y: number }[] = points;
-          if (v === 'trendAngle' && points.length >= 2) {
-            const [hp1, hp2] = snapTrendAngleSegment(points[0], points[1]);
-            handlePoints = [hp1, hp2];
-          }
+          const handlePoints = getRenderedHandlePoints(activeDrawing, points);
           for (const anchor of handlePoints) {
             ctx.beginPath();
             ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -3093,10 +3121,30 @@ export default function TradingChart({
         if (!chart || !series) return null;
         const a1 = drawing.anchors[0];
         const a2 = drawing.anchors[1];
-        const x1 = chart.timeScale().timeToCoordinate(a1.time as DrawPoint['time']);
-        const y1 = series.priceToCoordinate(a1.price);
-        const x2 = chart.timeScale().timeToCoordinate(a2.time as DrawPoint['time']);
-        const y2 = series.priceToCoordinate(a2.price);
+        const _ts = chart.timeScale();
+        const _ov = overlayRef.current;
+        const _ilW = _ov?.clientWidth ?? 800;
+        const _ilH = _ov?.clientHeight ?? 600;
+        const _ilVtr = (() => { try { return _ts.getVisibleRange?.() ?? null; } catch { return null; } })();
+        const _ilT0 = Number(_ilVtr?.from ?? 0);
+        const _ilT1 = Number(_ilVtr?.to ?? _ilT0 + 1);
+        const _ilTSpan = Math.max(1, _ilT1 - _ilT0);
+        const _ilTop = (series as any).coordinateToPrice?.(0) ?? null;
+        const _ilBot = (series as any).coordinateToPrice?.(_ilH) ?? null;
+        const _ilMaxP = (_ilTop != null && _ilBot != null) ? Math.max(_ilTop as number, _ilBot as number) : null;
+        const _ilPSpan = (_ilTop != null && _ilBot != null) ? Math.max(1e-6, Math.abs((_ilTop as number) - (_ilBot as number))) : null;
+        const _ilCoordX = (a: DrawPoint): number | null => {
+          let x: number | null = _ts.timeToCoordinate(a.time as DrawPoint['time']) ?? null;
+          if (x == null) { const t = Number(a.time); if (Number.isFinite(t)) x = ((t - _ilT0) / _ilTSpan) * _ilW; }
+          return x != null && Number.isFinite(x) ? x : null;
+        };
+        const _ilCoordY = (a: DrawPoint): number | null => {
+          let y: number | null = (series as any).priceToCoordinate?.(a.price) ?? null;
+          if (y == null && _ilMaxP != null && _ilPSpan != null) { const p = Number(a.price); if (Number.isFinite(p)) y = ((_ilMaxP - p) / _ilPSpan) * _ilH; }
+          return y != null && Number.isFinite(y) ? y : null;
+        };
+        const x1 = _ilCoordX(a1); const y1 = _ilCoordY(a1);
+        const x2 = _ilCoordX(a2); const y2 = _ilCoordY(a2);
         if (x1 == null || y1 == null || x2 == null || y2 == null) return null;
         return computeInfoLineMetrics(a1, a2, { x: x1, y: y1 }, { x: x2, y: y2 });
       },
@@ -3250,7 +3298,6 @@ export default function TradingChart({
         setHoveredDrawingId(null);
         return 0;
       },
-      /** Alias used by prod-parity-shared-factory and any external library consumer. */
       clearAllDrawings: () => {
         clearDrawings();
         setSelectedDrawingId(null);
@@ -3959,10 +4006,31 @@ export default function TradingChart({
             const clickPx = { x: event.clientX - chartRect.left, y: event.clientY - chartRect.top };
             const ts = chart.timeScale();
             const pts: Array<{ x: number; y: number }> = [];
+            // Build fallback coordinate estimators for anchors that land outside
+            // the visible time/price range (timeToCoordinate / priceToCoordinate
+            // return null in that case, causing pitchfork pts.length < 3).
+            const _pxCssW = chartRect.width;
+            const _pxCssH = chartRect.height;
+            const _pxVtr = (() => { try { return ts.getVisibleRange?.() ?? null; } catch { return null; } })();
+            const _pxT0 = Number(_pxVtr?.from ?? 0);
+            const _pxT1 = Number(_pxVtr?.to ?? _pxT0 + 1);
+            const _pxTSpan = Math.max(1, _pxT1 - _pxT0);
+            const _pxTop = (series as any).coordinateToPrice?.(0) ?? null;
+            const _pxBot = (series as any).coordinateToPrice?.(_pxCssH) ?? null;
+            const _pxMaxP = (_pxTop != null && _pxBot != null) ? Math.max(_pxTop as number, _pxBot as number) : null;
+            const _pxPSpan = (_pxTop != null && _pxBot != null) ? Math.max(1e-6, Math.abs((_pxTop as number) - (_pxBot as number))) : null;
             for (const a of drawing.anchors) {
-              const x = ts.timeToCoordinate(a.time as import('@tradereplay/charts').UTCTimestamp);
-              const y = (series as any).priceToCoordinate?.(a.price);
-              if (typeof x === 'number' && typeof y === 'number') pts.push({ x, y });
+              let x: number | null = ts.timeToCoordinate(a.time as import('@tradereplay/charts').UTCTimestamp) ?? null;
+              let y: number | null = (series as any).priceToCoordinate?.(a.price) ?? null;
+              if (x == null) {
+                const t = Number(a.time);
+                if (Number.isFinite(t)) x = ((t - _pxT0) / _pxTSpan) * _pxCssW;
+              }
+              if (y == null && _pxMaxP != null && _pxPSpan != null) {
+                const p = Number(a.price);
+                if (Number.isFinite(p)) y = ((_pxMaxP - p) / _pxPSpan) * _pxCssH;
+              }
+              if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) pts.push({ x, y });
             }
             // Variants whose visual extends infinitely: skip pixel re-check
             const v = drawing.variant;
@@ -3990,6 +4058,49 @@ export default function TradingChart({
               } else {
                 bestPx = Math.hypot(clickPx.x - pts[0].x, clickPx.y - pts[0].y);
               }
+            } else if (v === 'channel' && pts.length >= 2) {
+              const geometry = getParallelChannelGeometry(pts, chartRect.width, chartRect.height);
+              bestPx = Math.min(
+                pointToSegmentPixelDistance(clickPx, geometry.center[0], geometry.center[1]),
+                pointToSegmentPixelDistance(clickPx, geometry.upper[0], geometry.upper[1]),
+                pointToSegmentPixelDistance(clickPx, geometry.lower[0], geometry.lower[1]),
+              );
+            } else if (v === 'regressionTrend' && pts.length >= 2) {
+              const dx = pts[1].x - pts[0].x;
+              const dy = pts[1].y - pts[0].y;
+              const magnitude = Math.hypot(dx, dy) || 1;
+              const normal = { x: -dy / magnitude, y: dx / magnitude };
+              const offset = Math.max(12, Math.hypot(dx, dy) * 0.22);
+              const upperStart = { x: pts[0].x + normal.x * offset, y: pts[0].y + normal.y * offset };
+              const upperEnd = { x: pts[1].x + normal.x * offset, y: pts[1].y + normal.y * offset };
+              const lowerStart = { x: pts[0].x - normal.x * offset, y: pts[0].y - normal.y * offset };
+              const lowerEnd = { x: pts[1].x - normal.x * offset, y: pts[1].y - normal.y * offset };
+              bestPx = Math.min(
+                pointToSegmentPixelDistance(clickPx, pts[0], pts[1]),
+                pointToSegmentPixelDistance(clickPx, upperStart, upperEnd),
+                pointToSegmentPixelDistance(clickPx, lowerStart, lowerEnd),
+              );
+            } else if (v === 'flatTopBottom' && pts.length >= 2) {
+              const top = Math.min(pts[0].y, pts[1].y);
+              const bottom = Math.max(pts[0].y, pts[1].y);
+              bestPx = clickPx.y >= top && clickPx.y <= bottom
+                ? 0
+                : Math.min(Math.abs(clickPx.y - top), Math.abs(clickPx.y - bottom));
+            } else if (v === 'disjointChannel' && pts.length >= 4) {
+              bestPx = Math.min(
+                pointToSegmentPixelDistance(clickPx, pts[0], pts[1]),
+                pointToSegmentPixelDistance(clickPx, pts[2], pts[3]),
+                pointToSegmentPixelDistance(clickPx, pts[0], pts[2]),
+                pointToSegmentPixelDistance(clickPx, pts[1], pts[3]),
+              );
+            } else if ((v === 'pitchfork' || v === 'schiffPitchfork' || v === 'modifiedSchiffPitchfork' || v === 'insidePitchfork') && pts.length >= 3) {
+              const geometry = getPitchforkGeometry([pts[0], pts[1], pts[2]], v as PitchforkVariant, chartRect.width, chartRect.height);
+              bestPx = Math.min(
+                pointToSegmentPixelDistance(clickPx, geometry.median[0], geometry.median[1]),
+                pointToSegmentPixelDistance(clickPx, geometry.upper[0], geometry.upper[1]),
+                pointToSegmentPixelDistance(clickPx, geometry.lower[0], geometry.lower[1]),
+                pointToSegmentPixelDistance(clickPx, pts[1], pts[2]),
+              );
             } else if (isExtended && pts.length >= 2) {
               const a0 = pts[0], a1 = pts[1];
               const dx = a1.x - a0.x, dy = a1.y - a0.y;

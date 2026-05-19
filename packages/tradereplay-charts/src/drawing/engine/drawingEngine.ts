@@ -105,6 +105,7 @@ export class DrawingEngine {
   private _dragMoveStartPoint: DrawPoint | null = null;
   private _dragMoveOriginals: DrawPoint[] = [];
   private _viewport: Viewport | null = null;
+  private _anchorPlacedCount = 0;
   private _renderSeq = 0;
   private _listeners = new Set<DrawingEngineListener>();
   private readonly _toolRegistry: Map<DrawingVariant, IDrawingTool>;
@@ -199,21 +200,30 @@ export class DrawingEngine {
       }
 
       if (this._draft) {
-        // Second+ click: update draft then finalize if non-wizard
-        this._draft = tool.updateDraft(this._draft, point);
+        // Second+ click: place anchor at the current count position
+        const anchors = [...this._draft.anchors];
+        while (anchors.length <= this._anchorPlacedCount) {
+          anchors.push({ ...anchors[anchors.length - 1] });
+        }
+        anchors[this._anchorPlacedCount] = point;
+        this._draft = { ...this._draft, anchors };
+        this._anchorPlacedCount++;
         this._transition(DrawingState.PREVIEW);
         this._emit({ type: 'draftUpdated', draft: this._draft });
-        const finalized = tool.finalize(this._draft);
-        if (finalized) {
-          this._commitDrawing(finalized);
-          this._cancelDraft();
-          return 'drew';
+        if (this._anchorPlacedCount >= tool.anchorCount) {
+          const finalized = tool.finalize(this._draft);
+          if (finalized) {
+            this._commitDrawing(finalized);
+            this._cancelDraft();
+            return 'drew';
+          }
         }
         return 'drew';
       }
 
       // First click: create draft
       this._draft = tool.createDraft(point, { ...this._activeOptions });
+      this._anchorPlacedCount = 1;
       this._transition(DrawingState.STARTED);
       this._emit({ type: 'draftUpdated', draft: this._draft });
       return 'drew';
@@ -272,7 +282,14 @@ export class DrawingEngine {
     }
 
     if (this._draft && this._activeTool) {
-      this._draft = this._activeTool.updateDraft(this._draft, point);
+      // Update preview anchor at the next-to-be-placed index
+      const previewAnchors = [...this._draft.anchors];
+      const previewIdx = this._anchorPlacedCount;
+      while (previewAnchors.length <= previewIdx) {
+        previewAnchors.push({ ...previewAnchors[previewAnchors.length - 1] });
+      }
+      previewAnchors[previewIdx] = point;
+      this._draft = { ...this._draft, anchors: previewAnchors };
       this._transition(DrawingState.PREVIEW);
       this._emit({ type: 'draftUpdated', draft: this._draft });
       return;
@@ -648,6 +665,7 @@ export class DrawingEngine {
 
   private _cancelDraft(): void {
     this._draft = null;
+    this._anchorPlacedCount = 0;
   }
 
   private _commitDrawing(drawing: Drawing): void {

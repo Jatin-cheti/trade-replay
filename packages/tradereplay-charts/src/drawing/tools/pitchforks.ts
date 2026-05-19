@@ -53,42 +53,54 @@ function computePitchforkGeometry(
 ) {
   const [p0, p1, p2] = pts;
 
-  // Determine origin and target based on variant
+  // Determine median origin and target based on variant
   let origin: ScreenPoint;
   let medTarget: ScreenPoint;
-  let offsetScale: number;
 
   if (variant === 'pitchfork') {
+    // Andrews': pivot at A, median to mid(B, C)
     origin = p0;
     medTarget = midpoint(p1, p2);
-    offsetScale = 1.0;
+  } else if (variant === 'modifiedSchiffPitchfork') {
+    // Modified Schiff: pivot at mid(A, B), median to mid(A, C)
+    origin = midpoint(p0, p1);
+    medTarget = midpoint(p0, p2);
+  } else if (variant === 'insidePitchfork') {
+    // Inside: pivot at mid(A, B), median to mid(B, C)
+    origin = midpoint(p0, p1);
+    medTarget = midpoint(p1, p2);
   } else {
+    // Schiff / Inside: pivot at mid(A, B), median to C
     origin = midpoint(p0, p1);
     medTarget = p2;
-    offsetScale = variant === 'insidePitchfork' ? 0.62 :
-                  variant === 'modifiedSchiffPitchfork' ? 0.82 : 1.0;
   }
 
-  // The half-offset vector perpendicular to median line direction
+  // Median direction vector (all prongs are parallel to this)
   const medDx = medTarget.x - origin.x;
   const medDy = medTarget.y - origin.y;
 
-  // Perpendicular to direction (p2 - p1) rotated by offsetScale
-  const halfVx = (p2.x - p1.x) / 2 * offsetScale;
-  const halfVy = (p2.y - p1.y) / 2 * offsetScale;
+  // Inside pitchfork: prongs start from inner midpoints instead of p1/p2
+  let upperStart: ScreenPoint;
+  let lowerStart: ScreenPoint;
+  if (variant === 'insidePitchfork') {
+    upperStart = midpoint(p0, p1);
+    lowerStart = midpoint(p0, p2);
+  } else {
+    upperStart = p1;
+    lowerStart = p2;
+  }
 
-  // Upper target: medTarget shifted by halfV
-  const upperTarget: ScreenPoint = { x: medTarget.x - halfVy, y: medTarget.y + halfVx };
-  const lowerTarget: ScreenPoint = { x: medTarget.x + halfVy, y: medTarget.y - halfVx };
+  // Each prong ray: from its start, direction = median direction
+  const upperProngTarget: ScreenPoint = { x: upperStart.x + medDx, y: upperStart.y + medDy };
+  const lowerProngTarget: ScreenPoint = { x: lowerStart.x + medDx, y: lowerStart.y + medDy };
 
-  // Extend all three rays to canvas edge
   const medEndPt = rayEndpoint(origin, medTarget, w, h);
-  const upperEndPt = rayEndpoint(origin, upperTarget, w, h);
-  const lowerEndPt = rayEndpoint(origin, lowerTarget, w, h);
+  const upperEndPt = rayEndpoint(upperStart, upperProngTarget, w, h);
+  const lowerEndPt = rayEndpoint(lowerStart, lowerProngTarget, w, h);
 
   const medSeg = clipSegment(origin, medEndPt, w, h);
-  const upperSeg = clipSegment(origin, upperEndPt, w, h);
-  const lowerSeg = clipSegment(origin, lowerEndPt, w, h);
+  const upperSeg = clipSegment(upperStart, upperEndPt, w, h);
+  const lowerSeg = clipSegment(lowerStart, lowerEndPt, w, h);
 
   return {
     origin,

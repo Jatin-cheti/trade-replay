@@ -170,28 +170,41 @@ export function getPitchforkGeometry(points: [CanvasPoint, CanvasPoint, CanvasPo
   fill: [CanvasPoint, CanvasPoint, CanvasPoint, CanvasPoint];
 } {
   const [first, second, third] = points;
-  const span = Math.max(distance(first, second), distance(second, third), distance(first, third));
-  const offsetFallback = Math.max(14, span * 0.22);
+  let origin: CanvasPoint;
+  let medianTarget: CanvasPoint;
 
-  const config = variant === 'pitchfork'
-    ? { origin: first, target: midpoint(second, third), upperAnchor: second, lowerAnchor: third, offsetScale: 1 }
-    : variant === 'schiffPitchfork'
-      ? { origin: midpoint(first, second), target: third, upperAnchor: first, lowerAnchor: second, offsetScale: 1 }
-      : variant === 'modifiedSchiffPitchfork'
-        ? { origin: midpoint(first, second), target: third, upperAnchor: first, lowerAnchor: second, offsetScale: 0.82 }
-        : { origin: midpoint(first, second), target: third, upperAnchor: first, lowerAnchor: second, offsetScale: 0.62 };
+  if (variant === 'pitchfork') {
+    origin = first;
+    medianTarget = midpoint(second, third);
+  } else if (variant === 'modifiedSchiffPitchfork') {
+    origin = midpoint(first, second);
+    medianTarget = midpoint(first, third);
+  } else if (variant === 'insidePitchfork') {
+    origin = midpoint(first, second);
+    medianTarget = midpoint(second, third);
+  } else {
+    origin = midpoint(first, second);
+    medianTarget = third;
+  }
 
-  const axis = subtract(config.target, config.origin);
-  const normal = normalize(perpendicular(axis));
-  let upperOffset = signedDistanceToLine(config.upperAnchor, config.origin, config.target) * config.offsetScale;
-  let lowerOffset = signedDistanceToLine(config.lowerAnchor, config.origin, config.target) * config.offsetScale;
+  const direction = subtract(medianTarget, origin);
 
-  if (Math.abs(upperOffset) < EPSILON) upperOffset = offsetFallback;
-  if (Math.abs(lowerOffset) < EPSILON) lowerOffset = -offsetFallback;
+  let upperStart: CanvasPoint;
+  let lowerStart: CanvasPoint;
+  if (variant === 'insidePitchfork') {
+    upperStart = midpoint(first, second);
+    lowerStart = midpoint(first, third);
+  } else {
+    upperStart = second;
+    lowerStart = third;
+  }
 
-  const median = getRaySegment(config.origin, config.target, width, height);
-  const upper = getRaySegment(add(config.origin, scale(normal, upperOffset)), add(config.target, scale(normal, upperOffset)), width, height);
-  const lower = getRaySegment(add(config.origin, scale(normal, lowerOffset)), add(config.target, scale(normal, lowerOffset)), width, height);
+  const upperTarget = add(upperStart, direction);
+  const lowerTarget = add(lowerStart, direction);
+
+  const median = getRaySegment(origin, medianTarget, width, height);
+  const upper = getRaySegment(upperStart, upperTarget, width, height);
+  const lower = getRaySegment(lowerStart, lowerTarget, width, height);
 
   return {
     median,

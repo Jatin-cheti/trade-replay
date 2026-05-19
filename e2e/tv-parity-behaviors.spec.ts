@@ -19,9 +19,10 @@
  * stack.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./playwright-fixture";
+import type { Page } from "@playwright/test";
 
-const BASE_URL = process.env.E2E_TARGET_URL || "https://tradereplay.me";
+const BASE_URL = process.env.E2E_TARGET_URL || "http://127.0.0.1:8080";
 
 // ─── Helpers (mirrored from tv-parity-comprehensive.spec.ts) ────────────────
 
@@ -102,19 +103,19 @@ const INTERACTION_TOOLS = [
   { variant: "horizontalRay",    testId: "tool-horizontal-ray",           style: "single-click" as const },
   { variant: "vline",            testId: "tool-vertical-line",            style: "single-click" as const },
   { variant: "crossLine",        testId: "tool-cross-line",               style: "single-click" as const },
-  { variant: "channel",          testId: "tool-parallel-channel",         style: "click-click" as const },
+  { variant: "channel",          testId: "tool-parallel-channel",         style: "wizard" as const },
   { variant: "regressionTrend",  testId: "tool-regression-trend",         style: "click-click" as const },
   { variant: "flatTopBottom",    testId: "tool-flat-top-bottom",          style: "click-click" as const },
-  { variant: "disjointChannel",  testId: "tool-disjoint-channel",         style: "drag" as const },
-  { variant: "pitchfork",        testId: "tool-pitchfork",                style: "drag" as const },
-  { variant: "schiffPitchfork",  testId: "tool-schiff-pitchfork",         style: "drag" as const },
-  { variant: "modifiedSchiffPitchfork", testId: "tool-modified-schiff-pitchfork", style: "drag" as const },
-  { variant: "insidePitchfork",  testId: "tool-inside-pitchfork",         style: "drag" as const },
+  { variant: "disjointChannel",  testId: "tool-disjoint-channel",         style: "wizard" as const },
+  { variant: "pitchfork",        testId: "tool-pitchfork",                style: "wizard" as const },
+  { variant: "schiffPitchfork",  testId: "tool-schiff-pitchfork",         style: "wizard" as const },
+  { variant: "modifiedSchiffPitchfork", testId: "tool-modified-schiff-pitchfork", style: "wizard" as const },
+  { variant: "insidePitchfork",  testId: "tool-inside-pitchfork",         style: "wizard" as const },
 ];
 
 async function drawOnce(
   page: Page,
-  tool: { testId: string; style: "single-click" | "click-click" | "drag" },
+  tool: { testId: string; style: "single-click" | "click-click" | "drag" | "wizard" },
   cx: number,
   cy: number,
 ) {
@@ -122,6 +123,30 @@ async function drawOnce(
   if (tool.style === "single-click") {
     await page.mouse.move(cx, cy);
     await page.mouse.down(); await page.mouse.up();
+  } else if (tool.style === "wizard") {
+    const points = tool.testId === "tool-parallel-channel"
+      ? [
+          { x: cx - 36, y: cy + 10 },
+          { x: cx + 36, y: cy - 10 },
+          { x: cx, y: cy - 58 },
+        ]
+      : tool.testId === "tool-disjoint-channel"
+        ? [
+            { x: cx - 48, y: cy - 20 },
+            { x: cx + 48, y: cy - 44 },
+            { x: cx - 28, y: cy + 46 },
+            { x: cx + 56, y: cy + 18 },
+          ]
+        : [
+            { x: cx - 54, y: cy + 18 },
+            { x: cx, y: cy - 46 },
+            { x: cx + 54, y: cy + 32 },
+          ];
+    for (const point of points) {
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.down(); await page.mouse.up();
+      await page.waitForTimeout(70);
+    }
   } else {
     // click-click & drag both commit reliably as a drag (>=8px)
     await dragBetween(page, cx - 22, cy - 6, cx + 22, cy + 6);
