@@ -9,6 +9,186 @@
 
 ---
 
+**Gap-tool reconciliation note:** For the 31 gap tools, prefer `docs/TV_PARITY_AUDIT.md` section `Gap Tool Reconciliation — v2 Specs vs TradingView Evidence` for current evidence labels. The earlier automation-run line and older per-tool statements below that say icon specs skipped or "No v2 spec" are superseded where they conflict with the current v2/icon spec files on disk.
+
+# 59-Tool Evidence Index
+
+This section represents the 59-tool TradingView live-capture/deep-audit documentation lane. It is an evidence and documentation lane only; it is not an implementation scope, not a parity claim, and not a replacement for the 31 gap-tool v2 reconciliation in `docs/TV_PARITY_AUDIT.md`.
+
+Evidence levels must stay explicit. Some findings came from live/headed interaction, some from DOM extraction, some from nearby-button heuristics, some from screenshots of canvas-rendered UI, and some remain blocked. Source schema and factory configuration may describe intended automation behavior, but they are not live TradingView evidence by themselves.
+
+Use these labels when updating this lane: `COMPLETE_LIVE`, `COMPLETE_DOM`, `SCREENSHOT_ONLY`, `NEARBY_BUTTON_HEURISTIC`, `CHART_SETTINGS_ONLY`, `SOURCE_SCHEMA_ONLY`, `FACTORY_CONFIG_ONLY`, `BLOCKED_CANVAS_HIT_TESTING`, `BLOCKED_TIMING_OR_DESELECT`, `CONFLICTING_REQUIRES_RETRY`, and `MANUAL_VERIFICATION_REQUIRED`.
+
+The gap-tool v2 lane remains owned by `docs/TV_PARITY_AUDIT.md`, especially the section `Gap Tool Reconciliation — v2 Specs vs TradingView Evidence`.
+
+## Headed-Run Evidence Block
+
+Codex 2 reported a summary-derived 59-tool headed/live-capture audit. Because the export file is not available in this repo, the counts below are preserved as summary-derived evidence and must be regenerated or manually verified before being treated as exact per-tool truth.
+
+- Targeted tools: 59 TradingView drawing tools.
+- Intended passes: passes 2-10 for each tool.
+- Intended pass sections: 531 total pass-sections (`59 x 9`).
+- Known limitation: much of TradingView's drawing UI is canvas-rendered, so text, handles, labels, tooltips, and hit targets are not always DOM-readable.
+- Known limitation: context menu capture is unreliable because right-click hit-testing often opens chart-level menus instead of drawing-specific menus.
+- Known limitation: settings capture can falsely open chart-level settings and must be validated by title/tabs/fields matching the selected drawing.
+- Evidence rule: screenshot-only or heuristic evidence must not be treated as full parity.
+
+## Deep Behavioral Audit
+
+Every tool in the 59-tool lane needs evidence for these behavior areas before it can be considered implementation-ready:
+
+| Area | Required evidence |
+|---|---|
+| Activation | Tool button location, activation state, cursor transition, failure cases. |
+| Creation/mouse behavior | Exact click/drag sequence, mouse down/move/up behavior, preview state, finalization trigger. |
+| Dots/handles/anchors | Dot count, anchor roles, endpoint/midpoint/rotation handles, hidden or hover-only handles. |
+| Body drag/hit-testing | Body/line/fill/label hit areas, crowded-chart selection accuracy, drag persistence. |
+| Text/labels/tooltips | Built-in labels, metric boxes, canvas tooltips, value formatting, attachment to anchors/body. |
+| Floating toolbar | Visible buttons, dropdowns, settings/lock/hide/delete/copy controls, tool-family differences. |
+| Toolbar dropdowns/modals | Color picker, line width, line style, fill/opacity, template/style menus. |
+| Settings modal | Drawing-specific modal title, tabs, fields, defaults, and whether chart settings opened by mistake. |
+| Context menu | Drawing-specific right-click menu on body, anchor, label, fill; must distinguish chart-level menu. |
+| Lock/hide/delete/copy | Toolbar and context-menu behavior for visibility, lock, remove, duplicate/clone. |
+| Crowded chart behavior | Many same-type and mixed-type drawings, correct selection/move/delete/copy target. |
+| Keyboard behavior | Escape, Delete, Backspace, Ctrl+Z, Ctrl+Shift+Z, copy/paste where available. |
+| Zoom/pan/offscreen behavior | Anchor persistence, label persistence, offscreen handles, visible-axis behavior. |
+| Visual/UI parity | Colors, fills, opacity, line style, stroke width, handle shape, hover/selection visuals. |
+| Tool-specific behavior | Metrics, special anchors, projections, fills, generated clones, icon pickers, or family-specific quirks. |
+
+## Toolbar Section
+
+Codex 2 reported these summary-level toolbar evidence counts:
+
+| Toolbar status | Count | Evidence label |
+|---|---:|---|
+| Complete via DOM extraction | 0 | `COMPLETE_DOM` |
+| Complete via live interaction | 0 | `COMPLETE_LIVE` |
+| Nearby-button heuristic only | 50 | `NEARBY_BUTTON_HEURISTIC` |
+| Blocked by timing or deselect | 9 | `BLOCKED_TIMING_OR_DESELECT` |
+
+`NEARBY_BUTTON_HEURISTIC` means the automation saw likely toolbar buttons near the selected drawing, but did not prove exact drawing-toolbar controls or open every dropdown. It is not equivalent to full toolbar interaction.
+
+No floating toolbar should be marked fully complete unless the actual drawing toolbar stayed selected and its buttons/dropdowns were opened and verified.
+
+## Settings Modal Section
+
+Codex 2 reported these summary-level settings evidence counts:
+
+| Settings status | Count | Evidence label |
+|---|---:|---|
+| Drawing-specific settings truly opened | 3 | `COMPLETE_LIVE` or `COMPLETE_DOM` only when title/tabs prove drawing specificity |
+| Chart-settings-only false positives | 2 | `CHART_SETTINGS_ONLY` |
+| Settings blocked | 38 | `BLOCKED_TIMING_OR_DESELECT` |
+| Conflicting settings/title evidence requiring retry | 16 | `CONFLICTING_REQUIRES_RETRY` |
+
+Chart-level settings must not be counted as drawing-specific settings. A valid drawing settings capture must prove that the modal title, tabs, and fields belong to the selected drawing/tool. Source schema and factory config are useful implementation references, but they are not live TradingView evidence.
+
+## Context Menu Section
+
+Codex 2 reported drawing-specific context menu capture as blocked for all 59 tools:
+
+| Context-menu status | Count | Evidence label |
+|---|---:|---|
+| Drawing-specific context menu blocked | 59 | `BLOCKED_CANVAS_HIT_TESTING` |
+
+TradingView canvas hit-testing blocked reliable drawing-specific right-click capture. A chart-level context menu is not a drawing-specific context menu. Every drawing-specific menu remains manual-verification-required unless future evidence proves the menu was opened from the drawing body, anchor, label, or fill.
+
+## Blocker Section
+
+| Blocker | Meaning |
+|---|---|
+| `BLOCKED_CANVAS_HIT_TESTING` | Canvas hit-testing prevented reliable drawing-specific right-click/menu capture. |
+| `BLOCKED_TIMING_OR_DESELECT` | Selection, timing, or deselection prevented toolbar/settings capture. |
+| `SCREENSHOT_ONLY` | Handles, labels, or tooltips were visible only in screenshots/canvas and not DOM-readable. |
+| `CHART_SETTINGS_ONLY` | Automation opened chart-level settings instead of drawing-specific properties. |
+| `CONFLICTING_REQUIRES_RETRY` | Evidence disagreed, usually around settings title/modal identity. |
+| `MANUAL_VERIFICATION_REQUIRED` | Visual/UI parity needs headed/manual confirmation before implementation assumptions are final. |
+
+Codex 2 also reported `SCREENSHOT_ONLY` evidence for 50 handle/white-dot observations and 50 label/tooltip observations. These are useful visual references, but exact text/value reads and UI semantics still require manual/headed verification.
+
+# Blocker Reconciliation — 59-Tool Deep Audit vs Headed Run Evidence
+
+Earlier coverage language may have overclaimed some areas. This reconciliation intentionally uses evidence-level labels instead of simple complete/incomplete statuses.
+
+- Toolbar evidence was often `NEARBY_BUTTON_HEURISTIC`, not verified `COMPLETE_DOM` or `COMPLETE_LIVE` toolbar interaction.
+- Settings evidence sometimes opened chart-level settings; those cases must be labeled `CHART_SETTINGS_ONLY`, not drawing-settings complete.
+- Drawing-specific context menus are `BLOCKED_CANVAS_HIT_TESTING` for all 59 tools unless later evidence proves otherwise.
+- Handles, white dots, labels, and tooltips are often `SCREENSHOT_ONLY` because TradingView renders them on canvas.
+- Source schema and factory config must be labeled `SOURCE_SCHEMA_ONLY` or `FACTORY_CONFIG_ONLY` and must not be promoted to live TradingView behavior.
+- Conflicting settings/title evidence must remain `CONFLICTING_REQUIRES_RETRY` until a headed/manual retry confirms the selected drawing's settings modal.
+
+## Manual Verification Plan
+
+### A. Drawing-specific context menus
+
+- Right-click drawing body.
+- Right-click anchor/handle.
+- Right-click label/text/metric box where present.
+- Right-click fill area for filled tools.
+- Confirm the menu is drawing-specific, not chart-level.
+- Screenshot exact menu items and disabled/enabled state.
+
+### B. Floating toolbar
+
+- Keep the drawing selected while recording evidence.
+- Verify visible toolbar buttons.
+- Open each dropdown.
+- Verify color picker.
+- Verify line width.
+- Verify line style.
+- Verify lock.
+- Verify hide.
+- Verify settings/gear.
+- Verify delete.
+- Verify copy/clone where present.
+- Screenshot representative tools/families and any tool-specific toolbar differences.
+
+### C. Settings modal
+
+- Open settings via the selected drawing's floating toolbar gear.
+- Confirm modal title is drawing/tool-specific.
+- Record tabs and fields.
+- Distinguish chart settings from drawing settings.
+- Retry every `CONFLICTING_REQUIRES_RETRY` case.
+
+### D. Handles/dots
+
+- Screenshot selected state.
+- Record dot count, dot position, and dot role.
+- Record endpoint handles.
+- Record midpoint handles.
+- Record rotation handles.
+- Record hidden or hover-only handles.
+
+### E. Text/labels/tooltips
+
+- Verify whether each label is built-in or user-added.
+- Verify whether label moves with body drag.
+- Verify whether label moves with endpoint drag.
+- Verify whether label persists after zoom, pan, deselect, and reselect.
+- Screenshot canvas-rendered tooltip/value text and manually transcribe exact formatting.
+
+### F. Crowded chart
+
+- Create many same-type drawings.
+- Create many mixed-type drawings.
+- Verify selection targets the intended drawing.
+- Verify move/delete/copy targets the intended drawing.
+
+## Per-Tool Status Table Placeholder
+
+Exact 59 individual tool rows are not available in this tracked repo from the Codex 2 export. Do not invent per-tool statuses from summary counts.
+
+| Scope | Current evidence | Next step |
+|---|---|---|
+| 59-tool live-capture lane | Summary-derived counts from Codex 2 only | Regenerate headed evidence or manually verify before filling exact per-tool rows. |
+| Toolbar rows | 50 heuristic, 9 blocked summary | Fill per-tool rows only after exact toolbar controls/dropdowns are verified. |
+| Settings rows | 3 opened, 2 chart-only, 38 blocked, 16 conflicting summary | Fill per-tool rows only with modal title/tabs/fields evidence. |
+| Context-menu rows | 59 blocked summary | Fill per-tool rows only after drawing-specific right-click menus are proven. |
+| Handles/labels/tooltips | 50 screenshot-only summaries each | Fill exact rows only from screenshots/manual transcriptions tied to each tool. |
+
+The remaining manual verification list is: all 59 drawing-specific context menus, all heuristic-only floating toolbar confirmations, all handle/white-dot visual shape confirmations, all canvas-rendered tooltip/value reads, all rendered text/annotation label parity checks, all conflicting settings-title cases, and all 9 activation-failed tools.
+
 ## Purpose
 
 This is the master behavioral reference for every TradingView drawing tool type captured or automated in this repo.
@@ -147,15 +327,13 @@ It supersedes all previous per-family documents (`TV_PARITY.md`, `LINE_CHANNEL_P
 | Brush / Arrows | 4 | ✓ all 4 | **4/4 pass** | NEW — arrowMark / arrowLine |
 | Brush / Shapes | 10 | ✓ all 10 | **10/10 pass** | NEW — kind: shape (drag); anchorCount fixed from toolRegistry |
 | Text tools | 14 | ✓ all 14 | not run (UI requires text input flow) | existing specs; no smoke blocker |
-| Icon tools | 3 | ✓ all 3 | **0/3 pass (SKIP)** | NEW specs — tool button NOT in toolbar; requires IconToolPanel picker flow |
+| Icon tools | 3 | ✓ all 3 | dedicated icon specs exist; representative `emoji` pick-place passed on current rerun | `tv-parity-icon-*.spec.ts` covers app IconToolPanel picker flow; `sticker`/`iconTool` representative reruns still pending; TradingView live picker evidence remains partial/blocked |
 
 ### Icon Tool Blocker Detail
 
-`emoji`, `sticker`, `iconTool` tests skip with: `tool not found: tool-emoji` (and sticker/iconTool).  
-**Root cause:** These tools are accessed via `IconToolPanel` (a slide-out picker), NOT via a `data-testid="tool-emoji"` rail button.  
-**Actual testIds available:** `icon-panel`, `icon-panel-tab-emojis`, `icon-panel-item-{id}`.  
-**Fix needed:** Custom spec using the picker flow — open icon rail, click `icon-panel-tab-emojis`, select a preset, click canvas to place.  
-**Factory kind `arrowMark` is correct** for the underlying drawing mechanic; the issue is purely the activation UI path.
+Superseded status: the old `tool not found: tool-emoji` blocker applies to the ordinary v2 rail-button path only. Dedicated app-side picker specs now exist: `tv-parity-icon-emoji.spec.ts`, `tv-parity-icon-sticker.spec.ts`, and `tv-parity-icon-iconTool.spec.ts`, backed by `tv-parity-icon-factory.ts`.
+
+Remaining evidence gap: TradingView live picker extraction is still partial/blocked. The pass3 research recorded rail-click attempts and screenshots, but `sticker` and `iconTool` item selection remained blocked and drawing settings/context menus were not live-extracted.
 
 ---
 

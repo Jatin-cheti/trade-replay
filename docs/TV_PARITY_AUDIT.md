@@ -25,13 +25,15 @@ Three automated research passes were run against live TradingView:
 - Body drag cursor detection
 - SVG handle size detection (via `querySelectorAll("svg circle")`)
 
-**Confirmed blockers for automation:**
-- **Drawing-specific context menu**: Canvas hit-testing fails. Right-click at draw coordinates gets the chart-level context menu, not the drawing-level context menu. Drawing coordinates after multi-phase test execution are not reliably at the right-click target.
-- **Floating drawing toolbar buttons**: TV uses CSS module hashed class names. DOM diff found 0–2 new elements after selection (appears to be chart UI, not drawing toolbar). The actual toolbar likely toggles visibility on existing elements.
-- **Settings modal per drawing**: Double-click and gear-click open chart settings (not drawing settings) because the drawing is not reliably hit.
-- **Default drawing colors from DOM**: SVG `stroke` extraction returns `rgb(255,255,255)` (handle dots), not the drawing stroke color. Drawing colors are rendered on canvas.
+**RECONCILIATION NOTE (2026-05-20):** The `COMPLETE_COVERAGE.md` deep audit is useful evidence, but it mixes live TradingView observation, repo source/schema, factory config, and inference. It does not by itself complete toolbar, context-menu, or settings behavior for the 31 gap tools. See Section 17 for the evidence-typed reconciliation table.
 
-These blockers are **fundamental to TV's canvas architecture** and require manual visual inspection to confirm.
+**Automation-extraction blockers remain** (cannot extract from live TV DOM):
+- **Floating drawing toolbar**: toolbar visibility was live-detected by DOM diff/screenshot for all 31, but exact button/dropdown enumeration is partial. Treat button lists from docs/source/factory as `SOURCE_SCHEMA`, `FACTORY_CONFIG`, or `INFERRED` unless a specific live artifact proves them.
+- **Drawing-specific context menu**: right-click hit-testing still failed for all 31; captured menus are empty or chart-level. Treat context menu items from docs/source/factory as non-live evidence.
+- **Settings modal per drawing**: several automation runs opened a modal titled `Settings`, but the tabs (`Symbol`, `Status line`, `Canvas`, etc.) identify chart-level settings, not drawing settings. Other tools did not open settings. Treat settings schemas as source/schema only until headed manual verification opens the drawing-specific dialog.
+- **Default drawing colors from DOM**: SVG stroke returns `rgb(255,255,255)` (handle dots). Drawing colors are canvas-rendered, so default color evidence needs screenshot/manual/source labels.
+
+**Behavioral knowledge is not uniformly complete.** Live interaction covers activation, creation, selected-state visibility, zoom/crowding smoke, and some handle evidence. Toolbar contents, drawing settings fields, drawing context menus, and selected Escape behavior still need evidence-typed handling.
 
 ---
 
@@ -382,7 +384,7 @@ Send backward (1 step)  → Z-order
 | Escape (before first anchor) | Cancels/deactivates tool | YES |
 | Escape (during drag) | Cancels drag, drawing not placed | YES (drag tools) |
 | Escape (after first anchor, click-sequence) | Cancels partial drawing | YES |
-| Escape (after selection) | `no-op` — does NOT deselect | **CONFIRMED by automation** — all 31 tools returned `escapeAfterSelection = "no-op"`. TV requires clicking an empty area or pressing another tool key to deselect. Escape alone does nothing while drawing is selected. |
+| Escape (after selection) | **CONFLICTING** | Gap-tool audit JSON records `escapeAfterSelection = "no-op"` for all 31 tools, while `COMPLETE_COVERAGE.md` documents "Escape when selected: deselects" as a cross-tool behavior. The multi-drawing artifact explanation is plausible but requires a clean one-drawing live recheck before this is marked complete. |
 | Delete (selected) | Removes drawing | LIKELY YES (automation returned false — test execution artifact, not TV behavior) |
 | Backspace (selected) | Removes drawing | LIKELY YES |
 | Ctrl+Z | Undo last draw | YES (TV supports; automation result unreliable due to execution state) |
@@ -390,8 +392,8 @@ Send backward (1 step)  → Z-order
 | Ctrl+D | Clone/duplicate | **YES — CONFIRMED** (automation returned `ctrlD = true` and `cloneViaCtrlD = true` for all 31 tools) |
 | Ctrl+C / Ctrl+V | Copy/paste drawing | YES (TV supports) |
 
-**Critical finding — Escape after selection is a no-op:**
-All 31 tools: `escapeAfterSelection = "no-op"`. Pressing Escape while a drawing is selected does NOT deselect it. This is different from many user expectations. The only ways to deselect in TV are: click another drawing, click empty chart area, or press another tool hotkey.
+**Escape after selection remains conflicting:**
+The audit output returned `"no-op"` for all 31 tools. `COMPLETE_COVERAGE.md` says selected drawings deselect on Escape, but that source is cross-tool documentation rather than a focused gap-tool one-drawing verification. Treat this as `CONFLICTING` until a headed recheck verifies the selected drawing and toolbar state with no other drawings present.
 
 **Note on Delete/Ctrl+Z test results:**
 The automation showed `deleteSelectedWorks = false` and `ctrlZ = false` for ALL 31 tools. This is a test execution artifact: by Phase 8-9 of the research, multiple drawings have been placed and cleared, and the specific drawing may not be properly selected. TradingView DOES support Delete and Ctrl+Z for drawings — confirmed by `tv-deep-parity-factory.ts`.
@@ -664,25 +666,42 @@ The automation showed `deleteSelectedWorks = false` and `ctrlZ = false` for ALL 
 
 ### Globally Missing (all 31 tools):
 
-1. **Floating toolbar exact button enumeration** — ⚠️ CONFIRMED BLOCKER (all 31 tools, all 3 passes)
-   - _Blocker:_ TV uses CSS module hashed class names. Pass 1 DOM search found left rail (wrong). Pass 2 DOM diff found only chart-level UI ("Undo toggle maximized pane state"). Pass 3 found same 1 chart element. The actual floating toolbar is NOT extractable from DOM.
-   - _Root cause:_ TV's floating drawing toolbar appears to toggle visibility on existing DOM elements rather than inserting new ones — or uses Shadow DOM / hashed containers that DOM diff cannot find.
-   - _Next step:_ Manual browser inspection: open TV in Chrome DevTools → select drawing → inspect `[class*="toolbar"]` in Elements panel → find floating toolbar → document class names, aria-labels, data-name attributes. **Required before spec assertions on toolbar buttons.**
+1. **Floating toolbar buttons** — PARTIAL live evidence; exact controls not fully live-extracted
+   - _Original claim:_ Blockers prevented knowledge of button content.
+   - _Reconciliation:_ Live automation shows a selected drawing creates toolbar-like DOM diff candidates and screenshots, but exact buttons/dropdowns are only partially extracted. `COMPLETE_COVERAGE.md` and repo schemas can guide expected controls, but those entries are `SOURCE_SCHEMA`, `FACTORY_CONFIG`, or `INFERRED`, not complete live TradingView proof.
+   - _Expected standard toolbar from source/docs:_ Color picker · Settings gear · Delete · Clone · Lock · Hide
+   - _Tool-specific additions:_
+     - position tools: R/R label mode selector (R/R / Price Delta / Both)
+     - anchoredVwap: VWAP interval selector (Session / Weekly / Monthly)
+     - fixedRangeVolumeProfile/anchoredVolumeProfile: bar count, POC, Value Area settings
+     - brush: Opacity slider + Brush size/thickness + Smoothness
+     - highlighter: Opacity + Width
+     - rectangle/circle/triangle: Fill color · Opacity · Border width · Style · Add text
+     - shapes (filled): Fill color · Opacity
+     - emoji/sticker/iconTool: Size control (textSize) · Icon color (iconTool only)
+   - _Automation extraction:_ Partial/blocked by CSS module hashed class names and canvas-rendered selection state.
+   - _Next step:_ Headed manual verification of toolbar controls per representative subgroup, then per-tool deltas for position, volume, brush, shape, and icon tools.
 
-2. **Drawing-specific context menu items** — ⚠️ CONFIRMED BLOCKER (all 31 tools, all 3 passes)
-   - _Blocker:_ Canvas hit-testing fails. Right-click at exact draw coordinates (computed from `placeTool()` return values) still gets chart-level context menu (0 drawing-specific items in all attempts).
-   - _Root cause:_ TV's drawing hit-testing requires clicking exactly on the rendered drawing pixel. The drawing's rendered bounds depend on TV's internal chart scale/zoom state at the moment of drawing, which differs from the theoretical coordinates used in automation.
-   - _Next step:_ Manual inspection. Right-click directly on a visible placed drawing and screenshot context menu. Expected items: Edit object, Clone, Delete drawing, Lock, Hide, Bring to front, Send to back. **Required before spec assertions on context menu.**
+2. **Drawing-specific context menu items** — BLOCKED live automation; source/doc lists are non-live
+   - _Original claim:_ Canvas hit-testing prevented capturing context menu items.
+   - _Reconciliation:_ Pass 2/3 research JSON has zero drawing-level context-menu items for all 31 tools. Right-click attempts hit chart-level/empty canvas instead of drawing-level menus.
+   - _Expected standard items from docs/source only:_ Template | Visual order (Bring to front / Send to back) | Clone | Lock / Unlock | Hide / Show | Remove | Settings
+   - _Tool-specific extras:_ "Set as default" (position tools) · "Edit text" when text set (rectangle, circle, triangle)
+   - _Automation extraction:_ Still blocked by canvas hit-testing (right-click at coordinates → chart-level menu, not drawing menu).
+   - _Next step:_ Manual/headed hit-test verification on selected drawing body and handles. Do not mark context menu complete until drawing-level items are observed.
 
-3. **Settings modal per drawing (toolbar gear)** — ⚠️ CONFIRMED BLOCKER (all 31 tools, all 3 passes)
-   - _Blocker:_ Double-click opens chart settings (Symbol, Status line, Canvas, Trading, Alerts, Events) — NOT drawing settings. This confirmed for all 31 tools via pass2. Gear button approach via DOM diff also failed (toolbar elements not findable).
-   - _Root cause:_ Same as #2 above — the double-click doesn't hit the drawing. The gear button is inside the floating toolbar which is not DOM-extractable.
-   - _Next step:_ Manual inspection. Select drawing → click gear icon in floating toolbar → screenshot settings modal → document all tabs and fields per tool family. **Required before spec assertions on settings tabs/fields.**
+3. **Settings modal per drawing** — schema/source known; drawing-specific modal mostly blocked/conflicting
+   - _Original claim:_ Double-click miss prevented capturing settings modal.
+   - _Reconciliation:_ For tools where automation says `opened=True`, the captured tabs (`Symbol`, `Status line`, `Canvas`, `Trading`, `Alerts`, `Events`) identify chart-level settings, not drawing-specific settings. Other tools did not open a modal. Rectangle drawing settings are not considered fully live-confirmed from this pass.
+   - _Schemas:_ forecastingSchema (position/volume/measurer tools) · brushSchema (brush/highlighter) · shapeSchema (shapes) · textSchema (arrows, icons) · lineSchema (arrowTool)
+   - _Automation extraction:_ Blocked/conflicting — double-click often opens chart settings, not drawing settings.
+   - _Next step:_ Use selected drawing toolbar gear or drawing-level context menu in headed mode; verify the title/tabs are drawing-specific before recording fields.
 
-4. **Escape after selection = no-op — CONFIRMED, spec gap** — ⚠️ ACTION REQUIRED
-   - _Finding:_ All 31 tools returned `escapeAfterSelection = "no-op"` in pass 1 automation. Pressing Escape while a drawing is selected does NOT deselect it.
-   - _Spec impact:_ Current specs likely assert `Escape → deselect`. These will fail if our app matches TV behavior (Escape = no-op). Verify against current spec assertions and align behavior.
-   - _Next step:_ Search current gap-tool specs for "escape" + "deselect" assertions and either fix the spec or document divergence.
+4. **Escape after selection** — CONFLICTING evidence; requires focused recheck
+   - _Original claim:_ All 31 tools returned `escapeAfterSelection = "no-op"`.
+   - _Reconciliation:_ `COMPLETE_COVERAGE.md` documents "Escape when selected: deselects" as a cross-tool behavior, while the gap-tool audit JSON records `no-op` for every assigned tool. The multi-drawing artifact explanation is plausible but not live-proven per tool in a clean one-drawing headed run.
+   - _Current status:_ `CONFLICTING`.
+   - _Spec impact:_ v2 specs assert Escape deselects in our app; TradingView evidence needs a focused one-drawing recheck before calling this complete.
 
 5. **Ctrl+Shift+Z (Redo) CONFIRMED — spec gap**
    - _Finding:_ All 31 tools returned `ctrlShiftZ = true`. TV uses Ctrl+Shift+Z for redo (not Ctrl+Y).
@@ -828,3 +847,78 @@ The automation showed `deleteSelectedWorks = false` and `ctrlZ = false` for ALL 
 - VWAP band assertion
 
 These gaps are NOT due to lack of effort — they require direct canvas pixel manipulation or manual observation because TV's drawing system is entirely canvas-rendered.
+
+---
+
+# Gap Tool Reconciliation — v2 Specs vs TradingView Evidence
+
+## Reconciliation Summary
+
+This section supersedes earlier broad statements that toolbar, settings, or context-menu behavior is either fully blocked or fully complete for all 31 gap tools.
+
+**Verified by v2/app specs:**
+- All 31 assigned tools have a v2 spec file on disk: 28 use `e2e/tv-parity-extended-factory.ts`; 3 icon tools also have dedicated picker-flow specs through `e2e/tv-parity-icon-factory.ts`.
+- `docs/COMPLETE_COVERAGE.md` records a 2026-05-20 smoke run with 28/28 non-icon gap-tool `geometry #000` checks passing against `https://tradereplay.me`.
+- The icon v2 stubs exist, but their ordinary rail-button flow is not the useful path. The dedicated icon specs are the correct app-side picker-flow specs.
+
+**Verified by live TradingView interaction:**
+- Activation selectors, basic creation flow, selected state/toolbar visibility, zoom screenshots, handle screenshots, and crowded-chart smoke were captured in `e2e/tv-research-output/<tool>/audit.json` and screenshots.
+- Pass 2 live DOM diff found selected-toolbar candidate elements for all 28 non-icon tools; Pass 3 found selected-toolbar candidates for the 3 icon tools.
+
+**Only source/schema/factory-based or inferred:**
+- Exact floating-toolbar buttons/dropdowns, color pickers, style controls, fill controls, and volume/VWAP special controls.
+- Drawing settings fields and tab layouts for the assigned tools.
+- Drawing-specific context-menu item lists.
+
+**Blocked or conflicting:**
+- Drawing context menu is blocked for all 31 tools in the live automation output: right-click at draw coordinates did not yield drawing-level menu items.
+- Drawing-specific settings are blocked or conflicting for all 31. Where a modal opened, its `Symbol`, `Status line`, `Canvas`, `Trading`, `Alerts`, and `Events` tabs identify chart-level settings, not drawing settings.
+- Escape-after-selection is conflicting: audit JSON records `no-op` for all 31, while cross-tool docs say selected drawings deselect on Escape. A clean one-drawing live recheck is required.
+
+## Evidence Legend
+
+`LIVE_INTERACTION` = direct Playwright action against TradingView. `DOM_EXTRACTED` = DOM text/attribute extraction from TradingView. `SCREENSHOT_ONLY` = screenshot/manual visual evidence without reliable DOM. `SOURCE_SCHEMA` = app registry/schema or docs-derived field list. `FACTORY_CONFIG` = Playwright factory/spec config. `INFERRED` = reasoned from families or prior docs, not directly observed. `BLOCKED` = attempted but not captured. `CONFLICTING` = evidence disagrees.
+
+## Reconciliation Table
+
+| Tool name | Slug | Group/lane | v2 spec exists | v2 spec pass status | Icon picker status | Toolbar status | Toolbar evidence | Settings modal status | Settings evidence | Context menu status | Context evidence | Escape behavior | Text/label behavior | Body-drag | Dots/handles | Crowded chart | Exact evidence | Remaining blocker | Exact next step |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Long position | longPosition | Forecasting / Position | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-longPosition.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Drawing settings/context menu; Escape recheck | Headed one-drawing toolbar gear + context-menu pass |
+| Short position | shortPosition | Forecasting / Position | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-shortPosition.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Drawing settings/context menu; Escape recheck | Headed one-drawing toolbar gear + context-menu pass |
+| Position forecast | positionForecast | Forecasting / Position | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-positionForecast.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Drawing settings/context menu; Escape recheck | Headed one-drawing toolbar gear + context-menu pass |
+| Bars Pattern | barPattern | Forecasting / Misc | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | not-applicable | partial | partial | partial | `tv-parity-v2-barPattern.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Source bar exact interaction; context/settings | Manual source-candle + settings/context verification |
+| Ghost Feed | ghostFeed | Forecasting / Misc | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | not-applicable | partial | partial | partial | `tv-parity-v2-ghostFeed.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Source/projection semantics; context/settings | Manual projection-source + settings/context verification |
+| Sector | sector | Forecasting / Misc | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-sector.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Sector is source/schema-heavy; drawing settings/context | Headed sector angle + settings/context verification |
+| Anchored VWAP | anchoredVwap | Volume-based | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-anchoredVwap.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | VWAP bands/settings; context menu | Manual VWAP toolbar/settings verification |
+| Fixed Range Volume Profile | fixedRangeVolumeProfile | Volume-based | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-fixedRangeVolumeProfile.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | POC/value-area settings; context menu | Manual profile settings/context verification |
+| Anchored Volume Profile | anchoredVolumeProfile | Volume-based | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-anchoredVolumeProfile.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | POC/value-area settings; context menu | Manual anchored profile settings/context verification |
+| Price Range | priceRange | Measurers | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-priceRange.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Exact metric formatting; settings/context | Manual metric/settings/context verification |
+| Date Range | dateRange | Measurers | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-dateRange.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Exact date/bars formatting; settings/context | Manual metric/settings/context verification |
+| Date and Price Range | dateAndPriceRange | Measurers | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | complete | partial | partial | partial | `tv-parity-v2-dateAndPriceRange.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Exact combined metric formatting; settings/context | Manual metric/settings/context verification |
+| Brush | brush | Brush / Brushes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-brush.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Smoothing/settings; context menu | Manual smoothing + toolbar/settings verification |
+| Highlighter | highlighter | Brush / Brushes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-highlighter.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Width/opacity/settings; context menu | Manual opacity/width + settings verification |
+| Arrow marker | arrowMarker | Brush / Arrows | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-arrowMarker.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Icon hitbox/settings; context menu | Manual arrow-stamp settings/context verification |
+| Arrow | arrowTool | Brush / Arrows | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-arrowTool.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Arrowhead style/settings; context menu | Manual arrow-line settings/context verification |
+| Arrow mark up | arrowMarkUp | Brush / Arrows | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-arrowMarkUp.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Stamp settings/context menu | Manual arrow-up settings/context verification |
+| Arrow mark down | arrowMarkDown | Brush / Arrows | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-arrowMarkDown.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Stamp settings/context menu | Manual arrow-down settings/context verification |
+| Rectangle | rectangle | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-rectangle.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Text-inside-shape, settings/context | Manual fill/text/settings/context verification |
+| Rotated rectangle | rotatedRectangle | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-rotatedRectangle.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Rotation handle; settings/context | Manual rotation handle + settings/context verification |
+| Path | path | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-path.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Vertex editing; drawing settings/context | Manual vertex edit + settings/context verification |
+| Circle | circle | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-circle.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Text/fill/settings/context | Manual fill/text/settings/context verification |
+| Ellipse | ellipse | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-ellipse.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Ellipse handle semantics; settings/context | Manual handle/settings/context verification |
+| Polyline | polyline | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-polyline.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Vertex editing; drawing settings/context | Manual vertex edit + settings/context verification |
+| Triangle | triangle | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-triangle.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Text/fill/settings/context | Manual fill/text/settings/context verification |
+| Arc | arc | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-arc.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Arc control handle; drawing settings/context | Manual arc midpoint/settings/context verification |
+| Curve | curveTool | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-curveTool.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | Bezier control handles; settings/context | Manual curve control/settings/context verification |
+| Double curve | doubleCurve | Brush / Shapes | yes | documented smoke pass | n/a | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | chart-settings-only | DOM_EXTRACTED + CONFLICTING | blocked | BLOCKED | CONFLICTING | partial | partial | partial | partial | `tv-parity-v2-doubleCurve.spec.ts`; `audit.json/pass2`; `COMPLETE_COVERAGE.md` automation table | S-curve controls; settings/context | Manual double-curve control/settings/context verification |
+| Emoji | emoji | Icon tools | yes | representative `pick-place #000` passed | app picker spec exists; live TV picker partial | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | not-applicable | partial | partial | blocked | `tv-parity-icon-emoji.spec.ts`; `audit.json/pass3`; `COMPLETE_COVERAGE.md` icon section | Live TV picker selectors/settings/context | Manual TV picker/settings/context verification |
+| Sticker | sticker | Icon tools | yes | pending current representative run | app picker spec exists; live TV picker blocked after rail | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | not-applicable | partial | partial | blocked | `tv-parity-icon-sticker.spec.ts`; `audit.json/pass3`; `COMPLETE_COVERAGE.md` icon section | Live TV picker item selectors/settings/context | Run representative icon spec; manual TV picker verification |
+| Icons | iconTool | Icon tools | yes | pending current representative run | app picker spec exists; live TV picker blocked after rail | partial | LIVE_INTERACTION + DOM_EXTRACTED + SCREENSHOT_ONLY | blocked | BLOCKED + SOURCE_SCHEMA | blocked | BLOCKED | CONFLICTING | not-applicable | partial | partial | blocked | `tv-parity-icon-iconTool.spec.ts`; `audit.json/pass3`; `COMPLETE_COVERAGE.md` icon section | Live TV picker item selectors/settings/context | Run representative icon spec; manual TV picker verification |
+
+## Manual Verification Queue
+
+1. For one clean drawing per tool: verify `Escape` while selected with no other drawings on chart.
+2. For each subgroup: open drawing-specific settings through the selected drawing toolbar gear; reject chart settings tabs as invalid evidence.
+3. For each subgroup: right-click selected drawing body and handle positions until drawing-level context menu items are visible.
+4. For toolbar controls: record exact button/dropdown labels and mark evidence as live only when observed in headed TradingView or captured screenshot.
+5. For icon tools: verify TradingView picker tabs/items separately from our app `IconToolPanel`; do not use app test IDs as TradingView evidence.
