@@ -175,9 +175,9 @@ Earlier coverage language may have overclaimed some areas. This reconciliation i
 - Verify selection targets the intended drawing.
 - Verify move/delete/copy targets the intended drawing.
 
-## Per-Tool Status Table Placeholder
+## Per-Tool Status Tables
 
-Exact 59 individual tool rows are not available in this tracked repo from the Codex 2 export. Do not invent per-tool statuses from summary counts.
+Exact 59 individual tool rows from the Codex 2 export are not available in this tracked repo or in any tracked markdown searched during this merge. Do not invent per-tool statuses from summary counts. If the full Codex 2 per-tool table is pasted or regenerated later, merge it here without replacing the evidence labels or the gap-tool pointer above.
 
 | Scope | Current evidence | Next step |
 |---|---|---|
@@ -188,6 +188,21 @@ Exact 59 individual tool rows are not available in this tracked repo from the Co
 | Handles/labels/tooltips | 50 screenshot-only summaries each | Fill exact rows only from screenshots/manual transcriptions tied to each tool. |
 
 The remaining manual verification list is: all 59 drawing-specific context menus, all heuristic-only floating toolbar confirmations, all handle/white-dot visual shape confirmations, all canvas-rendered tooltip/value reads, all rendered text/annotation label parity checks, all conflicting settings-title cases, and all 9 activation-failed tools.
+
+## Honesty Checks
+
+Before using this 59-tool lane for implementation planning, verify these statements remain true:
+
+- `docs/COMPLETE_COVERAGE.md` points readers to `docs/TV_PARITY_AUDIT.md` for the 31 gap-tool/v2 reconciliation.
+- The 59-tool evidence counts above are labeled as summary-derived from Codex 2, not regenerated from tracked per-tool evidence in this repo.
+- `NEARBY_BUTTON_HEURISTIC` is never treated as `COMPLETE_LIVE` or `COMPLETE_DOM`.
+- `CHART_SETTINGS_ONLY` is never counted as drawing-specific settings evidence.
+- `BLOCKED_CANVAS_HIT_TESTING` remains the status for drawing-specific context menus unless a future headed run proves the drawing menu opened.
+- `SCREENSHOT_ONLY` handle, label, and tooltip evidence is not treated as DOM-extracted text or exact semantic proof.
+- `SOURCE_SCHEMA_ONLY` and `FACTORY_CONFIG_ONLY` are not promoted to live TradingView behavior.
+- `CONFLICTING_REQUIRES_RETRY` cases stay unresolved until a clean headed/manual retry confirms the selected drawing and modal identity.
+- No per-tool row should be added without exact file, screenshot, run artifact, or manual verification notes tied to that tool.
+- This document is a coverage/evidence reference; it is not an implementation change and not a claim of completed TradingView parity.
 
 ## Purpose
 
