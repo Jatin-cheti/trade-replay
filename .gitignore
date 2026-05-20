@@ -77,3 +77,6 @@ scripts/_*
 scripts/sec006_*
 scripts/loop[0-9]*
 scripts/fix-*.js
+
+# TV parity research output (generated screenshots + JSON)
+e2e/tv-research-output/
