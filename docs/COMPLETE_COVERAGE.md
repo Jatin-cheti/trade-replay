@@ -336,6 +336,84 @@ Important caveat: the attempt to change Trend Line width from the dropdown accid
 - Zoom/pan/offscreen behavior needs a clean retry; this pass did not produce reliable complete evidence after the symbol-focus contamination.
 - Crowded-chart behavior needs a clean retry with the requested 30-40 same-type and mixed-type drawings.
 
+# Manual Headed Verification Pass 3 — Exhaustive Queue Completion
+
+**Date/time:** 2026-05-21, Asia/Kolkata
+**TradingView URL used:** `https://in.tradingview.com/chart/?symbol=NSE%3ARELIANCE`
+**Execution model:** 5 headed Chromium workers sharing one queue. Each worker pulled the next unfinished tool from the parsed `Tool Inventory by Family` table, attempted activation/drawing/selection, captured selected-state screenshots, toolbar DOM inventory where available, SVG circle handle candidates where available, a generic right-click context attempt, and a zoom screenshot. Deep destructive side effects were not executed blindly; unsafe or unproven steps were marked blocked.
+**Queue construction:** 91 documented tool variants x 7 required scenario groups = 637 queued tool/scenario rows. Scenario groups were `toolbar-side-effects`, `handle-pixel-measurement`, `text-label-annotation`, `tooltip-value-reads`, `zoom-pan-offscreen`, `crowded-chart`, and `drawing-context-menu`.
+**Evidence storage:** Screenshots and JSON are outside the repo at `C:\tmp\tv-headed-verification-2026-05-21-pass3\`; these files are evidence artifacts, not app/test changes. Main artifacts: `queue.json`, `pass3-summary.json`, and one `*-result.json` per attempted tool.
+
+Important caveat: this pass exhausted the queued tool list, but it did not complete every deep behavior. It converted unknowns into evidence-typed partials or blockers. In particular, exact context-menu hit-testing, crowded-chart stress, destructive toolbar side effects, and per-handle pixel measurement still require manual or safer targeted follow-up.
+
+## Pass 3 Queue Summary
+
+| Metric | Count | Notes |
+|---|---:|---|
+| Tool variants parsed from inventory | 91 | Every row 1-91 from `docs/COMPLETE_COVERAGE.md` was queued. |
+| Scenario groups per tool | 7 | Required groups listed above. |
+| Total queued tool/scenario rows | 637 | Queue was exhausted by the 5 headed workers. |
+| Tool base captures attempted | 91 | One activation/draw/select capture attempt per tool. |
+| Screenshot artifacts captured | 330 | Stored outside repo in `C:\tmp\tv-headed-verification-2026-05-21-pass3\`. |
+| Toolbar inventory captured | 67 tools | `COMPLETE_DOM + SCREENSHOT_ONLY` for toolbar inventory only, not side-effect completion. |
+| Handle candidates captured | 74 tools | `SCREENSHOT_ONLY`; exact pixel-role measurement and drag semantics remain incomplete. |
+| Drawing-specific context menus completed | 0 tools | Generic right-click did not produce reliable drawing-specific menu evidence across the queue. |
+| Activation/drawing failures | 17 tools | Listed below; mostly text/content/icon picker tools and one Fib/measurement tool. |
+
+## Pass 3 Scenario Results by Group
+
+| Scenario group | Total | Complete/DOM or live evidence | Partial screenshot/schema evidence | Blocked | Evidence labels used | Notes |
+|---|---:|---:|---:|---:|---|---|
+| Toolbar side effects | 91 | 67 | 0 | 24 | `COMPLETE_DOM + SCREENSHOT_ONLY`, `BLOCKED_TIMING_OR_DESELECT` | Toolbar inventories were captured for 67 tools, but side effects such as lock/hide/delete/clone/settings effects were not safely completed for every tool. |
+| Handle / white-dot pixel measurement | 91 | 0 | 74 | 17 | `SCREENSHOT_ONLY`, `BLOCKED_TIMING_OR_DESELECT` | SVG circle candidates and selected-state screenshots were captured, but exact handle roles, pixel coordinates, and per-handle drag deltas remain incomplete. |
+| Text / label / annotation behavior | 91 | 0 | 41 | 17 blocked, 33 not-applicable | `SCREENSHOT_ONLY`, `SOURCE_SCHEMA_ONLY`, `BLOCKED_TIMING_OR_DESELECT` | Labels/text are visible for many tools, but edit/delete/copy/persistence and attachment semantics are not complete. |
+| Tooltip / value reads | 91 | 0 | 31 | 17 blocked, 43 not-applicable | `SCREENSHOT_ONLY`, `SOURCE_SCHEMA_ONLY`, `BLOCKED_TIMING_OR_DESELECT` | Canvas-rendered values remain screenshot-only; dynamic DOM extraction was not completed. |
+| Zoom / pan / offscreen behavior | 91 | 0 | 74 | 17 | `SCREENSHOT_ONLY`, `BLOCKED_TIMING_OR_DESELECT` | A zoom screenshot was captured after selection for 74 tools, but pan/offscreen/body-drag semantics remain incomplete. |
+| Crowded-chart behavior | 91 | 0 | 0 | 91 | `MANUAL_VERIFICATION_REQUIRED`, `BLOCKED_TIMING_OR_DESELECT` | The required 30-40 same-type and mixed-type drawing stress was not safely executed for every tool in this pass. |
+| Drawing-specific context menu | 91 | 0 | 0 | 91 | `BLOCKED_CANVAS_HIT_TESTING`, `BLOCKED_TIMING_OR_DESELECT` | Generic right-click was insufficient; context menus still need targeted body/anchor/label/fill hit-testing per tool. |
+
+## Pass 3 Activation / Drawing Failures
+
+These tools could not be activated or drawn by the 5-worker menu automation and remain `BLOCKED_TIMING_OR_DESELECT` until a targeted headed/manual retry finds the exact current picker/menu flow:
+
+| Tool | Label | Blocker |
+|---|---|---|
+| `fibChannel` | Fib channel | Activation failed in menu automation despite the tool being present in inventory. |
+| `dateAndPriceRange` | Date and price range | Activation failed in forecasting/measurement menu automation. |
+| `anchoredText` | Anchored text | Activation failed in text menu automation. |
+| `note` | Note | Activation failed in text menu automation. |
+| `priceNote` | Price note | Activation failed in text menu automation. |
+| `pin` | Pin | Activation failed in text menu automation. |
+| `table` | Table | Activation failed in text menu automation. |
+| `callout` | Callout | Activation failed in text menu automation. |
+| `comment` | Comment | Activation failed in text menu automation. |
+| `priceLabel` | Price label | Activation failed in text menu automation. |
+| `signpost` | Signpost | Activation failed in text menu automation. |
+| `flagMark` | Flag mark | Activation failed in text menu automation. |
+| `image` | Image | Activation failed in content picker automation. |
+| `post` | Post | Activation failed in content picker automation. |
+| `idea` | Idea | Activation failed in content picker automation. |
+| `emoji` | Emojis | Activation failed in icon picker automation. |
+| `sticker` | Stickers | Activation failed in icon picker automation. |
+
+## Pass 3 Status Changes
+
+- Added broad 5-worker evidence that the full documented 91-tool inventory was queued and attempted.
+- Upgraded toolbar inventory evidence to `COMPLETE_DOM + SCREENSHOT_ONLY` for 67 tools where the selected drawing toolbar exposed live `data-name` controls.
+- Added selected-state / handle-candidate screenshot evidence for 74 tools, but kept handle semantics at `SCREENSHOT_ONLY`.
+- Added zoom screenshot evidence for 74 tools, but kept zoom/pan/offscreen semantics incomplete.
+- Converted drawing-specific context menu and crowded-chart work from generic unknowns into explicit blockers across the queue.
+
+## Pass 3 Remaining Blockers
+
+- No tool is fully complete across all seven scenario groups. The exhaustive queue was completed as an evidence/blocker pass, not as a parity completion pass.
+- Drawing-specific context menus remain blocked for all 91 queue rows because generic right-click does not prove body/stroke/anchor/label/fill target hit-testing.
+- Crowded-chart behavior remains blocked for all 91 tools because the required 30-40 same-type and mixed-type stress was not safely automated.
+- Toolbar side effects remain incomplete for all tools: lock, hide, delete, clone/copy, add alert, templates, settings effects, visual order, and visibility-on-intervals need safe targeted verification.
+- Handle pixel measurement remains incomplete: screenshots and SVG circles are not enough to prove role, exact anchor alignment, hover-only handles, cursor behavior, or before/after drag deltas.
+- Text/label attachment remains incomplete for every tool with editable or calculated labels; edit/delete/copy/undo-redo/zoom-pan persistence still requires targeted verification.
+- Tooltip/value reads remain mostly `SCREENSHOT_ONLY` because TradingView renders values on canvas; dynamic updates while dragging still require focused manual reading or image-based transcription.
+
 ## Purpose
 
 This is the master behavioral reference for every TradingView drawing tool type captured or automated in this repo.
