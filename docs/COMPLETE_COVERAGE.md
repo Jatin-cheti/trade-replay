@@ -414,6 +414,100 @@ These tools could not be activated or drawn by the 5-worker menu automation and 
 - Text/label attachment remains incomplete for every tool with editable or calculated labels; edit/delete/copy/undo-redo/zoom-pan persistence still requires targeted verification.
 - Tooltip/value reads remain mostly `SCREENSHOT_ONLY` because TradingView renders values on canvas; dynamic updates while dragging still require focused manual reading or image-based transcription.
 
+# Codex2 Pass 4 Focused Verification Summary Import
+
+**Date imported:** 2026-05-22, Asia/Kolkata
+**Import type:** `SUMMARY_DERIVED`
+**Source available in this repo/session:** pasted Pass 4 summary only.
+
+Codex 2’s raw evidence files and screenshots were not available in this repo/session at merge time. This section records the Pass 4 summary only. Screenshot paths are external to Codex 2’s machine and should be treated as unavailable until copied.
+
+Unavailable Codex 2 evidence files:
+
+- `C:\tmp\codex2-pass4-evidence.md`
+- `C:\tmp\codex2-pass4-summary.md`
+- `C:\tmp\codex2-pass4-results.json`
+- `C:\tmp\codex2-pass4-screenshots\`
+
+## Pass 4 Imported Summary Counts
+
+| Metric | Count | Evidence label | Notes |
+|---|---:|---|---|
+| Total queued scenarios | 53 | `SUMMARY_DERIVED` | Focused Pass 4 queue from Codex 2 summary only. |
+| Total completed | 46 | `COMPLETE_LIVE_SUMMARY` | Raw screenshots/results are unavailable in this repo/session. |
+| Total blocked | 7 | `SUMMARY_DERIVED` | Blockers listed below. |
+| Screenshot count | 222 | `SCREENSHOT_EXTERNAL` | Screenshots existed only at `C:\tmp\codex2-pass4-screenshots\` on Codex 2's machine. |
+
+## Pass 4 Activation Findings
+
+| Status | Tools | Evidence label | Notes |
+|---|---|---|---|
+| Activated successfully | Note; Price note; Fib Channel; Date and price range; Pin; Table; Comment; Callout; Price label; Signpost; Flag mark | `COMPLETE_LIVE_SUMMARY` + `SCREENSHOT_EXTERNAL` | This reduces prior activation blockers, but raw evidence must be copied before treating screenshots as locally available. |
+| Still failing activation | Anchored text; Image; Post; Idea; Sticker; Emoji | `BLOCKED_TIMING_OR_DESELECT` / `CONFLICTING_REQUIRES_RETRY` | Anchored text, Sticker, and Emoji were reported as menu not found / label changed. Image and Post were suspected picker-flow blockers. Idea was blocked by login modal. |
+
+Useful menu-location findings from the imported summary:
+
+- Date and price range is under `linetool-group-prediction-and-measurement`.
+- Fib Channel is under `linetool-group-gann-and-fibonacci`.
+
+## Pass 4 Drawing-Specific Context Menus
+
+| Status | Tools | Evidence label | Notes |
+|---|---|---|---|
+| Drawing-specific context menus summary-confirmed | Trend Line; Info line; Parallel channel; Pitchfork; Fib retracement; XABCD pattern; Text; Price range; Long position; Rectangle | `COMPLETE_LIVE_SUMMARY` + `SCREENSHOT_EXTERNAL` | Context menus are no longer globally unknown. This applies only to these 10 sampled tools and only as imported summary-derived evidence. |
+| Context menus blocked in focused representative set | None reported | `SUMMARY_DERIVED` | This does not complete unsampled tools. |
+| Unsampled context menus | All tools not listed above | `MANUAL_VERIFICATION_REQUIRED` | Do not mark all 91 context menus complete. Body/stroke, anchor, label, fill, and metric-box targets still need local evidence for unsampled tools. |
+
+## Pass 4 Crowded-Chart Tools Completed
+
+| Status | Tools | Evidence label | Notes |
+|---|---|---|---|
+| Crowded-chart behavior summary-confirmed | Trend Line; Fib retracement; Text; Price range; Long position | `COMPLETE_LIVE_SUMMARY` + `SCREENSHOT_EXTERNAL` | Summary-confirmed for 5 sampled tools only. |
+| Unsampled crowded-chart behavior | All tools not listed above | `MANUAL_VERIFICATION_REQUIRED` | Do not mark all 91 crowded-chart scenarios complete. |
+
+## Pass 4 Text / Label Behavior Findings
+
+Text/label behavior was summary-confirmed for these tools with `COMPLETE_LIVE_SUMMARY` + `SCREENSHOT_EXTERNAL` evidence:
+
+- Trend Line
+- Info line
+- Trend angle
+- Fib retracement
+- Text
+- Note
+- Callout
+- Price label
+- Signpost
+- Long position
+- Price range
+
+This improves confidence for the listed tools only. Other annotation, pattern, Fibonacci/Gann level, and measurement labels remain `MANUAL_VERIFICATION_REQUIRED` unless separately verified.
+
+## Pass 4 Handle Role Findings
+
+Handle roles were summary-measured for these tools with `COMPLETE_LIVE_SUMMARY` + `SCREENSHOT_EXTERNAL` evidence:
+
+- Trend Line
+- Trend angle
+- Parallel channel
+- Regression trend
+- Disjoint channel
+- Fib retracement
+- Trend-based fib extension
+- Rectangle
+- Text
+
+Because raw measurements and screenshots are unavailable in this repo/session, treat this as summary-derived handle-role evidence, not locally auditable pixel-coordinate evidence.
+
+## Pass 4 Status Changes and Remaining Blockers
+
+- Context menus are no longer globally unknown: 10 sampled tools have imported `COMPLETE_LIVE_SUMMARY` evidence, while unsampled tools remain `MANUAL_VERIFICATION_REQUIRED`.
+- Crowded-chart behavior is summary-confirmed for 5 sampled tools only; all unsampled tools remain `MANUAL_VERIFICATION_REQUIRED`.
+- Activation failures were reduced: Note, Price note, Fib Channel, Date and price range, Pin, Table, Comment, Callout, Price label, Signpost, and Flag mark are summary-confirmed as activated.
+- Remaining activation blockers: Anchored text, Image, Post, Idea, Sticker, and Emoji.
+- Screenshot evidence is `SCREENSHOT_EXTERNAL`; do not treat Codex 2 screenshot paths as locally available until copied into this repo/session.
+- Do not mark all 91 tools complete, all context menus complete, or all crowded-chart behavior complete from this summary import.
+
 ## Purpose
 
 This is the master behavioral reference for every TradingView drawing tool type captured or automated in this repo.

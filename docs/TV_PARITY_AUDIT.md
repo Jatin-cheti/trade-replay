@@ -875,6 +875,9 @@ This section supersedes earlier broad statements that toolbar, settings, or cont
 - Drawing-specific settings are blocked or conflicting for all 31. Where a modal opened, its `Symbol`, `Status line`, `Canvas`, `Trading`, `Alerts`, and `Events` tabs identify chart-level settings, not drawing settings.
 - Escape-after-selection is conflicting: audit JSON records `no-op` for all 31, while cross-tool docs say selected drawings deselect on Escape. A clean one-drawing live recheck is required.
 
+**Imported Codex 2 Pass 4 note (2026-05-22):**
+`docs/COMPLETE_COVERAGE.md` now contains a `SUMMARY_DERIVED` Pass 4 import. Raw Codex 2 evidence files/screenshots were unavailable in this repo/session, so this does not replace the table below. It does add summary-derived updates for gap-lane tools: Date and price range activated successfully; drawing-specific context menus were summary-confirmed for Price range, Long position, and Rectangle; crowded-chart behavior was summary-confirmed for Price range and Long position; text/label behavior was summary-confirmed for Long position and Price range; Emoji and Sticker still failed activation due menu not found / label changed. Treat these as `COMPLETE_LIVE_SUMMARY` + `SCREENSHOT_EXTERNAL` until raw artifacts are copied.
+
 ## Evidence Legend
 
 `LIVE_INTERACTION` = direct Playwright action against TradingView. `DOM_EXTRACTED` = DOM text/attribute extraction from TradingView. `SCREENSHOT_ONLY` = screenshot/manual visual evidence without reliable DOM. `SOURCE_SCHEMA` = app registry/schema or docs-derived field list. `FACTORY_CONFIG` = Playwright factory/spec config. `INFERRED` = reasoned from families or prior docs, not directly observed. `BLOCKED` = attempted but not captured. `CONFLICTING` = evidence disagrees.
