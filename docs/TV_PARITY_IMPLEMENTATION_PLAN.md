@@ -358,6 +358,79 @@ Next recommended phase:
 
 - After the new Trend Line spec passes locally, implement only the verified Trend Line toolbar dropdown inventory behavior for line width/style/color opening semantics. Keep alert/templates/more as placeholders until side effects are explicitly approved.
 
-## 17. Commit Gate For Future Implementation
+## 17. Phase 2 Implementation Log - Trend Line Toolbar Dropdowns
+
+Date: 2026-05-25
+
+Scope completed in this slice:
+
+- Trend Line line-width control now opens a dropdown instead of cycling blindly.
+- Width dropdown exposes the verified values:
+  - `1px`
+  - `2px`
+  - `3px`
+  - `4px`
+- Default Trend Line width remains `2px`.
+- Selecting a width updates only the selected Trend Line drawing options and closes the dropdown.
+- Trend Line line-style control now opens a dropdown instead of cycling blindly.
+- Style dropdown exposes the verified labels:
+  - `Line`
+  - `Dashed line`
+  - `Dotted line`
+- Selecting a style updates only the selected Trend Line drawing options and closes the dropdown.
+- Stroke color swatch opens a compact verified color picker, tracks the selected stroke color, and updates only the selected Trend Line drawing color.
+- Text color swatch opens a compact picker and stores selected toolbar state for the selected drawing only. Text-label rendering and text behavior remain intentionally out of scope.
+- Escape closes open toolbar popovers without changing drawing selection.
+- Clicking outside closes open toolbar popovers.
+- Placeholder-only controls remain non-committal for this phase:
+  - `templates`
+  - `settings`
+  - `add-alert`
+  - `more`
+  - `visual order`
+  - `visibility intervals`
+- Existing safe toolbar behaviors that already existed in the app, such as lock, visibility, delete, and duplicate, were not expanded by this slice.
+
+Tests added or updated:
+
+- `e2e/trend-line-phase1.spec.ts`
+  - width dropdown opens and shows `1px`, `2px`, `3px`, `4px`.
+  - default width is `2px`.
+  - selecting width updates the selected Trend Line drawing options.
+  - style dropdown opens and shows `Line`, `Dashed line`, `Dotted line`.
+  - selecting style updates the selected Trend Line drawing options.
+  - stroke color picker opens, tracks selected color, and updates the drawing stroke color.
+  - text color picker opens and stores toolbar-local selected color without changing drawing stroke color.
+  - placeholder controls do not crash or deselect the drawing.
+  - Escape and outside click close open toolbar panels.
+- `e2e/line-tools-floating-toolbar.spec.ts`
+  - existing Trend Line width/style expectations now use the verified dropdown behavior.
+  - non-Trend line tools keep the previous cycle-based expectations.
+
+Verification run:
+
+- `npm --prefix frontend run typecheck` passed.
+- `frontend\node_modules\.bin\tsc.cmd --noEmit --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext --types node,@playwright/test e2e\trend-line-phase1.spec.ts e2e\line-tools-floating-toolbar.spec.ts` passed.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\trend-line-phase1.spec.ts --project=chromium --retries=0` passed: 12/12 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\line-tools-phase-d-parity.spec.ts --project=chromium -g "trend" --retries=0` passed: 10/10 tests. The grep also matched existing `trendAngle` cases.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\line-tools-floating-toolbar.spec.ts --project=chromium -g "trend" --retries=0` passed: 20/20 tests. The grep also matched existing `trendAngle` cases.
+
+Visual update status:
+
+- Width, line style, and stroke color update the selected Trend Line drawing state and canvas rendering.
+- Text color is state-only for the toolbar because Trend Line text-label behavior is not part of the verified Phase 2 scope.
+
+Remaining Phase 2 gaps:
+
+- Toolbar side effects for templates, settings, add alert, more/options, visual order, interval visibility, clone/copy, hide, and full lock semantics remain blocked or deferred unless separately verified.
+- Text-label creation/edit/delete/copy/undo-redo/persistence remains out of scope.
+- No toolbar behavior was generalized to channels, pitchforks, Fib tools, annotations, or measurement tools.
+- Full local-stack browser execution still depends on local backend/Mongo availability; local-preview browser verification is the current passing path.
+
+Next recommended phase:
+
+- Implement the next verified Trend Line slice only if needed: settings/context-menu wiring from local live evidence, or move to the next owner-approved verified item such as Info Line tooltip formatting. Do not expand toolbar side effects until their behavior is verified.
+
+## 18. Commit Gate For Future Implementation
 
 Do not start implementation until the owner approves this plan. The first implementation slice should be small: Trend Line selection, endpoint handles, and verified toolbar dropdown inventory. That slice gives the shared architecture a low-risk proving ground before applying it to channels, Fib tools, text, or measurement tools.

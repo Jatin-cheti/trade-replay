@@ -1,9 +1,10 @@
 /**
- * Trend Line implementation Phase 1.
+ * Trend Line implementation Phase 1 + Phase 2 toolbar dropdowns.
  *
  * Scope is intentionally narrow: selection, body drag, endpoint handles,
- * handle hit-testing/alignment, and the verified TradingView toolbar inventory
- * model for the Trend Line only.
+ * handle hit-testing/alignment, the verified TradingView toolbar inventory
+ * model, and verified width/style/color dropdown opening semantics for the
+ * Trend Line only.
  */
 import { expect, test } from "./playwright-fixture";
 import type { Page } from "@playwright/test";
@@ -265,5 +266,133 @@ test.describe("Trend Line Phase 1", () => {
 
     const drawing = await getDrawing(page, id);
     expect(drawing?.variant).toBe("trend");
+  });
+});
+
+test.describe("Trend Line Toolbar Phase 2", () => {
+  test("line width dropdown opens with verified options and updates the selected Trend Line", async ({ page }) => {
+    await gotoCharts(page);
+    const id = await drawTrendLine(page);
+    await selectDrawing(page, id);
+
+    const widthButton = page.getByTestId("floating-toolbar-thickness");
+    await expect(widthButton).toHaveAttribute("data-selected-value", "2");
+    await widthButton.click();
+
+    const panel = page.getByTestId("floating-toolbar-thickness-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText("1px")).toBeVisible();
+    await expect(panel.getByText("2px")).toBeVisible();
+    await expect(panel.getByText("3px")).toBeVisible();
+    await expect(panel.getByText("4px")).toBeVisible();
+    await expect(page.getByTestId("floating-toolbar-thickness-option-2")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("floating-toolbar-thickness-option-4").click();
+    await expect(panel).toHaveCount(0);
+    await expect(widthButton).toHaveAttribute("data-selected-value", "4");
+    const drawing = await getDrawing(page, id);
+    expect(drawing?.options?.thickness).toBe(4);
+    expect(await getSelectedId(page)).toBe(id);
+  });
+
+  test("line style dropdown opens with verified labels and updates the selected Trend Line", async ({ page }) => {
+    await gotoCharts(page);
+    const id = await drawTrendLine(page);
+    await selectDrawing(page, id);
+
+    const styleButton = page.getByTestId("floating-toolbar-style");
+    await expect(styleButton).toHaveAttribute("data-selected-value", "solid");
+    await styleButton.click();
+
+    const panel = page.getByTestId("floating-toolbar-style-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText("Line", { exact: true })).toBeVisible();
+    await expect(panel.getByText("Dashed line")).toBeVisible();
+    await expect(panel.getByText("Dotted line")).toBeVisible();
+    await expect(page.getByTestId("floating-toolbar-style-option-solid")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("floating-toolbar-style-option-dashed").click();
+    await expect(panel).toHaveCount(0);
+    await expect(styleButton).toHaveAttribute("data-selected-value", "dashed");
+    const drawing = await getDrawing(page, id);
+    expect(drawing?.options?.style).toBe("dashed");
+    expect(await getSelectedId(page)).toBe(id);
+  });
+
+  test("stroke color picker opens, tracks selected color, and updates the selected Trend Line", async ({ page }) => {
+    await gotoCharts(page);
+    const id = await drawTrendLine(page);
+    await selectDrawing(page, id);
+
+    const colorButton = page.getByTestId("floating-toolbar-color");
+    const before = await getDrawing(page, id);
+    const beforeColor = String(before?.options?.color ?? "");
+    await expect(colorButton).toHaveAttribute("data-selected-value", beforeColor);
+    await colorButton.click();
+
+    const panel = page.getByTestId("floating-toolbar-color-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute("data-selected-color", beforeColor);
+    await expect(page.getByTestId("floating-toolbar-color-2962ff")).toBeVisible();
+
+    await page.getByTestId("floating-toolbar-color-f23645").click();
+    await expect(panel).toHaveCount(0);
+    await expect(colorButton).toHaveAttribute("data-selected-value", "#f23645");
+    const drawing = await getDrawing(page, id);
+    expect(drawing?.options?.color?.toLowerCase()).toBe("#f23645");
+    expect(await getSelectedId(page)).toBe(id);
+  });
+
+  test("text color picker opens and stores toolbar-local state without changing the Trend Line stroke", async ({ page }) => {
+    await gotoCharts(page);
+    const id = await drawTrendLine(page);
+    await selectDrawing(page, id);
+
+    const before = await getDrawing(page, id);
+    const beforeColor = String(before?.options?.color ?? "");
+    const textColorButton = page.getByTestId("floating-toolbar-text-color");
+    await expect(textColorButton).toHaveAttribute("data-selected-value", beforeColor);
+    await textColorButton.click();
+
+    const panel = page.getByTestId("floating-toolbar-text-color-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute("data-selected-color", beforeColor);
+
+    await page.getByTestId("floating-toolbar-text-color-ffd600").click();
+    await expect(panel).toHaveCount(0);
+    await expect(textColorButton).toHaveAttribute("data-selected-value", "#ffd600");
+    const after = await getDrawing(page, id);
+    expect(after?.options?.color).toBe(beforeColor);
+    expect(await getSelectedId(page)).toBe(id);
+  });
+
+  test("placeholder-only Trend Line controls are inert and keep selection stable", async ({ page }) => {
+    await gotoCharts(page);
+    const id = await drawTrendLine(page);
+    await selectDrawing(page, id);
+
+    for (const testId of ["floating-toolbar-templates", "floating-toolbar-add-alert", "floating-toolbar-more"]) {
+      await page.getByTestId(testId).click();
+      await expect(page.getByTestId("floating-drawing-toolbar")).toBeVisible();
+      expect(await getSelectedId(page)).toBe(id);
+    }
+  });
+
+  test("toolbar dropdowns close on Escape and outside click", async ({ page }) => {
+    await gotoCharts(page);
+    const id = await drawTrendLine(page);
+    await selectDrawing(page, id);
+    await expect(page.getByTestId("floating-drawing-toolbar")).toBeVisible();
+
+    await page.getByTestId("floating-toolbar-thickness").click();
+    await expect(page.getByTestId("floating-toolbar-thickness-panel")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("floating-toolbar-thickness-panel")).toHaveCount(0);
+
+    await page.getByTestId("floating-toolbar-style").click();
+    await expect(page.getByTestId("floating-toolbar-style-panel")).toBeVisible();
+    const box = await surfaceBox(page);
+    await clickAt(page, { x: box.x + 24, y: box.y + 24 });
+    await expect(page.getByTestId("floating-toolbar-style-panel")).toHaveCount(0);
   });
 });

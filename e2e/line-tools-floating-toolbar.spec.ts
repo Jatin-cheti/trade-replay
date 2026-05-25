@@ -165,6 +165,17 @@ for (const c of CASES) {
       await selectDrawing(page, id);
       const before = await getDrawing(page, id);
       const start = before?.options?.thickness ?? 1;
+      if (c.variant === "trend") {
+        await page.getByTestId("floating-toolbar-thickness").click();
+        await expect(page.getByTestId("floating-toolbar-thickness-panel")).toBeVisible();
+        await expect(page.getByTestId(`floating-toolbar-thickness-option-${start}`)).toHaveAttribute("aria-pressed", "true");
+        const next = start === 4 ? 1 : 4;
+        await page.getByTestId(`floating-toolbar-thickness-option-${next}`).click();
+        await page.waitForTimeout(80);
+        const after = await getDrawing(page, id);
+        expect(after?.options?.thickness).toBe(next);
+        return;
+      }
       await page.getByTestId("floating-toolbar-thickness").click();
       await page.waitForTimeout(40);
       const after = await getDrawing(page, id);
@@ -182,6 +193,19 @@ for (const c of CASES) {
       await gotoCharts(page);
       const id = await drawLine(page, c.testId);
       await selectDrawing(page, id);
+      if (c.variant === "trend") {
+        await page.getByTestId("floating-toolbar-style").click();
+        const panel = page.getByTestId("floating-toolbar-style-panel");
+        await expect(panel).toBeVisible();
+        await expect(panel.getByText("Line", { exact: true })).toBeVisible();
+        await expect(panel.getByText("Dashed line")).toBeVisible();
+        await expect(panel.getByText("Dotted line")).toBeVisible();
+        await page.getByTestId("floating-toolbar-style-option-dashed").click();
+        await page.waitForTimeout(80);
+        const d = await getDrawing(page, id);
+        expect(d?.options?.style).toBe("dashed");
+        return;
+      }
       const seen = new Set<string>();
       for (let i = 0; i < 4; i++) {
         const d = await getDrawing(page, id);

@@ -6,9 +6,9 @@
  * above the chart overlay canvas.
  *
  * Actions:
- *   • color swatch  → cycles through TV palette
- *   • thickness     → cycles 1 / 2 / 3 / 4 px
- *   • style         → cycles solid / dashed / dotted
+ *   • color swatch  → opens TV-style palette
+ *   • thickness     → opens 1 / 2 / 3 / 4 px dropdown for verified Trend Line
+ *   • style         → opens solid / dashed / dotted dropdown for verified Trend Line
  *   • add text      → attaches an anchoredText drawing at line midpoint
  *   • lock toggle
  *   • visible toggle
@@ -39,6 +39,11 @@ const COLOR_PALETTE = [
 
 const THICKNESS_CYCLE = [1, 2, 3, 4];
 const STYLE_CYCLE: Array<'solid' | 'dashed' | 'dotted'> = ['solid', 'dashed', 'dotted'];
+const STYLE_LABELS: Record<'solid' | 'dashed' | 'dotted', string> = {
+  solid: 'Line',
+  dashed: 'Dashed line',
+  dotted: 'Dotted line',
+};
 
 export type FloatingToolbarAnchor = {
   // Client-space rect of the selected drawing's tightest bbox.
@@ -79,7 +84,8 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
     onOpenSettings,
   } = props;
 
-  const [openPanel, setOpenPanel] = useState<'none' | 'color' | 'thickness' | 'style'>('none');
+  const [openPanel, setOpenPanel] = useState<'none' | 'color' | 'textColor' | 'thickness' | 'style'>('none');
+  const [textColorByDrawing, setTextColorByDrawing] = useState<Record<string, string>>({});
 
   // Close dropdowns when selection changes or toolbar unmounts.
   useEffect(() => {
@@ -94,8 +100,19 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       if (!target) return;
       if (!target.closest('[data-floating-toolbar]')) setOpenPanel('none');
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpenPanel('none');
+      }
+    };
     window.addEventListener('mousedown', onGlobalMouseDown, true);
-    return () => window.removeEventListener('mousedown', onGlobalMouseDown, true);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('mousedown', onGlobalMouseDown, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
   }, [openPanel]);
 
   const position = useMemo(() => {
@@ -126,6 +143,7 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
   const isVisible = drawing.visible !== false && opts.visible !== false;
   const verifiedControls = getVerifiedToolbarControlIdsForDrawing(drawing);
   const isVerifiedTrendLineToolbar = drawing.variant === 'trend';
+  const textColor = textColorByDrawing[drawing.id] ?? opts.color;
 
   const toolbar = (
     <div
@@ -172,6 +190,8 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
           data-name="line-tool-color"
           data-testid="floating-toolbar-color"
           aria-label="Line color"
+          aria-expanded={openPanel === 'color'}
+          data-selected-value={opts.color}
           title="Color"
           onClick={() => setOpenPanel((p) => (p === 'color' ? 'none' : 'color'))}
           className="flex h-7 w-7 items-center justify-center rounded hover:bg-primary/10"
@@ -184,6 +204,7 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
         {openPanel === 'color' ? (
           <div
             data-testid="floating-toolbar-color-panel"
+            data-selected-color={opts.color}
             className="absolute left-0 top-full z-10 mt-1 grid w-44 grid-cols-6 gap-1 rounded-md border border-primary/30 bg-background p-2 shadow-xl"
           >
             {COLOR_PALETTE.map((c) => (
@@ -191,6 +212,8 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
                 key={c}
                 type="button"
                 data-testid={`floating-toolbar-color-${c.replace('#', '')}`}
+                aria-label={`Stroke color ${c}`}
+                aria-pressed={c === opts.color}
                 title={c}
                 onClick={() => {
                   onChangeColor(c);
@@ -205,52 +228,152 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       </div>
 
       {isVerifiedTrendLineToolbar ? (
-        <button
-          type="button"
-          data-name="text-color"
-          data-testid="floating-toolbar-text-color"
-          title="Text color"
-          aria-label="Text color"
-          onClick={() => setOpenPanel('none')}
-          className="flex h-7 w-7 items-center justify-center rounded text-[11px] font-bold hover:bg-primary/10"
-        >
-          A
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            data-name="text-color"
+            data-testid="floating-toolbar-text-color"
+            title="Text color"
+            aria-label="Text color"
+            aria-expanded={openPanel === 'textColor'}
+            data-selected-value={textColor}
+            onClick={() => setOpenPanel((p) => (p === 'textColor' ? 'none' : 'textColor'))}
+            className="flex h-7 w-7 items-center justify-center rounded text-[11px] font-bold hover:bg-primary/10"
+          >
+            <span className="flex items-center gap-1">
+              <span>A</span>
+              <span
+                className="h-2 w-2 rounded-full border border-white/40"
+                style={{ backgroundColor: textColor }}
+              />
+            </span>
+          </button>
+          {openPanel === 'textColor' ? (
+            <div
+              data-testid="floating-toolbar-text-color-panel"
+              data-selected-color={textColor}
+              className="absolute left-0 top-full z-10 mt-1 grid w-44 grid-cols-6 gap-1 rounded-md border border-primary/30 bg-background p-2 shadow-xl"
+            >
+              {COLOR_PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  data-testid={`floating-toolbar-text-color-${c.replace('#', '')}`}
+                  aria-label={`Text color ${c}`}
+                  aria-pressed={c === textColor}
+                  title={c}
+                  onClick={() => {
+                    setTextColorByDrawing((prev) => ({ ...prev, [drawing.id]: c }));
+                    setOpenPanel('none');
+                  }}
+                  className={`h-6 w-6 rounded-sm border ${c === textColor ? 'border-white ring-2 ring-primary' : 'border-white/20'}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
-      {/* Thickness cycle */}
-      <button
-        type="button"
-        data-name="line-tool-width"
-        data-testid="floating-toolbar-thickness"
-        aria-label="Line width"
-        title={`Thickness (${opts.thickness}px)`}
-        onClick={() => {
-          const i = THICKNESS_CYCLE.indexOf(opts.thickness);
-          const next = THICKNESS_CYCLE[(i + 1) % THICKNESS_CYCLE.length];
-          onChangeThickness(next);
-        }}
-        className="flex h-7 w-10 items-center justify-center rounded text-xs font-semibold hover:bg-primary/10"
-      >
-        {opts.thickness}px
-      </button>
+      {/* Thickness cycle/dropdown */}
+      <div className="relative">
+        <button
+          type="button"
+          data-name="line-tool-width"
+          data-testid="floating-toolbar-thickness"
+          aria-label="Line width"
+          aria-expanded={openPanel === 'thickness'}
+          data-selected-value={String(opts.thickness)}
+          title={`Thickness (${opts.thickness}px)`}
+          onClick={() => {
+            if (isVerifiedTrendLineToolbar) {
+              setOpenPanel((p) => (p === 'thickness' ? 'none' : 'thickness'));
+              return;
+            }
+            const i = THICKNESS_CYCLE.indexOf(opts.thickness);
+            const next = THICKNESS_CYCLE[(i + 1) % THICKNESS_CYCLE.length];
+            onChangeThickness(next);
+          }}
+          className="flex h-7 w-10 items-center justify-center rounded text-xs font-semibold hover:bg-primary/10"
+        >
+          {opts.thickness}px
+        </button>
+        {isVerifiedTrendLineToolbar && openPanel === 'thickness' ? (
+          <div
+            data-testid="floating-toolbar-thickness-panel"
+            className="absolute left-0 top-full z-10 mt-1 w-28 rounded-md border border-primary/30 bg-background p-1 shadow-xl"
+          >
+            {THICKNESS_CYCLE.map((value) => (
+              <button
+                key={value}
+                type="button"
+                data-testid={`floating-toolbar-thickness-option-${value}`}
+                aria-pressed={value === opts.thickness}
+                onClick={() => {
+                  onChangeThickness(value);
+                  setOpenPanel('none');
+                }}
+                className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs hover:bg-primary/10 ${value === opts.thickness ? 'text-primary' : ''}`}
+              >
+                <span>{value}px</span>
+                <span
+                  aria-hidden
+                  className="rounded bg-current"
+                  style={{ width: Math.max(18, value * 10), height: value }}
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
-      {/* Style cycle */}
-      <button
-        type="button"
-        data-name="style"
-        data-testid="floating-toolbar-style"
-        aria-label="Line style"
-        title={`Style (${opts.style})`}
-        onClick={() => {
-          const i = STYLE_CYCLE.indexOf(opts.style);
-          const next = STYLE_CYCLE[(i + 1) % STYLE_CYCLE.length];
-          onChangeStyle(next);
-        }}
-        className="flex h-7 w-12 items-center justify-center rounded text-[10px] font-medium uppercase hover:bg-primary/10"
-      >
-        {opts.style === 'solid' ? '——' : opts.style === 'dashed' ? '- - -' : '· · ·'}
-      </button>
+      {/* Style cycle/dropdown */}
+      <div className="relative">
+        <button
+          type="button"
+          data-name="style"
+          data-testid="floating-toolbar-style"
+          aria-label="Line style"
+          aria-expanded={openPanel === 'style'}
+          data-selected-value={opts.style}
+          title={`Style (${opts.style})`}
+          onClick={() => {
+            if (isVerifiedTrendLineToolbar) {
+              setOpenPanel((p) => (p === 'style' ? 'none' : 'style'));
+              return;
+            }
+            const i = STYLE_CYCLE.indexOf(opts.style);
+            const next = STYLE_CYCLE[(i + 1) % STYLE_CYCLE.length];
+            onChangeStyle(next);
+          }}
+          className="flex h-7 w-12 items-center justify-center rounded text-[10px] font-medium uppercase hover:bg-primary/10"
+        >
+          {opts.style === 'solid' ? '——' : opts.style === 'dashed' ? '- - -' : '· · ·'}
+        </button>
+        {isVerifiedTrendLineToolbar && openPanel === 'style' ? (
+          <div
+            data-testid="floating-toolbar-style-panel"
+            className="absolute left-0 top-full z-10 mt-1 w-36 rounded-md border border-primary/30 bg-background p-1 shadow-xl"
+          >
+            {STYLE_CYCLE.map((style) => (
+              <button
+                key={style}
+                type="button"
+                data-testid={`floating-toolbar-style-option-${style}`}
+                aria-pressed={style === opts.style}
+                onClick={() => {
+                  onChangeStyle(style);
+                  setOpenPanel('none');
+                }}
+                className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs hover:bg-primary/10 ${style === opts.style ? 'text-primary' : ''}`}
+              >
+                <span>{STYLE_LABELS[style]}</span>
+                <span aria-hidden>{style === 'solid' ? '——' : style === 'dashed' ? '- - -' : '· · ·'}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <span className="mx-1 h-5 w-px bg-primary/20" />
 
