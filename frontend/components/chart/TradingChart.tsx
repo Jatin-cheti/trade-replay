@@ -8,6 +8,7 @@ import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import type { ChartSyncBus, SyncedLogicalRange } from '@/services/chart/chartSyncBus';
 import { buildToolOptions, getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory, type ToolVariant } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
+import { getVerifiedToolbarControlIdsForDrawing } from '@/services/tools/floatingToolbarModel';
 import {
   compareDrawingRenderOrder,
   createDrawing,
@@ -1099,6 +1100,58 @@ export default function TradingChart({
       price: anchor.price + deltaPrice,
     }));
   }, []);
+
+  const projectDrawPointToOverlayPoint = useCallback((point: DrawPoint, clampMode: 'loose' | 'viewport' = 'loose'): CanvasPoint | null => {
+    const chart = chartRef.current;
+    const series = getActiveSeries();
+    const overlay = overlayRef.current;
+    if (!chart || !series || !overlay) return null;
+
+    const width = overlay.clientWidth || 1;
+    const height = overlay.clientHeight || 1;
+    const timeScale = chart.timeScale();
+    let x = timeScale.timeToCoordinate(point.time as DrawPoint['time']) ?? null;
+    let y = series.priceToCoordinate(point.price);
+
+    if (x == null) {
+      const range = (() => {
+        try {
+          return timeScale.getVisibleRange?.() ?? null;
+        } catch {
+          return null;
+        }
+      })();
+      const from = Number(range?.from ?? transformedData.times[0] ?? 0);
+      const to = Number(range?.to ?? transformedData.times[transformedData.times.length - 1] ?? from + 1);
+      const span = Math.max(1, to - from);
+      const time = Number(point.time);
+      if (Number.isFinite(time)) {
+        x = ((time - from) / span) * width;
+      }
+    }
+
+    if (y == null) {
+      const top = series.coordinateToPrice(0);
+      const bottom = series.coordinateToPrice(height);
+      if (top != null && bottom != null) {
+        const maxPrice = Math.max(top as number, bottom as number);
+        const minPrice = Math.min(top as number, bottom as number);
+        const span = Math.max(1e-6, maxPrice - minPrice);
+        const price = Number(point.price);
+        if (Number.isFinite(price)) {
+          y = ((maxPrice - price) / span) * height;
+        }
+      }
+    }
+
+    if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+    const pad = clampMode === 'viewport' ? 0 : 2048;
+    return {
+      x: Math.max(-pad, Math.min(width + pad, x)),
+      y: Math.max(-pad, Math.min(height + pad, y)),
+    };
+  }, [chartRef, getActiveSeries, overlayRef, transformedData.times]);
 
   const fallbackPoint = useCallback((): DrawPoint | null => {
     if (!data.length) return null;
@@ -3101,11 +3154,47 @@ export default function TradingChart({
         const ts = chart.timeScale();
         const out: Array<{ x: number | null; y: number | null }> = [];
         for (const a of drawing.anchors) {
-          const x = ts.timeToCoordinate(a.time as DrawPoint['time']);
-          const y = series.priceToCoordinate(a.price);
+          const point = drawing.variant === 'trend' ? projectDrawPointToOverlayPoint(a) : null;
+          const x = point?.x ?? ts.timeToCoordinate(a.time as DrawPoint['time']);
+          const y = point?.y ?? series.priceToCoordinate(a.price);
           out.push({ x: typeof x === 'number' ? x : null, y: typeof y === 'number' ? y : null });
         }
         return { id: drawing.id, variant: drawing.variant, anchors: out };
+      },
+      getDrawingHandleState: (id?: string | null) => {
+        const list = drawingsRef.current;
+        const drawing = id ? list.find((d) => d.id === id) : list[list.length - 1];
+        if (!drawing) return null;
+        const selected = selectedDrawingId === drawing.id;
+        if (!selected || drawing.variant !== 'trend') {
+          return {
+            drawingId: drawing.id,
+            variant: drawing.variant,
+            visible: false,
+            handles: [] as Array<{ role: string; anchorIndex: number; x: number; y: number }>,
+          };
+        }
+        const overlay = overlayRef.current;
+        if (!overlay) return null;
+        const rect = overlay.getBoundingClientRect();
+        const handles = drawing.anchors.slice(0, 2)
+          .map((anchor, anchorIndex) => {
+            const point = projectDrawPointToOverlayPoint(anchor);
+            if (!point) return null;
+            return {
+              role: 'endpoint',
+              anchorIndex,
+              x: rect.left + point.x,
+              y: rect.top + point.y,
+            };
+          })
+          .filter((handle): handle is { role: string; anchorIndex: number; x: number; y: number } => Boolean(handle));
+        return {
+          drawingId: drawing.id,
+          variant: drawing.variant,
+          visible: handles.length > 0,
+          handles,
+        };
       },
       /**
        * Return TV-parity info-line metrics for a given drawing id (or the
@@ -3178,15 +3267,17 @@ export default function TradingChart({
         // reading the anchor right after a pan/scroll see the updated position.
         const id = selectedDrawingId;
         const drawing = id ? drawingsRef.current.find((d) => d.id === id) : null;
+        const controls = getVerifiedToolbarControlIdsForDrawing(drawing ?? null);
         const chart = chartRef.current;
         const series = getActiveSeries();
         const overlay = overlayRef.current;
         if (!drawing || !chart || !series || !overlay) {
           const a = toolbarAnchorRef.current;
-          if (!id || !a) return { visible: false, drawingId: null as string | null };
+          if (!id || !a) return { visible: false, drawingId: null as string | null, controls };
           return {
             visible: true,
             drawingId: id,
+            controls,
             left: a.left,
             right: a.right,
             top: a.top,
@@ -3199,18 +3290,20 @@ export default function TradingChart({
         const xs: number[] = [];
         const ys: number[] = [];
         for (const a of drawing.anchors) {
-          const x = chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
-          const y = series.priceToCoordinate(a.price);
+          const point = drawing.variant === 'trend' ? projectDrawPointToOverlayPoint(a, 'viewport') : null;
+          const x = point?.x ?? chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+          const y = point?.y ?? series.priceToCoordinate(a.price);
           if (x == null || y == null) continue;
           xs.push(rect.left + x);
           ys.push(rect.top + y);
         }
         if (!xs.length || !ys.length) {
           const a = toolbarAnchorRef.current;
-          if (!a) return { visible: false, drawingId: null as string | null };
+          if (!a) return { visible: false, drawingId: null as string | null, controls };
           return {
             visible: true,
             drawingId: id,
+            controls,
             left: a.left,
             right: a.right,
             top: a.top,
@@ -3226,6 +3319,7 @@ export default function TradingChart({
         return {
           visible: true,
           drawingId: id,
+          controls,
           left,
           right,
           top,
@@ -3279,8 +3373,9 @@ export default function TradingChart({
         const rect = overlay.getBoundingClientRect();
         const points = target.anchors
           .map((anchor) => {
-            const x = chart.timeScale().timeToCoordinate(anchor.time as DrawPoint['time']);
-            const y = series.priceToCoordinate(anchor.price);
+            const point = target.variant === 'trend' ? projectDrawPointToOverlayPoint(anchor) : null;
+            const x = point?.x ?? chart.timeScale().timeToCoordinate(anchor.time as DrawPoint['time']);
+            const y = point?.y ?? series.priceToCoordinate(anchor.price);
             if (x == null || y == null) return null;
             return { x: rect.left + x, y: rect.top + y };
           })
@@ -3368,6 +3463,7 @@ export default function TradingChart({
     magnetMode,
     overlayRef,
     pointerToDataPoint,
+    projectDrawPointToOverlayPoint,
     selectedDrawingId,
     toolState.history.length,
     toolState.options,
@@ -4189,8 +4285,11 @@ export default function TradingChart({
               const py = event.clientY - rect.top;
               let bestDist = HIT_RADIUS_PX * HIT_RADIUS_PX;
               drawing.anchors.forEach((a, i) => {
-                const ax = chartApi.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
-                const ay = seriesApi.priceToCoordinate(a.price);
+                const projected = drawing.variant === 'trend'
+                  ? projectDrawPointToOverlayPoint(a)
+                  : null;
+                const ax = projected?.x ?? chartApi.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+                const ay = projected?.y ?? seriesApi.priceToCoordinate(a.price);
                 if (ax == null || ay == null) return;
                 const dx = ax - px;
                 const dy = ay - py;
@@ -4898,8 +4997,9 @@ export default function TradingChart({
     const xs: number[] = [];
     const ys: number[] = [];
     for (const a of selectedDrawing.anchors) {
-      const x = chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
-      const y = series.priceToCoordinate(a.price);
+      const point = selectedDrawing.variant === 'trend' ? projectDrawPointToOverlayPoint(a, 'viewport') : null;
+      const x = point?.x ?? chart.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
+      const y = point?.y ?? series.priceToCoordinate(a.price);
       if (x == null || y == null) continue;
       xs.push(rect.left + x);
       ys.push(rect.top + y);
@@ -4929,7 +5029,7 @@ export default function TradingChart({
       top: Math.min(...ys),
       bottom: Math.max(...ys),
     });
-  }, [selectedDrawing, chartRef, getActiveSeries, overlayRef, toolbarTick, toolState.drawings]);
+  }, [selectedDrawing, chartRef, getActiveSeries, overlayRef, projectDrawPointToOverlayPoint, toolbarTick, toolState.drawings]);
 
   // Keep toolbar anchor up-to-date on pan / zoom / resize.
   useEffect(() => {

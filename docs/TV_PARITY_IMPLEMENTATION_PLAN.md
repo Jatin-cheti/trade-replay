@@ -296,6 +296,68 @@ Implementation should probably touch these areas, but no app code is changed by 
 14. Add crowded-chart selection tests for Trend Line, Fib Retracement, Text, Price Range, and Long Position.
 15. Run focused tests after each phase and leave blocked/manual-required scenarios documented rather than forced green.
 
-## 16. Commit Gate For Future Implementation
+## 16. Phase 1 Implementation Log - Trend Line
+
+Date: 2026-05-25
+
+Scope completed in this slice:
+
+- Trend Line selected/unselected state now has a typed endpoint handle debug model.
+- Trend Line body drag continues to translate both anchors together.
+- Trend Line endpoint hit-testing now uses the same offscreen-tolerant projection helper as toolbar/debug positioning.
+- Trend Line endpoint handle state reports exactly two endpoint handles, hidden when deselected.
+- Trend Line handle/toolbar projection uses offscreen coordinate fallback so handles and toolbar remain aligned after pan/zoom when coordinates leave the visible range.
+- Trend Line verified toolbar inventory model added for:
+  - `templates`
+  - `line-tool-color`
+  - `text-color`
+  - `line-tool-width`
+  - `style`
+  - `settings`
+  - `add-alert`
+  - `lock`
+  - `remove`
+  - `more`
+
+Tests added:
+
+- `e2e/trend-line-phase1.spec.ts`
+  - draw Trend Line
+  - select by body
+  - deselect/reselect
+  - body drag
+  - endpoint handle drag
+  - selected/deselected handle visibility
+  - handle alignment after pan/zoom
+  - verified toolbar inventory model
+
+Verification run:
+
+- `npm --prefix frontend run typecheck` passed.
+- `frontend\node_modules\.bin\tsc.cmd --noEmit --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext --types node,@playwright/test e2e\trend-line-phase1.spec.ts` passed.
+- `npx playwright test -c e2e/playwright.config.ts e2e/trend-line-phase1.spec.ts --project=chromium --list` discovered 6 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e/trend-line-phase1.spec.ts --project=chromium --retries=0` passed: 6/6 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e/line-tools-phase-d-parity.spec.ts --project=chromium -g "trend" --retries=0` passed: 10/10 tests. The grep also matched existing `trendAngle` cases.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e/line-tools-floating-toolbar.spec.ts --project=chromium -g "trend" --retries=0` passed: 20/20 tests. The grep also matched existing `trendAngle` cases.
+- `npm --prefix packages/tradereplay-charts test` ran package tests but failed in untouched pitchfork geometry coverage: `getPitchforkGeometry uses the expected origin for pitchfork variants`.
+
+Verification notes:
+
+- Browser execution with the default `e2e/playwright.config.ts` did not start because the configured local backend could not connect to MongoDB at `127.0.0.1:27017` before the Playwright web server timeout.
+- Attempting to start repo Docker Mongo with `docker compose up -d mongodb` failed because Docker Desktop/daemon was not running.
+- The safe browser verification path was `e2e/playwright.local-preview.config.ts`, which runs the local frontend code and points API traffic at production. `E2E_USE_EXTERNAL_STACK=true` was set only so `playwright-fixture.ts` checks production API health instead of a missing local backend.
+- Running this new spec with `E2E_USE_EXTERNAL_STACK=true` and the default `e2e/playwright.config.ts` found no tests because that config switches `testMatch` to `tv-parity-tv-*.spec.ts`.
+- The package-test pitchfork failure is outside this Phase 1 scope and no package drawing-library files were changed by this slice.
+
+Remaining Phase 1 gaps:
+
+- Re-run the new Trend Line Phase 1 Playwright spec with the default full local stack once local Mongo/Docker is available.
+- Toolbar side effects remain intentionally out of scope except for existing safe behavior already present in the app.
+
+Next recommended phase:
+
+- After the new Trend Line spec passes locally, implement only the verified Trend Line toolbar dropdown inventory behavior for line width/style/color opening semantics. Keep alert/templates/more as placeholders until side effects are explicitly approved.
+
+## 17. Commit Gate For Future Implementation
 
 Do not start implementation until the owner approves this plan. The first implementation slice should be small: Trend Line selection, endpoint handles, and verified toolbar dropdown inventory. That slice gives the shared architecture a low-risk proving ground before applying it to channels, Fib tools, text, or measurement tools.

@@ -19,6 +19,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Drawing } from '@/services/tools/toolRegistry';
+import { getVerifiedToolbarControlIdsForDrawing } from '@/services/tools/floatingToolbarModel';
 
 // TradingView default line palette
 const COLOR_PALETTE = [
@@ -123,12 +124,15 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
   const opts = drawing.options;
   const isLocked = Boolean(drawing.locked || opts.locked);
   const isVisible = drawing.visible !== false && opts.visible !== false;
+  const verifiedControls = getVerifiedToolbarControlIdsForDrawing(drawing);
+  const isVerifiedTrendLineToolbar = drawing.variant === 'trend';
 
   const toolbar = (
     <div
       data-floating-toolbar
       data-testid="floating-drawing-toolbar"
       data-drawing-id={drawing.id}
+      data-verified-controls={verifiedControls.join(' ')}
       role="toolbar"
       aria-label="Drawing toolbar"
       onPointerDown={(e) => e.stopPropagation()}
@@ -147,11 +151,27 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       }}
       className="flex items-center gap-1 rounded-md border border-primary/30 bg-background/95 px-2 py-1 shadow-xl backdrop-blur-md"
     >
+      {isVerifiedTrendLineToolbar ? (
+        <button
+          type="button"
+          data-name="templates"
+          data-testid="floating-toolbar-templates"
+          title="Templates"
+          aria-label="Templates"
+          onClick={() => setOpenPanel('none')}
+          className="flex h-7 w-7 items-center justify-center rounded text-[11px] font-semibold hover:bg-primary/10"
+        >
+          T
+        </button>
+      ) : null}
+
       {/* Color swatch with popover */}
       <div className="relative">
         <button
           type="button"
+          data-name="line-tool-color"
           data-testid="floating-toolbar-color"
+          aria-label="Line color"
           title="Color"
           onClick={() => setOpenPanel((p) => (p === 'color' ? 'none' : 'color'))}
           className="flex h-7 w-7 items-center justify-center rounded hover:bg-primary/10"
@@ -184,10 +204,26 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
         ) : null}
       </div>
 
+      {isVerifiedTrendLineToolbar ? (
+        <button
+          type="button"
+          data-name="text-color"
+          data-testid="floating-toolbar-text-color"
+          title="Text color"
+          aria-label="Text color"
+          onClick={() => setOpenPanel('none')}
+          className="flex h-7 w-7 items-center justify-center rounded text-[11px] font-bold hover:bg-primary/10"
+        >
+          A
+        </button>
+      ) : null}
+
       {/* Thickness cycle */}
       <button
         type="button"
+        data-name="line-tool-width"
         data-testid="floating-toolbar-thickness"
+        aria-label="Line width"
         title={`Thickness (${opts.thickness}px)`}
         onClick={() => {
           const i = THICKNESS_CYCLE.indexOf(opts.thickness);
@@ -202,7 +238,9 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       {/* Style cycle */}
       <button
         type="button"
+        data-name="style"
         data-testid="floating-toolbar-style"
+        aria-label="Line style"
         title={`Style (${opts.style})`}
         onClick={() => {
           const i = STYLE_CYCLE.indexOf(opts.style);
@@ -242,7 +280,9 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       {/* Lock */}
       <button
         type="button"
+        data-name="lock"
         data-testid="floating-toolbar-lock"
+        aria-label={isLocked ? 'Unlock' : 'Lock'}
         title={isLocked ? 'Unlock' : 'Lock'}
         onClick={onToggleLock}
         className={`flex h-7 w-7 items-center justify-center rounded text-[11px] hover:bg-primary/10 ${isLocked ? 'text-amber-400' : ''}`}
@@ -266,7 +306,9 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
       {/* Settings */}
       <button
         type="button"
+        data-name="settings"
         data-testid="floating-toolbar-settings"
+        aria-label="Settings"
         title="Settings"
         onClick={onOpenSettings}
         className="flex h-7 w-7 items-center justify-center rounded text-[11px] hover:bg-primary/10"
@@ -274,16 +316,45 @@ export default function FloatingDrawingToolbar(props: FloatingDrawingToolbarProp
         ⚙
       </button>
 
+      {isVerifiedTrendLineToolbar ? (
+        <button
+          type="button"
+          data-name="add-alert"
+          data-testid="floating-toolbar-add-alert"
+          title="Add alert"
+          aria-label="Add alert"
+          onClick={() => setOpenPanel('none')}
+          className="flex h-7 w-7 items-center justify-center rounded text-[11px] hover:bg-primary/10"
+        >
+          !
+        </button>
+      ) : null}
+
       {/* Delete */}
       <button
         type="button"
+        data-name="remove"
         data-testid="floating-toolbar-delete"
+        aria-label="Remove"
         title="Delete"
         onClick={onDelete}
         className="flex h-7 w-7 items-center justify-center rounded text-[11px] text-red-400 hover:bg-red-500/15"
       >
         🗑
       </button>
+      {isVerifiedTrendLineToolbar ? (
+        <button
+          type="button"
+          data-name="more"
+          data-testid="floating-toolbar-more"
+          title="More"
+          aria-label="More"
+          onClick={() => setOpenPanel('none')}
+          className="flex h-7 w-7 items-center justify-center rounded text-[13px] hover:bg-primary/10"
+        >
+          ...
+        </button>
+      ) : null}
     </div>
   );
 

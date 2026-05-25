@@ -165,6 +165,8 @@ export interface DrawingScreenAnchors {
 export interface ToolbarState {
   visible: boolean;
   drawingId: string | null;
+  /** Verified TradingView toolbar controls for the selected drawing, when available. */
+  controls?: readonly string[];
   left?: number;
   right?: number;
   top?: number;
