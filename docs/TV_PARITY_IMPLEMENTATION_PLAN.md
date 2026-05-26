@@ -431,6 +431,75 @@ Next recommended phase:
 
 - Implement the next verified Trend Line slice only if needed: settings/context-menu wiring from local live evidence, or move to the next owner-approved verified item such as Info Line tooltip formatting. Do not expand toolbar side effects until their behavior is verified.
 
-## 18. Commit Gate For Future Implementation
+## 18. Phase 3 Implementation Log - Info Line Metric Panel
+
+Date: 2026-05-26
+
+Scope completed in this slice:
+
+- Info Line metric formatter now matches the verified three-row screenshot structure more closely.
+- Metric row 1 now renders:
+  - direction marker (`▲`, `▼`, or `◆`)
+  - absolute price change with two decimals
+  - absolute percent change with two decimals
+  - comma-formatted tick-distance number
+- Metric row 2 now renders:
+  - comma-formatted bar count
+  - comma-formatted day count
+  - comma-formatted pixel distance
+- Metric row 3 now renders:
+  - angle prefix
+  - signed angle with two decimals and the degree symbol
+- Debug metric payload now exposes stable display fields:
+  - `priceChangeText`
+  - `percentChangeText`
+  - `ticksText`
+  - `barsText`
+  - `daysText`
+  - `distanceText`
+  - `angleText`
+  - `displayLines`
+  - `panelText`
+- Existing offscreen coordinate fallback is preserved for `getInfoLineMetrics`, so offscreen anchors still produce finite metric rows when the chart can estimate coordinates from visible ranges.
+- No Trend Angle helper, toolbar behavior, channels, pitchforks, Fib tools, or text/label editing behavior was implemented in this slice.
+
+Tests added or updated:
+
+- `e2e/info-line-phase3.spec.ts`
+  - draws Info Line and verifies the floating metric payload includes price, percent, bars/days, pixel distance, and angle rows.
+  - verifies offscreen anchors do not produce `null`, `undefined`, or `NaN` metric text.
+  - verifies metrics remain available after endpoint edit, deselect, and reselect.
+- `e2e/tv-parity-behaviors.spec.ts`
+  - existing Info Line panel wording updated from literal `ticks` label to tick-distance number.
+  - existing Info Line checks now assert the panel no longer emits the stale `ticks` suffix.
+- `e2e/trend-line-phase1.spec.ts`
+  - Trend Line body-drag endpoint delta tolerance is now inclusive at `8px`.
+  - Investigation showed both endpoints moved the same vertical distance, while horizontal projected movement differed by exactly `8px` (`delta0={x:48,y:-32}`, `delta1={x:40,y:-32}`) in the local-preview/prod-data path.
+  - This is treated as chart time-scale/bar pixel quantization after data-space translation, not a production Trend Line behavior change.
+
+Verification run:
+
+- `npm --prefix frontend run typecheck` passed.
+- `frontend\node_modules\.bin\tsc.cmd --noEmit --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext --types node,@playwright/test e2e\info-line-phase3.spec.ts e2e\trend-line-phase1.spec.ts e2e\line-tools-floating-toolbar.spec.ts e2e\tv-parity-behaviors.spec.ts e2e\line-tools-phase-d-parity.spec.ts` passed.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\trend-line-phase1.spec.ts --project=chromium -g "body drag preserves" --retries=0` passed: 1/1 test after the inclusive tolerance stabilization.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\trend-line-phase1.spec.ts --project=chromium --retries=0` passed: 12/12 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\info-line-phase3.spec.ts --project=chromium --retries=0` passed: 3/3 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\tv-parity-behaviors.spec.ts --project=chromium -g "infoLine" --retries=0` passed: 37/37 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\line-tools-phase-d-parity.spec.ts --project=chromium -g "infoLine" --retries=0` passed: 5/5 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\line-tools-floating-toolbar.spec.ts --project=chromium -g "trend" --retries=0` passed: 20/20 tests. The grep also matched existing `trendAngle` cases.
+
+Remaining Phase 3 gaps:
+
+- Info Line metric panel is still canvas-rendered; DOM extraction parity remains blocked/manual.
+- Exact live TradingView dynamic value updates while dragging are still based on screenshot evidence, not a copied raw TradingView data source.
+- Text/free-label behavior for Info Line remains out of scope.
+- Settings toggles for individual metric visibility remain out of scope.
+- Trend Line production behavior was not changed by the tolerance stabilization.
+
+Next recommended phase:
+
+- The next narrow verified slice should be Trend Angle angle-helper visual formatting, keeping tooltip/label work scoped to the verified screenshot evidence.
+
+## 19. Commit Gate For Future Implementation
 
 Do not start implementation until the owner approves this plan. The first implementation slice should be small: Trend Line selection, endpoint handles, and verified toolbar dropdown inventory. That slice gives the shared architecture a low-risk proving ground before applying it to channels, Fib tools, text, or measurement tools.

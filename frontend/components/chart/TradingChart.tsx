@@ -175,10 +175,28 @@ export function computeInfoLineMetrics(
   const angleDeg = Math.atan2(-(p2.y - p1.y), p2.x - p1.x) * (180 / Math.PI);
   const tickSize = a1.price > 1 ? 0.05 : 0.0001;
   const ticks = Math.round(dp / tickSize);
-  const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '\u2212' : '');
-  const fmt = (n: number, d = 2) => `${sign(n)}${Math.abs(n).toFixed(d)}`;
-  const fmtInt = (n: number) => `${sign(n)}${Math.abs(n).toLocaleString('en-US')}`;
+  const absFixed = (n: number, d = 2) => Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: d,
+    maximumFractionDigits: d,
+  });
+  const signedFixed = (n: number, d = 2) => {
+    const sign = n > 0 ? '+' : n < 0 ? '\u2212' : '';
+    return `${sign}${absFixed(n, d)}`;
+  };
+  const absInt = (n: number) => Math.abs(n).toLocaleString('en-US', {
+    maximumFractionDigits: 0,
+  });
   const arrow = dp > 0 ? '\u25B2' : dp < 0 ? '\u25BC' : '\u25C6';
+  const priceChangeText = absFixed(dp, 2);
+  const percentChangeText = `${absFixed(pct, 2)}%`;
+  const ticksText = absInt(ticks);
+  const barsText = absInt(bars);
+  const daysText = absInt(days);
+  const distanceText = absInt(distPx);
+  const angleText = `${signedFixed(angleDeg, 2)}\u00B0`;
+  const line1 = `${arrow} ${priceChangeText} (${percentChangeText}), ${ticksText}`;
+  const line2 = `${barsText} bars (${daysText}d), distance: ${distanceText} px`;
+  const line3 = `\u2220 ${angleText}`;
   return {
     dp,
     pct,
@@ -188,13 +206,22 @@ export function computeInfoLineMetrics(
     angleDeg,
     ticks,
     tickSize,
+    priceChangeText,
+    percentChangeText,
+    ticksText,
+    barsText,
+    daysText,
+    distanceText,
+    angleText,
     // TV-parity tooltip lines.
-    // Line 1: arrow + price delta + (pct%) + signed-tick count
+    // Line 1: arrow + price delta + (pct%) + tick-distance count
     // Line 2: bars (days) + pixel distance
     // Line 3: angle in degrees
-    line1: `${arrow} ${fmt(dp, 2)} (${fmt(pct, 2)}%)  ${fmtInt(ticks)} ticks`,
-    line2: `${fmtInt(bars)} bars (${fmtInt(days)}d), distance: ${distPx} px`,
-    line3: `\u2220 ${fmt(angleDeg, 2)}\u00B0`,
+    line1,
+    line2,
+    line3,
+    displayLines: [line1, line2, line3],
+    panelText: `${line1}\n${line2}\n${line3}`,
   };
 }
 

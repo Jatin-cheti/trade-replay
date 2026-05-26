@@ -4,7 +4,7 @@
  * Covers behaviors that the user explicitly observed in TradingView and
  * called out as missing/wrong in our app:
  *
- *   1. infoLine renders a 3-line floating badge (\u25BC dp (pct%), ticks /
+ *   1. infoLine renders a 3-line floating badge (\u25BC dp (pct%), tick-distance /
  *      \u2194 bars (days), distance: px / \u2220 angle\u00B0) instead of a
  *      single inline label.
  *   2. After committing a drawing, click-outside-the-line deselects it
@@ -158,7 +158,7 @@ async function drawOnce(
 // ─── 1. infoLine floating-panel content ──────────────────────────────────────
 
 test.describe("infoLine floating panel (TV-parity)", () => {
-  test("renders 3-line panel with arrow, ticks, bars/days, distance, angle", async ({ page }) => {
+  test("renders 3-line panel with arrow, tick-distance, bars/days, distance, angle", async ({ page }) => {
     await gotoCharts(page);
     const box = await surfaceBox(page);
     const cx = box.x + box.width / 2;
@@ -174,10 +174,11 @@ test.describe("infoLine floating panel (TV-parity)", () => {
     for (const k of ["dp", "pct", "bars", "days", "distPx", "angleDeg", "ticks", "line1", "line2", "line3"]) {
       expect(m).toHaveProperty(k);
     }
-    // line1 has arrow + price + percent + ticks
+    // line1 has arrow + price + percent + tick-distance number
     expect(m.line1).toMatch(/[\u25B2\u25BC\u25C6]/);          // arrow
     expect(m.line1).toMatch(/\([+\u2212]?\d+\.\d{2}%\)/);     // (xx.xx%)
-    expect(m.line1).toMatch(/[+\u2212]?\d/);                   // ticks number
+    expect(m.line1).toMatch(/[+\u2212]?\d/);                   // tick-distance number
+    expect(m.line1).not.toMatch(/ticks?/i);
     // line2 has bars + days + px distance
     expect(m.line2).toMatch(/bars/);
     expect(m.line2).toMatch(/d\)/);
