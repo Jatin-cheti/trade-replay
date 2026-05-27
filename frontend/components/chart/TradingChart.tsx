@@ -225,6 +225,54 @@ export function computeInfoLineMetrics(
   };
 }
 
+function formatSignedDegrees(angleDeg: number): string {
+  const sign = angleDeg > 0 ? '+' : angleDeg < 0 ? '\u2212' : '';
+  return `${sign}${Math.abs(angleDeg).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}\u00B0`;
+}
+
+export function computeTrendAngleMetrics(
+  start: CanvasPoint,
+  end: CanvasPoint,
+  width: number,
+  height: number,
+) {
+  const [renderedStart, renderedEnd] = snapTrendAngleSegment(start, end);
+  const dx = renderedEnd.x - renderedStart.x;
+  const dy = renderedEnd.y - renderedStart.y;
+  const lengthPx = Math.hypot(dx, dy);
+  const angleDeg = Math.atan2(-dy, dx) * (180 / Math.PI);
+  const angleText = formatSignedDegrees(angleDeg);
+  const arcRadius = Math.max(14, Math.min(30, lengthPx * 0.18));
+  const referenceLength = Math.max(36, Math.min(140, Math.max(Math.abs(dx), lengthPx * 0.42)));
+  const referenceStart = renderedStart;
+  const referenceEnd = {
+    x: renderedStart.x + referenceLength,
+    y: renderedStart.y,
+  };
+  const labelPadding = 4;
+  const label = {
+    text: angleText,
+    x: Math.max(labelPadding, Math.min(width - labelPadding, renderedStart.x + arcRadius + 8)),
+    y: Math.max(labelPadding, Math.min(height - labelPadding, renderedStart.y - arcRadius - 8)),
+  };
+
+  return {
+    angleDeg,
+    angleText,
+    lengthPx,
+    arcRadius,
+    renderedStart,
+    renderedEnd,
+    referenceStart,
+    referenceEnd,
+    label,
+    displayText: angleText,
+  };
+}
+
 function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y: number, text: string) {
   ctx.save();
   const weight = drawing.options.bold ? '700' : '400';
@@ -1764,13 +1812,15 @@ export default function TradingChart({
           });
           ctx.restore();
         } else if (v === 'trendAngle' && points.length >= 2) {
-          const [p1, p2] = snapTrendAngleSegment(points[0], points[1]);
+          const metrics = computeTrendAngleMetrics(points[0], points[1], cssWidth, cssHeight);
+          const p1 = metrics.renderedStart;
+          const p2 = metrics.renderedEnd;
           ctx.beginPath();
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
           // Draw angle arc at vertex
-          const arcRadius = Math.min(24, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.2);
+          const arcRadius = metrics.arcRadius;
           const startAngle = 0;
           const endAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
           ctx.save();
@@ -1782,14 +1832,28 @@ export default function TradingChart({
           // Horizontal reference line
           ctx.save();
           ctx.setLineDash([2, 3]);
-          ctx.globalAlpha = 0.3;
+          ctx.globalAlpha = 0.46;
           ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p1.x + arcRadius * 1.5, p1.y);
+          ctx.moveTo(metrics.referenceStart.x, metrics.referenceStart.y);
+          ctx.lineTo(metrics.referenceEnd.x, metrics.referenceEnd.y);
           ctx.stroke();
           ctx.restore();
-          const angle = Math.atan2(-(p2.y - p1.y), p2.x - p1.x) * (180 / Math.PI);
-          drawText(ctx, activeDrawing, p2.x + 6, p2.y - 8, `${angle.toFixed(1)}°`);
+          ctx.save();
+          const fontSize = Math.max(11, activeDrawing.options.textSize - 1);
+          ctx.font = `600 ${fontSize}px ${activeDrawing.options.font}, sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          const labelWidth = ctx.measureText(metrics.angleText).width + 10;
+          const labelHeight = fontSize + 8;
+          const labelX = Math.max(2, Math.min(metrics.label.x, cssWidth - labelWidth - 2));
+          const labelY = Math.max(labelHeight / 2 + 2, Math.min(metrics.label.y, cssHeight - labelHeight / 2 - 2));
+          ctx.fillStyle = 'rgba(20, 28, 42, 0.82)';
+          ctx.beginPath();
+          ctx.roundRect?.(labelX - 5, labelY - labelHeight / 2, labelWidth, labelHeight, 3) ?? ctx.rect(labelX - 5, labelY - labelHeight / 2, labelWidth, labelHeight);
+          ctx.fill();
+          ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+          ctx.fillText(metrics.angleText, labelX, labelY);
+          ctx.restore();
         } else if (v === 'flatTopBottom' && points.length >= 2) {
           const minY = Math.min(points[0].y, points[1].y);
           const maxY = Math.max(points[0].y, points[1].y);
@@ -3177,7 +3241,19 @@ export default function TradingChart({
         if (!drawing) return null;
         const chart = chartRef.current;
         const series = getActiveSeries();
+        const overlay = overlayRef.current;
         if (!chart || !series) return null;
+        if (drawing.variant === 'trendAngle' && drawing.anchors.length >= 2 && overlay) {
+          const start = projectDrawPointToOverlayPoint(drawing.anchors[0]);
+          const end = projectDrawPointToOverlayPoint(drawing.anchors[1]);
+          if (!start || !end) return null;
+          const metrics = computeTrendAngleMetrics(start, end, overlay.clientWidth || 1, overlay.clientHeight || 1);
+          return {
+            id: drawing.id,
+            variant: drawing.variant,
+            anchors: [metrics.renderedStart, metrics.renderedEnd],
+          };
+        }
         const ts = chart.timeScale();
         const out: Array<{ x: number | null; y: number | null }> = [];
         for (const a of drawing.anchors) {
@@ -3193,7 +3269,7 @@ export default function TradingChart({
         const drawing = id ? list.find((d) => d.id === id) : list[list.length - 1];
         if (!drawing) return null;
         const selected = selectedDrawingId === drawing.id;
-        if (!selected || drawing.variant !== 'trend') {
+        if (!selected || (drawing.variant !== 'trend' && drawing.variant !== 'trendAngle')) {
           return {
             drawingId: drawing.id,
             variant: drawing.variant,
@@ -3204,6 +3280,24 @@ export default function TradingChart({
         const overlay = overlayRef.current;
         if (!overlay) return null;
         const rect = overlay.getBoundingClientRect();
+        if (drawing.variant === 'trendAngle' && drawing.anchors.length >= 2) {
+          const start = projectDrawPointToOverlayPoint(drawing.anchors[0]);
+          const end = projectDrawPointToOverlayPoint(drawing.anchors[1]);
+          if (!start || !end) return null;
+          const metrics = computeTrendAngleMetrics(start, end, overlay.clientWidth || 1, overlay.clientHeight || 1);
+          const handles = [metrics.renderedStart, metrics.renderedEnd].map((point, anchorIndex) => ({
+            role: 'endpoint',
+            anchorIndex,
+            x: rect.left + point.x,
+            y: rect.top + point.y,
+          }));
+          return {
+            drawingId: drawing.id,
+            variant: drawing.variant,
+            visible: true,
+            handles,
+          };
+        }
         const handles = drawing.anchors.slice(0, 2)
           .map((anchor, anchorIndex) => {
             const point = projectDrawPointToOverlayPoint(anchor);
@@ -3263,6 +3357,16 @@ export default function TradingChart({
         const x2 = _ilCoordX(a2); const y2 = _ilCoordY(a2);
         if (x1 == null || y1 == null || x2 == null || y2 == null) return null;
         return computeInfoLineMetrics(a1, a2, { x: x1, y: y1 }, { x: x2, y: y2 });
+      },
+      getTrendAngleMetrics: (id?: string | null) => {
+        const list = drawingsRef.current.filter((d) => d.variant === 'trendAngle');
+        const drawing = id ? list.find((d) => d.id === id) : list[list.length - 1];
+        const overlay = overlayRef.current;
+        if (!drawing || drawing.anchors.length < 2 || !overlay) return null;
+        const start = projectDrawPointToOverlayPoint(drawing.anchors[0]);
+        const end = projectDrawPointToOverlayPoint(drawing.anchors[1]);
+        if (!start || !end) return null;
+        return computeTrendAngleMetrics(start, end, overlay.clientWidth || 1, overlay.clientHeight || 1);
       },
       pointerToDataPoint: (clientX: number, clientY: number, snap: boolean) =>
         pointerToDataPoint(clientX, clientY, crosshairSnapMode, snap),
@@ -3398,6 +3502,20 @@ export default function TradingChart({
           : drawingsRef.current[drawingsRef.current.length - 1];
         if (!target) return null;
         const rect = overlay.getBoundingClientRect();
+        if (target.variant === 'trendAngle' && target.anchors.length >= 2) {
+          const start = projectDrawPointToOverlayPoint(target.anchors[0]);
+          const end = projectDrawPointToOverlayPoint(target.anchors[1]);
+          if (!start || !end) return null;
+          const metrics = computeTrendAngleMetrics(start, end, overlay.clientWidth || 1, overlay.clientHeight || 1);
+          return {
+            id: target.id,
+            variant: target.variant,
+            anchors: [metrics.renderedStart, metrics.renderedEnd].map((point) => ({
+              x: rect.left + point.x,
+              y: rect.top + point.y,
+            })),
+          };
+        }
         const points = target.anchors
           .map((anchor) => {
             const point = target.variant === 'trend' ? projectDrawPointToOverlayPoint(anchor) : null;
@@ -4115,6 +4233,26 @@ export default function TradingChart({
         // anchor still keeps the drawing easy to grab on a re-click).
         const SELECT_PIXEL_TOLERANCE = 24;
         let selected: string | null = candidate;
+        const hitSelectedTrendAngleRenderedEndpoint = (): string | null => {
+          if (!selectedDrawingId) return null;
+          const selectedDrawing = drawingsRef.current.find((drawing) => drawing.id === selectedDrawingId);
+          const overlayEl = overlayRef.current;
+          const rect = overlayEl?.getBoundingClientRect();
+          if (selectedDrawing?.variant === 'trendAngle' && selectedDrawing.anchors.length >= 2 && overlayEl && rect) {
+            const start = projectDrawPointToOverlayPoint(selectedDrawing.anchors[0]);
+            const end = projectDrawPointToOverlayPoint(selectedDrawing.anchors[1]);
+            if (start && end) {
+              const metrics = computeTrendAngleMetrics(start, end, overlayEl.clientWidth || 1, overlayEl.clientHeight || 1);
+              const click = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+              const renderedEndpointHit = [metrics.renderedStart, metrics.renderedEnd].some(
+                (point) => Math.hypot(point.x - click.x, point.y - click.y) <= 12,
+              );
+              if (renderedEndpointHit) return selectedDrawing.id;
+            }
+          }
+          return null;
+        };
+        if (!selected) selected = hitSelectedTrendAngleRenderedEndpoint();
         if (candidate) {
           const drawing = drawingsRef.current.find((d) => d.id === candidate);
           const chart = chartRef.current;
@@ -4261,6 +4399,7 @@ export default function TradingChart({
             if (bestPx > SELECT_PIXEL_TOLERANCE) selected = null;
           }
         }
+        if (!selected) selected = hitSelectedTrendAngleRenderedEndpoint();
         setSelectedDrawingId(selected);
         setHoveredDrawingId((prev) => (selected ? selected : (prev ? null : prev)));
         if (selected) {
@@ -4310,11 +4449,20 @@ export default function TradingChart({
             if (chartApi && seriesApi && rect) {
               const px = event.clientX - rect.left;
               const py = event.clientY - rect.top;
+              let renderedTrendAnglePoints: CanvasPoint[] | null = null;
+              if (drawing.variant === 'trendAngle' && drawing.anchors.length >= 2 && overlayEl) {
+                const start = projectDrawPointToOverlayPoint(drawing.anchors[0]);
+                const end = projectDrawPointToOverlayPoint(drawing.anchors[1]);
+                if (start && end) {
+                  const metrics = computeTrendAngleMetrics(start, end, overlayEl.clientWidth || 1, overlayEl.clientHeight || 1);
+                  renderedTrendAnglePoints = [metrics.renderedStart, metrics.renderedEnd];
+                }
+              }
               let bestDist = HIT_RADIUS_PX * HIT_RADIUS_PX;
               drawing.anchors.forEach((a, i) => {
-                const projected = drawing.variant === 'trend'
+                const projected = renderedTrendAnglePoints?.[i] ?? (drawing.variant === 'trend'
                   ? projectDrawPointToOverlayPoint(a)
-                  : null;
+                  : null);
                 const ax = projected?.x ?? chartApi.timeScale().timeToCoordinate(a.time as DrawPoint['time']);
                 const ay = projected?.y ?? seriesApi.priceToCoordinate(a.price);
                 if (ax == null || ay == null) return;

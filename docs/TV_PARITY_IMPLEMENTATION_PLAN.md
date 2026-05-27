@@ -500,6 +500,66 @@ Next recommended phase:
 
 - The next narrow verified slice should be Trend Angle angle-helper visual formatting, keeping tooltip/label work scoped to the verified screenshot evidence.
 
-## 19. Commit Gate For Future Implementation
+## 19. Phase 4 Implementation Log - Trend Angle Helper
+
+Date: 2026-05-26
+
+Scope completed in this slice:
+
+- Trend Angle now uses a focused metric/helper model for the rendered snapped segment.
+- The visible main line continues to render from the snapped origin/end geometry.
+- The horizontal dashed reference baseline now starts at anchor A and extends right from the origin, instead of being a short arc-sized stub.
+- The angle arc stays attached to anchor A.
+- The angle label now renders near the origin/arc instead of near endpoint B.
+- Angle label formatting is stable and uses a signed two-decimal degree string such as `+15.00°`, `−15.00°`, or `0.00°`.
+- Trend Angle debug metrics now expose:
+  - `angleDeg`
+  - `angleText`
+  - `lengthPx`
+  - `arcRadius`
+  - `renderedStart`
+  - `renderedEnd`
+  - `referenceStart`
+  - `referenceEnd`
+  - `label`
+  - `displayText`
+- Selected Trend Angle endpoint handles now report and hit-test against rendered snapped endpoints, so the visible white dots align with the visible line.
+- Clicking/dragging a selected snapped Trend Angle endpoint can begin endpoint edit even when the raw unsnapped data-line hit-test would miss.
+- Existing offscreen coordinate fallback is reused through `projectDrawPointToOverlayPoint`, so offscreen Trend Angle anchors can still produce finite helper metrics.
+- No Trend Line toolbar behavior, Info Line metric behavior, channels, pitchforks, Fib tools, broad tooltip architecture, or text/label persistence was implemented in this slice.
+
+Tests added:
+
+- `e2e/trend-angle-phase4.spec.ts`
+  - draws Trend Angle and verifies the angle helper exposes stable angle label, dashed reference, and rendered endpoints.
+  - verifies selected endpoint handles are visible, aligned to rendered endpoints, hidden on deselect, and restored on reselect.
+  - verifies angle metrics remain available after endpoint edit.
+  - verifies handle coordinates stay aligned after pan and zoom.
+  - verifies offscreen anchors still produce finite angle helper metrics.
+
+Verification run:
+
+- `npm --prefix frontend run typecheck` passed.
+- `frontend\node_modules\.bin\tsc.cmd --noEmit --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext --types node,@playwright/test e2e\trend-angle-phase4.spec.ts e2e\info-line-phase3.spec.ts e2e\trend-line-phase1.spec.ts e2e\line-tools-floating-toolbar.spec.ts e2e\tv-parity-behaviors.spec.ts e2e\line-tools-phase-d-parity.spec.ts` passed.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\trend-angle-phase4.spec.ts --project=chromium --retries=0` passed: 5/5 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\trend-line-phase1.spec.ts --project=chromium --retries=0` passed: 12/12 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\info-line-phase3.spec.ts --project=chromium --retries=0` passed: 3/3 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\tv-parity-behaviors.spec.ts --project=chromium -g "trendAngle" --retries=0` passed: 6/6 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\line-tools-phase-d-parity.spec.ts --project=chromium -g "trendAngle" --retries=0` passed: 5/5 tests.
+- `E2E_USE_EXTERNAL_STACK=true npx playwright test -c e2e/playwright.local-preview.config.ts e2e\line-tools-floating-toolbar.spec.ts --project=chromium -g "trend" --retries=0` passed: 20/20 tests. The grep also matched existing `trendAngle` cases.
+
+Remaining Phase 4 gaps:
+
+- Exact TradingView choice between `deg` and `°` remains screenshot-only/manual; this implementation uses the degree symbol because the current UI already supports it.
+- Dashed reference style configurability remains out of scope.
+- Text/free-label behavior for Trend Angle remains out of scope.
+- DOM extraction of the angle label remains out of scope because the helper is canvas-rendered.
+- No crowded-chart or context-menu behavior was changed.
+
+Next recommended phase:
+
+- Continue with the next narrow verified visual slice, likely Fib Extension activation/levels or Price Range metric-label rendering, only where evidence is `COMPLETE_LIVE`/`SCREENSHOT_ONLY` and not blocked.
+
+## 20. Commit Gate For Future Implementation
 
 Do not start implementation until the owner approves this plan. The first implementation slice should be small: Trend Line selection, endpoint handles, and verified toolbar dropdown inventory. That slice gives the shared architecture a low-risk proving ground before applying it to channels, Fib tools, text, or measurement tools.
